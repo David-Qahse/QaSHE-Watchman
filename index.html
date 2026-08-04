@@ -4090,11 +4090,14 @@ window.addPosition = async function(){
     organisation_id: STATE.org.id, title, department: document.getElementById('pos-new-department').value.trim(), created_by: STATE.user.id
   });
   if(error){ toast('Could not add position: ' + error.message, 'error'); return; }
-  document.getElementById('pos-new-title').value = '';
-  document.getElementById('pos-new-department').value = '';
   await loadPositions();
-  renderPositionsList();
-  toast('Position added.', 'success');
+  // A full module refresh, not just the positions list — the New Person
+  // form's position dropdown (and every other position dropdown on this
+  // screen) is built once when the module renders, so it stays stale
+  // otherwise even though loadPositions() above already has the new one.
+  showModule('personnel');
+  togglePositionsPanel();
+  toast('Position added — pick it from any position dropdown now.', 'success');
 };
 
 /* ---- Register: new person ---- */
@@ -4241,8 +4244,25 @@ async function openPersonDetail(id){
       <div id="person-training-list" style="margin-bottom:16px;"></div>
 
       <div class="detail-card" style="padding:16px; margin-bottom:16px;">
-        <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Primary position</h3></div>
-        ${primary ? renderCompetenceCard(primary, true) : '<p style="font-size:12.5px; color:var(--text-faint);">No primary position competence recorded.</p>'}
+        <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Primary position</h3>
+          ${!primary ? `<button class="btn-small primary" onclick="toggleSetPrimaryForm('${p.id}')">+ Set primary position</button>` : ''}
+        </div>
+        ${primary ? renderCompetenceCard(primary, true) : '<p style="font-size:12.5px; color:var(--text-faint); margin-bottom:10px;">No primary position set yet.</p>'}
+        <div class="form-panel" id="set-primary-form">
+          ${!STATE.positions.length ? '<p style="font-size:12.5px; color:var(--text-faint); margin-bottom:10px;">No positions exist yet — add one under "Manage Positions" first.</p>' : `
+          <div class="form-grid">
+            <div class="field"><label>Position</label><select id="spf-position">${STATE.positions.map(pos=>`<option value="${pos.id}">${pos.title}</option>`).join('')}</select></div>
+            <div class="field"><label>Level of competence</label><select id="spf-level">${COMPETENCE_LEVELS.map(l=>`<option value="${l}">${COMPETENCE_LEVEL_LABELS[l]}</option>`).join('')}</select></div>
+            <div class="field"><label>Date validated</label><input type="date" id="spf-date-validated" value="${todayISO()}"></div>
+            <div class="field"><label>Validated by — full name</label><input id="spf-val-name"></div>
+            <div class="field"><label>Validated by — company number</label><input id="spf-val-companyno"></div>
+            <div class="field"><label>Validated by — position</label><input id="spf-val-position"></div>
+          </div>
+          <div class="form-actions">
+            <button class="btn-cancel" onclick="toggleSetPrimaryForm('${p.id}')">Cancel</button>
+            <button class="btn-small primary" onclick="submitSetPrimary('${p.id}')">Save primary position</button>
+          </div>`}
+        </div>
       </div>
 
       <div class="panel-head"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Sub-positions / substitute roles</h3>
@@ -4340,6 +4360,27 @@ window.saveEditCompetence = async function(competenceId){
   openPersonDetail(c.personnel_id);
   renderPersonnelView();
   toast('Competence record updated.', 'success');
+};
+
+window.toggleSetPrimaryForm = function(personId){ document.getElementById('set-primary-form').classList.toggle('open'); };
+
+window.submitSetPrimary = async function(personId){
+  const positionId = document.getElementById('spf-position').value;
+  if(!positionId){ alert('Choose a position.'); return; }
+  const { error } = await STATE.supabase.from('personnel_competence').insert({
+    organisation_id: STATE.org.id, personnel_id: personId, position_id: positionId, is_primary: true,
+    level: document.getElementById('spf-level').value,
+    date_validated: document.getElementById('spf-date-validated').value || null,
+    validated_by_name: document.getElementById('spf-val-name').value.trim(),
+    validated_by_company_number: document.getElementById('spf-val-companyno').value.trim(),
+    validated_by_position: document.getElementById('spf-val-position').value.trim(),
+    created_by: STATE.user.id,
+  });
+  if(error){ toast('Could not set primary position: ' + error.message, 'error'); return; }
+  await loadCompetence();
+  openPersonDetail(personId);
+  renderPersonnelView();
+  toast('Primary position set.', 'success');
 };
 
 window.toggleSubPositionForm = function(personId){ document.getElementById('sub-position-form').classList.toggle('open'); };
