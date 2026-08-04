@@ -27,6 +27,8 @@
     --amber-tint:#FBF1E1;
     --green:#2E7D4F;
     --green-tint:#E9F5EE;
+    --blue:#3B6EA5;
+    --blue-tint:#EAF1F8;
     --radius:10px;
   }
   *{box-sizing:border-box; margin:0; padding:0;}
@@ -262,6 +264,24 @@
   .toast{position:fixed; bottom:24px; right:24px; background:var(--text); color:#fff; padding:12px 18px; border-radius:8px; font-size:13px; max-width:340px; box-shadow:0 8px 24px rgba(0,0,0,.2); z-index:50;}
   .toast.error{background:var(--red);}
 
+  .date-badge{display:inline-flex; align-items:center; gap:5px; font-family:'JetBrains Mono'; font-size:10.5px; padding:3px 9px; border-radius:100px; white-space:nowrap;}
+  .date-badge .dd{width:6px; height:6px; border-radius:50%; background:currentColor; flex-shrink:0;}
+  .date-badge.green{background:var(--green-tint); color:var(--green);}
+  .date-badge.blue{background:var(--blue-tint); color:var(--blue);}
+  .date-badge.yellow{background:var(--amber-tint); color:var(--amber);}
+  .date-badge.red{background:var(--red-tint); color:var(--red);}
+
+  .reminder-overlay{position:fixed; inset:0; background:rgba(30,28,27,.45); z-index:110; display:none; align-items:center; justify-content:center; padding:20px;}
+  .reminder-overlay.active{display:flex;}
+  .reminder-modal{background:#fff; border-radius:12px; max-width:480px; width:100%; padding:28px; max-height:85vh; overflow-y:auto;}
+  .reminder-modal h3{font-family:'Poppins'; font-size:18px; font-weight:700; margin-bottom:4px;}
+  .reminder-modal p.sub{font-size:12.5px; color:var(--text-faint); margin-bottom:18px;}
+  .reminder-row{display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border-soft); cursor:pointer;}
+  .reminder-row:last-child{border-bottom:none;}
+  .reminder-row:hover{background:var(--grey-tint);}
+  .reminder-row .rr-label{font-size:13.5px; font-weight:500;}
+  .reminder-row .rr-counts{display:flex; gap:6px;}
+
   .import-overlay{position:fixed; inset:0; background:rgba(30,28,27,.45); z-index:100; display:none; align-items:flex-start; justify-content:center; overflow-y:auto; padding:40px 20px;}
   .import-overlay.active{display:flex;}
   .import-modal{background:#fff; border-radius:12px; max-width:720px; width:100%; padding:28px; margin-bottom:40px;}
@@ -450,6 +470,9 @@
 <div id="toast-root"></div>
 <div class="import-overlay" id="import-overlay">
   <div class="import-modal" id="import-modal-content"></div>
+</div>
+<div class="reminder-overlay" id="reminder-overlay">
+  <div class="reminder-modal" id="reminder-modal-content"></div>
 </div>
 
 <!-- ================= DASHBOARD ================= -->
@@ -711,6 +734,7 @@ window.selectOrg = async function(orgId){
   document.getElementById('user-avatar').textContent = (STATE.profile.name || STATE.user.email).slice(0,2).toUpperCase();
   window.scrollTo({top:0, behavior:'instant'});
   showModule(pendingModule || 'overview');
+  setTimeout(showReminderPopup, 400); // small delay so it doesn't collide with the view transition
 };
 
 async function loadNCs(){
@@ -851,6 +875,79 @@ function updateNavBadges(){
 
 /* ============ SHARED UI HELPERS ============ */
 function pill(status){ return `<span class="pill ${status}"><span class="pill-dot"></span>${label(status)}</span>`; }
+
+/* ============ Date status — used consistently across every module ============
+   green  = resolved, or more than 30 days away
+   blue   = no date set yet (a real state: "needs a plan/date", not an error)
+   yellow = due within 30 days
+   red    = overdue
+*/
+function dateStatusInfo(dateStr, resolved){
+  if(resolved) return { state:'green', text:'Resolved' };
+  if(!dateStr) return { state:'blue', text:'No date set' };
+  const days = Math.floor((new Date(dateStr+'T00:00:00') - new Date(todayISO()+'T00:00:00')) / 86400000);
+  if(days < 0) return { state:'red', text:`${Math.abs(days)}d overdue` };
+  if(days === 0) return { state:'red', text:'Due today' };
+  if(days <= 30) return { state:'yellow', text:`Due in ${days}d` };
+  return { state:'green', text:'On track' };
+}
+function dateStatusBadge(dateStr, resolved){
+  const info = dateStatusInfo(dateStr, resolved);
+  return `<span class="date-badge ${info.state}"><span class="dd"></span>${info.text}</span>`;
+}
+
+// One row per module that has a due/target/review date worth tracking.
+// Audits are deliberately excluded — their lifecycle is workflow-driven
+// (planned → in progress → report issued), not a calendar countdown, so
+// "overdue" doesn't mean the same thing there.
+const DATE_TRACKED_MODULES = [
+  { key:'nonconformances', label:'Nonconformances', list:() => STATE.ncs, dateField:'target_close_date', isResolved:x=>x.status==='closed' },
+  { key:'tasks', label:'Tasks', list:() => STATE.tasks, dateField:'due_date', isResolved:x=>x.status==='done' },
+  { key:'documents', label:'Documents', list:() => STATE.documents, dateField:'next_review_date', isResolved:x=>['withdrawn','superseded'].includes(x.status) },
+  { key:'suppliers', label:'Suppliers', list:() => STATE.suppliers, dateField:'next_review_date', isResolved:x=>x.status==='removed' },
+  { key:'objectives', label:'Objectives & Targets', list:() => STATE.objectives, dateField:'target_date', isResolved:x=>['achieved','not_achieved','discontinued'].includes(x.status) },
+  { key:'legal', label:'Legal Compliance', list:() => STATE.legalRegister, dateField:'next_review_due_date', isResolved:() => false },
+  { key:'training', label:'Training', list:() => STATE.training, dateField:'due_date', isResolved:x=>['completed','cancelled'].includes(x.status) },
+  { key:'risks', label:'Risk & Opportunity', list:() => STATE.risks, dateField:'review_date', isResolved:x=>x.status==='closed' },
+];
+
+function computeDueSummary(){
+  return DATE_TRACKED_MODULES.map(mod => {
+    let overdue = 0, dueSoon = 0;
+    mod.list().forEach(item => {
+      const resolved = mod.isResolved(item);
+      const info = dateStatusInfo(item[mod.dateField], resolved);
+      if(info.state === 'red') overdue++;
+      else if(info.state === 'yellow') dueSoon++;
+    });
+    return { ...mod, overdue, dueSoon };
+  }).filter(m => m.overdue > 0 || m.dueSoon > 0);
+}
+
+function showReminderPopup(){
+  const summary = computeDueSummary();
+  if(!summary.length) return; // nothing due soon or overdue — don't bother anyone
+  const totalOverdue = summary.reduce((s,m)=>s+m.overdue,0);
+  const totalDueSoon = summary.reduce((s,m)=>s+m.dueSoon,0);
+  document.getElementById('reminder-modal-content').innerHTML = `
+    <h3>Reminders</h3>
+    <p class="sub">${totalOverdue} item${totalOverdue===1?'':'s'} overdue, ${totalDueSoon} due within 30 days.</p>
+    ${summary.map(m => `<div class="reminder-row" onclick="closeReminderPopup(); showModule('${m.key}');">
+      <span class="rr-label">${m.label}</span>
+      <span class="rr-counts">
+        ${m.overdue ? `<span class="date-badge red"><span class="dd"></span>${m.overdue} overdue</span>` : ''}
+        ${m.dueSoon ? `<span class="date-badge yellow"><span class="dd"></span>${m.dueSoon} due soon</span>` : ''}
+      </span>
+    </div>`).join('')}
+    <div class="form-actions" style="margin-top:16px;">
+      <button class="btn-primary" style="width:100%;" onclick="closeReminderPopup()">Dismiss</button>
+    </div>
+  `;
+  document.getElementById('reminder-overlay').classList.add('active');
+}
+window.showReminderPopup = showReminderPopup;
+window.closeReminderPopup = function(){ document.getElementById('reminder-overlay').classList.remove('active'); };
+
 function sevBadge(sev){ return `<span class="sev-badge ${sev}">${sev}</span>`; }
 function scoreBadge(score){
   const cls = (score >= 15) ? 'critical' : (score >= 8) ? 'major' : 'minor';
@@ -1536,7 +1633,7 @@ function renderNCTable(){
       <td>${label(n.discipline)}</td>
       <td>${sevBadge(n.severity)}</td>
       <td>${memberName(n.owner_id)}</td>
-      <td>${fmtDate(n.target_close_date)}${n.status!=='closed' && n.target_close_date<todayISO() ? ' <span style="color:var(--red)">· overdue</span>':''}</td>
+      <td>${fmtDate(n.target_close_date)} ${dateStatusBadge(n.target_close_date, n.status==='closed')}</td>
       <td>${pill(n.status)}</td>
     </tr>`).join('')}
   </table>`;
@@ -1731,7 +1828,7 @@ function renderTaskTable(){
       <td class="mono-cell">${linkedRef}</td>
       <td>${memberName(t.assignee_id)}</td>
       <td style="text-transform:capitalize">${t.priority}</td>
-      <td>${fmtDate(t.due_date)}${t.status!=='done' && t.due_date<todayISO() ? ' <span style="color:var(--red)">· overdue</span>':''}</td>
+      <td>${fmtDate(t.due_date)} ${dateStatusBadge(t.due_date, t.status==='done')}</td>
       <td>${pill(t.status)}</td>
     </tr>`;}).join('')}
   </table>`;
@@ -2126,7 +2223,7 @@ function renderRisksTable(){
     return;
   }
   wrap.innerHTML = `<table>
-    <tr><th>Ref</th><th>Title</th><th>Type</th><th>Category</th><th>Score</th><th>Owner</th><th>Status</th></tr>
+    <tr><th>Ref</th><th>Title</th><th>Type</th><th>Category</th><th>Score</th><th>Owner</th><th>Review</th><th>Status</th></tr>
     ${rows.map(r=>`<tr class="clickable" onclick="openRiskDetail('${r.id}')">
       <td class="mono-cell">${r.ref_code}</td>
       <td class="strong">${r.title}</td>
@@ -2134,6 +2231,7 @@ function renderRisksTable(){
       <td>${riskCategoryLabel(r.category)}</td>
       <td>${scoreBadge(r.inherent_score)}</td>
       <td>${memberName(r.owner_id)}</td>
+      <td>${dateStatusBadge(r.review_date, r.status==='closed')}</td>
       <td>${pill(r.status)}</td>
     </tr>`).join('')}
   </table>`;
@@ -2599,7 +2697,7 @@ function renderDocumentsTable(){
       <td>${label(d.category)}</td>
       <td class="mono-cell">${d.current_revision}</td>
       <td>${memberName(d.owner_id)}</td>
-      <td>${fmtDate(d.next_review_date)}${d.next_review_date && d.next_review_date < todayISO() ? ' <span style="color:var(--red)">· overdue</span>' : ''}</td>
+      <td>${fmtDate(d.next_review_date)} ${dateStatusBadge(d.next_review_date, ['withdrawn','superseded'].includes(d.status))}</td>
       <td>${pill(d.status)}</td>
     </tr>`).join('')}
   </table>`;
@@ -2860,13 +2958,14 @@ function renderSuppliersTable(){
     return;
   }
   wrap.innerHTML = `<table>
-    <tr><th>Ref</th><th>Name</th><th>Scope</th><th>Risk</th><th>Owner</th><th>Status</th></tr>
+    <tr><th>Ref</th><th>Name</th><th>Scope</th><th>Risk</th><th>Owner</th><th>Review</th><th>Status</th></tr>
     ${rows.map(s=>`<tr class="clickable" onclick="openSupplierDetail('${s.id}')">
       <td class="mono-cell">${s.ref_code}</td>
       <td class="strong">${s.name}</td>
       <td>${s.scope_of_supply||'—'}</td>
       <td><span class="sev-badge ${s.risk_classification==='high'?'critical':'minor'}" style="text-transform:capitalize;">${s.risk_classification}</span></td>
       <td>${memberName(s.owner_id)}</td>
+      <td>${dateStatusBadge(s.next_review_date, s.status==='removed')}</td>
       <td>${pill(s.status)}</td>
     </tr>`).join('')}
   </table>`;
@@ -3341,7 +3440,7 @@ function renderObjectivesTable(){
       <td class="strong">${o.specific_statement.length > 60 ? o.specific_statement.slice(0,60)+'…' : o.specific_statement}</td>
       <td>${label(o.category)}</td>
       <td class="mono-cell">${o.measurable_metric}: ${o.target_value}</td>
-      <td>${fmtDate(o.target_date)}${o.status==='active' && o.target_date < todayISO() ? ' <span style="color:var(--red)">· overdue</span>':''}</td>
+      <td>${fmtDate(o.target_date)} ${dateStatusBadge(o.target_date, ['achieved','not_achieved','discontinued'].includes(o.status))}</td>
       <td>${memberName(o.owner_id)}</td>
       <td>${pill(o.status)}</td>
     </tr>`).join('')}
@@ -3916,7 +4015,7 @@ function renderLegalTable(){
       <td class="mono-cell">${l.ref_code}</td>
       <td class="strong">${l.title}</td>
       <td>${fmtDate(l.last_reviewed_date)}</td>
-      <td>${fmtDate(l.next_review_due_date)}${l.next_review_due_date && l.next_review_due_date < todayISO() ? ' <span style="color:var(--red)">· overdue</span>' : ''}</td>
+      <td>${fmtDate(l.next_review_due_date)} ${dateStatusBadge(l.next_review_due_date, false)}</td>
       <td>${memberName(l.owner_id)}</td>
       <td>${l.current_status ? pill(l.current_status) : '<span class="mono" style="font-size:11px; color:var(--text-faint);">Not yet reviewed</span>'}</td>
     </tr>`).join('')}
@@ -4488,7 +4587,7 @@ function renderTrainingTable(){
         <td class="mono-cell">${t.ref_code}</td>
         <td class="strong">${t.training_required}</td>
         <td>${person ? person.full_name : '—'}</td>
-        <td>${fmtDate(t.due_date)}${t.status!=='completed' && t.status!=='cancelled' && t.due_date && t.due_date<todayISO() ? ' <span style="color:var(--red)">· overdue</span>':''}</td>
+        <td>${fmtDate(t.due_date)} ${dateStatusBadge(t.due_date, ['completed','cancelled'].includes(t.status))}</td>
         <td style="text-transform:capitalize">${t.delivery_type || '—'}</td>
         <td>${pill(t.status)}</td>
       </tr>`;
