@@ -401,17 +401,6 @@
 </div>
 
 <!-- ================= GATES ================= -->
-<div id="gate-config" class="gate">
-  <div class="gate-card">
-    <h2>Connect to your project</h2>
-    <p class="sub">Project URL and anon key, from Project Settings → API. This is the same connection the admin console uses — enter it once.</p>
-    <div id="config-error"></div>
-    <div class="field"><label>Supabase Project URL</label><input id="cfg-url" placeholder="https://xxxxx.supabase.co"></div>
-    <div class="field"><label>Anon public key</label><input id="cfg-key" placeholder="eyJhbGciOi..."></div>
-    <button class="gate-btn" onclick="saveConfig()">Connect</button>
-  </div>
-</div>
-
 <div id="gate-auth" class="gate">
   <div class="gate-card">
     <h2>Sign in</h2>
@@ -420,7 +409,6 @@
     <div class="field"><label>Email</label><input id="auth-email" type="email"></div>
     <div class="field"><label>Password</label><input id="auth-password" type="password"></div>
     <button class="gate-btn" id="signin-btn" onclick="doSignIn()">Sign in</button>
-    <p class="gate-hint"><a href="#" onclick="clearConfig(); return false;" style="color:var(--text-faint);">Use a different project →</a></p>
   </div>
 </div>
 
@@ -553,31 +541,12 @@ function toast(msg, kind){
 }
 
 /* ============ CONFIG ============ */
-async function loadConfig(){
-  try{
-    const r = await window.storage.get('supabase-config');
-    return JSON.parse(r.value);
-  }catch(e){ return null; }
-}
-async function saveConfig(){
-  const url = document.getElementById('cfg-url').value.trim();
-  const key = document.getElementById('cfg-key').value.trim();
-  const errEl = document.getElementById('config-error');
-  errEl.innerHTML = '';
-  if(!url || !key){ errEl.innerHTML = '<div class="gate-error">Both fields are required.</div>'; return; }
-  if(!url.startsWith('https://') || !url.includes('supabase.co')){
-    errEl.innerHTML = '<div class="gate-error">That doesn\'t look like a Supabase project URL.</div>'; return;
-  }
-  try{ await window.storage.set('supabase-config', JSON.stringify({url, key}), false); }catch(e){}
-  await ensureSupabaseLib();
-  initSupabase(url, key);
-  showGate('gate-auth');
-}
-window.saveConfig = saveConfig;
-window.clearConfig = async function(){
-  try{ await window.storage.delete('supabase-config', false); }catch(e){}
-  location.reload();
-};
+// These are safe to ship in the page — the public anon key, protected by
+// Row-Level Security rather than secrecy. Fill in your actual project
+// values before deploying. No one using this app — including real clients
+// — should ever need to know these exist.
+const SUPABASE_URL = "https://uzywxhptwavnvpfzbhkb.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_8XxT0I-Qdmswhd2I-TT_jg_CuI8a24f";
 
 function initSupabase(url, key){
   STATE.supabase = supabaseLib.createClient(url, key);
@@ -609,9 +578,7 @@ window.goTo = goTo;
 
 async function enterApp(){
   await ensureSupabaseLib();
-  const cfg = await loadConfig();
-  if(!cfg){ showGate('gate-config'); return; }
-  if(!STATE.supabase) initSupabase(cfg.url, cfg.key);
+  if(!STATE.supabase) initSupabase(SUPABASE_URL, SUPABASE_ANON_KEY);
   const { data:{ session } } = await STATE.supabase.auth.getSession();
   if(!session || !session.user){ showGate('gate-auth'); return; }
   await afterSignIn(session.user);
