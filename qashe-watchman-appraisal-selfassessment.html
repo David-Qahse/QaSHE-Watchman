@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Self-Assessment</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --red:#B21616; --red-dark:#7E0F0F; --red-tint:#FCEAEA;
+    --bg:#F7F6F5; --panel:#FFFFFF; --border:#E3E1DF;
+    --text:#1E1C1B; --text-dim:#615C59; --text-faint:#9C9895;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--text); font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased; min-height:100vh; display:flex; align-items:flex-start; justify-content:center; padding:40px 20px;}
+  button{font-family:inherit; cursor:pointer;}
+  textarea{font-family:'Inter',sans-serif;}
+
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:36px; width:100%; max-width:620px;}
+  .brand-row{display:flex; align-items:center; gap:12px; margin-bottom:20px;}
+  .brand-row img{max-height:34px; max-width:150px; object-fit:contain;}
+  .brand-row .fallback{font-family:'Poppins'; font-weight:700; font-size:17px;}
+
+  h1{font-family:'Poppins'; font-weight:700; font-size:22px; margin-bottom:8px;}
+  p.sub{font-size:13.5px; color:var(--text-dim); line-height:1.55; margin-bottom:28px;}
+
+  .kpi{margin-bottom:26px; padding-bottom:26px; border-bottom:1px solid var(--border);}
+  .kpi:last-of-type{border-bottom:none;}
+  .kpi .k-title{font-size:14px; font-weight:600; margin-bottom:4px;}
+  .kpi .k-desc{font-size:12.5px; color:var(--text-faint); margin-bottom:12px; line-height:1.5;}
+  .rating-row{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;}
+  .rating-btn{
+    flex:1; min-width:70px; border:1.5px solid var(--border); border-radius:8px; background:#fff;
+    padding:10px 6px; text-align:center; transition:all .15s ease;
+  }
+  .rating-btn .num{font-family:'Poppins'; font-weight:700; font-size:16px; display:block;}
+  .rating-btn .label{font-size:9.5px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.03em; margin-top:2px; display:block;}
+  .rating-btn:hover{border-color:var(--red);}
+  .rating-btn.selected{border-color:var(--red); background:var(--red-tint);}
+  .rating-btn.selected .num{color:var(--red);}
+  .kpi textarea{width:100%; border:1.5px solid var(--border); border-radius:8px; padding:10px; font-size:13px; min-height:60px; resize:vertical;}
+  .kpi textarea:focus{outline:none; border-color:var(--red);}
+
+  .field{margin-top:8px; margin-bottom:24px;}
+  .field label{font-size:13.5px; font-weight:600; display:block; margin-bottom:8px;}
+  .field textarea{width:100%; border:1.5px solid var(--border); border-radius:8px; padding:12px; font-size:13.5px; min-height:100px; resize:vertical;}
+  .field textarea:focus{outline:none; border-color:var(--red);}
+
+  .btn-submit{width:100%; background:var(--red); color:#fff; font-weight:700; font-size:15px; padding:13px; border-radius:8px; border:none; margin-top:6px;}
+  .btn-submit:hover{background:var(--red-dark);}
+  .btn-submit:disabled{opacity:.5;}
+
+  .stage{display:none;}
+  .stage.active{display:block;}
+  .loading{text-align:center; padding:40px 0; color:var(--text-faint); font-size:13.5px;}
+  .error-box{background:#FCEAEA; color:#B21616; padding:16px; border-radius:8px; font-size:13.5px; line-height:1.5;}
+  .success-icon{width:48px; height:48px; border-radius:50%; background:#E9F5EE; color:#2E7D4F; display:flex; align-items:center; justify-content:center; margin-bottom:16px;}
+  .success-icon svg{width:24px; height:24px; stroke:currentColor; fill:none; stroke-width:2;}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="stage active" id="stage-loading"><div class="loading">Loading your self-assessment…</div></div>
+
+  <div class="stage" id="stage-error">
+    <div class="error-box" id="error-message"></div>
+  </div>
+
+  <div class="stage" id="stage-form">
+    <div class="brand-row" id="brand-row"></div>
+    <h1>Self-assessment</h1>
+    <p class="sub" id="form-sub"></p>
+    <div id="kpis-wrap"></div>
+    <div class="field">
+      <label>Overall comment — for the organisation</label>
+      <textarea id="self-comment" placeholder="Anything you'd like recorded about your performance this period"></textarea>
+    </div>
+    <div id="submit-error"></div>
+    <button class="btn-submit" id="submit-btn" onclick="submitAssessment()">Submit self-assessment</button>
+  </div>
+
+  <div class="stage" id="stage-done">
+    <div class="success-icon"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+    <h1>Submitted</h1>
+    <p class="sub">Thank you — your self-assessment has been recorded. Your line manager will review it next.</p>
+  </div>
+</div>
+
+<script type="module">
+// ── Configuration ──────────────────────────────────────────────────────────
+const SUPABASE_URL = "https://uzywxhptwavnvpfzbhkb.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_8XxT0I-Qdmswhd2I-TT_jg_CuI8a24f";// ─────────────────────────────────────────────────────────────────────────
+
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+function showStage(id){
+  document.querySelectorAll('.stage').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function getToken(){ return new URLSearchParams(window.location.search).get('token'); }
+
+let kpis = [];
+let ratings = {};
+
+async function init(){
+  const token = getToken();
+  if(!token){ showError('This link is missing its token — please use the exact link you were sent.'); return; }
+
+  const { data, error } = await supabase.rpc('get_appraisal_by_token', { p_token: token });
+  if(error || !data || data.error){ showError('This link isn\u2019t valid. It may have been copied incorrectly.'); return; }
+
+  if(data.status === 'self_assessment_done' || data.status === 'finalized'){
+    showStage('stage-done');
+    document.querySelector('#stage-done .sub').textContent = 'This self-assessment has already been submitted — thank you.';
+    return;
+  }
+  if(data.status !== 'awaiting_self_assessment'){
+    showError('This self-assessment isn\u2019t open yet — check with your line manager.');
+    return;
+  }
+
+  kpis = data.kpis || [];
+  if(!kpis.length){ showError('No KPIs are set up for this appraisal yet — check with your line manager.'); return; }
+
+  document.getElementById('brand-row').innerHTML = data.org_logo_url
+    ? `<img src="${data.org_logo_url}" alt="${data.org_name} logo">`
+    : `<span class="fallback">${data.org_name}</span>`;
+  document.getElementById('form-sub').textContent =
+    `${data.personnel_name} — ${data.position_title || 'your role'} — ${data.period_start} to ${data.period_end}. Rate yourself 1 (poor) to 5 (excellent) against each KPI below.`;
+
+  document.getElementById('kpis-wrap').innerHTML = kpis.map(k => `
+    <div class="kpi">
+      <div class="k-title">${k.title}</div>
+      ${k.description ? `<div class="k-desc">${k.description}</div>` : ''}
+      <div class="rating-row" id="q-${k.id}">
+        ${[1,2,3,4,5].map(n => `<button type="button" class="rating-btn" onclick="selectRating('${k.id}', ${n})">
+          <span class="num">${n}</span><span class="label">${['Poor','Below avg','Average','Good','Excellent'][n-1]}</span>
+        </button>`).join('')}
+      </div>
+      <textarea id="comment-${k.id}" placeholder="Comment (optional)"></textarea>
+    </div>
+  `).join('');
+
+  showStage('stage-form');
+}
+
+function showError(msg){
+  document.getElementById('error-message').textContent = msg;
+  showStage('stage-error');
+}
+
+window.selectRating = function(kpiId, val){
+  ratings[kpiId] = val;
+  document.querySelectorAll(`#q-${kpiId} .rating-btn`).forEach((btn, i) => {
+    btn.classList.toggle('selected', (i+1) === val);
+  });
+};
+
+window.submitAssessment = async function(){
+  const unanswered = kpis.filter(k => !ratings[k.id]);
+  const errEl = document.getElementById('submit-error');
+  errEl.innerHTML = '';
+  if(unanswered.length){
+    errEl.innerHTML = `<div class="error-box" style="margin-bottom:16px;">Please rate all ${kpis.length} KPI${kpis.length>1?'s':''} before submitting.</div>`;
+    return;
+  }
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true; btn.textContent = 'Submitting…';
+
+  const ratingsPayload = kpis.map(k => ({
+    id: k.id, rating: ratings[k.id], comment: document.getElementById('comment-'+k.id).value.trim()
+  }));
+  const selfComment = document.getElementById('self-comment').value.trim();
+
+  const { data, error } = await supabase.rpc('submit_self_assessment', {
+    p_token: getToken(), p_ratings: ratingsPayload, p_self_comment: selfComment
+  });
+
+  if(error || !data || data.error){
+    btn.disabled = false; btn.textContent = 'Submit self-assessment';
+    errEl.innerHTML = `<div class="error-box" style="margin-bottom:16px;">${(data && data.error) || 'Something went wrong. Please try again.'}</div>`;
+    return;
+  }
+
+  showStage('stage-done');
+};
+
+init();
+</script>
+</body>
+</html>
