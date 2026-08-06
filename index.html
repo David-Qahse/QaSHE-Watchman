@@ -282,6 +282,11 @@
   .reminder-row .rr-label{font-size:13.5px; font-weight:500;}
   .reminder-row .rr-counts{display:flex; gap:6px;}
 
+  .link-box{background:var(--amber-tint); border:1px solid #EED9AF; border-radius:8px; padding:14px;}
+  .link-box-label{font-size:12.5px; font-weight:600; color:#8A5D14; margin-bottom:8px;}
+  .link-box-row{display:flex; gap:8px;}
+  .link-box-row input{flex:1; border:1px solid var(--border); border-radius:6px; padding:8px 10px; font-family:'JetBrains Mono'; font-size:11.5px; background:#fff; color:var(--text-dim);}
+
   .import-overlay{position:fixed; inset:0; background:rgba(30,28,27,.45); z-index:100; display:none; align-items:flex-start; justify-content:center; overflow-y:auto; padding:40px 20px;}
   .import-overlay.active{display:flex;}
   .import-modal{background:#fff; border-radius:12px; max-width:720px; width:100%; padding:28px; margin-bottom:40px;}
@@ -424,6 +429,12 @@
       <h3>Training</h3>
       <p>Training needs, planning, completion, and certificates — linked to personnel and the competence matrix.</p>
     </div>
+    <div class="mod-card live" onclick="goTo('dashboard','appraisals')"><span class="tag live">LIVE</span>
+      <div class="code">MOD-13</div>
+      <div class="mod-icon"><svg viewBox="0 0 24 24"><path d="M12 20V10M18 20V4M6 20v-4"/></svg></div>
+      <h3>KPIs &amp; Appraisals</h3>
+      <p>Position KPIs, self-assessment by invite, manager review, averaged results feeding into Training.</p>
+    </div>
     <div class="mod-card soon"><span class="tag soon">PHASE 2</span>
       <div class="code">MOD-06</div>
       <div class="mod-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></div>
@@ -503,6 +514,7 @@
       <div class="nav-item" data-mod="legal" onclick="showModule('legal')"><svg viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M5 8l-3 6a3 3 0 006 0z"/><path d="M19 8l-3 6a3 3 0 006 0z"/><path d="M5 8h14"/><path d="M8 21h8"/></svg> Legal Compliance <span class="nd amber" id="nd-legal"></span></div>
       <div class="nav-item" data-mod="personnel" onclick="showModule('personnel')"><svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a5 5 0 015-5h4a5 5 0 015 5v2"/><path d="M16 3.13a4 4 0 010 7.75"/><path d="M22 21v-2a4 4 0 00-3-3.87"/></svg> Personnel &amp; Competence</div>
       <div class="nav-item" data-mod="training" onclick="showModule('training')"><svg viewBox="0 0 24 24"><path d="M22 10v6M2 10l10-5 10 5-10 5-10-5z"/><path d="M6 12v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5"/></svg> Training <span class="nd amber" id="nd-training"></span></div>
+      <div class="nav-item" data-mod="appraisals" onclick="showModule('appraisals')"><svg viewBox="0 0 24 24"><path d="M12 20V10M18 20V4M6 20v-4"/></svg> KPIs &amp; Appraisals <span class="nd amber" id="nd-appraisal"></span></div>
       <div class="sb-foot">
         <a class="exit-link" id="switch-org-link" onclick="showOrgPicker()" style="display:none; margin-bottom:8px;"><svg viewBox="0 0 24 24"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg> Switch organisation</a>
         <a class="exit-link" onclick="doSignOut()"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Sign out</a>
@@ -557,13 +569,20 @@ const COMPETENCE_LEVEL_LABELS = {
 const EMPLOYMENT_TYPES = ["full_time","contract"];
 const TRAINING_STATUSES = ["required","planned","completed","cancelled"];
 const TRAINING_DELIVERY = ["internal","external"];
+const APPRAISAL_STATUSES = ["draft","awaiting_self_assessment","self_assessment_done","finalized"];
+const APPRAISAL_STATUS_LABELS = {
+  draft: 'Draft',
+  awaiting_self_assessment: 'Awaiting self-assessment',
+  self_assessment_done: 'Ready for manager review',
+  finalized: 'Finalized',
+};
 
 const STATE = {
   supabase:null, user:null, profile:null,
   memberships:[], org:null, myRole:null,
   members:[], memberMap:{},
   ncs:[], tasks:[], audits:[], risks:[], documents:[], suppliers:[], customers:[], satisfactionQuestions:[], objectives:[], legalRegister:[],
-  positions:[], personnel:[], competence:[], training:[],
+  positions:[], personnel:[], competence:[], training:[], positionKpis:[], appraisals:[],
   checklistTemplates:[],
 };
 let personnelView = 'register';
@@ -725,6 +744,8 @@ window.selectOrg = async function(orgId){
   await loadPersonnel();
   await loadCompetence();
   await loadTraining();
+  await loadPositionKpis();
+  await loadAppraisals();
 
   hideAllGates();
   document.getElementById('view-landing').classList.remove('active');
@@ -813,6 +834,16 @@ async function loadTraining(){
   if(error){ toast('Could not load training records: ' + error.message, 'error'); return; }
   STATE.training = data || [];
 }
+async function loadPositionKpis(){
+  const { data, error } = await STATE.supabase.from('position_kpis').select('*').eq('organisation_id', STATE.org.id).order('sort_order', {ascending:true});
+  if(error){ toast('Could not load KPIs: ' + error.message, 'error'); return; }
+  STATE.positionKpis = data || [];
+}
+async function loadAppraisals(){
+  const { data, error } = await STATE.supabase.from('appraisals').select('*').eq('organisation_id', STATE.org.id).order('period_end', {ascending:true});
+  if(error){ toast('Could not load appraisals: ' + error.message, 'error'); return; }
+  STATE.appraisals = data || [];
+}
 
 const MODULE_META = {
   overview:{title:'Overview', sub:() => `${STATE.org.name} — ${STATE.org.ref_prefix}`},
@@ -827,6 +858,7 @@ const MODULE_META = {
   legal:{title:'Legal Compliance', sub:() => 'MOD-10 · Legal register, compliance reviews, linked to internal audits'},
   personnel:{title:'Personnel & Competence', sub:() => 'MOD-11 · Register, positions, and the organisation competence matrix'},
   training:{title:'Training', sub:() => 'MOD-12 · Needs, planning, completion, and certificates'},
+  appraisals:{title:'KPIs & Appraisals', sub:() => 'MOD-13 · Position KPIs, self-assessment, and manager review'},
 };
 
 function showModule(mod){
@@ -848,6 +880,7 @@ function showModule(mod){
   if(mod === 'legal') renderLegalTable();
   if(mod === 'personnel') renderPersonnelView();
   if(mod === 'training') renderTrainingTable();
+  if(mod === 'appraisals') renderAppraisalsTable();
 }
 window.showModule = showModule;
 
@@ -861,6 +894,7 @@ function updateNavBadges(){
   const draftObjectives = STATE.objectives.filter(o=>o.status==='draft').length;
   const nonCompliantLegal = STATE.legalRegister.filter(l=>l.current_status==='non_compliant' || l.current_status==='semi_compliant').length;
   const openTraining = STATE.training.filter(t=>t.status==='required' || t.status==='planned').length;
+  const openAppraisals = STATE.appraisals.filter(a=>a.status!=='finalized').length;
   document.getElementById('nd-nc').style.display = openNC?'block':'none';
   document.getElementById('nd-task').style.display = openTasks?'block':'none';
   document.getElementById('nd-audit').style.display = openAudits?'block':'none';
@@ -871,6 +905,7 @@ function updateNavBadges(){
   document.getElementById('nd-objective').style.display = draftObjectives?'block':'none';
   document.getElementById('nd-legal').style.display = nonCompliantLegal?'block':'none';
   document.getElementById('nd-training').style.display = openTraining?'block':'none';
+  document.getElementById('nd-appraisal').style.display = openAppraisals?'block':'none';
 }
 
 /* ============ SHARED UI HELPERS ============ */
@@ -909,6 +944,7 @@ const DATE_TRACKED_MODULES = [
   { key:'legal', label:'Legal Compliance', list:() => STATE.legalRegister, dateField:'next_review_due_date', isResolved:() => false },
   { key:'training', label:'Training', list:() => STATE.training, dateField:'due_date', isResolved:x=>['completed','cancelled'].includes(x.status) },
   { key:'risks', label:'Risk & Opportunity', list:() => STATE.risks, dateField:'review_date', isResolved:x=>x.status==='closed' },
+  { key:'appraisals', label:'KPIs & Appraisals', list:() => STATE.appraisals, dateField:'period_end', isResolved:x=>x.status==='finalized' },
 ];
 
 function computeDueSummary(){
@@ -1580,6 +1616,55 @@ const RENDERERS = {
 
     <div class="panel" style="padding:0; overflow:hidden;">
       <div id="training-table-wrap"></div>
+    </div>
+  `,
+
+  appraisals: () => `
+    <div class="toolbar">
+      <div class="filters">
+        <select id="apr-filter-status" onchange="renderAppraisalsTable()">
+          <option value="">All statuses</option>
+          ${APPRAISAL_STATUSES.map(s=>`<option value="${s}">${APPRAISAL_STATUS_LABELS[s]}</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn-small" onclick="toggleKpisPanel()">Manage KPIs</button>
+        <button class="btn-primary btn-add" onclick="toggleAppraisalForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Appraisal</button>
+      </div>
+    </div>
+
+    <div class="form-panel" id="kpis-panel">
+      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:6px;">Position KPIs</h3>
+      <p style="font-size:12px; color:var(--text-faint); margin-bottom:14px;">KPIs belong to a position, not a person — when you start an appraisal, the active KPIs for that person's position get copied in as what's actually assessed.</p>
+      <div class="form-grid" style="margin-bottom:10px;">
+        <div class="field"><label>Position</label><select id="kpi-panel-position" onchange="renderKpisPanelList()">${STATE.positions.map(p=>`<option value="${p.id}">${p.title}</option>`).join('')}</select></div>
+      </div>
+      <div id="kpis-panel-list" style="margin-bottom:14px;"></div>
+      <div class="form-grid">
+        <div class="field span2"><label>New KPI title</label><input id="kpi-new-title" placeholder="e.g. On-time completion of assigned welds"></div>
+        <div class="field"><label>Description (optional)</label><input id="kpi-new-description"></div>
+      </div>
+      <button class="btn-small primary" onclick="addPositionKpi()">Add KPI</button>
+    </div>
+
+    <div class="form-panel" id="appraisal-form">
+      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:14px;">Start an appraisal</h3>
+      <div class="form-grid">
+        <div class="field"><label>Personnel</label><select id="af-personnel">${STATE.personnel.map(p=>`<option value="${p.id}">${p.full_name} (${p.ref_code})</option>`).join('')}</select></div>
+        <div class="field"><label>Line manager</label><select id="af-manager">${memberOptions(STATE.user.id)}</select></div>
+        <div class="field"><label>Period start</label><input type="date" id="af-period-start"></div>
+        <div class="field"><label>Period end</label><input type="date" id="af-period-end" value="${todayISO()}"></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-cancel" onclick="toggleAppraisalForm()">Cancel</button>
+        <button class="btn-primary" onclick="submitAppraisal()">Start appraisal</button>
+      </div>
+    </div>
+
+    <div id="appraisal-detail-slot"></div>
+
+    <div class="panel" style="padding:0; overflow:hidden;">
+      <div id="appraisal-table-wrap"></div>
     </div>
   `,
 };
@@ -4652,6 +4737,297 @@ window.saveTrainingStatus = async function(trainingId){
   renderTrainingTable();
   updateNavBadges();
   toast('Updated.', 'success');
+};
+
+/* ============ KPIs & Appraisals ============ */
+function positionKpiById(id){ return STATE.positionKpis.find(k=>k.id===id); }
+function appraisalById(id){ return STATE.appraisals.find(a=>a.id===id); }
+
+function loadAppraisalPageUrl(){ try{ return localStorage.getItem('appraisal-page-base-url') || ''; }catch(e){ return ''; } }
+function saveAppraisalPageUrl(val){ try{ localStorage.setItem('appraisal-page-base-url', val); }catch(e){} }
+
+/* ---- Manage KPIs ---- */
+function toggleKpisPanel(){
+  const panel = document.getElementById('kpis-panel');
+  panel.classList.toggle('open');
+  if(panel.classList.contains('open')) renderKpisPanelList();
+}
+window.toggleKpisPanel = toggleKpisPanel;
+
+function renderKpisPanelList(){
+  const wrap = document.getElementById('kpis-panel-list');
+  const positionId = document.getElementById('kpi-panel-position')?.value;
+  if(!wrap || !positionId) return;
+  const kpis = STATE.positionKpis.filter(k=>k.position_id===positionId);
+  if(!kpis.length){
+    wrap.innerHTML = '<p style="font-size:12.5px; color:var(--text-faint);">No KPIs for this position yet.</p>';
+    return;
+  }
+  wrap.innerHTML = kpis.map(k => `
+    <div class="evidence-row">
+      <div style="flex:1;"><b>${k.title}</b>${!k.is_active ? ' <span class="mono" style="color:var(--text-faint); font-size:11px;">(inactive)</span>' : ''}${k.description ? '<div style="font-size:12px; color:var(--text-faint); margin-top:2px;">'+k.description+'</div>' : ''}</div>
+      <div class="ev-actions"><button class="btn-small" onclick="toggleKpiActive('${k.id}', ${!k.is_active})">${k.is_active ? 'Deactivate' : 'Activate'}</button></div>
+    </div>`).join('');
+}
+window.renderKpisPanelList = renderKpisPanelList;
+
+window.addPositionKpi = async function(){
+  const positionId = document.getElementById('kpi-panel-position').value;
+  const title = document.getElementById('kpi-new-title').value.trim();
+  if(!positionId || !title){ alert('Choose a position and enter a KPI title.'); return; }
+  const nextSort = STATE.positionKpis.filter(k=>k.position_id===positionId).length * 10 + 10;
+  const { error } = await STATE.supabase.from('position_kpis').insert({
+    organisation_id: STATE.org.id, position_id: positionId, title,
+    description: document.getElementById('kpi-new-description').value.trim(), sort_order: nextSort, created_by: STATE.user.id
+  });
+  if(error){ toast('Could not add KPI: ' + error.message, 'error'); return; }
+  document.getElementById('kpi-new-title').value = '';
+  document.getElementById('kpi-new-description').value = '';
+  await loadPositionKpis();
+  renderKpisPanelList();
+  toast('KPI added.', 'success');
+};
+
+window.toggleKpiActive = async function(kpiId, newVal){
+  const { error } = await STATE.supabase.from('position_kpis').update({ is_active:newVal }).eq('id', kpiId);
+  if(error){ toast('Could not update KPI: ' + error.message, 'error'); return; }
+  await loadPositionKpis();
+  renderKpisPanelList();
+};
+
+/* ---- New appraisal ---- */
+function toggleAppraisalForm(){ document.getElementById('appraisal-form').classList.toggle('open'); }
+window.toggleAppraisalForm = toggleAppraisalForm;
+
+window.submitAppraisal = async function(){
+  const personnelId = document.getElementById('af-personnel').value;
+  const managerId = document.getElementById('af-manager').value;
+  const periodStart = document.getElementById('af-period-start').value;
+  const periodEnd = document.getElementById('af-period-end').value;
+  if(!personnelId || !managerId || !periodStart || !periodEnd){ alert('All fields are required.'); return; }
+
+  const primary = primaryCompetenceFor(personnelId);
+  if(!primary){ alert('This person has no primary position set — go set one on their Personnel record first, so KPIs can be pulled in.'); return; }
+
+  const activeKpis = STATE.positionKpis.filter(k=>k.position_id===primary.position_id && k.is_active);
+  if(!activeKpis.length){ alert('No active KPIs exist for this person\'s primary position yet — add some under "Manage KPIs" first.'); return; }
+
+  const { data: newAppraisal, error: aErr } = await STATE.supabase.from('appraisals').insert({
+    organisation_id: STATE.org.id, personnel_id: personnelId, position_id: primary.position_id,
+    line_manager_id: managerId, period_start: periodStart, period_end: periodEnd, created_by: STATE.user.id,
+  }).select().single();
+  if(aErr){ toast('Could not start appraisal: ' + aErr.message, 'error'); return; }
+
+  const kpiRows = activeKpis.map(k => ({
+    organisation_id: STATE.org.id, appraisal_id: newAppraisal.id,
+    kpi_title: k.title, kpi_description: k.description, sort_order: k.sort_order,
+  }));
+  const { error: kErr } = await STATE.supabase.from('appraisal_kpis').insert(kpiRows);
+  if(kErr){ toast('Appraisal created, but KPIs could not be copied in: ' + kErr.message, 'error'); }
+
+  toggleAppraisalForm();
+  await loadAppraisals();
+  renderAppraisalsTable();
+  updateNavBadges();
+  toast(`${newAppraisal.ref_code} started.`, 'success');
+};
+
+function renderAppraisalsTable(){
+  const wrap = document.getElementById('appraisal-table-wrap');
+  if(!wrap) return;
+  const fStatus = document.getElementById('apr-filter-status').value;
+  const rows = STATE.appraisals.filter(a => !fStatus || a.status === fStatus);
+  if(!rows.length){
+    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M12 20V10M18 20V4M6 20v-4"/></svg><p>No appraisals match this filter.</p></div>`;
+    return;
+  }
+  wrap.innerHTML = `<table>
+    <tr><th>Ref</th><th>Personnel</th><th>Position</th><th>Period</th><th>Result</th><th>Status</th></tr>
+    ${rows.map(a=>{
+      const person = personById(a.personnel_id);
+      const position = a.position_id ? positionById(a.position_id) : null;
+      return `<tr class="clickable" onclick="openAppraisalDetail('${a.id}')">
+        <td class="mono-cell">${a.ref_code}</td>
+        <td class="strong">${person ? person.full_name : '—'}</td>
+        <td>${position ? position.title : '—'}</td>
+        <td>${fmtDate(a.period_start)} – ${fmtDate(a.period_end)}</td>
+        <td>${a.overall_final_rating ? Number(a.overall_final_rating).toFixed(1)+' / 5' : '—'}</td>
+        <td><span class="pill ${a.status==='finalized'?'closed':(a.status==='self_assessment_done'?'progress':'open')}"><span class="pill-dot"></span>${APPRAISAL_STATUS_LABELS[a.status]}</span></td>
+      </tr>`;
+    }).join('')}
+  </table>`;
+}
+window.renderAppraisalsTable = renderAppraisalsTable;
+
+/* ---- Appraisal detail ---- */
+async function openAppraisalDetail(id){
+  const a = appraisalById(id);
+  if(!a) return;
+  const person = personById(a.personnel_id);
+  const position = a.position_id ? positionById(a.position_id) : null;
+  const { data: kpis, error: kErr } = await STATE.supabase.from('appraisal_kpis').select('*').eq('appraisal_id', id).order('sort_order', {ascending:true});
+  const { files: evidenceFiles } = await loadEvidence('appraisal', id);
+
+  document.getElementById('appraisal-detail-slot').innerHTML = `
+    <div class="detail-panel">
+      <div class="detail-head">
+        <div><span class="ref">${a.ref_code}${position ? ' · '+position.title : ''}</span><h3>${person ? person.full_name : 'Appraisal'}</h3></div>
+        <button class="close-btn" onclick="closeAppraisalDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <div class="detail-meta">
+        <div class="dm-item"><div class="l">Period</div><div class="v">${fmtDate(a.period_start)} – ${fmtDate(a.period_end)}</div></div>
+        <div class="dm-item"><div class="l">Line manager</div><div class="v">${memberName(a.line_manager_id)}</div></div>
+        <div class="dm-item"><div class="l">Status</div><div class="v">${APPRAISAL_STATUS_LABELS[a.status]}</div></div>
+        <div class="dm-item"><div class="l">Result</div><div class="v">${a.overall_final_rating ? Number(a.overall_final_rating).toFixed(1)+' / 5' : '—'}</div></div>
+      </div>
+
+      ${a.status === 'draft' ? renderSendSelfAssessment(a) : ''}
+      ${a.status === 'awaiting_self_assessment' ? renderAwaitingSelfAssessment(a) : ''}
+      ${(kErr) ? '<p style="font-size:12.5px; color:var(--text-faint);">Could not load KPIs.</p>' : renderAppraisalKpisSection(a, kpis || [])}
+
+      ${a.status === 'finalized' ? `
+        <div class="detail-card" style="padding:16px; margin-bottom:16px;">
+          <div style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Individual's comment</div>
+          <p style="font-size:13px; color:var(--text-dim); margin-bottom:14px;">${a.self_comment || '—'}</p>
+          <div style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Manager's comment</div>
+          <p style="font-size:13px; color:var(--text-dim); margin-bottom:14px;">${a.manager_comment || '—'}</p>
+          <div style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Agreed objectives for next period</div>
+          <p style="font-size:13px; color:var(--text-dim); margin-bottom:10px;">${a.agreed_objectives || '—'}</p>
+          <button class="btn-small primary" onclick="prefillTrainingFromPerson('${a.personnel_id}')">+ Log a training need from this appraisal</button>
+        </div>
+      ` : ''}
+
+      ${renderEvidenceSection('appraisal', a.id, evidenceFiles)}
+    </div>
+  `;
+}
+window.openAppraisalDetail = openAppraisalDetail;
+function closeAppraisalDetail(){ document.getElementById('appraisal-detail-slot').innerHTML = ''; }
+window.closeAppraisalDetail = closeAppraisalDetail;
+
+function renderSendSelfAssessment(a){
+  const storedUrl = loadAppraisalPageUrl();
+  return `
+  <div class="detail-card" style="padding:16px; margin-bottom:16px;">
+    <div class="panel-head" style="margin-bottom:10px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Send self-assessment</h3></div>
+    <div class="field" style="margin-bottom:10px;"><label>Self-assessment page URL (set once, remembered on this computer)</label><input id="apr-page-url" value="${storedUrl}" placeholder="https://your-site/appraisal-selfassessment.html" oninput="saveAppraisalPageUrl(this.value.trim())"></div>
+    <button class="btn-small primary" onclick="sendSelfAssessment('${a.id}')">Generate link</button>
+    <div id="apr-link-result-${a.id}"></div>
+  </div>`;
+}
+
+function renderAwaitingSelfAssessment(a){
+  const storedUrl = loadAppraisalPageUrl();
+  const link = storedUrl ? `${storedUrl}${storedUrl.includes('?')?'&':'?'}token=${a.token}` : null;
+  return `
+  <div class="detail-card" style="padding:16px; margin-bottom:16px; background:var(--amber-tint);">
+    <p style="font-size:13px; color:#8A5D14;">Waiting on ${personById(a.personnel_id)?.full_name || 'the individual'} to complete their self-assessment.</p>
+    ${link ? `<div class="link-box-row" style="margin-top:10px; display:flex; gap:8px;"><input type="text" readonly value="${link}" id="apr-await-link-${a.id}" style="flex:1; border:1px solid var(--border); border-radius:6px; padding:8px 10px; font-family:'JetBrains Mono'; font-size:11.5px; background:#fff;"><button class="btn-small" onclick="copyApprLink('apr-await-link-${a.id}')">Copy again</button></div>` : ''}
+  </div>`;
+}
+
+window.sendSelfAssessment = async function(appraisalId){
+  const url = document.getElementById('apr-page-url').value.trim();
+  if(!url){ toast('Set the self-assessment page URL first.', 'error'); return; }
+  saveAppraisalPageUrl(url);
+  const { error } = await STATE.supabase.from('appraisals').update({ status:'awaiting_self_assessment' }).eq('id', appraisalId);
+  if(error){ toast('Could not update appraisal: ' + error.message, 'error'); return; }
+  await loadAppraisals();
+  const a = appraisalById(appraisalId);
+  const link = `${url}${url.includes('?')?'&':'?'}token=${a.token}`;
+  const resultSlot = document.getElementById('apr-link-result-'+appraisalId);
+  if(resultSlot){
+    resultSlot.innerHTML = `
+      <div class="link-box" style="margin-top:12px;">
+        <div class="link-box-label">Copy this link and send it to ${personById(a.personnel_id)?.full_name || 'them'} yourself</div>
+        <div class="link-box-row"><input type="text" readonly id="apr-link-${appraisalId}" value="${link}"><button class="btn-small primary" onclick="copyApprLink('apr-link-${appraisalId}')">Copy</button></div>
+      </div>`;
+  }
+  renderAppraisalsTable();
+  updateNavBadges();
+  toast('Self-assessment link generated.', 'success');
+};
+
+window.copyApprLink = function(inputId){
+  const input = document.getElementById(inputId);
+  if(!input) return;
+  input.select();
+  navigator.clipboard.writeText(input.value).then(()=>toast('Copied.', 'success')).catch(()=>toast('Select and copy manually.', 'error'));
+};
+
+function renderAppraisalKpisSection(a, kpis){
+  const isReview = a.status === 'self_assessment_done';
+  return `
+  <div class="panel-head"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">KPIs</h3></div>
+  ${kpis.map(k => `
+    <div class="detail-card" style="margin-bottom:8px; padding:14px 16px;">
+      <div><b>${k.kpi_title}</b></div>
+      ${k.kpi_description ? `<p style="font-size:12px; color:var(--text-faint); margin-top:2px;">${k.kpi_description}</p>` : ''}
+      <div style="display:flex; gap:24px; margin-top:10px; flex-wrap:wrap;">
+        <div>
+          <div style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase;">Self</div>
+          <div style="font-size:14px; font-weight:600;">${k.self_rating ? k.self_rating+' / 5' : '—'}</div>
+          ${k.self_comment ? `<p style="font-size:12px; color:var(--text-dim); max-width:260px;">${k.self_comment}</p>` : ''}
+        </div>
+        <div>
+          <div style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase;">Manager</div>
+          ${isReview ? `
+            <select id="mgr-rating-${k.id}" style="border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:13px; margin-bottom:6px;">
+              <option value="">Rate…</option>
+              ${[1,2,3,4,5].map(n=>`<option value="${n}" ${k.manager_rating===n?'selected':''}>${n}</option>`).join('')}
+            </select>
+            <input type="text" id="mgr-comment-${k.id}" placeholder="Comment" value="${(k.manager_comment||'').replace(/"/g,'&quot;')}" style="display:block; border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12px; width:200px;">
+          ` : `<div style="font-size:14px; font-weight:600;">${k.manager_rating ? k.manager_rating+' / 5' : '—'}</div>${k.manager_comment ? `<p style="font-size:12px; color:var(--text-dim); max-width:260px;">${k.manager_comment}</p>` : ''}`}
+        </div>
+        ${k.final_rating ? `<div><div style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase;">Final</div><div style="font-size:14px; font-weight:600; color:var(--red);">${Number(k.final_rating).toFixed(1)} / 5</div></div>` : ''}
+      </div>
+    </div>
+  `).join('')}
+  ${isReview ? `
+    <div class="detail-card" style="padding:16px; margin-bottom:16px;">
+      <div class="field" style="margin-bottom:10px;"><label>Manager's overall comment — for the individual</label><textarea id="mgr-overall-comment">${a.manager_comment||''}</textarea></div>
+      <div class="field" style="margin-bottom:10px;"><label>Agreed objectives for next period</label><textarea id="mgr-agreed-objectives">${a.agreed_objectives||''}</textarea></div>
+      <button class="btn-primary" onclick="finalizeAppraisal('${a.id}')">Finalize appraisal</button>
+    </div>
+  ` : ''}
+  `;
+}
+
+window.finalizeAppraisal = async function(appraisalId){
+  const { data: kpis, error: kErr } = await STATE.supabase.from('appraisal_kpis').select('*').eq('appraisal_id', appraisalId);
+  if(kErr){ toast('Could not load KPIs: ' + kErr.message, 'error'); return; }
+
+  let anyMissing = false;
+  for(const k of kpis){
+    const ratingEl = document.getElementById('mgr-rating-'+k.id);
+    if(!ratingEl || !ratingEl.value){ anyMissing = true; continue; }
+    const managerRating = parseInt(ratingEl.value, 10);
+    const commentEl = document.getElementById('mgr-comment-'+k.id);
+    const finalRating = k.self_rating ? (managerRating + k.self_rating) / 2 : managerRating;
+    const { error } = await STATE.supabase.from('appraisal_kpis').update({
+      manager_rating: managerRating, manager_comment: commentEl ? commentEl.value.trim() : '', final_rating: finalRating
+    }).eq('id', k.id);
+    if(error){ toast('Could not save a KPI rating: ' + error.message, 'error'); return; }
+  }
+  if(anyMissing){ alert('Rate every KPI before finalizing.'); return; }
+
+  const { data: updatedKpis } = await STATE.supabase.from('appraisal_kpis').select('*').eq('appraisal_id', appraisalId);
+  const avgManager = updatedKpis.reduce((s,k)=>s+(k.manager_rating||0),0) / updatedKpis.length;
+  const avgFinal = updatedKpis.reduce((s,k)=>s+(k.final_rating||0),0) / updatedKpis.length;
+
+  const { error: aErr } = await STATE.supabase.from('appraisals').update({
+    manager_comment: document.getElementById('mgr-overall-comment').value.trim(),
+    agreed_objectives: document.getElementById('mgr-agreed-objectives').value.trim(),
+    overall_manager_rating: avgManager, overall_final_rating: avgFinal,
+    status: 'finalized', completed_at: new Date().toISOString(),
+  }).eq('id', appraisalId);
+  if(aErr){ toast('Could not finalize: ' + aErr.message, 'error'); return; }
+
+  await loadAppraisals();
+  openAppraisalDetail(appraisalId);
+  renderAppraisalsTable();
+  updateNavBadges();
+  toast('Appraisal finalized.', 'success');
 };
 
 /* ============ BOOT ============ */
