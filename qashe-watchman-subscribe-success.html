@@ -1,1 +1,59 @@
+-- ============================================================================
+-- QaSHE Watchman — Migration 027 (PayFast version)
+-- Self-Service Subscription Signup
+-- Run this AFTER qashe-watchman-schema-bulletins.sql
+--
+-- Supersedes qashe-watchman-schema-subscriptions.sql (the Stripe version) —
+-- use this one instead; don't run both. If you already ran the Stripe one,
+-- this file is safe to run afterward, it just adds the PayFast-specific
+-- columns and doesn't touch what's already there.
+--
+-- Design: the flow is deliberately split into two trust levels.
+--
+-- 1. A visitor signs up (email/password) and fills in their company name —
+--    this happens as themselves, so it's an ordinary authenticated insert
+--    into `pending_signups`, gated by normal RLS.
+--
+-- 2. The actual organisation only gets created once PayFast confirms real
+--    payment, via their ITN (Instant Transaction Notification) webhook — a
+--    trusted server process using the service role key, which bypasses RLS
+--    entirely. The same "platform staff only" policies on organisations and
+--    organisation_members stay completely unchanged; this doesn't need a
+--    policy that lets it in, any more than the invite flow's service-role
+--    Edge Function did.
+-- ============================================================================
+
+do $$ begin
+  create type signup_status as enum ('pending_payment','completed','expired');
+exception when duplicate_object then null;
+end $$;
+
+create table if not exists pending_signups (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  full_name text not null,
+  company_name text not null,
+  plan text not null default 'standard',
+  status signup_status not null default 'pending_payment',
+  payfast_pf_payment_id text,     -- PayFast's own reference for the transaction, set once paid
+  payfast_token text,             -- the recurring-billing token, for future cancellation
+  organisation_id uuid references organisations(id),  -- set once provisioned
+  created_at timestamptz not null default now(),
+  completed_at timestamptz
+);
+
+alter table organisations add column if not exists payfast_token text;
+alter table organisations add column if not exists subscription_status text;  -- 'active','cancelled', etc.
+
+alter table pending_signups enable row level security;
+
+drop policy if exists "see own pending signup" on pending_signups;
+create policy "see own pending signup" on pending_signups
+  for select using (user_id = auth.uid());
+drop policy if exists "create own pending signup" on pending_signups;
+create policy "create own pending signup" on pending_signups
+  for insert with check (user_id = auth.uid());
+
+create index if not exists idx_pending_signups_user on pending_signups (user_id);
+create index if not exists idx_pending_signups_status on pending_signups (status);
 
