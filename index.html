@@ -308,6 +308,26 @@
   .link-box-row{display:flex; gap:8px;}
   .link-box-row input{flex:1; border:1px solid var(--border); border-radius:6px; padding:8px 10px; font-family:'JetBrains Mono'; font-size:11.5px; background:#fff; color:var(--text-dim);}
 
+  #print-container{display:none;}
+  @media print {
+    body *{visibility:hidden;}
+    #print-container, #print-container *{visibility:visible;}
+    #print-container{display:block; position:absolute; top:0; left:0; width:100%; padding:0;}
+    .print-header{border-bottom:2.5px solid #B21616; padding-bottom:14px; margin-bottom:18px;}
+    .print-brand{font-family:'Poppins',sans-serif; font-weight:700; font-size:15px; color:#B21616;}
+    .print-doc-title{font-family:'Poppins',sans-serif; font-weight:700; font-size:21px; color:#1E1C1B; margin-top:4px;}
+    .print-ref{font-size:11px; color:#615C59; margin-top:3px; font-family:'JetBrains Mono',monospace;}
+    .print-meta-grid{display:grid; grid-template-columns:1fr 1fr; gap:6px 24px; font-size:12px; color:#1E1C1B; margin-bottom:18px; padding-bottom:14px; border-bottom:1px solid #E3E1DF;}
+    .print-meta-grid b{color:#615C59; font-weight:600;}
+    .print-section-title{font-family:'Poppins',sans-serif; font-weight:700; font-size:13px; color:#1E1C1B; margin:16px 0 8px; border-bottom:1px solid #EDEBE9; padding-bottom:4px;}
+    .print-body{font-size:12.5px; line-height:1.6; color:#1E1C1B;}
+    .print-table{width:100%; border-collapse:collapse; font-size:11px; margin-top:8px;}
+    .print-table th{text-align:left; padding:6px 8px; background:#F0F0EF; border:1px solid #E3E1DF; font-family:'JetBrains Mono',monospace; text-transform:uppercase; font-size:9.5px; color:#615C59;}
+    .print-table td{padding:6px 8px; border:1px solid #E3E1DF;}
+    .print-footer{margin-top:24px; padding-top:10px; border-top:1px solid #E3E1DF; font-size:10px; color:#9C9895;}
+    @page{margin:16mm;}
+  }
+
   .import-overlay{position:fixed; inset:0; background:rgba(30,28,27,.45); z-index:100; display:none; align-items:flex-start; justify-content:center; overflow-y:auto; padding:40px 20px;}
   .import-overlay.active{display:flex;}
   .import-modal{background:#fff; border-radius:12px; max-width:720px; width:100%; padding:28px; margin-bottom:40px;}
@@ -523,6 +543,7 @@
 </div>
 
 <div id="toast-root"></div>
+<div id="print-container"></div>
 <div class="import-overlay" id="import-overlay">
   <div class="import-modal" id="import-modal-content"></div>
 </div>
@@ -597,8 +618,9 @@ const ENTRY_TYPES = ["risk","opportunity"];
 const RISK_STATUSES = ["identified","treating","monitoring","closed"];
 const SCALE_1_5 = ["1","2","3","4","5"];
 const RISK_CATEGORIES = ["business","quality_assurance","quality_control","environmental_aspects_impacts","information_security","health_safety"];
-const DOC_CATEGORIES = ["procedure","work_instruction","form","policy","manual","register","plan"];
+const DOC_CATEGORIES = ["procedure","work_instruction","form","policy","manual","register","plan"]; // superseded by document_departments/document_types, kept for old rows
 const DOC_STATUSES = ["draft","active","superseded","withdrawn"];
+const DOC_APPROVAL_STATUSES = ["pending","approved"];
 const SUPPLIER_STATUSES = ["pending_qualification","approved","conditional","suspended","removed"];
 const REVIEW_OUTCOMES = ["satisfactory","conditional","unsatisfactory"];
 const RATING_LABELS = ['Poor','Below average','Average','Good','Excellent'];
@@ -636,6 +658,7 @@ const STATE = {
   positions:[], personnel:[], competence:[], training:[], positionKpis:[], appraisals:[],
   assetChecklistTemplates:[], assetChecklistItems:[], assets:[], bulletins:[],
   checklistTemplates:[],
+  docDepartments:[], docTypes:[],
 };
 let personnelView = 'register';
 let pendingModule = 'overview';
@@ -786,6 +809,8 @@ window.selectOrg = async function(orgId){
   await loadAudits();
   await loadRisks();
   await loadDocuments();
+  await loadDocDepartments();
+  await loadDocTypes();
   await loadChecklistTemplates();
   await loadSuppliers();
   await loadCustomers();
@@ -838,6 +863,16 @@ async function loadDocuments(){
   const { data, error } = await STATE.supabase.from('documents').select('*').eq('organisation_id', STATE.org.id).order('doc_number', {ascending:true});
   if(error){ toast('Could not load documents: ' + error.message, 'error'); return; }
   STATE.documents = data || [];
+}
+async function loadDocDepartments(){
+  const { data, error } = await STATE.supabase.from('document_departments').select('*').eq('organisation_id', STATE.org.id).order('code', {ascending:true});
+  if(error){ toast('Could not load departments: ' + error.message, 'error'); return; }
+  STATE.docDepartments = data || [];
+}
+async function loadDocTypes(){
+  const { data, error } = await STATE.supabase.from('document_types').select('*').eq('organisation_id', STATE.org.id).order('code', {ascending:true});
+  if(error){ toast('Could not load document types: ' + error.message, 'error'); return; }
+  STATE.docTypes = data || [];
 }
 async function loadChecklistTemplates(){
   if(STATE.checklistTemplates.length) return; // global reference data, load once per session
@@ -1206,6 +1241,8 @@ const RENDERERS = {
         </select>
       </div>
       <button class="btn-small" onclick="openImportModal('nonconformances')">Import CSV</button>
+      <button class="btn-small" onclick="exportModuleExcel('nonconformances')">Export Excel</button>
+      <button class="btn-small" onclick="printCurrentRegister('nonconformances','Nonconformances Register')">Print Register</button>
       <button class="btn-primary btn-add" onclick="toggleNCForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Raise Nonconformance</button>
     </div>
 
@@ -1250,6 +1287,8 @@ const RENDERERS = {
           ${STATE.members.map(m=>`<option value="${m.user_id}">${(m.profiles&&m.profiles.name)||'Unknown'}</option>`).join('')}
         </select>
       </div>
+      <button class="btn-small" onclick="exportModuleExcel('tasks')">Export Excel</button>
+      <button class="btn-small" onclick="printCurrentRegister('tasks','Task Register')">Print Register</button>
       <button class="btn-primary btn-add" onclick="toggleTaskForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Task</button>
     </div>
 
@@ -1288,6 +1327,8 @@ const RENDERERS = {
           ${optionList(AUDIT_STATUSES)}
         </select>
       </div>
+      <button class="btn-small" onclick="exportModuleExcel('audits')">Export Excel</button>
+      <button class="btn-small" onclick="printCurrentRegister('audits','Internal Audit Register')">Print Register</button>
       <button class="btn-primary btn-add" onclick="toggleAuditForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Audit</button>
     </div>
 
@@ -1335,6 +1376,8 @@ const RENDERERS = {
         </select>
       </div>
       <button class="btn-small" onclick="openImportModal('risks')">Import CSV</button>
+      <button class="btn-small" onclick="exportModuleExcel('risks')">Export Excel</button>
+      <button class="btn-small" onclick="printCurrentRegister('risks','Risk & Opportunity Register')">Print Register</button>
       <button class="btn-primary btn-add" onclick="toggleRiskForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Entry</button>
     </div>
 
@@ -1370,23 +1413,58 @@ const RENDERERS = {
           <option value="">All statuses</option>
           ${optionList(DOC_STATUSES)}
         </select>
-        <select id="doc-filter-category" onchange="renderDocumentsTable()">
-          <option value="">All categories</option>
-          ${optionList(DOC_CATEGORIES)}
+        <select id="doc-filter-department" onchange="renderDocumentsTable()">
+          <option value="">All departments</option>
+          ${STATE.docDepartments.map(d=>`<option value="${d.id}">${d.code} — ${d.name}</option>`).join('')}
+        </select>
+        <select id="doc-filter-type" onchange="renderDocumentsTable()">
+          <option value="">All types</option>
+          ${STATE.docTypes.map(t=>`<option value="${t.id}">${t.code} — ${t.name}</option>`).join('')}
         </select>
       </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn-small" onclick="toggleDocListsPanel()">Manage Departments &amp; Types</button>
+        <button class="btn-small" onclick="exportModuleExcel('documents')">Export Excel</button>
+      <button class="btn-small" onclick="printCurrentRegister('documents','Document Control Register')">Print Register</button>
       <button class="btn-primary btn-add" onclick="toggleDocForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Document</button>
+      </div>
+    </div>
+
+    <div class="form-panel" id="doc-lists-panel">
+      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:6px;">Departments &amp; Document Types</h3>
+      <p style="font-size:12px; color:var(--text-faint); margin-bottom:14px;">These two lists build every document number — e.g. <b>GOV-POL-001</b> is department GOV, type POL, the 1st document in that combination. Edit these to match how your organisation actually classifies documents.</p>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px;">
+        <div>
+          <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Departments</div>
+          <div id="doc-departments-list" style="margin-bottom:12px; max-height:220px; overflow-y:auto;"></div>
+          <div class="form-grid">
+            <div class="field"><label>Code</label><input id="dept-new-code" placeholder="e.g. HSE" style="text-transform:uppercase;" maxlength="8"></div>
+            <div class="field"><label>Name</label><input id="dept-new-name" placeholder="e.g. Health Safety & Environment"></div>
+          </div>
+          <button class="btn-small primary" onclick="addDocDepartment()">Add department</button>
+        </div>
+        <div>
+          <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Document Types</div>
+          <div id="doc-types-list" style="margin-bottom:12px; max-height:220px; overflow-y:auto;"></div>
+          <div class="form-grid">
+            <div class="field"><label>Code</label><input id="type-new-code" placeholder="e.g. POL" style="text-transform:uppercase;" maxlength="8"></div>
+            <div class="field"><label>Name</label><input id="type-new-name" placeholder="e.g. Policy"></div>
+          </div>
+          <button class="btn-small primary" onclick="addDocType()">Add type</button>
+        </div>
+      </div>
     </div>
 
     <div class="form-panel" id="doc-form">
       <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:14px;">Add a controlled document</h3>
       <div class="form-grid">
-        <div class="field span2"><label>Title</label><input id="df-title" placeholder="e.g. Welding Procedure Specification"></div>
-        <div class="field"><label>Category</label><select id="df-category">${optionList(DOC_CATEGORIES)}</select></div>
+        <div class="field span3"><label>Title / description</label><input id="df-title" placeholder="e.g. Welding Procedure Specification"></div>
+        <div class="field"><label>Department</label><select id="df-department">${STATE.docDepartments.map(d=>`<option value="${d.id}">${d.code} — ${d.name}</option>`).join('')}</select></div>
+        <div class="field"><label>Document type</label><select id="df-type">${STATE.docTypes.map(t=>`<option value="${t.id}">${t.code} — ${t.name}</option>`).join('')}</select></div>
         <div class="field"><label>Owner</label><select id="df-owner">${memberOptions(STATE.user.id)}</select></div>
-        <div class="field"><label>Effective date</label><input type="date" id="df-effective" value="${todayISO()}"></div>
         <div class="field"><label>Next review date</label><input type="date" id="df-review"></div>
-        <div class="field span3"><label>File (Revision A)</label><input type="file" id="df-file"></div>
+        <div class="field span2"><label>Revision 0 — change description</label><input id="df-rev-desc" placeholder="e.g. Initial issue" value="Initial issue"></div>
+        <div class="field"><label>Revision 0 — file</label><input type="file" id="df-file"></div>
       </div>
       <div class="form-actions">
         <button class="btn-cancel" onclick="toggleDocForm()">Cancel</button>
@@ -1415,6 +1493,8 @@ const RENDERERS = {
         </select>
       </div>
       <button class="btn-small" onclick="openImportModal('suppliers')">Import CSV</button>
+      <button class="btn-small" onclick="exportModuleExcel('suppliers')">Export Excel</button>
+      <button class="btn-small" onclick="printCurrentRegister('suppliers','Suppliers Register')">Print Register</button>
       <button class="btn-primary btn-add" onclick="toggleSupplierForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Supplier</button>
     </div>
 
@@ -1457,6 +1537,8 @@ const RENDERERS = {
       <div style="display:flex; gap:8px;">
         <button class="btn-small" onclick="toggleQuestionnairePanel()">Manage Questionnaire</button>
         <button class="btn-small" onclick="openImportModal('customers')">Import CSV</button>
+      <button class="btn-small" onclick="exportModuleExcel('customers')">Export Excel</button>
+      <button class="btn-small" onclick="printCurrentRegister('customers','Customers Register')">Print Register</button>
         <button class="btn-primary btn-add" onclick="toggleCustomerForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Customer</button>
       </div>
     </div>
@@ -1506,6 +1588,8 @@ const RENDERERS = {
         </select>
       </div>
       <button class="btn-small" onclick="openImportModal('objectives')">Import CSV</button>
+      <button class="btn-small" onclick="exportModuleExcel('objectives')">Export Excel</button>
+      <button class="btn-small" onclick="printCurrentRegister('objectives','Objectives & Targets Register')">Print Register</button>
       <button class="btn-primary btn-add" onclick="toggleObjectiveForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Objective</button>
     </div>
 
@@ -1580,6 +1664,8 @@ const RENDERERS = {
       </div>
       <div style="display:flex; gap:8px;">
         <button class="btn-small" onclick="openImportModal('legal')">Import CSV</button>
+      <button class="btn-small" onclick="exportModuleExcel('legal')">Export Excel</button>
+      <button class="btn-small" onclick="printCurrentRegister('legal','Legal Compliance Register')">Print Register</button>
         <button class="btn-primary btn-add" onclick="toggleLegalForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Legal Item</button>
       </div>
     </div>
@@ -1618,6 +1704,8 @@ const RENDERERS = {
       <div style="display:flex; gap:8px;">
         <button class="btn-small" onclick="togglePositionsPanel()">Manage Positions</button>
         <button class="btn-small" onclick="openImportModal('personnel')">Import CSV</button>
+      <button class="btn-small" onclick="exportModuleExcel('personnel')">Export Excel</button>
+      <button class="btn-small" onclick="printCurrentRegister('personnel','Personnel Register')">Print Register</button>
         <button class="btn-primary btn-add" onclick="togglePersonForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Person</button>
       </div>
     </div>
@@ -1688,6 +1776,8 @@ const RENDERERS = {
       </div>
       <div style="display:flex; gap:8px;">
         <button class="btn-small" onclick="openImportModal('training')">Import CSV</button>
+      <button class="btn-small" onclick="exportModuleExcel('training')">Export Excel</button>
+      <button class="btn-small" onclick="printCurrentRegister('training','Training Register')">Print Register</button>
         <button class="btn-primary btn-add" onclick="toggleTrainingForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Training</button>
       </div>
     </div>
@@ -1727,20 +1817,25 @@ const RENDERERS = {
       </div>
       <div style="display:flex; gap:8px;">
         <button class="btn-small" onclick="toggleKpisPanel()">Manage KPIs</button>
-        <button class="btn-primary btn-add" onclick="toggleAppraisalForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Appraisal</button>
+        <button class="btn-small" onclick="exportModuleExcel('appraisals')">Export Excel</button>
+      <button class="btn-small" onclick="printCurrentRegister('appraisals','KPIs & Appraisals Register')">Print Register</button>
+      <button class="btn-primary btn-add" onclick="toggleAppraisalForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Appraisal</button>
       </div>
     </div>
 
     <div class="form-panel" id="kpis-panel">
       <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:6px;">Position KPIs</h3>
-      <p style="font-size:12px; color:var(--text-faint); margin-bottom:14px;">KPIs belong to a position, not a person — when you start an appraisal, the active KPIs for that person's position get copied in as what's actually assessed.</p>
+      <p style="font-size:12px; color:var(--text-faint); margin-bottom:14px;">KPIs belong to a position, not a person — when you start an appraisal, the active KPIs for that person's position get copied in, target and weight included, as what's actually assessed.</p>
       <div class="form-grid" style="margin-bottom:10px;">
         <div class="field"><label>Position</label><select id="kpi-panel-position" onchange="renderKpisPanelList()">${STATE.positions.map(p=>`<option value="${p.id}">${p.title}</option>`).join('')}</select></div>
       </div>
       <div id="kpis-panel-list" style="margin-bottom:14px;"></div>
       <div class="form-grid">
-        <div class="field span2"><label>New KPI title</label><input id="kpi-new-title" placeholder="e.g. On-time completion of assigned welds"></div>
-        <div class="field"><label>Description (optional)</label><input id="kpi-new-description"></div>
+        <div class="field span2"><label>KPI title</label><input id="kpi-new-title" placeholder="e.g. Budget Compliance"></div>
+        <div class="field"><label>Weight (%)</label><input type="number" id="kpi-new-weight" placeholder="e.g. 25" min="0" max="100" step="1"></div>
+        <div class="field span2"><label>Target</label><input id="kpi-new-target" placeholder="e.g. Max 10% deviation from approved budget"></div>
+        <div class="field"><label>Source of measure</label><input id="kpi-new-source" placeholder="e.g. Budget vs Actual report"></div>
+        <div class="field span3"><label>Description (optional)</label><input id="kpi-new-description"></div>
       </div>
       <button class="btn-small primary" onclick="addPositionKpi()">Add KPI</button>
     </div>
@@ -1776,7 +1871,9 @@ const RENDERERS = {
       </div>
       <div style="display:flex; gap:8px;">
         <button class="btn-small" onclick="toggleAssetChecklistsPanel()">Manage Checklists</button>
-        <button class="btn-primary btn-add" onclick="toggleAssetForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Asset</button>
+        <button class="btn-small" onclick="exportModuleExcel('assets')">Export Excel</button>
+      <button class="btn-small" onclick="printCurrentRegister('assets','Assets Register')">Print Register</button>
+      <button class="btn-primary btn-add" onclick="toggleAssetForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Asset</button>
       </div>
     </div>
 
@@ -1830,6 +1927,8 @@ const RENDERERS = {
           ${BULLETIN_TYPES.map(t=>`<option value="${t}">${BULLETIN_TYPE_LABELS[t]}</option>`).join('')}
         </select>
       </div>
+      <button class="btn-small" onclick="exportModuleExcel('bulletins')">Export Excel</button>
+      <button class="btn-small" onclick="printCurrentRegister('bulletins','Bulletins & Toolbox Talks Register')">Print Register</button>
       <button class="btn-primary btn-add" onclick="toggleBulletinForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Bulletin / Toolbox Talk</button>
     </div>
 
@@ -1933,7 +2032,10 @@ async function openNCDetail(id){
     <div class="detail-panel">
       <div class="detail-head">
         <div><span class="ref">${n.ref_code} · ${label(n.discipline)} · ${label(n.source)}</span><h3>${n.title}</h3></div>
-        <button class="close-btn" onclick="closeNCDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-small" onclick="printNC('${n.id}')">Print / PDF</button>
+          <button class="close-btn" onclick="closeNCDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
       </div>
       ${sourceFinding ? `<div style="margin-bottom:14px;"><span class="linked-task-chip"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>Raised from audit ${sourceFinding.audits ? sourceFinding.audits.audit_ref : ''} — ${sourceFinding.audits ? sourceFinding.audits.title : 'finding'}</span></div>` : ''}
       ${n.supplier_id ? (() => { const s = STATE.suppliers.find(x=>x.id===n.supplier_id); return s ? `<div style="margin-bottom:14px;"><span class="linked-task-chip"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a4 4 0 018 0v2"/></svg>Supplier: ${s.ref_code} — ${s.name}</span></div>` : ''; })() : ''}
@@ -2003,6 +2105,42 @@ async function openNCDetail(id){
 window.openNCDetail = openNCDetail;
 function closeNCDetail(){ document.getElementById('nc-detail-slot').innerHTML = ''; }
 window.closeNCDetail = closeNCDetail;
+
+window.printNC = async function(id){
+  const n = ncById(id);
+  if(!n) return;
+  const { data: rcaRows } = await STATE.supabase.from('root_cause_analyses').select('*').eq('nonconformance_id', id);
+  const rca = rcaRows && rcaRows[0];
+  const { data: riskLinks } = await STATE.supabase.from('nc_risk_links').select('risk_id, risk_register(ref_code, title)').eq('nonconformance_id', id);
+  const { files: evidenceFiles } = await loadEvidence('nonconformance', id);
+
+  const meta = [
+    ['Discipline', label(n.discipline)], ['Source', label(n.source)], ['Severity', label(n.severity)],
+    ['Status', label(n.status)], ['Owner', memberName(n.owner_id)], ['Raised by', memberName(n.raised_by)],
+    ['Raised date', fmtDate(n.raised_date)], ['Target close date', fmtDate(n.target_close_date)],
+  ];
+  if(n.status === 'closed'){
+    meta.push(['Verified by', memberName(n.verified_by)], ['Verified date', fmtDate(n.verified_date)], ['Closure signature', n.closure_signature_name || '—']);
+  }
+
+  let body = `<p><b>Description</b><br>${n.description || 'No description recorded.'}</p>`;
+  if(n.standard_clause) body += `<p style="margin-top:10px;"><b>Standard clause:</b> ${n.standard_clause}</p>`;
+  if(n.correction) body += printSectionTitle('Correction / Corrective Action') + `<p>${n.correction}</p>`;
+  if(rca){
+    body += printSectionTitle('Root Cause Analysis');
+    for(let i=1;i<=5;i++){ if(rca['why_'+i]) body += `<p><b>Why ${i}:</b> ${rca['why_'+i]}</p>`; }
+    if(rca.concluded_root_cause) body += `<p style="margin-top:6px;"><b>Root cause:</b> ${rca.concluded_root_cause}</p>`;
+  }
+  if(riskLinks && riskLinks.length){
+    body += printSectionTitle('Linked Risks & Opportunities');
+    body += '<ul>' + riskLinks.map(l=>`<li>${l.risk_register.ref_code} — ${l.risk_register.title}</li>`).join('') + '</ul>';
+  }
+  if(evidenceFiles && evidenceFiles.length){
+    body += printSectionTitle('Evidence Attached') + '<ul>' + evidenceFiles.map(f=>`<li>${f.file_name}</li>`).join('') + '</ul>';
+  }
+
+  printRecord('Nonconformance Report', n.ref_code, meta, body);
+};
 
 window.saveNCDetail = async function(id){
   const n = ncById(id);
@@ -2116,7 +2254,10 @@ async function openTaskDetail(id){
     <div class="detail-panel">
       <div class="detail-head">
         <div><span class="ref">${linkedRefCode ? 'Linked to '+linkedRefCode : 'Standalone task'} · Created ${fmtDate(t.created_at ? t.created_at.slice(0,10) : todayISO())} by ${memberName(t.created_by)}</span><h3>${t.title}</h3></div>
-        <button class="close-btn" onclick="closeTaskDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-small" onclick="printTask('${t.id}')">Print / PDF</button>
+          <button class="close-btn" onclick="closeTaskDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
       </div>
       <div class="detail-meta">
         <div class="dm-item"><div class="l">Assignee</div><div class="v">${memberName(t.assignee_id)}</div></div>
@@ -2153,6 +2294,23 @@ async function openTaskDetail(id){
 window.openTaskDetail = openTaskDetail;
 function closeTaskDetail(){ document.getElementById('task-detail-slot').innerHTML = ''; }
 window.closeTaskDetail = closeTaskDetail;
+
+window.printTask = async function(id){
+  const t = STATE.tasks.find(x=>x.id===id);
+  if(!t) return;
+  const linkedRefCode = taskLinkedRef(t);
+  const { data: comments } = await STATE.supabase.from('task_comments').select('*').eq('task_id', id).order('created_at', {ascending:true});
+  const meta = [
+    ['Status', label(t.status)], ['Priority', label(t.priority)], ['Assignee', memberName(t.assignee_id)],
+    ['Due date', fmtDate(t.due_date)], ['Linked to', linkedRefCode || 'Standalone'], ['Created by', memberName(t.created_by)],
+  ];
+  let body = `<p><b>Description</b><br>${t.description || 'No description recorded.'}</p>`;
+  if(comments && comments.length){
+    body += printSectionTitle('Comments');
+    body += comments.map(c=>`<p><b>${memberName(c.user_id)}</b> — ${new Date(c.created_at).toLocaleDateString('en-GB')}<br>${c.comment}</p>`).join('');
+  }
+  printRecord('Task', t.title, meta, body);
+};
 
 window.saveTaskStatus = async function(id){
   const newStatus = document.getElementById('dt-status').value;
@@ -2272,7 +2430,10 @@ async function openAuditDetail(id){
     <div class="detail-panel">
       <div class="detail-head">
         <div><span class="ref">${audit.audit_ref} · ${label(audit.audit_type)} · ${audit.standard || 'No standard set'}</span><h3>${audit.title}</h3></div>
-        <button class="close-btn" onclick="closeAuditDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-small" onclick="printAudit('${audit.id}')">Print / PDF</button>
+          <button class="close-btn" onclick="closeAuditDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
       </div>
       <div class="detail-meta">
         <div class="dm-item"><div class="l">Auditor</div><div class="v">${auditorLabel}</div></div>
@@ -2324,6 +2485,23 @@ async function openAuditDetail(id){
 window.openAuditDetail = openAuditDetail;
 function closeAuditDetail(){ document.getElementById('audit-detail-slot').innerHTML = ''; }
 window.closeAuditDetail = closeAuditDetail;
+
+window.printAudit = async function(id){
+  const audit = STATE.audits.find(a=>a.id===id);
+  if(!audit) return;
+  const { data: findings } = await STATE.supabase.from('audit_findings').select('*').eq('audit_id', id).order('created_at', {ascending:true});
+  const auditorLabel = audit.auditor_id ? memberName(audit.auditor_id) : (audit.external_auditor_name || '—');
+  const meta = [
+    ['Type', label(audit.audit_type)], ['Standard', audit.standard || '—'], ['Auditor', auditorLabel],
+    ['Planned date', fmtDate(audit.planned_date)], ['Actual date', fmtDate(audit.actual_date)], ['Status', label(audit.status)],
+  ];
+  let body = `<p><b>Scope</b><br>${audit.scope || 'No scope recorded.'}</p>`;
+  if(findings && findings.length){
+    body += printSectionTitle('Findings');
+    body += printTable(['Type','Clause','Description'], findings.map(f => [label(f.finding_type), f.clause_reference||'—', f.description]));
+  }
+  printRecord('Internal Audit Report', audit.audit_ref, meta, body);
+};
 
 function renderFindingRow(f){
   const linkedNc = f.nonconformance_id ? ncById(f.nonconformance_id) : null;
@@ -2522,7 +2700,10 @@ async function openRiskDetail(id){
     <div class="detail-panel">
       <div class="detail-head">
         <div><span class="ref">${r.ref_code} · ${entryTypeBadge(r.entry_type)} · ${riskCategoryLabel(r.category)}</span><h3>${r.title}</h3></div>
-        <button class="close-btn" onclick="closeRiskDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-small" onclick="printRisk('${r.id}')">Print / PDF</button>
+          <button class="close-btn" onclick="closeRiskDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
       </div>
       <div class="detail-meta">
         <div class="dm-item"><div class="l">Inherent score</div><div class="v">${scoreBadge(r.inherent_score)} (${r.likelihood} × ${r.impact})</div></div>
@@ -2556,6 +2737,25 @@ async function openRiskDetail(id){
 window.openRiskDetail = openRiskDetail;
 function closeRiskDetail(){ document.getElementById('risk-detail-slot').innerHTML = ''; }
 window.closeRiskDetail = closeRiskDetail;
+
+window.printRisk = async function(id){
+  const r = riskById(id);
+  if(!r) return;
+  const isOpp = r.entry_type === 'opportunity';
+  const { data: links } = await STATE.supabase.from('nc_risk_links').select('nonconformance_id, nonconformances(ref_code, title)').eq('risk_id', id);
+  const meta = [
+    ['Type', label(r.entry_type)], ['Category', riskCategoryLabel(r.category)],
+    ['Inherent score', `${r.inherent_score} (${r.likelihood} × ${r.impact})`], ['Residual score', r.residual_score ?? '—'],
+    ['Owner', memberName(r.owner_id)], ['Status', label(r.status)], ['Review date', fmtDate(r.review_date)],
+  ];
+  let body = `<p><b>Description</b><br>${r.description || 'No description recorded.'}</p>`;
+  if(r.treatment_plan) body += printSectionTitle(isOpp ? 'Pursuit Plan' : 'Treatment Plan') + `<p>${r.treatment_plan}</p>`;
+  if(links && links.length){
+    body += printSectionTitle('Linked Nonconformances');
+    body += '<ul>' + links.map(l=>`<li>${l.nonconformances.ref_code} — ${l.nonconformances.title}</li>`).join('') + '</ul>';
+  }
+  printRecord(isOpp ? 'Opportunity Record' : 'Risk Record', r.ref_code, meta, body);
+};
 
 window.saveRiskDetail = async function(id){
   const patch = {
@@ -2914,36 +3114,100 @@ function documentById(id){ return STATE.documents.find(d=>d.id===id); }
 function toggleDocForm(){ document.getElementById('doc-form').classList.toggle('open'); }
 window.toggleDocForm = toggleDocForm;
 
+/* ---- Manage departments & types ---- */
+function toggleDocListsPanel(){
+  const panel = document.getElementById('doc-lists-panel');
+  panel.classList.toggle('open');
+  if(panel.classList.contains('open')){ renderDocDepartmentsList(); renderDocTypesList(); }
+}
+window.toggleDocListsPanel = toggleDocListsPanel;
+
+function renderDocDepartmentsList(){
+  const wrap = document.getElementById('doc-departments-list');
+  if(!wrap) return;
+  wrap.innerHTML = STATE.docDepartments.length ? STATE.docDepartments.map(d => `
+    <div class="evidence-row"><div style="flex:1;"><b class="mono-cell">${d.code}</b> — ${d.name}</div></div>
+  `).join('') : '<p style="font-size:12px; color:var(--text-faint);">No departments yet.</p>';
+}
+function renderDocTypesList(){
+  const wrap = document.getElementById('doc-types-list');
+  if(!wrap) return;
+  wrap.innerHTML = STATE.docTypes.length ? STATE.docTypes.map(t => `
+    <div class="evidence-row"><div style="flex:1;"><b class="mono-cell">${t.code}</b> — ${t.name}</div></div>
+  `).join('') : '<p style="font-size:12px; color:var(--text-faint);">No document types yet.</p>';
+}
+
+window.addDocDepartment = async function(){
+  const code = document.getElementById('dept-new-code').value.trim().toUpperCase();
+  const name = document.getElementById('dept-new-name').value.trim();
+  if(!code || !name){ alert('Both a code and a name are required.'); return; }
+  const { error } = await STATE.supabase.from('document_departments').insert({ organisation_id: STATE.org.id, code, name, created_by: STATE.user.id });
+  if(error){ toast('Could not add department: ' + error.message, 'error'); return; }
+  await loadDocDepartments();
+  showModule('documents');
+  toggleDocListsPanel();
+  toast('Department added.', 'success');
+};
+
+window.addDocType = async function(){
+  const code = document.getElementById('type-new-code').value.trim().toUpperCase();
+  const name = document.getElementById('type-new-name').value.trim();
+  if(!code || !name){ alert('Both a code and a name are required.'); return; }
+  const { error } = await STATE.supabase.from('document_types').insert({ organisation_id: STATE.org.id, code, name, created_by: STATE.user.id });
+  if(error){ toast('Could not add document type: ' + error.message, 'error'); return; }
+  await loadDocTypes();
+  showModule('documents');
+  toggleDocListsPanel();
+  toast('Document type added.', 'success');
+};
+
+/* ---- New document (creates revision 0 too) ---- */
 window.submitDocument = async function(){
   const title = document.getElementById('df-title').value.trim();
+  const departmentId = document.getElementById('df-department').value;
+  const typeId = document.getElementById('df-type').value;
   if(!title){ alert('Title is required.'); return; }
-  const fileInput = document.getElementById('df-file');
-  const file = fileInput.files[0];
+  if(!departmentId || !typeId){ alert('Add at least one department and one document type first (Manage Departments & Types).'); return; }
 
   const payload = {
     organisation_id: STATE.org.id,
     title,
-    category: document.getElementById('df-category').value,
+    department_id: departmentId,
+    type_id: typeId,
     owner_id: document.getElementById('df-owner').value,
-    effective_date: document.getElementById('df-effective').value || null,
     next_review_date: document.getElementById('df-review').value || null,
+    introduced_date: todayISO(),
+    current_revision_date: todayISO(),
+    current_revision: 0,
     created_by: STATE.user.id,
   };
   const { data: newDoc, error: docErr } = await STATE.supabase.from('documents').insert(payload).select().single();
   if(docErr){ toast('Could not add document: ' + docErr.message, 'error'); return; }
 
+  const fileInput = document.getElementById('df-file');
+  const file = fileInput.files[0];
+  let storagePath = null;
   if(file){
-    const path = `${STATE.org.id}/${newDoc.id}/A-${Date.now()}-${sanitizeFileName(file.name)}`;
+    const path = `${STATE.org.id}/${newDoc.id}/rev0-${Date.now()}-${sanitizeFileName(file.name)}`;
     const { error: upErr } = await STATE.supabase.storage.from('documents').upload(path, file);
-    if(upErr){
-      toast('Document created, but the file failed to upload: ' + upErr.message, 'error');
-    } else {
+    if(upErr){ toast('Document created, but the file failed to upload: ' + upErr.message, 'error'); }
+    else {
+      storagePath = path;
       await STATE.supabase.from('documents').update({ storage_path: path }).eq('id', newDoc.id);
     }
   }
 
+  // Revision 0 is a real row in document_revisions from the start — this is
+  // what makes the history genuinely start at revision 0, not just imply it.
+  const { error: revErr } = await STATE.supabase.from('document_revisions').insert({
+    document_id: newDoc.id, organisation_id: STATE.org.id, revision_code: '0',
+    change_description: document.getElementById('df-rev-desc').value.trim() || 'Initial issue',
+    storage_path: storagePath, issued_date: todayISO(), uploaded_by: STATE.user.id,
+  });
+  if(revErr){ toast('Document created, but revision 0 could not be recorded: ' + revErr.message, 'error'); }
+
   toggleDocForm();
-  document.querySelectorAll('#doc-form input, #doc-form textarea').forEach(el=>el.value='');
+  document.querySelectorAll('#doc-form input').forEach(el=>el.value='');
   await loadDocuments();
   renderDocumentsTable();
   updateNavBadges();
@@ -2954,50 +3218,52 @@ function renderDocumentsTable(){
   const wrap = document.getElementById('doc-table-wrap');
   if(!wrap) return;
   const fStatus = document.getElementById('doc-filter-status').value;
-  const fCategory = document.getElementById('doc-filter-category').value;
-  const rows = STATE.documents.filter(d => (!fStatus||d.status===fStatus) && (!fCategory||d.category===fCategory));
+  const fDept = document.getElementById('doc-filter-department').value;
+  const fType = document.getElementById('doc-filter-type').value;
+  const rows = STATE.documents.filter(d =>
+    (!fStatus||d.status===fStatus) && (!fDept||d.department_id===fDept) && (!fType||d.type_id===fType)
+  );
   if(!rows.length){
     wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z"/><line x1="9" y1="12" x2="17" y2="12"/><line x1="9" y1="16" x2="17" y2="16"/></svg><p>No documents match this filter.</p></div>`;
     return;
   }
   wrap.innerHTML = `<table>
-    <tr><th>Doc #</th><th>Title</th><th>Category</th><th>Rev</th><th>Owner</th><th>Next review</th><th>Status</th></tr>
+    <tr><th>Document #</th><th>Title</th><th>Rev</th><th>Revision date</th><th>Owner</th><th>Next review</th><th>Approval</th><th>Status</th></tr>
     ${rows.map(d=>`<tr class="clickable" onclick="openDocumentDetail('${d.id}')">
       <td class="mono-cell">${d.doc_number}</td>
       <td class="strong">${d.title}</td>
-      <td>${label(d.category)}</td>
       <td class="mono-cell">${d.current_revision}</td>
+      <td>${fmtDate(d.current_revision_date)}</td>
       <td>${memberName(d.owner_id)}</td>
       <td>${fmtDate(d.next_review_date)} ${dateStatusBadge(d.next_review_date, ['withdrawn','superseded'].includes(d.status))}</td>
+      <td>${pill(d.approval_status || 'pending')}</td>
       <td>${pill(d.status)}</td>
     </tr>`).join('')}
   </table>`;
 }
 window.renderDocumentsTable = renderDocumentsTable;
 
-function suggestNextRevision(current){
-  if(current && current.length === 1 && /[A-Y]/.test(current)){
-    return String.fromCharCode(current.charCodeAt(0) + 1);
-  }
-  return current ? current + '1' : 'B';
-}
-
 async function openDocumentDetail(id){
   const d = documentById(id);
   if(!d) return;
-  const { data: revisions, error: revErr } = await STATE.supabase.from('document_revisions').select('*').eq('document_id', id).order('superseded_at', {ascending:false});
+  const dept = STATE.docDepartments.find(x=>x.id===d.department_id);
+  const type = STATE.docTypes.find(x=>x.id===d.type_id);
+  const { data: revisions, error: revErr } = await STATE.supabase.from('document_revisions').select('*').eq('document_id', id).order('revision_code', {ascending:false});
 
   document.getElementById('doc-detail-slot').innerHTML = `
     <div class="detail-panel">
       <div class="detail-head">
-        <div><span class="ref">${d.doc_number} · ${label(d.category)}</span><h3>${d.title}</h3></div>
-        <button class="close-btn" onclick="closeDocumentDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <div><span class="ref">${d.doc_number} · Rev ${d.current_revision}${dept && type ? ' · '+dept.name+' / '+type.name : ''}</span><h3>${d.title}</h3></div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-small" onclick="printDocument('${d.id}')">Print / PDF</button>
+          <button class="close-btn" onclick="closeDocumentDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
       </div>
       <div class="detail-meta">
         <div class="dm-item"><div class="l">Current revision</div><div class="v">${d.current_revision}</div></div>
+        <div class="dm-item"><div class="l">Introduced</div><div class="v">${fmtDate(d.introduced_date)}</div></div>
+        <div class="dm-item"><div class="l">This revision dated</div><div class="v">${fmtDate(d.current_revision_date)}</div></div>
         <div class="dm-item"><div class="l">Owner</div><div class="v">${memberName(d.owner_id)}</div></div>
-        <div class="dm-item"><div class="l">Effective</div><div class="v">${fmtDate(d.effective_date)}</div></div>
-        <div class="dm-item"><div class="l">Next review</div><div class="v">${fmtDate(d.next_review_date)}</div></div>
       </div>
 
       <div class="status-row">
@@ -3007,23 +3273,35 @@ async function openDocumentDetail(id){
         ${d.storage_path ? `<button class="btn-small" onclick="downloadFromBucket('documents','${d.storage_path}')">Download current file</button>` : ''}
       </div>
 
-      <div class="panel-head" style="margin-top:10px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Upload a new revision</h3></div>
+      <div class="status-row">
+        <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase;">Approval (Rev ${d.current_revision})</label>
+        ${pill(d.approval_status || 'pending')}
+        ${d.approval_status === 'approved'
+          ? `<span style="font-size:11.5px; color:var(--text-faint);">by ${memberName(d.approved_by)} on ${fmtDate(d.approved_date)}</span>`
+          : `<button class="btn-small primary" onclick="approveDocumentRevision('${d.id}')">Approve this revision</button>`}
+      </div>
+
+      <div class="panel-head" style="margin-top:10px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Issue a new revision</h3></div>
+      <p style="font-size:11.5px; color:var(--text-faint); margin-bottom:10px;">Next revision will be numbered <b>${d.current_revision + 1}</b> automatically.</p>
       <div class="form-grid">
-        <div class="field"><label>New revision code</label><input id="dd-rev-code" value="${suggestNextRevision(d.current_revision)}"></div>
         <div class="field span2"><label>Change description</label><input id="dd-rev-desc" placeholder="What changed in this revision"></div>
-        <div class="field span3"><label>File</label><input type="file" id="dd-rev-file"></div>
+        <div class="field"><label>File</label><input type="file" id="dd-rev-file"></div>
       </div>
       <div class="form-actions" style="justify-content:flex-start;">
-        <button class="btn-small primary" onclick="uploadNewRevision('${d.id}')">Upload revision</button>
+        <button class="btn-small primary" onclick="submitNewRevision('${d.id}')">Issue revision ${d.current_revision + 1}</button>
       </div>
 
       <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin:16px 0 8px;">Revision history</div>
       <div class="history-log">
         ${revErr ? '<p style="font-size:12.5px; color:var(--text-faint);">Could not load revision history.</p>' :
-          (!revisions || !revisions.length) ? '<p style="font-size:12.5px; color:var(--text-faint);">No prior revisions — this is still on its first version.</p>' :
+          (!revisions || !revisions.length) ? '<p style="font-size:12.5px; color:var(--text-faint);">No revisions recorded.</p>' :
           revisions.map(r => `<div class="history-item"><span class="h-dot"></span><div>
-            <div><b>Rev ${r.revision_code}</b> superseded ${new Date(r.superseded_at).toLocaleString('en-GB')}${r.change_description ? ' — '+r.change_description : ''}
+            <div><b>Rev ${r.revision_code}</b> — ${fmtDate(r.issued_date)}${r.change_description ? ' — '+r.change_description : ''}
               ${r.storage_path ? ` · <a href="#" onclick="downloadFromBucket('documents','${r.storage_path}'); return false;" style="color:var(--red);">download</a>` : ''}
+            </div>
+            <div style="font-size:11.5px; color:var(--text-faint); margin-top:2px;">
+              ${r.approval_status==='approved' ? `Approved by ${memberName(r.approved_by)} on ${fmtDate(r.approved_date)}` : 'Not yet approved'}
+              ${r.superseded_at ? ` · superseded ${new Date(r.superseded_at).toLocaleDateString('en-GB')}` : ' · current'}
             </div>
           </div></div>`).join('')}
       </div>
@@ -3033,6 +3311,29 @@ async function openDocumentDetail(id){
 window.openDocumentDetail = openDocumentDetail;
 function closeDocumentDetail(){ document.getElementById('doc-detail-slot').innerHTML = ''; }
 window.closeDocumentDetail = closeDocumentDetail;
+
+window.printDocument = async function(id){
+  const d = documentById(id);
+  if(!d) return;
+  const dept = STATE.docDepartments.find(x=>x.id===d.department_id);
+  const type = STATE.docTypes.find(x=>x.id===d.type_id);
+  const { data: revisions } = await STATE.supabase.from('document_revisions').select('*').eq('document_id', id).order('revision_code', {ascending:false});
+  const meta = [
+    ['Department', dept ? `${dept.code} — ${dept.name}` : '—'], ['Document type', type ? `${type.code} — ${type.name}` : '—'],
+    ['Current revision', d.current_revision], ['Introduced', fmtDate(d.introduced_date)],
+    ['This revision dated', fmtDate(d.current_revision_date)], ['Owner', memberName(d.owner_id)],
+    ['Status', label(d.status)], ['Approval', d.approval_status==='approved' ? `Approved by ${memberName(d.approved_by)} on ${fmtDate(d.approved_date)}` : 'Pending'],
+  ];
+  let body = '';
+  if(revisions && revisions.length){
+    body += printSectionTitle('Revision History');
+    body += printTable(['Rev','Date','Change Description','Approval'], revisions.map(r => [
+      r.revision_code, fmtDate(r.issued_date), r.change_description || '—',
+      r.approval_status==='approved' ? `Approved ${fmtDate(r.approved_date)}` : 'Pending'
+    ]));
+  }
+  printRecord('Controlled Document', d.doc_number, meta, body);
+};
 
 window.saveDocumentStatus = async function(id){
   const newStatus = document.getElementById('dd-status').value;
@@ -3044,42 +3345,56 @@ window.saveDocumentStatus = async function(id){
   updateNavBadges();
 };
 
-window.uploadNewRevision = async function(id){
-  const revCode = document.getElementById('dd-rev-code').value.trim();
+window.approveDocumentRevision = async function(id){
+  const d = documentById(id);
+  if(!d) return;
+  const patch = { approval_status:'approved', approved_by: STATE.user.id, approved_date: todayISO() };
+  const { error } = await STATE.supabase.from('documents').update(patch).eq('id', id);
+  if(error){ toast('Could not approve: ' + error.message, 'error'); return; }
+  // Mirror the same approval onto that revision's own history row.
+  await STATE.supabase.from('document_revisions').update(patch)
+    .eq('document_id', id).eq('revision_code', String(d.current_revision));
+  await loadDocuments();
+  openDocumentDetail(id);
+  renderDocumentsTable();
+  toast('Revision approved.', 'success');
+};
+
+window.submitNewRevision = async function(id){
+  const d = documentById(id);
+  if(!d) return;
   const changeDesc = document.getElementById('dd-rev-desc').value.trim();
   const fileInput = document.getElementById('dd-rev-file');
   const file = fileInput.files[0];
-  if(!revCode){ alert('A revision code is required.'); return; }
   if(!file){ alert('Choose a file for this revision.'); return; }
 
-  const path = `${STATE.org.id}/${id}/${revCode}-${Date.now()}-${sanitizeFileName(file.name)}`;
+  const nextRevision = d.current_revision + 1;
+  const path = `${STATE.org.id}/${id}/rev${nextRevision}-${Date.now()}-${sanitizeFileName(file.name)}`;
   const { error: upErr } = await STATE.supabase.storage.from('documents').upload(path, file);
   if(upErr){ toast('Upload failed: ' + upErr.message, 'error'); return; }
 
-  // This update is what the log_document_revision trigger (migration 005)
-  // is watching for: because current_revision is changing, the outgoing
-  // revision gets archived into document_revisions automatically — nothing
-  // here has to write that history entry by hand.
-  const { error: updErr } = await STATE.supabase.from('documents').update({
-    current_revision: revCode, storage_path: path
-  }).eq('id', id);
-  if(updErr){ toast('File uploaded, but could not set it as the current revision: ' + updErr.message, 'error'); return; }
+  // Mark the outgoing revision as superseded — explicit, not trigger-driven,
+  // so the moment of change is always something the app decided, not
+  // something that happened as a side effect of an unrelated update.
+  await STATE.supabase.from('document_revisions').update({ superseded_at: new Date().toISOString() })
+    .eq('document_id', id).eq('revision_code', String(d.current_revision));
 
-  // The change description belongs to the revision that just got archived,
-  // not the new one — attach it to the document_revisions row the trigger
-  // just created (it's the most recent one for this document).
-  if(changeDesc){
-    const { data: latestRevRows } = await STATE.supabase.from('document_revisions')
-      .select('id').eq('document_id', id).order('superseded_at', {ascending:false}).limit(1);
-    if(latestRevRows && latestRevRows[0]){
-      await STATE.supabase.from('document_revisions').update({ change_description: changeDesc }).eq('id', latestRevRows[0].id);
-    }
-  }
+  const { error: revErr } = await STATE.supabase.from('document_revisions').insert({
+    document_id: id, organisation_id: STATE.org.id, revision_code: String(nextRevision),
+    change_description: changeDesc, storage_path: path, issued_date: todayISO(), uploaded_by: STATE.user.id,
+  });
+  if(revErr){ toast('Could not record the new revision: ' + revErr.message, 'error'); return; }
+
+  const { error: updErr } = await STATE.supabase.from('documents').update({
+    current_revision: nextRevision, storage_path: path, current_revision_date: todayISO(),
+    approval_status: 'pending', approved_by: null, approved_date: null,
+  }).eq('id', id);
+  if(updErr){ toast('Revision recorded, but could not set it as current: ' + updErr.message, 'error'); return; }
 
   await loadDocuments();
   openDocumentDetail(id);
   renderDocumentsTable();
-  toast(`Revision ${revCode} uploaded.`, 'success');
+  toast(`Revision ${nextRevision} issued.`, 'success');
 };
 
 /* ============ ISO Checklists (within Internal Audit) ============ */
@@ -3259,7 +3574,10 @@ async function openSupplierDetail(id){
     <div class="detail-panel">
       <div class="detail-head">
         <div><span class="ref">${s.ref_code} · <span style="text-transform:capitalize">${s.risk_classification} risk</span></span><h3>${s.name}</h3></div>
-        <button class="close-btn" onclick="closeSupplierDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-small" onclick="printSupplier('${s.id}')">Print / PDF</button>
+          <button class="close-btn" onclick="closeSupplierDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
       </div>
       <div class="detail-meta">
         <div class="dm-item"><div class="l">Scope of supply</div><div class="v">${s.scope_of_supply || '—'}</div></div>
@@ -3283,6 +3601,31 @@ async function openSupplierDetail(id){
 window.openSupplierDetail = openSupplierDetail;
 function closeSupplierDetail(){ document.getElementById('sup-detail-slot').innerHTML = ''; }
 window.closeSupplierDetail = closeSupplierDetail;
+
+window.printSupplier = async function(id){
+  const s = supplierById(id);
+  if(!s) return;
+  let reviews = [];
+  if(s.risk_classification === 'low'){
+    const { data } = await STATE.supabase.from('supplier_reviews').select('*').eq('supplier_id', id).order('review_number', {ascending:true});
+    reviews = data || [];
+  }
+  const meta = [
+    ['Risk classification', label(s.risk_classification)], ['Status', label(s.status)], ['Owner', memberName(s.owner_id)],
+    ['Scope of supply', s.scope_of_supply || '—'], ['Contact', s.contact_name || '—'],
+    ['Contact email', s.contact_email || '—'], ['Contact phone', s.contact_phone || '—'],
+  ];
+  let body = '';
+  if(reviews.length){
+    body += printSectionTitle('Review History');
+    body += printTable(['#','Period','Status','Outcome','NCs','Notes'], reviews.map(r => [
+      r.review_number, `${fmtDate(r.period_start)} – ${fmtDate(r.period_end)}`, label(r.status),
+      r.status==='completed' ? label(r.outcome) : `Due ${fmtDate(r.due_date)}`,
+      r.nonconformance_count ?? '—', r.notes || '—'
+    ]));
+  }
+  printRecord('Supplier Record', s.ref_code, meta, body);
+};
 
 function renderHighRiskQualification(s, qualAudit){
   return `
@@ -3538,7 +3881,10 @@ async function openCustomerDetail(id){
     <div class="detail-panel">
       <div class="detail-head">
         <div><span class="ref">${c.ref_code}</span><h3>${c.name}</h3></div>
-        <button class="close-btn" onclick="closeCustomerDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-small" onclick="printCustomer('${c.id}')">Print / PDF</button>
+          <button class="close-btn" onclick="closeCustomerDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
       </div>
       <div class="detail-meta">
         <div class="dm-item"><div class="l">Contact</div><div class="v">${c.contact_name || '—'}</div></div>
@@ -3573,6 +3919,24 @@ async function openCustomerDetail(id){
 window.openCustomerDetail = openCustomerDetail;
 function closeCustomerDetail(){ document.getElementById('cust-detail-slot').innerHTML = ''; }
 window.closeCustomerDetail = closeCustomerDetail;
+
+window.printCustomer = async function(id){
+  const c = customerById(id);
+  if(!c) return;
+  const { data: surveys } = await STATE.supabase.from('satisfaction_surveys').select('*').eq('customer_id', id).order('sent_at', {ascending:false});
+  const meta = [
+    ['Contact', c.contact_name || '—'], ['Email', c.contact_email || '—'], ['Phone', c.contact_phone || '—'],
+    ['Account owner', memberName(c.account_owner_id)], ['Status', label(c.status)],
+  ];
+  let body = '';
+  if(surveys && surveys.length){
+    body += printSectionTitle('Satisfaction Survey History');
+    body += printTable(['Sent','Status','Rating'], surveys.map(s => [
+      fmtDate(s.sent_at ? s.sent_at.slice(0,10) : null), label(s.status), s.overall_rating ? Number(s.overall_rating).toFixed(1)+' / 5' : '—'
+    ]));
+  }
+  printRecord('Customer Record', c.ref_code, meta, body);
+};
 
 window.sendSurvey = async function(customerId){
   if(!STATE.satisfactionQuestions.some(q=>q.is_active)){
@@ -3730,7 +4094,10 @@ async function openObjectiveDetail(id){
     <div class="detail-panel">
       <div class="detail-head">
         <div><span class="ref">${o.ref_code} · ${label(o.category)}${o.department ? ' · '+o.department : ''}</span><h3>${o.specific_statement}</h3></div>
-        <button class="close-btn" onclick="closeObjectiveDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-small" onclick="printObjective('${o.id}')">Print / PDF</button>
+          <button class="close-btn" onclick="closeObjectiveDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
       </div>
       <div class="detail-meta">
         <div class="dm-item"><div class="l">Metric → Target</div><div class="v">${o.measurable_metric} → ${o.target_value}${o.baseline_value ? ' (from '+o.baseline_value+')' : ''}</div></div>
@@ -3786,6 +4153,29 @@ async function openObjectiveDetail(id){
 window.openObjectiveDetail = openObjectiveDetail;
 function closeObjectiveDetail(){ document.getElementById('obj-detail-slot').innerHTML = ''; }
 window.closeObjectiveDetail = closeObjectiveDetail;
+
+window.printObjective = async function(id){
+  const o = objectiveById(id);
+  if(!o) return;
+  const { data: reviews } = await STATE.supabase.from('objective_reviews').select('*').eq('objective_id', id).order('review_date', {ascending:false});
+  const meta = [
+    ['Category', label(o.category)], ['Department', o.department || '—'],
+    ['Metric → Target', `${o.measurable_metric} → ${o.target_value}${o.baseline_value ? ' (from '+o.baseline_value+')' : ''}`],
+    ['Target date', fmtDate(o.target_date)], ['Owner', memberName(o.owner_id)], ['Status', label(o.status)],
+  ];
+  let body = `<p><b>Action plan</b><br>${o.action_plan || 'No action plan recorded.'}</p>`;
+  if(o.relevance_notes) body += `<p style="margin-top:8px;"><b>Relevance:</b> ${o.relevance_notes}</p>`;
+  if(o.achievability_notes) body += `<p style="margin-top:8px;"><b>Achievability:</b> ${o.achievability_notes}</p>`;
+  if(o.resources_required) body += `<p style="margin-top:8px;"><b>Resources:</b> ${o.resources_required}</p>`;
+  if(o.evaluation_method) body += `<p style="margin-top:8px;"><b>Evaluated by:</b> ${o.evaluation_method}</p>`;
+  if(reviews && reviews.length){
+    body += printSectionTitle('Progress Reviews');
+    body += printTable(['Date','Progress','Value','Commentary'], reviews.map(r => [
+      fmtDate(r.review_date), label(r.progress_rating), r.current_value || '—', r.commentary || '—'
+    ]));
+  }
+  printRecord('Objective Record', o.ref_code, meta, body);
+};
 
 function toggleObjReviewForm(){ document.getElementById('obj-review-form').classList.toggle('open'); }
 window.toggleObjReviewForm = toggleObjReviewForm;
@@ -4304,7 +4694,10 @@ async function openLegalDetail(id){
     <div class="detail-panel">
       <div class="detail-head">
         <div><span class="ref">${l.ref_code}</span><h3>${l.title}</h3></div>
-        <button class="close-btn" onclick="closeLegalDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-small" onclick="printLegal('${l.id}')">Print / PDF</button>
+          <button class="close-btn" onclick="closeLegalDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
       </div>
       <div class="detail-meta">
         <div class="dm-item"><div class="l">Status</div><div class="v">${l.current_status ? pill(l.current_status) : '—'}</div></div>
@@ -4348,6 +4741,24 @@ async function openLegalDetail(id){
 window.openLegalDetail = openLegalDetail;
 function closeLegalDetail(){ document.getElementById('legal-detail-slot').innerHTML = ''; }
 window.closeLegalDetail = closeLegalDetail;
+
+window.printLegal = async function(id){
+  const l = legalById(id);
+  if(!l) return;
+  const { data: reviews } = await STATE.supabase.from('legal_reviews').select('*').eq('legal_register_id', id).order('review_date', {ascending:false});
+  const meta = [
+    ['Status', l.current_status ? label(l.current_status) : 'Not yet reviewed'], ['Owner', memberName(l.owner_id)],
+    ['Last reviewed', fmtDate(l.last_reviewed_date)], ['Next review due', fmtDate(l.next_review_due_date)],
+  ];
+  let body = `<p><b>Description</b><br>${l.description || 'No description recorded.'}</p>`;
+  if(reviews && reviews.length){
+    body += printSectionTitle('Compliance Review History');
+    body += printTable(['Date','Status','Finding','Close-out'], reviews.map(r => [
+      fmtDate(r.review_date), label(r.compliance_status), r.finding_text || '—', r.close_out_date ? fmtDate(r.close_out_date) : '—'
+    ]));
+  }
+  printRecord('Legal Compliance Record', l.ref_code, meta, body);
+};
 
 function renderLegalReviewRow(r){
   const linkedAudit = r.linked_audit_id ? STATE.audits.find(a=>a.id===r.linked_audit_id) : null;
@@ -4590,7 +5001,10 @@ async function openPersonDetail(id){
     <div class="detail-panel">
       <div class="detail-head">
         <div><span class="ref">${p.ref_code}</span><h3>${p.full_name}</h3></div>
-        <button class="close-btn" onclick="closePersonDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-small" onclick="printPerson('${p.id}')">Print / PDF</button>
+          <button class="close-btn" onclick="closePersonDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
       </div>
       <div class="detail-meta">
         <div class="dm-item"><div class="l">Company number</div><div class="v">${p.company_number || '—'}</div></div>
@@ -4670,6 +5084,27 @@ async function openPersonDetail(id){
 window.openPersonDetail = openPersonDetail;
 function closePersonDetail(){ document.getElementById('pers-detail-slot').innerHTML = ''; }
 window.closePersonDetail = closePersonDetail;
+
+window.printPerson = function(id){
+  const p = personById(id);
+  if(!p) return;
+  const records = competenceFor(id);
+  const meta = [
+    ['Company number', p.company_number || '—'], ['Employment type', label(p.employment_type)],
+    ['Date started', fmtDate(p.date_started)], ['Status', label(p.status)],
+  ];
+  let body = '';
+  if(p.qualifications_experience) body += `<p><b>Qualifications/experience</b><br>${p.qualifications_experience}</p>`;
+  if(p.comments) body += `<p style="margin-top:8px;"><b>Comments</b><br>${p.comments}</p>`;
+  if(records.length){
+    body += printSectionTitle('Competence Record');
+    body += printTable(['Position','Level','Primary?','Validated By','Date Validated'], records.map(c => {
+      const pos = positionById(c.position_id);
+      return [pos ? pos.title : '—', c.level, c.is_primary ? 'Yes' : 'No', c.validated_by_name || '—', fmtDate(c.date_validated)];
+    }));
+  }
+  printRecord('Personnel Record', p.ref_code, meta, body);
+};
 
 function renderCompetenceCard(c, isPrimary){
   const pos = positionById(c.position_id);
@@ -4879,7 +5314,10 @@ async function openTrainingDetail(id){
     <div class="detail-panel">
       <div class="detail-head">
         <div><span class="ref">${t.ref_code}${position ? ' · '+position.title : ''}</span><h3>${t.training_required}</h3></div>
-        <button class="close-btn" onclick="closeTrainingDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-small" onclick="printTraining('${t.id}')">Print / PDF</button>
+          <button class="close-btn" onclick="closeTrainingDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
       </div>
       <div class="detail-meta">
         <div class="dm-item"><div class="l">Personnel</div><div class="v">${person ? `<a href="#" onclick="showModule('personnel'); setTimeout(()=>openPersonDetail('${person.id}'),0); return false;" style="color:var(--red);">${person.full_name}</a>` : '—'}</div></div>
@@ -4909,6 +5347,22 @@ async function openTrainingDetail(id){
 window.openTrainingDetail = openTrainingDetail;
 function closeTrainingDetail(){ document.getElementById('training-detail-slot').innerHTML = ''; }
 window.closeTrainingDetail = closeTrainingDetail;
+
+window.printTraining = function(id){
+  const t = trainingById(id);
+  if(!t) return;
+  const person = personById(t.personnel_id);
+  const position = t.position_id ? positionById(t.position_id) : null;
+  const trainer = t.internal_trainer_id ? personById(t.internal_trainer_id) : null;
+  const meta = [
+    ['Personnel', person ? person.full_name : '—'], ['Related position', position ? position.title : '—'],
+    ['Status', label(t.status)], ['Due date', fmtDate(t.due_date)], ['Planned date', fmtDate(t.planned_date)],
+    ['Completed date', fmtDate(t.completed_date)],
+    ['Delivery', t.delivery_type ? label(t.delivery_type) + (t.delivery_type==='internal' ? (trainer ? ' — '+trainer.full_name : '') : (t.external_provider_name ? ' — '+t.external_provider_name : '')) : 'Not yet decided'],
+  ];
+  const body = t.comments ? `<p><b>Comments</b><br>${t.comments}</p>` : '';
+  printRecord('Training Record', t.ref_code, meta, body);
+};
 
 window.saveTrainingStatus = async function(trainingId){
   const patch = {
@@ -4949,11 +5403,21 @@ function renderKpisPanelList(){
     wrap.innerHTML = '<p style="font-size:12.5px; color:var(--text-faint);">No KPIs for this position yet.</p>';
     return;
   }
-  wrap.innerHTML = kpis.map(k => `
+  const activeWeightTotal = kpis.filter(k=>k.is_active).reduce((s,k)=>s+(Number(k.weight)||0),0);
+  wrap.innerHTML = `
+    <div style="font-size:11.5px; color:${activeWeightTotal===100?'var(--green)':'var(--amber)'}; margin-bottom:8px; font-family:'JetBrains Mono';">
+      Active KPI weights total: ${activeWeightTotal}% ${activeWeightTotal!==100 ? '(should add up to 100%)' : '✓'}
+    </div>
+    ${kpis.map(k => `
     <div class="evidence-row">
-      <div style="flex:1;"><b>${k.title}</b>${!k.is_active ? ' <span class="mono" style="color:var(--text-faint); font-size:11px;">(inactive)</span>' : ''}${k.description ? '<div style="font-size:12px; color:var(--text-faint); margin-top:2px;">'+k.description+'</div>' : ''}</div>
+      <div style="flex:1;">
+        <b>${k.title}</b> <span class="mono" style="font-size:11px; color:var(--text-faint);">${k.weight||0}%</span>${!k.is_active ? ' <span class="mono" style="color:var(--text-faint); font-size:11px;">(inactive)</span>' : ''}
+        ${k.target ? `<div style="font-size:12px; color:var(--text-dim); margin-top:2px;"><b>Target:</b> ${k.target}</div>` : ''}
+        ${k.source_of_measure ? `<div style="font-size:11.5px; color:var(--text-faint); margin-top:1px;"><b>Source:</b> ${k.source_of_measure}</div>` : ''}
+        ${k.description ? `<div style="font-size:12px; color:var(--text-faint); margin-top:2px;">${k.description}</div>` : ''}
+      </div>
       <div class="ev-actions"><button class="btn-small" onclick="toggleKpiActive('${k.id}', ${!k.is_active})">${k.is_active ? 'Deactivate' : 'Activate'}</button></div>
-    </div>`).join('');
+    </div>`).join('')}`;
 }
 window.renderKpisPanelList = renderKpisPanelList;
 
@@ -4964,11 +5428,14 @@ window.addPositionKpi = async function(){
   const nextSort = STATE.positionKpis.filter(k=>k.position_id===positionId).length * 10 + 10;
   const { error } = await STATE.supabase.from('position_kpis').insert({
     organisation_id: STATE.org.id, position_id: positionId, title,
-    description: document.getElementById('kpi-new-description').value.trim(), sort_order: nextSort, created_by: STATE.user.id
+    description: document.getElementById('kpi-new-description').value.trim(),
+    target: document.getElementById('kpi-new-target').value.trim(),
+    source_of_measure: document.getElementById('kpi-new-source').value.trim(),
+    weight: parseFloat(document.getElementById('kpi-new-weight').value) || 0,
+    sort_order: nextSort, created_by: STATE.user.id
   });
   if(error){ toast('Could not add KPI: ' + error.message, 'error'); return; }
-  document.getElementById('kpi-new-title').value = '';
-  document.getElementById('kpi-new-description').value = '';
+  document.querySelectorAll('#kpis-panel input').forEach(el=>el.value='');
   await loadPositionKpis();
   renderKpisPanelList();
   toast('KPI added.', 'success');
@@ -5007,6 +5474,7 @@ window.submitAppraisal = async function(){
   const kpiRows = activeKpis.map(k => ({
     organisation_id: STATE.org.id, appraisal_id: newAppraisal.id,
     kpi_title: k.title, kpi_description: k.description, sort_order: k.sort_order,
+    target: k.target, source_of_measure: k.source_of_measure, weight: k.weight || 0,
   }));
   const { error: kErr } = await STATE.supabase.from('appraisal_kpis').insert(kpiRows);
   if(kErr){ toast('Appraisal created, but KPIs could not be copied in: ' + kErr.message, 'error'); }
@@ -5037,7 +5505,7 @@ function renderAppraisalsTable(){
         <td class="strong">${person ? person.full_name : '—'}</td>
         <td>${position ? position.title : '—'}</td>
         <td>${fmtDate(a.period_start)} – ${fmtDate(a.period_end)}</td>
-        <td>${a.overall_final_rating ? Number(a.overall_final_rating).toFixed(1)+' / 5' : '—'}</td>
+        <td>${a.overall_achievement_pct!==null && a.overall_achievement_pct!==undefined ? Number(a.overall_achievement_pct).toFixed(1)+'%' : '—'}</td>
         <td><span class="pill ${a.status==='finalized'?'closed':(a.status==='self_assessment_done'?'progress':'open')}"><span class="pill-dot"></span>${APPRAISAL_STATUS_LABELS[a.status]}</span></td>
       </tr>`;
     }).join('')}
@@ -5058,13 +5526,16 @@ async function openAppraisalDetail(id){
     <div class="detail-panel">
       <div class="detail-head">
         <div><span class="ref">${a.ref_code}${position ? ' · '+position.title : ''}</span><h3>${person ? person.full_name : 'Appraisal'}</h3></div>
-        <button class="close-btn" onclick="closeAppraisalDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-small" onclick="printAppraisal('${a.id}')">Print / PDF</button>
+          <button class="close-btn" onclick="closeAppraisalDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
       </div>
       <div class="detail-meta">
         <div class="dm-item"><div class="l">Period</div><div class="v">${fmtDate(a.period_start)} – ${fmtDate(a.period_end)}</div></div>
         <div class="dm-item"><div class="l">Line manager</div><div class="v">${memberName(a.line_manager_id)}</div></div>
         <div class="dm-item"><div class="l">Status</div><div class="v">${APPRAISAL_STATUS_LABELS[a.status]}</div></div>
-        <div class="dm-item"><div class="l">Result</div><div class="v">${a.overall_final_rating ? Number(a.overall_final_rating).toFixed(1)+' / 5' : '—'}</div></div>
+        <div class="dm-item"><div class="l">Result</div><div class="v">${a.overall_achievement_pct!==null && a.overall_achievement_pct!==undefined ? Number(a.overall_achievement_pct).toFixed(1)+'%' : '—'}</div></div>
       </div>
 
       ${a.status === 'draft' ? renderSendSelfAssessment(a) : ''}
@@ -5090,6 +5561,36 @@ async function openAppraisalDetail(id){
 window.openAppraisalDetail = openAppraisalDetail;
 function closeAppraisalDetail(){ document.getElementById('appraisal-detail-slot').innerHTML = ''; }
 window.closeAppraisalDetail = closeAppraisalDetail;
+
+window.printAppraisal = async function(id){
+  const a = appraisalById(id);
+  if(!a) return;
+  const person = personById(a.personnel_id);
+  const position = a.position_id ? positionById(a.position_id) : null;
+  const { data: kpis } = await STATE.supabase.from('appraisal_kpis').select('*').eq('appraisal_id', id).order('sort_order', {ascending:true});
+  const meta = [
+    ['Personnel', person ? person.full_name : '—'], ['Position', position ? position.title : '—'],
+    ['Period', `${fmtDate(a.period_start)} – ${fmtDate(a.period_end)}`], ['Line manager', memberName(a.line_manager_id)],
+    ['Status', APPRAISAL_STATUS_LABELS[a.status]], ['Overall result', a.overall_achievement_pct!==null && a.overall_achievement_pct!==undefined ? Number(a.overall_achievement_pct).toFixed(1)+'%' : '—'],
+  ];
+  let body = '';
+  if(kpis && kpis.length){
+    body += printSectionTitle('KPI Results');
+    body += printTable(['KPI','Target','Weight','Self %','Manager %','Final %'], kpis.map(k => [
+      k.kpi_title, k.target || '—', (k.weight||0)+'%',
+      k.self_achievement_pct!==null && k.self_achievement_pct!==undefined ? k.self_achievement_pct+'%' : '—',
+      k.manager_achievement_pct!==null && k.manager_achievement_pct!==undefined ? k.manager_achievement_pct+'%' : '—',
+      k.final_achievement_pct!==null && k.final_achievement_pct!==undefined ? Number(k.final_achievement_pct).toFixed(1)+'%' : '—'
+    ]));
+  }
+  if(a.status === 'finalized'){
+    body += printSectionTitle('Comments & Agreed Objectives');
+    body += `<p><b>Individual's comment:</b> ${a.self_comment || '—'}</p>`;
+    body += `<p style="margin-top:6px;"><b>Manager's comment:</b> ${a.manager_comment || '—'}</p>`;
+    body += `<p style="margin-top:6px;"><b>Agreed objectives:</b> ${a.agreed_objectives || '—'}</p>`;
+  }
+  printRecord('Performance Appraisal', a.ref_code, meta, body);
+};
 
 function renderSendSelfAssessment(a){
   const storedUrl = loadAppraisalPageUrl();
@@ -5141,39 +5642,61 @@ window.copyApprLink = function(inputId){
   navigator.clipboard.writeText(input.value).then(()=>toast('Copied.', 'success')).catch(()=>toast('Select and copy manually.', 'error'));
 };
 
+function kpiOutcomeLabel(pct){
+  if(pct === null || pct === undefined) return { text:'—', color:'var(--text-faint)' };
+  const n = Number(pct);
+  if(n < 100) return { text:'Below Expectation', color:'var(--red)' };
+  if(n === 100) return { text:'Achieved', color:'var(--green)' };
+  return { text:'Above Expectation', color:'var(--green)' };
+}
+
 function renderAppraisalKpisSection(a, kpis){
   const isReview = a.status === 'self_assessment_done';
   return `
   <div class="panel-head"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">KPIs</h3></div>
-  ${kpis.map(k => `
+  ${kpis.map(k => {
+    const finalOutcome = kpiOutcomeLabel(k.final_achievement_pct);
+    return `
     <div class="detail-card" style="margin-bottom:8px; padding:14px 16px;">
-      <div><b>${k.kpi_title}</b></div>
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div><b>${k.kpi_title}</b> <span class="mono" style="font-size:11px; color:var(--text-faint);">Weight ${k.weight||0}%</span></div>
+      </div>
+      ${k.target ? `<p style="font-size:12px; color:var(--text-dim); margin-top:4px;"><b>Target:</b> ${k.target}</p>` : ''}
+      ${k.source_of_measure ? `<p style="font-size:11.5px; color:var(--text-faint); margin-top:2px;"><b>Source:</b> ${k.source_of_measure}</p>` : ''}
       ${k.kpi_description ? `<p style="font-size:12px; color:var(--text-faint); margin-top:2px;">${k.kpi_description}</p>` : ''}
       <div style="display:flex; gap:24px; margin-top:10px; flex-wrap:wrap;">
         <div>
-          <div style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase;">Self</div>
-          <div style="font-size:14px; font-weight:600;">${k.self_rating ? k.self_rating+' / 5' : '—'}</div>
-          ${k.self_comment ? `<p style="font-size:12px; color:var(--text-dim); max-width:260px;">${k.self_comment}</p>` : ''}
+          <div style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase;">Self — % of target</div>
+          <div style="font-size:14px; font-weight:600;">${k.self_achievement_pct!==null && k.self_achievement_pct!==undefined ? k.self_achievement_pct+'%' : '—'}</div>
+          ${k.self_actual_notes ? `<p style="font-size:12px; color:var(--text-dim); max-width:260px;">${k.self_actual_notes}</p>` : ''}
         </div>
         <div>
-          <div style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase;">Manager</div>
+          <div style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase;">Manager — % of target</div>
           ${isReview ? `
-            <select id="mgr-rating-${k.id}" style="border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:13px; margin-bottom:6px;">
-              <option value="">Rate…</option>
-              ${[1,2,3,4,5].map(n=>`<option value="${n}" ${k.manager_rating===n?'selected':''}>${n}</option>`).join('')}
-            </select>
-            <input type="text" id="mgr-comment-${k.id}" placeholder="Comment" value="${(k.manager_comment||'').replace(/"/g,'&quot;')}" style="display:block; border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12px; width:200px;">
-          ` : `<div style="font-size:14px; font-weight:600;">${k.manager_rating ? k.manager_rating+' / 5' : '—'}</div>${k.manager_comment ? `<p style="font-size:12px; color:var(--text-dim); max-width:260px;">${k.manager_comment}</p>` : ''}`}
+            <input type="number" id="mgr-pct-${k.id}" placeholder="e.g. 92" step="0.1" value="${k.manager_achievement_pct ?? ''}" style="border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:13px; width:90px; margin-bottom:6px;">
+            <input type="text" id="mgr-comment-${k.id}" placeholder="Actual / notes" value="${(k.manager_actual_notes||'').replace(/"/g,'&quot;')}" style="display:block; border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12px; width:220px;">
+          ` : `<div style="font-size:14px; font-weight:600;">${k.manager_achievement_pct!==null && k.manager_achievement_pct!==undefined ? k.manager_achievement_pct+'%' : '—'}</div>${k.manager_actual_notes ? `<p style="font-size:12px; color:var(--text-dim); max-width:260px;">${k.manager_actual_notes}</p>` : ''}`}
         </div>
-        ${k.final_rating ? `<div><div style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase;">Final</div><div style="font-size:14px; font-weight:600; color:var(--red);">${Number(k.final_rating).toFixed(1)} / 5</div></div>` : ''}
+        ${k.final_achievement_pct!==null && k.final_achievement_pct!==undefined ? `<div>
+          <div style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase;">Final</div>
+          <div style="font-size:14px; font-weight:600; color:${finalOutcome.color};">${Number(k.final_achievement_pct).toFixed(1)}%</div>
+          <div style="font-size:11px; color:${finalOutcome.color};">${finalOutcome.text}</div>
+        </div>` : ''}
       </div>
     </div>
-  `).join('')}
+  `;}).join('')}
   ${isReview ? `
     <div class="detail-card" style="padding:16px; margin-bottom:16px;">
       <div class="field" style="margin-bottom:10px;"><label>Manager's overall comment — for the individual</label><textarea id="mgr-overall-comment">${a.manager_comment||''}</textarea></div>
       <div class="field" style="margin-bottom:10px;"><label>Agreed objectives for next period</label><textarea id="mgr-agreed-objectives">${a.agreed_objectives||''}</textarea></div>
       <button class="btn-primary" onclick="finalizeAppraisal('${a.id}')">Finalize appraisal</button>
+    </div>
+  ` : ''}
+  ${a.status === 'finalized' && a.overall_achievement_pct !== null && a.overall_achievement_pct !== undefined ? `
+    <div class="detail-card" style="padding:16px; margin-bottom:16px; text-align:center;">
+      <div style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Overall Weighted Performance (Target: 100%)</div>
+      <div style="font-size:32px; font-weight:700; color:${kpiOutcomeLabel(a.overall_achievement_pct).color};">${Number(a.overall_achievement_pct).toFixed(1)}%</div>
+      <div style="font-size:13px; color:${kpiOutcomeLabel(a.overall_achievement_pct).color};">${kpiOutcomeLabel(a.overall_achievement_pct).text}</div>
     </div>
   ` : ''}
   `;
@@ -5185,26 +5708,35 @@ window.finalizeAppraisal = async function(appraisalId){
 
   let anyMissing = false;
   for(const k of kpis){
-    const ratingEl = document.getElementById('mgr-rating-'+k.id);
-    if(!ratingEl || !ratingEl.value){ anyMissing = true; continue; }
-    const managerRating = parseInt(ratingEl.value, 10);
+    const pctEl = document.getElementById('mgr-pct-'+k.id);
+    if(!pctEl || pctEl.value === ''){ anyMissing = true; continue; }
+    const managerPct = parseFloat(pctEl.value);
     const commentEl = document.getElementById('mgr-comment-'+k.id);
-    const finalRating = k.self_rating ? (managerRating + k.self_rating) / 2 : managerRating;
+    // Final is the average of self and manager's assessed achievement —
+    // same "both voices count" principle the old rating system used, just
+    // applied to a real percentage-of-target now instead of a 1-5 guess.
+    const finalPct = (k.self_achievement_pct !== null && k.self_achievement_pct !== undefined)
+      ? (managerPct + Number(k.self_achievement_pct)) / 2 : managerPct;
     const { error } = await STATE.supabase.from('appraisal_kpis').update({
-      manager_rating: managerRating, manager_comment: commentEl ? commentEl.value.trim() : '', final_rating: finalRating
+      manager_achievement_pct: managerPct, manager_actual_notes: commentEl ? commentEl.value.trim() : '', final_achievement_pct: finalPct
     }).eq('id', k.id);
-    if(error){ toast('Could not save a KPI rating: ' + error.message, 'error'); return; }
+    if(error){ toast('Could not save a KPI result: ' + error.message, 'error'); return; }
   }
-  if(anyMissing){ alert('Rate every KPI before finalizing.'); return; }
+  if(anyMissing){ alert('Enter a % achievement for every KPI before finalizing.'); return; }
 
   const { data: updatedKpis } = await STATE.supabase.from('appraisal_kpis').select('*').eq('appraisal_id', appraisalId);
-  const avgManager = updatedKpis.reduce((s,k)=>s+(k.manager_rating||0),0) / updatedKpis.length;
-  const avgFinal = updatedKpis.reduce((s,k)=>s+(k.final_rating||0),0) / updatedKpis.length;
+  // A genuine weighted average, not a plain mean — a KPI weighted at 40%
+  // moves the overall score four times as much as one weighted at 10%.
+  // Normalized against the total weight actually present, so this still
+  // produces a sensible result even if weights don't add up to exactly 100.
+  const totalWeight = updatedKpis.reduce((s,k)=>s+(Number(k.weight)||0),0);
+  const weightedSum = updatedKpis.reduce((s,k)=>s+((Number(k.final_achievement_pct)||0)*(Number(k.weight)||0)),0);
+  const overallPct = totalWeight > 0 ? weightedSum / totalWeight : (updatedKpis.reduce((s,k)=>s+(Number(k.final_achievement_pct)||0),0) / updatedKpis.length);
 
   const { error: aErr } = await STATE.supabase.from('appraisals').update({
     manager_comment: document.getElementById('mgr-overall-comment').value.trim(),
     agreed_objectives: document.getElementById('mgr-agreed-objectives').value.trim(),
-    overall_manager_rating: avgManager, overall_final_rating: avgFinal,
+    overall_achievement_pct: overallPct,
     status: 'finalized', completed_at: new Date().toISOString(),
   }).eq('id', appraisalId);
   if(aErr){ toast('Could not finalize: ' + aErr.message, 'error'); return; }
@@ -5348,7 +5880,10 @@ async function openAssetDetail(id){
     <div class="detail-panel">
       <div class="detail-head">
         <div><span class="ref">${a.ref_code}${a.serial_number ? ' · S/N '+a.serial_number : ''}</span><h3>${a.description}</h3></div>
-        <button class="close-btn" onclick="closeAssetDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-small" onclick="printAsset('${a.id}')">Print / PDF</button>
+          <button class="close-btn" onclick="closeAssetDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
       </div>
       <div class="detail-meta">
         <div class="dm-item"><div class="l">Location</div><div class="v">${a.location || '—'}</div></div>
@@ -5383,6 +5918,26 @@ async function openAssetDetail(id){
 window.openAssetDetail = openAssetDetail;
 function closeAssetDetail(){ document.getElementById('asset-detail-slot').innerHTML = ''; }
 window.closeAssetDetail = closeAssetDetail;
+
+window.printAsset = async function(id){
+  const a = assetById(id);
+  if(!a) return;
+  const person = a.responsible_person_id ? personById(a.responsible_person_id) : null;
+  const { data: inspections } = await STATE.supabase.from('asset_inspections').select('*').eq('asset_id', id).order('inspection_date', {ascending:false});
+  const meta = [
+    ['Serial number', a.serial_number || '—'], ['Location', a.location || '—'], ['Responsible person', person ? person.full_name : '—'],
+    ['Status', a.current_status ? label(a.current_status) : 'Not yet inspected'], ['Next inspection due', fmtDate(a.next_inspection_date)],
+    ['Certificate', a.certificate_type || '—'], ['Certificate expiry', fmtDate(a.certificate_expiry_date)],
+  ];
+  let body = a.notes ? `<p><b>Notes</b><br>${a.notes}</p>` : '';
+  if(inspections && inspections.length){
+    body += printSectionTitle('Inspection History');
+    body += printTable(['Date','Inspected By','Result','Notes'], inspections.map(insp => [
+      fmtDate(insp.inspection_date), insp.inspected_by_name || '—', insp.status ? label(insp.status) : 'In progress', insp.overall_notes || '—'
+    ]));
+  }
+  printRecord('Asset Record', a.ref_code, meta, body);
+};
 
 window.startAssetInspection = async function(assetId){
   const a = assetById(assetId);
@@ -5579,7 +6134,10 @@ async function openBulletinDetail(id){
     <div class="detail-panel">
       <div class="detail-head">
         <div><span class="ref">${b.ref_code} · ${BULLETIN_TYPE_LABELS[b.type]} · ${fmtDate(b.published_date)}</span><h3>${b.title}</h3></div>
-        <button class="close-btn" onclick="closeBulletinDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-small" onclick="printBulletin('${b.id}')">Print / PDF</button>
+          <button class="close-btn" onclick="closeBulletinDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
       </div>
       <div style="font-size:14px; color:var(--text); line-height:1.7; white-space:pre-wrap; margin-bottom:20px;">${b.content}</div>
       ${renderEvidenceSection('bulletin', b.id, evidenceFiles)}
@@ -5589,6 +6147,14 @@ async function openBulletinDetail(id){
 window.openBulletinDetail = openBulletinDetail;
 function closeBulletinDetail(){ document.getElementById('bulletin-detail-slot').innerHTML = ''; }
 window.closeBulletinDetail = closeBulletinDetail;
+
+window.printBulletin = function(id){
+  const b = bulletinById(id);
+  if(!b) return;
+  const meta = [['Type', BULLETIN_TYPE_LABELS[b.type]], ['Published', fmtDate(b.published_date)]];
+  const body = `<p style="white-space:pre-wrap;">${b.content}</p>`;
+  printRecord(BULLETIN_TYPE_LABELS[b.type], b.ref_code, meta, body);
+};
 
 /* ---- Sign-in popup for the latest bulletin — shown before the reminders
    popup, so an announcement surfaces first, then anything overdue. ---- */
@@ -5712,6 +6278,167 @@ function renderComplianceDashboard(){
   }).join('');
 }
 window.renderComplianceDashboard = renderComplianceDashboard;
+
+/* ============ Print / PDF and Excel export — shared across every module ============ */
+
+// Renders a clean, letterhead-style read-only document into the hidden
+// print container, then triggers the browser's own print dialog — where
+// "Save as PDF" produces a real PDF with no extra software needed. This is
+// deliberately a from-scratch render, not a CSS-massaged copy of the
+// on-screen editable panel — the editable UI has buttons, dropdowns, and
+// file pickers baked into its structure that have no business appearing
+// on something you're about to email to a supplier.
+function printRecord(docTitle, refLine, metaPairs, bodyHtml, extraHtml){
+  const container = document.getElementById('print-container');
+  container.innerHTML = `
+    <div class="print-header">
+      <div class="print-brand">${STATE.org.name}</div>
+      <div class="print-doc-title">${docTitle}</div>
+      <div class="print-ref">${refLine} · Printed ${new Date().toLocaleString('en-GB')} by ${STATE.profile.name || STATE.user.email}</div>
+    </div>
+    <div class="print-meta-grid">
+      ${metaPairs.map(([k,v])=>`<div><b>${k}:</b> ${v ?? '—'}</div>`).join('')}
+    </div>
+    <div class="print-body">${bodyHtml || ''}</div>
+    ${extraHtml || ''}
+    <div class="print-footer">Generated by QaSHE Watchman — ${STATE.org.name}. This is a point-in-time snapshot; the live record may have changed since printing.</div>
+  `;
+  window.print();
+}
+window.printRecord = printRecord;
+
+function printSectionTitle(text){ return `<div class="print-section-title">${text}</div>`; }
+function printTable(headers, rows){
+  return `<table class="print-table"><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr>
+    ${rows.map(r=>`<tr>${r.map(c=>`<td>${c ?? '—'}</td>`).join('')}</tr>`).join('')}</table>`;
+}
+
+// Prints the currently visible register/table for a module — same engine,
+// just fed a table instead of a single record's fields.
+function printRegister(moduleLabel, headers, rows){
+  printRecord(
+    moduleLabel,
+    `${rows.length} record${rows.length===1?'':'s'}`,
+    [],
+    printTable(headers, rows)
+  );
+}
+window.printRegister = printRegister;
+
+let xlsxLib = null;
+async function ensureXLSX(){
+  if(!xlsxLib) xlsxLib = await import('https://esm.sh/xlsx@0.18.5');
+  return xlsxLib;
+}
+
+// columns: [{header:'Title', get: row => row.title}, ...]
+async function exportToExcel(filename, rows, columns){
+  if(!rows.length){ toast('Nothing to export with the current filters.', 'error'); return; }
+  const XLSX = await ensureXLSX();
+  const data = rows.map(row => {
+    const obj = {};
+    columns.forEach(col => { obj[col.header] = col.get(row) ?? ''; });
+    return obj;
+  });
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Export');
+  XLSX.writeFile(wb, filename);
+}
+window.exportToExcel = exportToExcel;
+
+// One column-mapping table for every module's Excel export — exports the
+// whole register, not just whatever's currently filtered on screen, since
+// "download the register" more often means all of it, not a momentary view.
+async function exportModuleExcel(moduleKey){
+  const cfg = getModuleExportConfig(moduleKey);
+  if(!cfg){ toast('Export not available for this module yet.', 'error'); return; }
+  await exportToExcel(cfg.filename, cfg.rows, cfg.columns);
+}
+window.exportModuleExcel = exportModuleExcel;
+
+function getModuleExportConfig(moduleKey){
+  const orgSlug = (STATE.org.name || 'export').replace(/[^a-zA-Z0-9]+/g,'-').toLowerCase();
+  const configs = {
+    nonconformances: { rows: STATE.ncs, filename: `nonconformances-${orgSlug}.xlsx`, columns: [
+      {header:'Ref', get:r=>r.ref_code}, {header:'Title', get:r=>r.title}, {header:'Description', get:r=>r.description},
+      {header:'Discipline', get:r=>r.discipline}, {header:'Source', get:r=>r.source}, {header:'Severity', get:r=>r.severity},
+      {header:'Status', get:r=>r.status}, {header:'Raised Date', get:r=>r.raised_date}, {header:'Target Close', get:r=>r.target_close_date},
+      {header:'Owner', get:r=>memberName(r.owner_id)},
+    ]},
+    tasks: { rows: STATE.tasks, filename: `tasks-${orgSlug}.xlsx`, columns: [
+      {header:'Title', get:r=>r.title}, {header:'Description', get:r=>r.description}, {header:'Status', get:r=>r.status},
+      {header:'Priority', get:r=>r.priority}, {header:'Assignee', get:r=>memberName(r.assignee_id)}, {header:'Due Date', get:r=>r.due_date},
+    ]},
+    documents: { rows: STATE.documents, filename: `documents-${orgSlug}.xlsx`, columns: [
+      {header:'Doc #', get:r=>r.doc_number}, {header:'Title', get:r=>r.title}, {header:'Revision', get:r=>r.current_revision},
+      {header:'Introduced', get:r=>r.introduced_date}, {header:'Revision Date', get:r=>r.current_revision_date},
+      {header:'Approval', get:r=>r.approval_status}, {header:'Status', get:r=>r.status}, {header:'Owner', get:r=>memberName(r.owner_id)},
+      {header:'Next Review', get:r=>r.next_review_date},
+    ]},
+    audits: { rows: STATE.audits, filename: `audits-${orgSlug}.xlsx`, columns: [
+      {header:'Ref', get:r=>r.audit_ref}, {header:'Title', get:r=>r.title}, {header:'Type', get:r=>r.audit_type},
+      {header:'Standard', get:r=>r.standard}, {header:'Status', get:r=>r.status}, {header:'Planned Date', get:r=>r.planned_date},
+      {header:'Actual Date', get:r=>r.actual_date}, {header:'Auditor', get:r=>r.auditor_id ? memberName(r.auditor_id) : (r.external_auditor_name||'')},
+    ]},
+    risks: { rows: STATE.risks, filename: `risk-register-${orgSlug}.xlsx`, columns: [
+      {header:'Ref', get:r=>r.ref_code}, {header:'Title', get:r=>r.title}, {header:'Type', get:r=>r.entry_type},
+      {header:'Category', get:r=>r.category}, {header:'Score', get:r=>r.inherent_score}, {header:'Status', get:r=>r.status},
+      {header:'Owner', get:r=>memberName(r.owner_id)}, {header:'Review Date', get:r=>r.review_date},
+    ]},
+    legal: { rows: STATE.legalRegister, filename: `legal-register-${orgSlug}.xlsx`, columns: [
+      {header:'Ref', get:r=>r.ref_code}, {header:'Title', get:r=>r.title}, {header:'Description', get:r=>r.description},
+      {header:'Status', get:r=>r.current_status}, {header:'Last Reviewed', get:r=>r.last_reviewed_date},
+      {header:'Next Review Due', get:r=>r.next_review_due_date}, {header:'Owner', get:r=>memberName(r.owner_id)},
+    ]},
+    suppliers: { rows: STATE.suppliers, filename: `suppliers-${orgSlug}.xlsx`, columns: [
+      {header:'Ref', get:r=>r.ref_code}, {header:'Name', get:r=>r.name}, {header:'Scope of Supply', get:r=>r.scope_of_supply},
+      {header:'Risk', get:r=>r.risk_classification}, {header:'Status', get:r=>r.status}, {header:'Owner', get:r=>memberName(r.owner_id)},
+      {header:'Next Review', get:r=>r.next_review_date},
+    ]},
+    customers: { rows: STATE.customers, filename: `customers-${orgSlug}.xlsx`, columns: [
+      {header:'Ref', get:r=>r.ref_code||''}, {header:'Name', get:r=>r.name}, {header:'Contact Name', get:r=>r.contact_name},
+      {header:'Contact Email', get:r=>r.contact_email}, {header:'Contact Phone', get:r=>r.contact_phone},
+    ]},
+    objectives: { rows: STATE.objectives, filename: `objectives-${orgSlug}.xlsx`, columns: [
+      {header:'Ref', get:r=>r.ref_code}, {header:'Category', get:r=>r.category}, {header:'Specific', get:r=>r.specific_statement},
+      {header:'Target', get:r=>r.target_value}, {header:'Status', get:r=>r.status}, {header:'Target Date', get:r=>r.target_date},
+      {header:'Owner', get:r=>memberName(r.owner_id)},
+    ]},
+    personnel: { rows: STATE.personnel, filename: `personnel-${orgSlug}.xlsx`, columns: [
+      {header:'Ref', get:r=>r.ref_code}, {header:'Full Name', get:r=>r.full_name}, {header:'Company #', get:r=>r.company_number},
+      {header:'Type', get:r=>r.employment_type}, {header:'Status', get:r=>r.status}, {header:'Date Started', get:r=>r.date_started},
+    ]},
+    training: { rows: STATE.training, filename: `training-${orgSlug}.xlsx`, columns: [
+      {header:'Ref', get:r=>r.ref_code}, {header:'Training Required', get:r=>r.training_required}, {header:'Personnel', get:r=>{const p=personById(r.personnel_id); return p?p.full_name:'';}},
+      {header:'Status', get:r=>r.status}, {header:'Delivery', get:r=>r.delivery_type}, {header:'Due Date', get:r=>r.due_date},
+    ]},
+    appraisals: { rows: STATE.appraisals, filename: `appraisals-${orgSlug}.xlsx`, columns: [
+      {header:'Ref', get:r=>r.ref_code}, {header:'Personnel', get:r=>{const p=personById(r.personnel_id); return p?p.full_name:'';}},
+      {header:'Period Start', get:r=>r.period_start}, {header:'Period End', get:r=>r.period_end}, {header:'Status', get:r=>r.status},
+      {header:'Overall Achievement %', get:r=>r.overall_achievement_pct},
+    ]},
+    assets: { rows: STATE.assets, filename: `assets-${orgSlug}.xlsx`, columns: [
+      {header:'Ref', get:r=>r.ref_code}, {header:'Description', get:r=>r.description}, {header:'Location', get:r=>r.location},
+      {header:'Status', get:r=>r.current_status}, {header:'Next Inspection', get:r=>r.next_inspection_date},
+      {header:'Certificate Expiry', get:r=>r.certificate_expiry_date},
+    ]},
+    bulletins: { rows: STATE.bulletins, filename: `bulletins-${orgSlug}.xlsx`, columns: [
+      {header:'Ref', get:r=>r.ref_code}, {header:'Type', get:r=>r.type}, {header:'Title', get:r=>r.title},
+      {header:'Published', get:r=>r.published_date},
+    ]},
+  };
+  return configs[moduleKey];
+}
+
+async function printCurrentRegister(moduleKey, moduleLabel){
+  const cfg = getModuleExportConfig(moduleKey);
+  if(!cfg){ toast('Print not available for this module yet.', 'error'); return; }
+  const headers = cfg.columns.map(c=>c.header);
+  const rows = cfg.rows.map(row => cfg.columns.map(c => c.get(row) ?? ''));
+  printRegister(moduleLabel, headers, rows);
+}
+window.printCurrentRegister = printCurrentRegister;
 
 /* ============ BOOT ============ */
 let supabaseLib = null;
