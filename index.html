@@ -696,8 +696,8 @@ function toast(msg, kind){
 // Row-Level Security rather than secrecy. Fill in your actual project
 // values before deploying. No one using this app — including real clients
 // — should ever need to know these exist.
-const SUPABASE_URL = "https://uzywxhptwavnvpfzbhkb.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_8XxT0I-Qdmswhd2I-TT_jg_CuI8a24f";
+   const SUPABASE_URL = "https://uzywxhptwavnvpfzbhkb.supabase.co";
+   const SUPABASE_ANON_KEY = "sb_publishable_8XxT0I-Qdmswhd2I-TT_jg_CuI8a24f";
 
 function initSupabase(url, key){
   STATE.supabase = supabaseLib.createClient(url, key);
@@ -2109,16 +2109,28 @@ window.closeNCDetail = closeNCDetail;
 window.printNC = async function(id){
   const n = ncById(id);
   if(!n) return;
+  const linkedTasks = STATE.tasks.filter(t=>t.linked_type==='nonconformance' && t.linked_id===id);
+  const { data: history } = await STATE.supabase.from('nonconformance_history').select('*').eq('nonconformance_id', id).order('changed_at', {ascending:true});
+  const { data: sourceFindings } = await STATE.supabase.from('audit_findings').select('id, audit_id, clause_reference, audits(audit_ref, title)').eq('nonconformance_id', id);
+  const sourceFinding = sourceFindings && sourceFindings[0];
+  const { data: riskLinks } = await STATE.supabase.from('nc_risk_links').select('risk_id, risk_register(ref_code, title)').eq('nonconformance_id', id);
   const { data: rcaRows } = await STATE.supabase.from('root_cause_analyses').select('*').eq('nonconformance_id', id);
   const rca = rcaRows && rcaRows[0];
-  const { data: riskLinks } = await STATE.supabase.from('nc_risk_links').select('risk_id, risk_register(ref_code, title)').eq('nonconformance_id', id);
+  let rcaParticipants = [];
+  if(rca){
+    const { data: participants } = await STATE.supabase.from('rca_participants').select('id, user_id').eq('rca_id', rca.id);
+    rcaParticipants = participants || [];
+  }
   const { files: evidenceFiles } = await loadEvidence('nonconformance', id);
+  const supplier = n.supplier_id ? STATE.suppliers.find(s=>s.id===n.supplier_id) : null;
 
   const meta = [
     ['Discipline', label(n.discipline)], ['Source', label(n.source)], ['Severity', label(n.severity)],
     ['Status', label(n.status)], ['Owner', memberName(n.owner_id)], ['Raised by', memberName(n.raised_by)],
     ['Raised date', fmtDate(n.raised_date)], ['Target close date', fmtDate(n.target_close_date)],
   ];
+  if(supplier) meta.push(['Supplier', `${supplier.ref_code} — ${supplier.name}`]);
+  if(sourceFinding) meta.push(['Raised from audit', `${sourceFinding.audits ? sourceFinding.audits.audit_ref+' — '+sourceFinding.audits.title : 'audit finding'}`]);
   if(n.status === 'closed'){
     meta.push(['Verified by', memberName(n.verified_by)], ['Verified date', fmtDate(n.verified_date)], ['Closure signature', n.closure_signature_name || '—']);
   }
@@ -2126,17 +2138,33 @@ window.printNC = async function(id){
   let body = `<p><b>Description</b><br>${n.description || 'No description recorded.'}</p>`;
   if(n.standard_clause) body += `<p style="margin-top:10px;"><b>Standard clause:</b> ${n.standard_clause}</p>`;
   if(n.correction) body += printSectionTitle('Correction / Corrective Action') + `<p>${n.correction}</p>`;
+
   if(rca){
     body += printSectionTitle('Root Cause Analysis');
     for(let i=1;i<=5;i++){ if(rca['why_'+i]) body += `<p><b>Why ${i}:</b> ${rca['why_'+i]}</p>`; }
     if(rca.concluded_root_cause) body += `<p style="margin-top:6px;"><b>Root cause:</b> ${rca.concluded_root_cause}</p>`;
+    if(rcaParticipants.length) body += `<p style="margin-top:6px;"><b>Participants:</b> ${rcaParticipants.map(p=>memberName(p.user_id)).join(', ')}</p>`;
   }
+
   if(riskLinks && riskLinks.length){
     body += printSectionTitle('Linked Risks & Opportunities');
     body += '<ul>' + riskLinks.map(l=>`<li>${l.risk_register.ref_code} — ${l.risk_register.title}</li>`).join('') + '</ul>';
   }
+
+  if(linkedTasks.length){
+    body += printSectionTitle('Corrective Action Tasks');
+    body += printTable(['Task','Assignee','Due','Status'], linkedTasks.map(t => [t.title, memberName(t.assignee_id), fmtDate(t.due_date), label(t.status)]));
+  }
+
   if(evidenceFiles && evidenceFiles.length){
     body += printSectionTitle('Evidence Attached') + '<ul>' + evidenceFiles.map(f=>`<li>${f.file_name}</li>`).join('') + '</ul>';
+  }
+
+  if(history && history.length){
+    body += printSectionTitle('Change History');
+    body += printTable(['Date','Field Changed','New Value','Changed By'], history.map(h => [
+      new Date(h.changed_at).toLocaleString('en-GB'), label(h.field_changed), h.new_value || '—', memberName(h.changed_by)
+    ]));
   }
 
   printRecord('Nonconformance Report', n.ref_code, meta, body);
@@ -2672,13 +2700,14 @@ function renderRisksTable(){
     return;
   }
   wrap.innerHTML = `<table>
-    <tr><th>Ref</th><th>Title</th><th>Type</th><th>Category</th><th>Score</th><th>Owner</th><th>Review</th><th>Status</th></tr>
+    <tr><th>Ref</th><th>Title</th><th>Type</th><th>Category</th><th>Inherent</th><th>Residual</th><th>Owner</th><th>Review</th><th>Status</th></tr>
     ${rows.map(r=>`<tr class="clickable" onclick="openRiskDetail('${r.id}')">
       <td class="mono-cell">${r.ref_code}</td>
       <td class="strong">${r.title}</td>
       <td>${entryTypeBadge(r.entry_type)}</td>
       <td>${riskCategoryLabel(r.category)}</td>
       <td>${scoreBadge(r.inherent_score)}</td>
+      <td>${scoreBadge(r.residual_score)}</td>
       <td>${memberName(r.owner_id)}</td>
       <td>${dateStatusBadge(r.review_date, r.status==='closed')}</td>
       <td>${pill(r.status)}</td>
@@ -3126,16 +3155,74 @@ function renderDocDepartmentsList(){
   const wrap = document.getElementById('doc-departments-list');
   if(!wrap) return;
   wrap.innerHTML = STATE.docDepartments.length ? STATE.docDepartments.map(d => `
-    <div class="evidence-row"><div style="flex:1;"><b class="mono-cell">${d.code}</b> — ${d.name}</div></div>
+    <div class="evidence-row">
+      <div style="flex:1;"><b class="mono-cell">${d.code}</b> — <span id="dept-name-${d.id}">${d.name}</span></div>
+      <div class="ev-actions"><button class="btn-small" onclick="toggleEditDept('${d.id}')">Edit</button></div>
+    </div>
+    <div id="dept-edit-${d.id}"></div>
   `).join('') : '<p style="font-size:12px; color:var(--text-faint);">No departments yet.</p>';
 }
 function renderDocTypesList(){
   const wrap = document.getElementById('doc-types-list');
   if(!wrap) return;
   wrap.innerHTML = STATE.docTypes.length ? STATE.docTypes.map(t => `
-    <div class="evidence-row"><div style="flex:1;"><b class="mono-cell">${t.code}</b> — ${t.name}</div></div>
+    <div class="evidence-row">
+      <div style="flex:1;"><b class="mono-cell">${t.code}</b> — <span id="type-name-${t.id}">${t.name}</span></div>
+      <div class="ev-actions"><button class="btn-small" onclick="toggleEditType('${t.id}')">Edit</button></div>
+    </div>
+    <div id="type-edit-${t.id}"></div>
   `).join('') : '<p style="font-size:12px; color:var(--text-faint);">No document types yet.</p>';
 }
+
+window.toggleEditDept = function(id){
+  const slot = document.getElementById('dept-edit-'+id);
+  if(!slot) return;
+  if(slot.innerHTML.trim()){ slot.innerHTML = ''; return; }
+  const d = STATE.docDepartments.find(x=>x.id===id);
+  if(!d) return;
+  slot.innerHTML = `
+    <div style="display:flex; gap:6px; padding:6px 0 10px;">
+      <input id="dept-edit-input-${id}" value="${d.name.replace(/"/g,'&quot;')}" style="flex:1; border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12.5px;">
+      <button class="btn-small primary" onclick="saveDeptName('${id}')">Save</button>
+      <button class="btn-small" onclick="toggleEditDept('${id}')">Cancel</button>
+    </div>
+    <p style="font-size:11px; color:var(--text-faint); margin-bottom:8px;">The code (${d.code}) can't be changed here — it's already part of every document number issued under it. Only the description can be edited.</p>
+  `;
+};
+window.toggleEditType = function(id){
+  const slot = document.getElementById('type-edit-'+id);
+  if(!slot) return;
+  if(slot.innerHTML.trim()){ slot.innerHTML = ''; return; }
+  const t = STATE.docTypes.find(x=>x.id===id);
+  if(!t) return;
+  slot.innerHTML = `
+    <div style="display:flex; gap:6px; padding:6px 0 10px;">
+      <input id="type-edit-input-${id}" value="${t.name.replace(/"/g,'&quot;')}" style="flex:1; border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12.5px;">
+      <button class="btn-small primary" onclick="saveTypeName('${id}')">Save</button>
+      <button class="btn-small" onclick="toggleEditType('${id}')">Cancel</button>
+    </div>
+    <p style="font-size:11px; color:var(--text-faint); margin-bottom:8px;">The code (${t.code}) can't be changed here — it's already part of every document number issued under it. Only the description can be edited.</p>
+  `;
+};
+
+window.saveDeptName = async function(id){
+  const newName = document.getElementById('dept-edit-input-'+id).value.trim();
+  if(!newName){ alert('Description cannot be empty.'); return; }
+  const { error } = await STATE.supabase.from('document_departments').update({ name:newName }).eq('id', id);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  await loadDocDepartments();
+  renderDocDepartmentsList();
+  toast('Department description updated.', 'success');
+};
+window.saveTypeName = async function(id){
+  const newName = document.getElementById('type-edit-input-'+id).value.trim();
+  if(!newName){ alert('Description cannot be empty.'); return; }
+  const { error } = await STATE.supabase.from('document_types').update({ name:newName }).eq('id', id);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  await loadDocTypes();
+  renderDocTypesList();
+  toast('Document type description updated.', 'success');
+};
 
 window.addDocDepartment = async function(){
   const code = document.getElementById('dept-new-code').value.trim().toUpperCase();
@@ -6383,7 +6470,7 @@ function getModuleExportConfig(moduleKey){
     ]},
     risks: { rows: STATE.risks, filename: `risk-register-${orgSlug}.xlsx`, columns: [
       {header:'Ref', get:r=>r.ref_code}, {header:'Title', get:r=>r.title}, {header:'Type', get:r=>r.entry_type},
-      {header:'Category', get:r=>r.category}, {header:'Score', get:r=>r.inherent_score}, {header:'Status', get:r=>r.status},
+      {header:'Category', get:r=>r.category}, {header:'Inherent Score', get:r=>r.inherent_score}, {header:'Residual Score', get:r=>r.residual_score}, {header:'Status', get:r=>r.status},
       {header:'Owner', get:r=>memberName(r.owner_id)}, {header:'Review Date', get:r=>r.review_date},
     ]},
     legal: { rows: STATE.legalRegister, filename: `legal-register-${orgSlug}.xlsx`, columns: [
