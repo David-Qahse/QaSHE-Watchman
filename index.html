@@ -652,7 +652,7 @@ const BULLETIN_TYPE_LABELS = { bulletin: 'Bulletin', toolbox_talk: 'Toolbox Talk
 
 const STATE = {
   supabase:null, user:null, profile:null,
-  memberships:[], org:null, myRole:null,
+  memberships:[], org:null, myRole:null, myModuleAccess:[],
   members:[], memberMap:{},
   ncs:[], tasks:[], audits:[], risks:[], documents:[], suppliers:[], customers:[], satisfactionQuestions:[], objectives:[], legalRegister:[],
   positions:[], personnel:[], competence:[], training:[], positionKpis:[], appraisals:[],
@@ -696,8 +696,8 @@ function toast(msg, kind){
 // Row-Level Security rather than secrecy. Fill in your actual project
 // values before deploying. No one using this app — including real clients
 // — should ever need to know these exist.
-   const SUPABASE_URL = "https://uzywxhptwavnvpfzbhkb.supabase.co";
-   const SUPABASE_ANON_KEY = "sb_publishable_8XxT0I-Qdmswhd2I-TT_jg_CuI8a24f";
+const SUPABASE_URL = "https://uzywxhptwavnvpfzbhkb.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_8XxT0I-Qdmswhd2I-TT_jg_CuI8a24f";
 
 function initSupabase(url, key){
   STATE.supabase = supabaseLib.createClient(url, key);
@@ -766,7 +766,7 @@ async function afterSignIn(user){
 
   const { data: memberships, error: memErr } = await STATE.supabase
     .from('organisation_members')
-    .select('organisation_id, role, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color)')
+    .select('organisation_id, role, module_access, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color)')
     .eq('user_id', user.id).eq('status','active');
 
   if(memErr){ toast('Could not load your organisations: ' + memErr.message, 'error'); return; }
@@ -794,6 +794,7 @@ window.selectOrg = async function(orgId){
   if(!membership) return;
   STATE.org = membership.organisations;
   STATE.myRole = membership.role;
+  STATE.myModuleAccess = membership.module_access || [];
 
   const { data: members, error: memErr } = await STATE.supabase
     .from('organisation_members')
@@ -834,6 +835,7 @@ window.selectOrg = async function(orgId){
   applyBranding(STATE.org);
   document.getElementById('switch-org-link').style.display = STATE.memberships.length > 1 ? 'flex' : 'none';
   document.getElementById('user-avatar').textContent = (STATE.profile.name || STATE.user.email).slice(0,2).toUpperCase();
+  applyModuleAccessToNav();
   window.scrollTo({top:0, behavior:'instant'});
   showModule(pendingModule || 'overview');
   setTimeout(showLatestBulletinPopup, 400); // bulletin first, then reminders — small delay so it doesn't collide with the view transition
@@ -975,7 +977,27 @@ const MODULE_META = {
   bulletins:{title:'Bulletins & Toolbox Talks', sub:() => 'MOD-15 · Notices with downloadable material'},
 };
 
+const GATED_MODULES = ['nonconformances','tasks','documents','audits','risks','suppliers','customers','objectives','legal','personnel','training','appraisals','assets','bulletins'];
+
+function canAccessModule(mod){
+  if(!GATED_MODULES.includes(mod)) return true; // overview, compliance — always visible
+  if(STATE.myRole === 'admin') return true;
+  return (STATE.myModuleAccess || []).includes(mod);
+}
+
+function applyModuleAccessToNav(){
+  GATED_MODULES.forEach(mod => {
+    const navEl = document.querySelector('.nav-item[data-mod="'+mod+'"]');
+    if(navEl) navEl.style.display = canAccessModule(mod) ? '' : 'none';
+  });
+}
+window.applyModuleAccessToNav = applyModuleAccessToNav;
+
 function showModule(mod){
+  if(!canAccessModule(mod)){
+    toast("You don't have access to that module — contact your organisation's admin if you need it.", 'error');
+    mod = 'overview';
+  }
   document.querySelectorAll('.nav-item[data-mod]').forEach(el=>el.classList.remove('active'));
   const navEl = document.querySelector('.nav-item[data-mod="'+mod+'"]');
   if(navEl) navEl.classList.add('active');
