@@ -58,6 +58,11 @@
   .error-box{background:#FCEAEA; color:#B21616; padding:16px; border-radius:8px; font-size:13.5px; line-height:1.5;}
   .success-icon{width:48px; height:48px; border-radius:50%; background:#E9F5EE; color:#2E7D4F; display:flex; align-items:center; justify-content:center; margin-bottom:16px;}
   .success-icon svg{width:24px; height:24px; stroke:currentColor; fill:none; stroke-width:2;}
+  .legend-card{background:#F7F6F5; border-radius:10px; padding:16px 18px; margin-bottom:20px;}
+  .legend-card p{font-size:12.5px; color:#615C59; line-height:1.55; margin-bottom:12px;}
+  .legend-card table{width:100%; font-size:12px;}
+  .legend-card td:first-child{font-weight:700; color:#B21616; padding:3px 10px 3px 0; width:18px; vertical-align:top;}
+  .legend-card td:last-child{padding:3px 0; color:#615C59;}
 </style>
 </head>
 <body>
@@ -73,6 +78,16 @@
     <div class="brand-row" id="brand-row"></div>
     <h1>Self-assessment</h1>
     <p class="sub" id="form-sub"></p>
+    <div class="legend-card">
+      <p>Rate honestly, not generously — this is more useful to you and your manager as an accurate picture than a comfortable one. For each KPI below, think about what actually happened during the period, then prepare something that supports the rating you choose — a short performance declaration by email or memo, a task log, whatever record actually shows it. Bring or send this to your manager; it becomes part of your appraisal record.</p>
+      <table>
+        <tr><td>1</td><td>No capability</td></tr>
+        <tr><td>2</td><td>Developing competence, requires supervision and training</td></tr>
+        <tr><td>3</td><td>Generally compliant with requirements</td></tr>
+        <tr><td>4</td><td>Fully compliant with requirements</td></tr>
+        <tr><td>5</td><td>Exceeds requirements and able to train others</td></tr>
+      </table>
+    </div>
     <div id="kpis-wrap"></div>
     <div class="field">
       <label>Overall comment — for the organisation</label>
@@ -93,7 +108,6 @@
 // ── Configuration ──────────────────────────────────────────────────────────
 const SUPABASE_URL = "https://uzywxhptwavnvpfzbhkb.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_8XxT0I-Qdmswhd2I-TT_jg_CuI8a24f";
-
 // ─────────────────────────────────────────────────────────────────────────
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -131,7 +145,7 @@ async function init(){
     ? `<img src="${data.org_logo_url}" alt="${data.org_name} logo">`
     : `<span class="fallback">${data.org_name}</span>`;
   document.getElementById('form-sub').textContent =
-    `${data.personnel_name} — ${data.position_title || 'your role'} — ${data.period_start} to ${data.period_end}. For each KPI below, enter your assessment of what you actually achieved against its target, as a percentage.`;
+    `${data.personnel_name} — ${data.position_title || 'your role'} — ${data.period_start} to ${data.period_end}. For each KPI below, rate yourself against its target using the scale explained above.`;
 
   document.getElementById('kpis-wrap').innerHTML = kpis.map(k => `
     <div class="kpi">
@@ -140,10 +154,17 @@ async function init(){
       ${k.source_of_measure ? `<div class="k-desc"><b>Source of measure:</b> ${k.source_of_measure}</div>` : ''}
       ${k.description ? `<div class="k-desc">${k.description}</div>` : ''}
       <div class="field" style="margin-top:10px;">
-        <label>Your achievement against target (%)</label>
-        <input type="number" id="pct-${k.id}" step="0.1" placeholder="e.g. 92">
+        <label>Your rating (1–5)</label>
+        <select id="rating-${k.id}">
+          <option value="">Select a rating…</option>
+          <option value="1">1 — No capability</option>
+          <option value="2">2 — Developing competence, requires supervision and training</option>
+          <option value="3">3 — Generally compliant with requirements</option>
+          <option value="4">4 — Fully compliant with requirements</option>
+          <option value="5">5 — Exceeds requirements and able to train others</option>
+        </select>
       </div>
-      <textarea id="comment-${k.id}" placeholder="What did you actually achieve — the real number or outcome, for context"></textarea>
+      <textarea id="comment-${k.id}" placeholder="What supports this rating — the actual outcome, and how you'll evidence it to your manager"></textarea>
     </div>
   `).join('');
 
@@ -160,11 +181,11 @@ window.submitAssessment = async function(){
   errEl.innerHTML = '';
 
   const unanswered = kpis.filter(k => {
-    const el = document.getElementById('pct-'+k.id);
+    const el = document.getElementById('rating-'+k.id);
     return !el || el.value === '';
   });
   if(unanswered.length){
-    errEl.innerHTML = `<div class="error-box" style="margin-bottom:16px;">Please enter an achievement % for all ${kpis.length} KPI${kpis.length>1?'s':''} before submitting.</div>`;
+    errEl.innerHTML = `<div class="error-box" style="margin-bottom:16px;">Please select a rating for all ${kpis.length} KPI${kpis.length>1?'s':''} before submitting.</div>`;
     return;
   }
 
@@ -173,7 +194,10 @@ window.submitAssessment = async function(){
 
   const ratingsPayload = kpis.map(k => ({
     id: k.id,
-    achievement_pct: parseFloat(document.getElementById('pct-'+k.id).value),
+    // Converted to a percentage here so the database side doesn't need to
+    // know anything changed — 1-5 becomes 20/40/60/80/100, same field it
+    // always was.
+    achievement_pct: parseInt(document.getElementById('rating-'+k.id).value, 10) * 20,
     notes: document.getElementById('comment-'+k.id).value.trim()
   }));
   const selfComment = document.getElementById('self-comment').value.trim();
