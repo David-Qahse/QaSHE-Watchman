@@ -298,6 +298,9 @@
   .reminder-modal h3{font-family:'Poppins'; font-size:18px; font-weight:700; margin-bottom:4px;}
   .reminder-modal p.sub{font-size:12.5px; color:var(--text-faint); margin-bottom:18px;}
   .reminder-row{display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border-soft); cursor:pointer;}
+  .reminder-group-label{font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.06em; margin-top:14px; margin-bottom:2px; cursor:pointer;}
+  .reminder-group-label:first-of-type{margin-top:4px;}
+  .rr-person{color:var(--text-faint); font-weight:400;}
   .reminder-row:last-child{border-bottom:none;}
   .reminder-row:hover{background:var(--grey-tint);}
   .reminder-row .rr-label{font-size:13.5px; font-weight:500;}
@@ -645,6 +648,14 @@ const APPRAISAL_STATUS_LABELS = {
   self_assessment_done: 'Ready for manager review',
   finalized: 'Finalized',
 };
+const KPI_RATING_LEGEND = [
+  { value: 1, label: 'No capability' },
+  { value: 2, label: 'Developing competence, requires supervision and training' },
+  { value: 3, label: 'Generally compliant with requirements' },
+  { value: 4, label: 'Fully compliant with requirements' },
+  { value: 5, label: 'Exceeds requirements and able to train others' },
+];
+function kpiRatingToPct(rating){ return rating ? Number(rating) * 20 : null; }
 const ASSET_STATUSES = ["compliant","quarantine"];
 const INSPECTION_RESULTS = ["pass","fail","na"];
 const BULLETIN_TYPES = ["bulletin","toolbox_talk"];
@@ -658,7 +669,7 @@ const STATE = {
   positions:[], personnel:[], competence:[], training:[], positionKpis:[], appraisals:[],
   assetChecklistTemplates:[], assetChecklistItems:[], assets:[], bulletins:[],
   checklistTemplates:[],
-  docDepartments:[], docTypes:[],
+  docDepartments:[], docTypes:[], formIdentifications:[], ncTypes:[],
 };
 let personnelView = 'register';
 let pendingModule = 'overview';
@@ -806,12 +817,14 @@ window.selectOrg = async function(orgId){
   STATE.members.forEach(m => { STATE.memberMap[m.user_id] = (m.profiles && m.profiles.name) || 'Unknown'; });
 
   await loadNCs();
+  await loadNCTypes();
   await loadTasks();
   await loadAudits();
   await loadRisks();
   await loadDocuments();
   await loadDocDepartments();
   await loadDocTypes();
+  await loadFormIdentifications();
   await loadChecklistTemplates();
   await loadSuppliers();
   await loadCustomers();
@@ -846,6 +859,11 @@ async function loadNCs(){
   if(error){ toast('Could not load nonconformances: ' + error.message, 'error'); return; }
   STATE.ncs = data || [];
 }
+async function loadNCTypes(){
+  const { data, error } = await STATE.supabase.from('nc_types').select('*').eq('organisation_id', STATE.org.id).order('sort_order', {ascending:true});
+  if(error){ toast('Could not load nonconformance types: ' + error.message, 'error'); return; }
+  STATE.ncTypes = data || [];
+}
 async function loadTasks(){
   const { data, error } = await STATE.supabase.from('tasks').select('*').eq('organisation_id', STATE.org.id).order('due_date', {ascending:true});
   if(error){ toast('Could not load tasks: ' + error.message, 'error'); return; }
@@ -875,6 +893,11 @@ async function loadDocTypes(){
   const { data, error } = await STATE.supabase.from('document_types').select('*').eq('organisation_id', STATE.org.id).order('code', {ascending:true});
   if(error){ toast('Could not load document types: ' + error.message, 'error'); return; }
   STATE.docTypes = data || [];
+}
+async function loadFormIdentifications(){
+  const { data, error } = await STATE.supabase.from('form_identifications').select('*').eq('organisation_id', STATE.org.id);
+  if(error){ toast('Could not load form identifications: ' + error.message, 'error'); return; }
+  STATE.formIdentifications = data || [];
 }
 async function loadChecklistTemplates(){
   if(STATE.checklistTemplates.length) return; // global reference data, load once per session
@@ -1077,29 +1100,30 @@ function dateStatusBadge(dateStr, resolved){
 // (planned → in progress → report issued), not a calendar countdown, so
 // "overdue" doesn't mean the same thing there.
 const DATE_TRACKED_MODULES = [
-  { key:'nonconformances', label:'Nonconformances', list:() => STATE.ncs, dateField:'target_close_date', isResolved:x=>x.status==='closed' },
-  { key:'tasks', label:'Tasks', list:() => STATE.tasks, dateField:'due_date', isResolved:x=>x.status==='done' },
-  { key:'documents', label:'Documents', list:() => STATE.documents, dateField:'next_review_date', isResolved:x=>['withdrawn','superseded'].includes(x.status) },
-  { key:'suppliers', label:'Suppliers', list:() => STATE.suppliers, dateField:'next_review_date', isResolved:x=>x.status==='removed' },
-  { key:'objectives', label:'Objectives & Targets', list:() => STATE.objectives, dateField:'target_date', isResolved:x=>['achieved','not_achieved','discontinued'].includes(x.status) },
-  { key:'legal', label:'Legal Compliance', list:() => STATE.legalRegister, dateField:'next_review_due_date', isResolved:() => false },
-  { key:'training', label:'Training', list:() => STATE.training, dateField:'due_date', isResolved:x=>['completed','cancelled'].includes(x.status) },
-  { key:'risks', label:'Risk & Opportunity', list:() => STATE.risks, dateField:'review_date', isResolved:x=>x.status==='closed' },
-  { key:'appraisals', label:'KPIs & Appraisals', list:() => STATE.appraisals, dateField:'period_end', isResolved:x=>x.status==='finalized' },
-  { key:'assets', label:'Assets — Inspection Due', list:() => STATE.assets, dateField:'next_inspection_date', isResolved:() => false },
-  { key:'assets', label:'Assets — Certificate Expiry', list:() => STATE.assets, dateField:'certificate_expiry_date', isResolved:() => false },
+  { key:'nonconformances', label:'Nonconformances', list:() => STATE.ncs, dateField:'target_close_date', isResolved:x=>x.status==='closed', titleField:'title', getPerson:x=>memberName(x.owner_id) },
+  { key:'tasks', label:'Tasks', list:() => STATE.tasks, dateField:'due_date', isResolved:x=>x.status==='done', titleField:'title', getPerson:x=>memberName(x.assignee_id) },
+  { key:'documents', label:'Documents', list:() => STATE.documents, dateField:'next_review_date', isResolved:x=>['withdrawn','superseded'].includes(x.status), titleField:'title', getPerson:x=>memberName(x.owner_id) },
+  { key:'suppliers', label:'Suppliers', list:() => STATE.suppliers, dateField:'next_review_date', isResolved:x=>x.status==='removed', titleField:'name', getPerson:x=>memberName(x.owner_id) },
+  { key:'objectives', label:'Objectives & Targets', list:() => STATE.objectives, dateField:'target_date', isResolved:x=>['achieved','not_achieved','discontinued'].includes(x.status), titleField:'specific_statement', getPerson:x=>memberName(x.owner_id) },
+  { key:'legal', label:'Legal Compliance', list:() => STATE.legalRegister, dateField:'next_review_due_date', isResolved:() => false, titleField:'title', getPerson:x=>memberName(x.owner_id) },
+  { key:'training', label:'Training', list:() => STATE.training, dateField:'due_date', isResolved:x=>['completed','cancelled'].includes(x.status), titleField:'training_required', getPerson:x=>{const p=personById(x.personnel_id); return p?p.full_name:'—';} },
+  { key:'risks', label:'Risk & Opportunity', list:() => STATE.risks, dateField:'review_date', isResolved:x=>x.status==='closed', titleField:'title', getPerson:x=>memberName(x.owner_id) },
+  { key:'appraisals', label:'KPIs & Appraisals', list:() => STATE.appraisals, dateField:'period_end', isResolved:x=>x.status==='finalized', titleField:null, getPerson:x=>{const p=personById(x.personnel_id); return p?p.full_name:'—';} },
+  { key:'assets', label:'Assets — Inspection Due', list:() => STATE.assets, dateField:'next_inspection_date', isResolved:() => false, titleField:'description', getPerson:x=>{const p=x.responsible_person_id?personById(x.responsible_person_id):null; return p?p.full_name:'—';} },
+  { key:'assets', label:'Assets — Certificate Expiry', list:() => STATE.assets, dateField:'certificate_expiry_date', isResolved:() => false, titleField:'description', getPerson:x=>{const p=x.responsible_person_id?personById(x.responsible_person_id):null; return p?p.full_name:'—';} },
 ];
 
 function computeDueSummary(){
   return DATE_TRACKED_MODULES.map(mod => {
     let overdue = 0, dueSoon = 0;
+    const items = [];
     mod.list().forEach(item => {
       const resolved = mod.isResolved(item);
       const info = dateStatusInfo(item[mod.dateField], resolved);
-      if(info.state === 'red') overdue++;
-      else if(info.state === 'yellow') dueSoon++;
+      if(info.state === 'red'){ overdue++; items.push({item, state:'red'}); }
+      else if(info.state === 'yellow'){ dueSoon++; items.push({item, state:'yellow'}); }
     });
-    return { ...mod, overdue, dueSoon };
+    return { ...mod, overdue, dueSoon, items };
   }).filter(m => m.overdue > 0 || m.dueSoon > 0);
 }
 
@@ -1111,13 +1135,15 @@ function showReminderPopup(){
   document.getElementById('reminder-modal-content').innerHTML = `
     <h3>Reminders</h3>
     <p class="sub">${totalOverdue} item${totalOverdue===1?'':'s'} overdue, ${totalDueSoon} due within 30 days.</p>
-    ${summary.map(m => `<div class="reminder-row" onclick="closeReminderPopup(); showModule('${m.key}');">
-      <span class="rr-label">${m.label}</span>
-      <span class="rr-counts">
-        ${m.overdue ? `<span class="date-badge red"><span class="dd"></span>${m.overdue} overdue</span>` : ''}
-        ${m.dueSoon ? `<span class="date-badge yellow"><span class="dd"></span>${m.dueSoon} due soon</span>` : ''}
-      </span>
-    </div>`).join('')}
+    ${summary.map(m => `
+      <div class="reminder-group-label" onclick="closeReminderPopup(); showModule('${m.key}');">${m.label}</div>
+      ${m.items.map(({item, state}) => `
+        <div class="reminder-row" onclick="closeReminderPopup(); showModule('${m.key}');">
+          <span class="rr-label">${m.titleField ? (item[m.titleField] || 'Untitled') : (item.ref_code || '')} <span class="rr-person">— ${m.getPerson(item)}</span></span>
+          <span class="date-badge ${state==='red'?'red':'yellow'}"><span class="dd"></span>${fmtDate(item[m.dateField])}</span>
+        </div>
+      `).join('')}
+    `).join('')}
     <div class="form-actions" style="margin-top:16px;">
       <button class="btn-primary" style="width:100%;" onclick="closeReminderPopup()">Dismiss</button>
     </div>
@@ -1221,12 +1247,12 @@ const RENDERERS = {
     </div>
     <div class="panel">
       <h3>Recently raised nonconformances</h3>
-      <div class="sub">Across all disciplines</div>
+      <div class="sub">Most recent, across every type</div>
       <table>
-        <tr><th>Ref</th><th>Title</th><th>Discipline</th><th>Owner</th><th>Target close</th><th>Status</th></tr>
+        <tr><th>Ref</th><th>Type</th><th>Owner</th><th>Target close</th><th>Status</th></tr>
         ${recent.map(n=>`<tr class="clickable" onclick="showModule('nonconformances'); setTimeout(()=>openNCDetail('${n.id}'),0)">
-          <td class="mono-cell">${n.ref_code}</td><td class="strong">${n.title}</td><td>${label(n.discipline)}</td><td>${memberName(n.owner_id)}</td><td>${fmtDate(n.target_close_date)}</td><td>${pill(n.status)}</td>
-        </tr>`).join('') || '<tr><td colspan="6" style="text-align:center; color:var(--text-faint); padding:24px;">No nonconformances logged yet.</td></tr>'}
+          <td class="mono-cell">${n.ref_code}</td><td class="strong">${n.title}</td><td>${memberName(n.owner_id)}</td><td>${fmtDate(n.target_close_date)}</td><td>${pill(n.status)}</td>
+        </tr>`).join('') || '<tr><td colspan="5" style="text-align:center; color:var(--text-faint); padding:24px;">No nonconformances logged yet.</td></tr>'}
       </table>
     </div>
     <div class="panel">
@@ -1257,24 +1283,39 @@ const RENDERERS = {
           <option value="pending_verification">Pending Verification</option>
           <option value="closed">Closed</option>
         </select>
-        <select id="nc-filter-discipline" onchange="renderNCTable()">
-          <option value="">All disciplines</option>
-          ${optionList(DISCIPLINES)}
+        <select id="nc-filter-type" onchange="renderNCTable()">
+          <option value="">All types</option>
+          ${STATE.ncTypes.map(t=>`<option value="${t.id}">${t.name}</option>`).join('')}
         </select>
       </div>
+      <button class="btn-small" onclick="toggleNCTypesPanel()">Manage Types</button>
       <button class="btn-small" onclick="openImportModal('nonconformances')">Import CSV</button>
       <button class="btn-small" onclick="exportModuleExcel('nonconformances')">Export Excel</button>
       <button class="btn-small" onclick="printCurrentRegister('nonconformances','Nonconformances Register')">Print Register</button>
       <button class="btn-primary btn-add" onclick="toggleNCForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Raise Nonconformance</button>
     </div>
 
+    <div class="form-panel" id="nc-types-panel">
+      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:6px;">Nonconformance Types</h3>
+      <p style="font-size:12px; color:var(--text-faint); margin-bottom:14px;">Keep the full standard list and switch off what's not relevant to this client, or add your own.</p>
+      <div id="nc-types-list" style="margin-bottom:12px; max-height:260px; overflow-y:auto;"></div>
+      <div class="form-grid">
+        <div class="field span3"><label>New type</label><input id="nc-type-new-name" placeholder="e.g. Housekeeping observation"></div>
+      </div>
+      <button class="btn-small primary" onclick="addNcType()">Add type</button>
+    </div>
+
     <div class="form-panel" id="nc-form">
       <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:14px;">Raise a nonconformance</h3>
       <div class="form-grid">
-        <div class="field span3"><label>Title</label><input id="f-title" placeholder="Short, specific finding title"></div>
-        <div class="field span3"><label>Description</label><textarea id="f-desc" placeholder="What was found, where, and against what requirement"></textarea></div>
-        <div class="field"><label>Discipline</label><select id="f-discipline">${optionList(DISCIPLINES)}</select></div>
-        <div class="field"><label>Source</label><select id="f-source">${optionList(SOURCES)}</select></div>
+        <div class="field span3"><label>Type</label><select id="f-type">${STATE.ncTypes.filter(t=>t.is_active).map(t=>`<option value="${t.id}">${t.name}</option>`).join('')}</select></div>
+        <div class="field span3">
+          <label>Description</label>
+          <p style="font-size:11.5px; color:var(--text-faint); margin:-2px 0 6px;">Complete a full description of what occurred including date, time, whoever was involved, and references to any associated documentation for traceability.</p>
+          <textarea id="f-desc" placeholder="What was found, where, and against what requirement"></textarea>
+        </div>
+        <div class="field span3"><label>Immediate action taken</label><textarea id="f-immediate-action" placeholder="What was done right away, before any investigation"></textarea></div>
+        <div class="field span3"><label>Contact details of all involved people or organisations</label><textarea id="f-contact-details" placeholder="Names, roles, phone numbers, email addresses"></textarea></div>
         <div class="field"><label>Severity</label><select id="f-severity"><option value="minor">Minor</option><option value="major">Major</option><option value="critical">Critical</option></select></div>
         <div class="field"><label>Standard / clause</label><input id="f-clause" placeholder="e.g. ISO 9001:2015 - 8.7"></div>
         <div class="field"><label>Owner</label><select id="f-owner">${memberOptions(STATE.user.id)}</select></div>
@@ -1446,6 +1487,7 @@ const RENDERERS = {
       </div>
       <div style="display:flex; gap:8px;">
         <button class="btn-small" onclick="toggleDocListsPanel()">Manage Departments &amp; Types</button>
+        <button class="btn-small" onclick="toggleFormIdsPanel()">Form Identification Numbers</button>
         <button class="btn-small" onclick="exportModuleExcel('documents')">Export Excel</button>
       <button class="btn-small" onclick="printCurrentRegister('documents','Document Control Register')">Print Register</button>
       <button class="btn-primary btn-add" onclick="toggleDocForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Document</button>
@@ -1477,12 +1519,18 @@ const RENDERERS = {
       </div>
     </div>
 
+    <div class="form-panel" id="form-ids-panel">
+      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:6px;">Form Identification Numbers</h3>
+      <p style="font-size:12px; color:var(--text-faint); margin-bottom:14px;">This gives each built-in electronic form its own controlled identity — like <b>QAE-FRM-001</b> for the Nonconformance form itself, separate from any individual nonconformance raised using it. Once assigned, this number appears on every printed output from that module.</p>
+      <div id="form-ids-list"></div>
+    </div>
+
     <div class="form-panel" id="doc-form">
       <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:14px;">Add a controlled document</h3>
       <div class="form-grid">
         <div class="field span3"><label>Title / description</label><input id="df-title" placeholder="e.g. Welding Procedure Specification"></div>
-        <div class="field"><label>Department</label><select id="df-department">${STATE.docDepartments.map(d=>`<option value="${d.id}">${d.code} — ${d.name}</option>`).join('')}</select></div>
-        <div class="field"><label>Document type</label><select id="df-type">${STATE.docTypes.map(t=>`<option value="${t.id}">${t.code} — ${t.name}</option>`).join('')}</select></div>
+        <div class="field"><label>Department</label><select id="df-department">${STATE.docDepartments.filter(d=>d.is_active).map(d=>`<option value="${d.id}">${d.code} — ${d.name}</option>`).join('')}</select></div>
+        <div class="field"><label>Document type</label><select id="df-type">${STATE.docTypes.filter(t=>t.is_active).map(t=>`<option value="${t.id}">${t.code} — ${t.name}</option>`).join('')}</select></div>
         <div class="field"><label>Owner</label><select id="df-owner">${memberOptions(STATE.user.id)}</select></div>
         <div class="field"><label>Next review date</label><input type="date" id="df-review"></div>
         <div class="field span2"><label>Revision 0 — change description</label><input id="df-rev-desc" placeholder="e.g. Initial issue" value="Initial issue"></div>
@@ -1830,6 +1878,7 @@ const RENDERERS = {
   `,
 
   appraisals: () => `
+    ${renderKpiLegendCard()}
     <div class="toolbar">
       <div class="filters">
         <select id="apr-filter-status" onchange="renderAppraisalsTable()">
@@ -1981,15 +2030,17 @@ function toggleNCForm(){ document.getElementById('nc-form').classList.toggle('op
 window.toggleNCForm = toggleNCForm;
 
 window.submitNC = async function(){
-  const title = document.getElementById('f-title').value.trim();
+  const typeId = document.getElementById('f-type').value;
   const target_close_date = document.getElementById('f-target').value;
-  if(!title || !target_close_date){ alert('Title and target close date are required.'); return; }
+  if(!typeId || !target_close_date){ alert('Type and target close date are required.'); return; }
+  const selectedType = STATE.ncTypes.find(t=>t.id===typeId);
   const payload = {
     organisation_id: STATE.org.id,
-    title,
+    title: selectedType ? selectedType.name : '',
+    nc_type_id: typeId,
     description: document.getElementById('f-desc').value.trim(),
-    discipline: document.getElementById('f-discipline').value,
-    source: document.getElementById('f-source').value,
+    immediate_action_taken: document.getElementById('f-immediate-action').value.trim(),
+    contact_details: document.getElementById('f-contact-details').value.trim(),
     standard_clause: document.getElementById('f-clause').value.trim(),
     severity: document.getElementById('f-severity').value,
     raised_by: STATE.user.id,
@@ -2007,22 +2058,90 @@ window.submitNC = async function(){
   toast('Nonconformance raised.', 'success');
 };
 
+function toggleNCTypesPanel(){
+  const panel = document.getElementById('nc-types-panel');
+  panel.classList.toggle('open');
+  if(panel.classList.contains('open')){ renderNcTypesList(); }
+}
+window.toggleNCTypesPanel = toggleNCTypesPanel;
+
+function renderNcTypesList(){
+  const wrap = document.getElementById('nc-types-list');
+  if(!wrap) return;
+  wrap.innerHTML = STATE.ncTypes.length ? STATE.ncTypes.map(t => `
+    <div class="evidence-row" style="${!t.is_active?'opacity:.5;':''}">
+      <div style="flex:1;" id="nc-type-name-${t.id}">${t.name}${!t.is_active ? ' <span class="mono" style="color:var(--text-faint); font-size:10.5px;">(inactive for this client)</span>' : ''}</div>
+      <div class="ev-actions">
+        <button class="btn-small" onclick="toggleEditNcType('${t.id}')">Edit</button>
+        <button class="btn-small" onclick="toggleNcTypeActive('${t.id}', ${!t.is_active})">${t.is_active ? 'Deactivate' : 'Activate'}</button>
+      </div>
+    </div>
+    <div id="nc-type-edit-${t.id}"></div>
+  `).join('') : '<p style="font-size:12px; color:var(--text-faint);">No types yet.</p>';
+}
+
+window.toggleEditNcType = function(id){
+  const slot = document.getElementById('nc-type-edit-'+id);
+  if(!slot) return;
+  if(slot.innerHTML.trim()){ slot.innerHTML = ''; return; }
+  const t = STATE.ncTypes.find(x=>x.id===id);
+  if(!t) return;
+  slot.innerHTML = `
+    <div style="display:flex; gap:6px; padding:6px 0 10px;">
+      <input id="nc-type-edit-input-${id}" value="${t.name.replace(/"/g,'&quot;')}" style="flex:1; border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12.5px;">
+      <button class="btn-small primary" onclick="saveNcTypeName('${id}')">Save</button>
+      <button class="btn-small" onclick="toggleEditNcType('${id}')">Cancel</button>
+    </div>
+  `;
+};
+
+window.saveNcTypeName = async function(id){
+  const newName = document.getElementById('nc-type-edit-input-'+id).value.trim();
+  if(!newName){ alert('Name cannot be empty.'); return; }
+  const { error } = await STATE.supabase.from('nc_types').update({ name:newName }).eq('id', id);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  await loadNCTypes();
+  renderNcTypesList();
+  showModule('nonconformances');
+  toast('Type updated.', 'success');
+};
+
+window.toggleNcTypeActive = async function(id, newVal){
+  const { error } = await STATE.supabase.from('nc_types').update({ is_active:newVal }).eq('id', id);
+  if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+  await loadNCTypes();
+  renderNcTypesList();
+  showModule('nonconformances');
+};
+
+window.addNcType = async function(){
+  const name = document.getElementById('nc-type-new-name').value.trim();
+  if(!name){ alert('Enter a type name.'); return; }
+  const nextSort = (STATE.ncTypes.length + 1) * 10;
+  const { error } = await STATE.supabase.from('nc_types').insert({ organisation_id: STATE.org.id, name, sort_order: nextSort, created_by: STATE.user.id });
+  if(error){ toast('Could not add type: ' + error.message, 'error'); return; }
+  document.getElementById('nc-type-new-name').value = '';
+  await loadNCTypes();
+  renderNcTypesList();
+  showModule('nonconformances');
+  toast('Type added.', 'success');
+};
+
 function renderNCTable(){
   const wrap = document.getElementById('nc-table-wrap');
   if(!wrap) return;
   const fStatus = document.getElementById('nc-filter-status').value;
-  const fDisc = document.getElementById('nc-filter-discipline').value;
-  const rows = STATE.ncs.filter(n => (!fStatus||n.status===fStatus) && (!fDisc||n.discipline===fDisc));
+  const fType = document.getElementById('nc-filter-type').value;
+  const rows = STATE.ncs.filter(n => (!fStatus||n.status===fStatus) && (!fType||n.nc_type_id===fType));
   if(!rows.length){
     wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M12 3l10 18H2L12 3z"/><line x1="12" y1="10" x2="12" y2="14"/><line x1="12" y1="17" x2="12" y2="17.01"/></svg><p>No nonconformances match this filter.</p></div>`;
     return;
   }
   wrap.innerHTML = `<table>
-    <tr><th>Ref</th><th>Title</th><th>Discipline</th><th>Severity</th><th>Owner</th><th>Target close</th><th>Status</th></tr>
+    <tr><th>Ref</th><th>Type</th><th>Severity</th><th>Owner</th><th>Target close</th><th>Status</th></tr>
     ${rows.map(n=>`<tr class="clickable" onclick="openNCDetail('${n.id}')">
       <td class="mono-cell">${n.ref_code}</td>
       <td class="strong">${n.title}</td>
-      <td>${label(n.discipline)}</td>
       <td>${sevBadge(n.severity)}</td>
       <td>${memberName(n.owner_id)}</td>
       <td>${fmtDate(n.target_close_date)} ${dateStatusBadge(n.target_close_date, n.status==='closed')}</td>
@@ -2053,7 +2172,7 @@ async function openNCDetail(id){
   document.getElementById('nc-detail-slot').innerHTML = `
     <div class="detail-panel">
       <div class="detail-head">
-        <div><span class="ref">${n.ref_code} · ${label(n.discipline)} · ${label(n.source)}</span><h3>${n.title}</h3></div>
+        <div><span class="ref">${n.ref_code}</span><h3>${n.title}</h3></div>
         <div style="display:flex; gap:8px;">
           <button class="btn-small" onclick="printNC('${n.id}')">Print / PDF</button>
           <button class="close-btn" onclick="closeNCDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
@@ -2069,6 +2188,8 @@ async function openNCDetail(id){
       </div>
       <p style="font-size:13.5px; color:var(--text-dim); margin-bottom:16px; line-height:1.55;">${n.description || 'No description recorded.'}</p>
       ${n.standard_clause ? `<p style="font-size:12px; color:var(--text-faint); margin-bottom:16px;" class="mono">Clause: ${n.standard_clause}</p>` : ''}
+      ${n.immediate_action_taken ? `<div style="margin-bottom:16px;"><div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:4px;">Immediate Action Taken</div><p style="font-size:13.5px; color:var(--text-dim); line-height:1.55;">${n.immediate_action_taken}</p></div>` : ''}
+      ${n.contact_details ? `<div style="margin-bottom:16px;"><div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:4px;">Contact Details of Involved Parties</div><p style="font-size:13.5px; color:var(--text-dim); line-height:1.55;">${n.contact_details}</p></div>` : ''}
 
       ${renderRCASection(n, rca, rcaParticipants)}
 
@@ -2147,7 +2268,7 @@ window.printNC = async function(id){
   const supplier = n.supplier_id ? STATE.suppliers.find(s=>s.id===n.supplier_id) : null;
 
   const meta = [
-    ['Discipline', label(n.discipline)], ['Source', label(n.source)], ['Severity', label(n.severity)],
+    ['Type', n.title], ['Severity', label(n.severity)],
     ['Status', label(n.status)], ['Owner', memberName(n.owner_id)], ['Raised by', memberName(n.raised_by)],
     ['Raised date', fmtDate(n.raised_date)], ['Target close date', fmtDate(n.target_close_date)],
   ];
@@ -2159,6 +2280,8 @@ window.printNC = async function(id){
 
   let body = `<p><b>Description</b><br>${n.description || 'No description recorded.'}</p>`;
   if(n.standard_clause) body += `<p style="margin-top:10px;"><b>Standard clause:</b> ${n.standard_clause}</p>`;
+  if(n.immediate_action_taken) body += printSectionTitle('Immediate Action Taken') + `<p>${n.immediate_action_taken}</p>`;
+  if(n.contact_details) body += printSectionTitle('Contact Details of Involved Parties') + `<p>${n.contact_details}</p>`;
   if(n.correction) body += printSectionTitle('Correction / Corrective Action') + `<p>${n.correction}</p>`;
 
   if(rca){
@@ -2189,7 +2312,7 @@ window.printNC = async function(id){
     ]));
   }
 
-  printRecord('Nonconformance Report', n.ref_code, meta, body);
+  printRecord('Nonconformance Report', n.ref_code, meta, body, null, 'nonconformances');
 };
 
 window.saveNCDetail = async function(id){
@@ -2359,7 +2482,7 @@ window.printTask = async function(id){
     body += printSectionTitle('Comments');
     body += comments.map(c=>`<p><b>${memberName(c.user_id)}</b> — ${new Date(c.created_at).toLocaleDateString('en-GB')}<br>${c.comment}</p>`).join('');
   }
-  printRecord('Task', t.title, meta, body);
+  printRecord('Task', t.title, meta, body, null, 'tasks');
 };
 
 window.saveTaskStatus = async function(id){
@@ -2550,7 +2673,7 @@ window.printAudit = async function(id){
     body += printSectionTitle('Findings');
     body += printTable(['Type','Clause','Description'], findings.map(f => [label(f.finding_type), f.clause_reference||'—', f.description]));
   }
-  printRecord('Internal Audit Report', audit.audit_ref, meta, body);
+  printRecord('Internal Audit Report', audit.audit_ref, meta, body, null, 'audits');
 };
 
 function renderFindingRow(f){
@@ -2617,11 +2740,11 @@ window.togglePromoteForm = function(findingId, findingType){
   if(!slot) return;
   if(slot.innerHTML.trim()){ slot.innerHTML = ''; return; }
   const defaultSev = SEVERITY_BY_FINDING[findingType] || 'minor';
+  const auditTypeMatch = STATE.ncTypes.find(t=>t.name.toLowerCase().includes('audit') && t.is_active);
   slot.innerHTML = `
     <div class="form-panel open" style="margin-top:10px;">
       <div class="form-grid">
-        <div class="field span3"><label>Nonconformance title</label><input id="pf-title-${findingId}" placeholder="Short, specific title"></div>
-        <div class="field"><label>Discipline</label><select id="pf-discipline-${findingId}">${optionList(DISCIPLINES,'quality')}</select></div>
+        <div class="field span3"><label>Type</label><select id="pf-type-${findingId}">${STATE.ncTypes.filter(t=>t.is_active).map(t=>`<option value="${t.id}" ${auditTypeMatch && t.id===auditTypeMatch.id?'selected':''}>${t.name}</option>`).join('')}</select></div>
         <div class="field"><label>Severity</label><select id="pf-severity-${findingId}">
           <option value="minor" ${defaultSev==='minor'?'selected':''}>Minor</option>
           <option value="major" ${defaultSev==='major'?'selected':''}>Major</option>
@@ -2641,19 +2764,17 @@ window.togglePromoteForm = function(findingId, findingType){
 window.promoteFinding = async function(findingId){
   const { data: finding, error: fErr } = await STATE.supabase.from('audit_findings').select('*').eq('id', findingId).single();
   if(fErr || !finding){ toast('Could not load finding.', 'error'); return; }
-  const parentAudit = STATE.audits.find(a=>a.id===finding.audit_id);
 
-  const title = document.getElementById('pf-title-'+findingId).value.trim() || finding.description.slice(0,80);
+  const typeId = document.getElementById('pf-type-'+findingId).value;
   const target_close_date = document.getElementById('pf-target-'+findingId).value;
-  if(!target_close_date){ alert('Target close date is required.'); return; }
+  if(!typeId || !target_close_date){ alert('Type and target close date are required.'); return; }
+  const selectedType = STATE.ncTypes.find(t=>t.id===typeId);
 
-  const isExternalSource = parentAudit && ['external','certification','surveillance'].includes(parentAudit.audit_type);
   const payload = {
     organisation_id: STATE.org.id,
-    title,
+    title: selectedType ? selectedType.name : '',
+    nc_type_id: typeId,
     description: finding.description,
-    discipline: document.getElementById('pf-discipline-'+findingId).value,
-    source: isExternalSource ? 'external_audit' : 'internal_audit',
     standard_clause: finding.clause_reference,
     severity: document.getElementById('pf-severity-'+findingId).value,
     raised_by: STATE.user.id,
@@ -2805,7 +2926,7 @@ window.printRisk = async function(id){
     body += printSectionTitle('Linked Nonconformances');
     body += '<ul>' + links.map(l=>`<li>${l.nonconformances.ref_code} — ${l.nonconformances.title}</li>`).join('') + '</ul>';
   }
-  printRecord(isOpp ? 'Opportunity Record' : 'Risk Record', r.ref_code, meta, body);
+  printRecord(isOpp ? 'Opportunity Record' : 'Risk Record', r.ref_code, meta, body, null, 'risks');
 };
 
 window.saveRiskDetail = async function(id){
@@ -3083,6 +3204,9 @@ async function loadEvidence(entityType, entityId){
   return { files: data || [], error:null };
 }
 
+const EVIDENCE_MAX_SIZE_MB = 10;
+const EVIDENCE_ALLOWED_EXT = ['pdf','doc','docx','xls','xlsx','jpg','jpeg','png','heic'];
+
 function renderEvidenceSection(entityType, entityId, files){
   const rowsHtml = files.length
     ? files.map(f => `
@@ -3104,39 +3228,65 @@ function renderEvidenceSection(entityType, entityId, files){
     <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Evidence</div>
     ${rowsHtml}
     <div class="evidence-upload">
-      <input type="file" id="ev-file-${entityType}-${entityId}">
-      <input type="text" id="ev-desc-${entityType}-${entityId}" placeholder="Optional caption — what this shows">
+      <input type="file" id="ev-file-${entityType}-${entityId}" multiple>
+      <input type="text" id="ev-desc-${entityType}-${entityId}" placeholder="Optional caption — applies to all files selected">
       <button class="btn-small primary" onclick="uploadEvidence('${entityType}','${entityId}')">Upload</button>
     </div>
+    <p style="font-size:11px; color:var(--text-faint); margin-top:6px;">You can select more than one file at once. Accepted formats: PDF, Word, Excel, JPG, PNG. Maximum size: ${EVIDENCE_MAX_SIZE_MB}MB per file.</p>
   </div>`;
 }
 
 window.uploadEvidence = async function(entityType, entityId){
   const fileInput = document.getElementById(`ev-file-${entityType}-${entityId}`);
   const descInput = document.getElementById(`ev-desc-${entityType}-${entityId}`);
-  const file = fileInput.files[0];
-  if(!file){ alert('Choose a file first.'); return; }
+  const files = Array.from(fileInput.files);
+  if(!files.length){ alert('Choose at least one file first.'); return; }
 
-  const path = `${STATE.org.id}/${entityType}/${entityId}/${Date.now()}-${sanitizeFileName(file.name)}`;
-  const { error: uploadErr } = await STATE.supabase.storage.from('evidence').upload(path, file);
-  if(uploadErr){ toast('Upload failed: ' + uploadErr.message, 'error'); return; }
-
-  const { error: rowErr } = await STATE.supabase.from('evidence_files').insert({
-    organisation_id: STATE.org.id,
-    entity_type: entityType,
-    entity_id: entityId,
-    file_name: file.name,
-    storage_path: path,
-    file_type: file.type,
-    file_size: file.size,
-    description: descInput.value.trim(),
-    uploaded_by: STATE.user.id,
+  const tooLarge = files.filter(f => f.size > EVIDENCE_MAX_SIZE_MB * 1024 * 1024);
+  if(tooLarge.length){
+    alert(`These files are over the ${EVIDENCE_MAX_SIZE_MB}MB limit and won't be uploaded:\n` + tooLarge.map(f=>f.name).join('\n'));
+  }
+  const wrongFormat = files.filter(f => {
+    const ext = f.name.split('.').pop().toLowerCase();
+    return !EVIDENCE_ALLOWED_EXT.includes(ext);
   });
-  if(rowErr){ toast('File uploaded, but could not record it: ' + rowErr.message, 'error'); return; }
+  if(wrongFormat.length){
+    alert(`These files aren't an accepted format (PDF, Word, Excel, JPG, PNG) and won't be uploaded:\n` + wrongFormat.map(f=>f.name).join('\n'));
+  }
+  const toUpload = files.filter(f => !tooLarge.includes(f) && !wrongFormat.includes(f));
+  if(!toUpload.length) return;
 
-  toast('Evidence uploaded.', 'success');
+  let successCount = 0, failCount = 0;
+  for(const file of toUpload){
+    const path = `${STATE.org.id}/${entityType}/${entityId}/${Date.now()}-${sanitizeFileName(file.name)}`;
+    const { error: uploadErr } = await STATE.supabase.storage.from('evidence').upload(path, file);
+    if(uploadErr){ failCount++; continue; }
+    const { error: rowErr } = await STATE.supabase.from('evidence_files').insert({
+      organisation_id: STATE.org.id,
+      entity_type: entityType,
+      entity_id: entityId,
+      file_name: file.name,
+      storage_path: path,
+      file_type: file.type,
+      file_size: file.size,
+      description: descInput.value.trim(),
+      uploaded_by: STATE.user.id,
+    });
+    if(rowErr){ failCount++; } else { successCount++; }
+  }
+
+  toast(`${successCount} file${successCount===1?'':'s'} uploaded${failCount ? `, ${failCount} failed` : ''}.`, failCount ? 'error' : 'success');
   if(entityType === 'nonconformance') openNCDetail(entityId);
   if(entityType === 'audit') openAuditDetail(entityId);
+  if(entityType === 'legal_register') openLegalDetail(entityId);
+  if(entityType === 'training_record') openTrainingDetail(entityId);
+  if(entityType === 'appraisal') openAppraisalDetail(entityId);
+  if(entityType === 'asset') openAssetDetail(entityId);
+  if(entityType === 'bulletin') openBulletinDetail(entityId);
+  if(entityType === 'asset_inspection'){
+    const { data: insp } = await STATE.supabase.from('asset_inspections').select('asset_id').eq('id', entityId).single();
+    if(insp) openInspectionDetail(entityId, insp.asset_id);
+  }
 };
 
 async function downloadFromBucket(bucket, storagePath){
@@ -3173,13 +3323,105 @@ function toggleDocListsPanel(){
 }
 window.toggleDocListsPanel = toggleDocListsPanel;
 
+function toggleFormIdsPanel(){
+  const panel = document.getElementById('form-ids-panel');
+  panel.classList.toggle('open');
+  if(panel.classList.contains('open')){ renderFormIdsList(); }
+}
+window.toggleFormIdsPanel = toggleFormIdsPanel;
+
+function renderFormIdsList(){
+  const wrap = document.getElementById('form-ids-list');
+  if(!wrap) return;
+  wrap.innerHTML = GATED_MODULES.map(key => {
+    const existing = STATE.formIdentifications.find(f=>f.module_key===key);
+    return `
+    <div class="evidence-row">
+      <div style="flex:1;">
+        <b>${MODULE_META[key].title}</b>
+        ${existing ? ` — <span class="mono-cell">${existing.doc_number}-Rev${existing.revision}</span>` : ' — <span style="color:var(--text-faint); font-size:12px;">Not yet assigned</span>'}
+      </div>
+      <div class="ev-actions">
+        <button class="btn-small" onclick="toggleAssignFormId('${key}')">${existing ? 'Reassign / Bump Revision' : 'Assign'}</button>
+      </div>
+    </div>
+    <div id="form-id-assign-${key}"></div>
+    `;
+  }).join('');
+}
+
+window.toggleAssignFormId = function(moduleKey){
+  const slot = document.getElementById('form-id-assign-'+moduleKey);
+  if(!slot) return;
+  if(slot.innerHTML.trim()){ slot.innerHTML = ''; return; }
+  const existing = STATE.formIdentifications.find(f=>f.module_key===moduleKey);
+  slot.innerHTML = `
+    <div style="background:var(--grey-tint); padding:14px 16px; margin:4px 0 10px;">
+      ${existing ? `
+        <p style="font-size:12px; color:var(--text-dim); margin-bottom:10px;">Already assigned as <b>${existing.doc_number}</b>. You can bump the revision if the form itself has changed, without generating a whole new number.</p>
+        <div class="field" style="max-width:160px;"><label>New revision</label><input type="number" id="form-id-rev-${moduleKey}" value="${existing.revision + 1}" min="0"></div>
+        <button class="btn-small primary" onclick="bumpFormIdRevision('${moduleKey}')">Save new revision</button>
+        <button class="btn-small" onclick="toggleAssignFormId('${moduleKey}')">Cancel</button>
+      ` : `
+        <div class="form-grid">
+          <div class="field"><label>Department</label><select id="form-id-dept-${moduleKey}">${STATE.docDepartments.filter(d=>d.is_active).map(d=>`<option value="${d.id}">${d.code} — ${d.name}</option>`).join('')}</select></div>
+          <div class="field"><label>Document type</label><select id="form-id-type-${moduleKey}">${STATE.docTypes.filter(t=>t.is_active).map(t=>`<option value="${t.id}">${t.code} — ${t.name}</option>`).join('')}</select></div>
+        </div>
+        <button class="btn-small primary" onclick="assignFormId('${moduleKey}')">Assign number</button>
+        <button class="btn-small" onclick="toggleAssignFormId('${moduleKey}')">Cancel</button>
+      `}
+    </div>
+  `;
+};
+
+window.assignFormId = async function(moduleKey){
+  const deptSel = document.getElementById('form-id-dept-'+moduleKey);
+  const typeSel = document.getElementById('form-id-type-'+moduleKey);
+  if(!deptSel || !typeSel || !deptSel.value || !typeSel.value){ alert('Add at least one active department and type first.'); return; }
+
+  const { data: docNumber, error: numErr } = await STATE.supabase.rpc('assign_form_doc_number', {
+    p_org_id: STATE.org.id, p_department_id: deptSel.value, p_type_id: typeSel.value
+  });
+  if(numErr){ toast('Could not generate a number: ' + numErr.message, 'error'); return; }
+
+  const { error } = await STATE.supabase.from('form_identifications').insert({
+    organisation_id: STATE.org.id, module_key: moduleKey, department_id: deptSel.value, type_id: typeSel.value,
+    doc_number: docNumber, revision: 0, assigned_by: STATE.user.id,
+  });
+  if(error){ toast('Could not save the assignment: ' + error.message, 'error'); return; }
+
+  await loadFormIdentifications();
+  renderFormIdsList();
+  toast(`${MODULE_META[moduleKey].title} assigned as ${docNumber}.`, 'success');
+};
+
+window.bumpFormIdRevision = async function(moduleKey){
+  const revInput = document.getElementById('form-id-rev-'+moduleKey);
+  const newRev = parseInt(revInput.value, 10);
+  if(isNaN(newRev) || newRev < 0){ alert('Enter a valid revision number.'); return; }
+  const existing = STATE.formIdentifications.find(f=>f.module_key===moduleKey);
+  const { error } = await STATE.supabase.from('form_identifications').update({ revision: newRev }).eq('id', existing.id);
+  if(error){ toast('Could not update revision: ' + error.message, 'error'); return; }
+  await loadFormIdentifications();
+  renderFormIdsList();
+  toast('Revision updated.', 'success');
+};
+
+function formIdLine(moduleKey){
+  const f = STATE.formIdentifications.find(x=>x.module_key===moduleKey);
+  return f ? `${f.doc_number}-Rev${f.revision}` : null;
+}
+
 function renderDocDepartmentsList(){
   const wrap = document.getElementById('doc-departments-list');
   if(!wrap) return;
   wrap.innerHTML = STATE.docDepartments.length ? STATE.docDepartments.map(d => `
-    <div class="evidence-row">
-      <div style="flex:1;"><b class="mono-cell">${d.code}</b> — <span id="dept-name-${d.id}">${d.name}</span></div>
-      <div class="ev-actions"><button class="btn-small" onclick="toggleEditDept('${d.id}')">Edit</button></div>
+    <div class="evidence-row" style="${!d.is_active?'opacity:.5;':''}">
+      <div style="flex:1;"><b class="mono-cell">${d.code}</b> — <span id="dept-name-${d.id}">${d.name}</span>${!d.is_active ? ' <span class="mono" style="color:var(--text-faint); font-size:10.5px;">(inactive for this client)</span>' : ''}</div>
+      <div class="ev-actions">
+        <button class="btn-small" onclick="toggleEditDept('${d.id}')">Edit</button>
+        <button class="btn-small" onclick="toggleDeptActive('${d.id}', ${!d.is_active})">${d.is_active ? 'Deactivate' : 'Activate'}</button>
+      </div>
     </div>
     <div id="dept-edit-${d.id}"></div>
   `).join('') : '<p style="font-size:12px; color:var(--text-faint);">No departments yet.</p>';
@@ -3188,9 +3430,12 @@ function renderDocTypesList(){
   const wrap = document.getElementById('doc-types-list');
   if(!wrap) return;
   wrap.innerHTML = STATE.docTypes.length ? STATE.docTypes.map(t => `
-    <div class="evidence-row">
-      <div style="flex:1;"><b class="mono-cell">${t.code}</b> — <span id="type-name-${t.id}">${t.name}</span></div>
-      <div class="ev-actions"><button class="btn-small" onclick="toggleEditType('${t.id}')">Edit</button></div>
+    <div class="evidence-row" style="${!t.is_active?'opacity:.5;':''}">
+      <div style="flex:1;"><b class="mono-cell">${t.code}</b> — <span id="type-name-${t.id}">${t.name}</span>${!t.is_active ? ' <span class="mono" style="color:var(--text-faint); font-size:10.5px;">(inactive for this client)</span>' : ''}</div>
+      <div class="ev-actions">
+        <button class="btn-small" onclick="toggleEditType('${t.id}')">Edit</button>
+        <button class="btn-small" onclick="toggleTypeActive('${t.id}', ${!t.is_active})">${t.is_active ? 'Deactivate' : 'Activate'}</button>
+      </div>
     </div>
     <div id="type-edit-${t.id}"></div>
   `).join('') : '<p style="font-size:12px; color:var(--text-faint);">No document types yet.</p>';
@@ -3203,12 +3448,13 @@ window.toggleEditDept = function(id){
   const d = STATE.docDepartments.find(x=>x.id===id);
   if(!d) return;
   slot.innerHTML = `
-    <div style="display:flex; gap:6px; padding:6px 0 10px;">
+    <div style="display:flex; gap:6px; padding:6px 0 6px;">
+      <input id="dept-edit-code-${id}" value="${d.code}" style="width:90px; text-transform:uppercase; border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12.5px;" maxlength="8">
       <input id="dept-edit-input-${id}" value="${d.name.replace(/"/g,'&quot;')}" style="flex:1; border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12.5px;">
       <button class="btn-small primary" onclick="saveDeptName('${id}')">Save</button>
       <button class="btn-small" onclick="toggleEditDept('${id}')">Cancel</button>
     </div>
-    <p style="font-size:11px; color:var(--text-faint); margin-bottom:8px;">The code (${d.code}) can't be changed here — it's already part of every document number issued under it. Only the description can be edited.</p>
+    <p style="font-size:11px; color:var(--text-faint); margin-bottom:8px;">Renaming the code only affects documents created from now on — every document number already issued under ${d.code} keeps that code permanently, even after you rename it here.</p>
   `;
 };
 window.toggleEditType = function(id){
@@ -3218,32 +3464,50 @@ window.toggleEditType = function(id){
   const t = STATE.docTypes.find(x=>x.id===id);
   if(!t) return;
   slot.innerHTML = `
-    <div style="display:flex; gap:6px; padding:6px 0 10px;">
+    <div style="display:flex; gap:6px; padding:6px 0 6px;">
+      <input id="type-edit-code-${id}" value="${t.code}" style="width:90px; text-transform:uppercase; border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12.5px;" maxlength="8">
       <input id="type-edit-input-${id}" value="${t.name.replace(/"/g,'&quot;')}" style="flex:1; border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12.5px;">
       <button class="btn-small primary" onclick="saveTypeName('${id}')">Save</button>
       <button class="btn-small" onclick="toggleEditType('${id}')">Cancel</button>
     </div>
-    <p style="font-size:11px; color:var(--text-faint); margin-bottom:8px;">The code (${t.code}) can't be changed here — it's already part of every document number issued under it. Only the description can be edited.</p>
+    <p style="font-size:11px; color:var(--text-faint); margin-bottom:8px;">Renaming the code only affects documents created from now on — every document number already issued under ${t.code} keeps that code permanently, even after you rename it here.</p>
   `;
 };
 
 window.saveDeptName = async function(id){
   const newName = document.getElementById('dept-edit-input-'+id).value.trim();
-  if(!newName){ alert('Description cannot be empty.'); return; }
-  const { error } = await STATE.supabase.from('document_departments').update({ name:newName }).eq('id', id);
+  const newCode = document.getElementById('dept-edit-code-'+id).value.trim().toUpperCase();
+  if(!newName || !newCode){ alert('Code and description cannot be empty.'); return; }
+  const { error } = await STATE.supabase.from('document_departments').update({ name:newName, code:newCode }).eq('id', id);
   if(error){ toast('Could not save: ' + error.message, 'error'); return; }
   await loadDocDepartments();
   renderDocDepartmentsList();
-  toast('Department description updated.', 'success');
+  toast('Department updated.', 'success');
 };
 window.saveTypeName = async function(id){
   const newName = document.getElementById('type-edit-input-'+id).value.trim();
-  if(!newName){ alert('Description cannot be empty.'); return; }
-  const { error } = await STATE.supabase.from('document_types').update({ name:newName }).eq('id', id);
+  const newCode = document.getElementById('type-edit-code-'+id).value.trim().toUpperCase();
+  if(!newName || !newCode){ alert('Code and description cannot be empty.'); return; }
+  const { error } = await STATE.supabase.from('document_types').update({ name:newName, code:newCode }).eq('id', id);
   if(error){ toast('Could not save: ' + error.message, 'error'); return; }
   await loadDocTypes();
   renderDocTypesList();
-  toast('Document type description updated.', 'success');
+  toast('Document type updated.', 'success');
+};
+
+window.toggleDeptActive = async function(id, newVal){
+  const { error } = await STATE.supabase.from('document_departments').update({ is_active:newVal }).eq('id', id);
+  if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+  await loadDocDepartments();
+  renderDocDepartmentsList();
+  showModule('documents');
+};
+window.toggleTypeActive = async function(id, newVal){
+  const { error } = await STATE.supabase.from('document_types').update({ is_active:newVal }).eq('id', id);
+  if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+  await loadDocTypes();
+  renderDocTypesList();
+  showModule('documents');
 };
 
 window.addDocDepartment = async function(){
@@ -3337,11 +3601,10 @@ function renderDocumentsTable(){
     return;
   }
   wrap.innerHTML = `<table>
-    <tr><th>Document #</th><th>Title</th><th>Rev</th><th>Revision date</th><th>Owner</th><th>Next review</th><th>Approval</th><th>Status</th></tr>
+    <tr><th>Identification</th><th>Title</th><th>Revision date</th><th>Owner</th><th>Next review</th><th>Approval</th><th>Status</th></tr>
     ${rows.map(d=>`<tr class="clickable" onclick="openDocumentDetail('${d.id}')">
-      <td class="mono-cell">${d.doc_number}</td>
+      <td class="mono-cell">${d.doc_number}-Rev${d.current_revision}</td>
       <td class="strong">${d.title}</td>
-      <td class="mono-cell">${d.current_revision}</td>
       <td>${fmtDate(d.current_revision_date)}</td>
       <td>${memberName(d.owner_id)}</td>
       <td>${fmtDate(d.next_review_date)} ${dateStatusBadge(d.next_review_date, ['withdrawn','superseded'].includes(d.status))}</td>
@@ -3441,7 +3704,7 @@ window.printDocument = async function(id){
       r.approval_status==='approved' ? `Approved ${fmtDate(r.approved_date)}` : 'Pending'
     ]));
   }
-  printRecord('Controlled Document', d.doc_number, meta, body);
+  printRecord('Controlled Document', d.doc_number, meta, body, null, 'documents');
 };
 
 window.saveDocumentStatus = async function(id){
@@ -3733,7 +3996,7 @@ window.printSupplier = async function(id){
       r.nonconformance_count ?? '—', r.notes || '—'
     ]));
   }
-  printRecord('Supplier Record', s.ref_code, meta, body);
+  printRecord('Supplier Record', s.ref_code, meta, body, null, 'suppliers');
 };
 
 function renderHighRiskQualification(s, qualAudit){
@@ -4002,9 +4265,9 @@ async function openCustomerDetail(id){
         <div class="dm-item"><div class="l">Status</div><div class="v">${pill(c.status)}</div></div>
       </div>
 
-      <div class="panel-head" style="margin-top:6px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Satisfaction surveys</h3>
-        <button class="btn-small primary" onclick="sendSurvey('${c.id}')" id="send-survey-btn">Send survey</button>
-      </div>
+      <div class="panel-head" style="margin-top:6px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Satisfaction surveys</h3></div>
+      <div class="field" style="margin-bottom:10px;"><label>Survey page URL (set once, remembered on this computer)</label><input id="survey-page-url" value="${loadSurveyPageUrl()}" placeholder="https://your-site/survey.html" oninput="saveSurveyPageUrl(this.value.trim())"></div>
+      <button class="btn-small primary" onclick="sendSurvey('${c.id}')" id="send-survey-btn">Generate survey link</button>
       <div id="send-survey-result"></div>
 
       <div id="survey-detail-slot"></div>
@@ -4044,27 +4307,53 @@ window.printCustomer = async function(id){
       fmtDate(s.sent_at ? s.sent_at.slice(0,10) : null), label(s.status), s.overall_rating ? Number(s.overall_rating).toFixed(1)+' / 5' : '—'
     ]));
   }
-  printRecord('Customer Record', c.ref_code, meta, body);
+  printRecord('Customer Record', c.ref_code, meta, body, null, 'customers');
 };
 
+function loadSurveyPageUrl(){ try{ return localStorage.getItem('survey-page-base-url') || ''; }catch(e){ return ''; } }
+function saveSurveyPageUrl(val){ try{ localStorage.setItem('survey-page-base-url', val); }catch(e){} }
+
 window.sendSurvey = async function(customerId){
-  if(!STATE.satisfactionQuestions.some(q=>q.is_active)){
+  const activeQuestions = STATE.satisfactionQuestions.filter(q=>q.is_active);
+  if(!activeQuestions.length){
     document.getElementById('send-survey-result').innerHTML = `<div class="warn-note"><svg viewBox="0 0 24 24"><path d="M12 3l10 18H2L12 3z"/><line x1="12" y1="10" x2="12" y2="14"/><line x1="12" y1="17" x2="12" y2="17.01"/></svg><div>No active questions in the questionnaire yet — add at least one from "Manage Questionnaire" first.</div></div>`;
     return;
   }
+  const url = document.getElementById('survey-page-url').value.trim();
+  if(!url){ toast('Set the survey page URL first.', 'error'); return; }
+  saveSurveyPageUrl(url);
+
   const btn = document.getElementById('send-survey-btn');
-  btn.disabled = true; btn.textContent = 'Sending…';
-  const { data: sessionData } = await STATE.supabase.auth.getSession();
-  const token = sessionData?.session?.access_token;
-  const { data, error } = await STATE.supabase.functions.invoke('send-survey', {
-    body: { customerId, organisationId: STATE.org.id },
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  btn.disabled = false; btn.textContent = 'Send survey';
-  if(error){ document.getElementById('send-survey-result').innerHTML = `<div class="warn-note"><svg viewBox="0 0 24 24"><path d="M12 3l10 18H2L12 3z"/><line x1="12" y1="10" x2="12" y2="14"/><line x1="12" y1="17" x2="12" y2="17.01"/></svg><div>${error.message}</div></div>`; return; }
-  if(data?.error){ document.getElementById('send-survey-result').innerHTML = `<div class="warn-note"><svg viewBox="0 0 24 24"><path d="M12 3l10 18H2L12 3z"/><line x1="12" y1="10" x2="12" y2="14"/><line x1="12" y1="17" x2="12" y2="17.01"/></svg><div>${data.error}</div></div>`; return; }
-  toast('Survey sent.', 'success');
-  openCustomerDetail(customerId);
+  btn.disabled = true; btn.textContent = 'Generating…';
+
+  const { data: survey, error: surveyErr } = await STATE.supabase.from('satisfaction_surveys')
+    .insert({ organisation_id: STATE.org.id, customer_id: customerId, sent_by: STATE.user.id })
+    .select().single();
+  if(surveyErr){
+    btn.disabled = false; btn.textContent = 'Generate survey link';
+    document.getElementById('send-survey-result').innerHTML = `<div class="warn-note"><svg viewBox="0 0 24 24"><path d="M12 3l10 18H2L12 3z"/><line x1="12" y1="10" x2="12" y2="14"/><line x1="12" y1="17" x2="12" y2="17.01"/></svg><div>${surveyErr.message}</div></div>`;
+    return;
+  }
+
+  // Snapshotted at send time, same reasoning as everywhere else this
+  // pattern is used — if the questionnaire changes later, this survey
+  // still shows exactly what was actually asked.
+  const responseRows = activeQuestions.map(q => ({ survey_id: survey.id, question_text: q.question_text, sort_order: q.sort_order }));
+  const { error: rowsErr } = await STATE.supabase.from('satisfaction_survey_responses').insert(responseRows);
+  if(rowsErr){
+    btn.disabled = false; btn.textContent = 'Generate survey link';
+    toast('Survey created, but questions could not be attached: ' + rowsErr.message, 'error');
+    return;
+  }
+
+  btn.disabled = false; btn.textContent = 'Generate survey link';
+  const link = `${url}${url.includes('?')?'&':'?'}token=${survey.token}`;
+  document.getElementById('send-survey-result').innerHTML = `
+    <div class="link-box" style="margin-top:12px;">
+      <div class="link-box-label">Copy this link and send it to the customer yourself — by email, WhatsApp, however you'd reach them</div>
+      <div class="link-box-row"><input type="text" readonly id="survey-link-${survey.id}" value="${link}"><button class="btn-small primary" onclick="copyApprLink('survey-link-${survey.id}')">Copy</button></div>
+    </div>`;
+  await loadCustomers();
 };
 
 window.openSurveyDetail = async function(surveyId, customerId){
@@ -4283,7 +4572,7 @@ window.printObjective = async function(id){
       fmtDate(r.review_date), label(r.progress_rating), r.current_value || '—', r.commentary || '—'
     ]));
   }
-  printRecord('Objective Record', o.ref_code, meta, body);
+  printRecord('Objective Record', o.ref_code, meta, body, null, 'objectives');
 };
 
 function toggleObjReviewForm(){ document.getElementById('obj-review-form').classList.toggle('open'); }
@@ -4344,6 +4633,12 @@ function resolveSupplierByRef(val){
   const s = STATE.suppliers.find(x => x.ref_code.toLowerCase() === v || x.name.trim().toLowerCase() === v);
   return s ? s.id : null;
 }
+function resolveNcTypeByName(val){
+  if(!val) return null;
+  const v = val.trim().toLowerCase();
+  const t = STATE.ncTypes.find(x => x.name.trim().toLowerCase() === v && x.is_active);
+  return t ? t.id : null;
+}
 function resolvePositionByRef(val){
   if(!val) return null;
   const v = val.trim().toLowerCase();
@@ -4362,20 +4657,21 @@ const IMPORT_SPECS = {
     label: 'Nonconformances',
     table: 'nonconformances',
     columns: [
-      {key:'title', label:'Title', required:true, type:'text', example:'Calibration overdue on PG-04'},
+      {key:'type', label:'Type (exact name from Manage Types)', required:true, type:'nc_type', example:'Customer complaint'},
       {key:'description', label:'Description', required:false, type:'text', example:'Pressure gauge certificate expired'},
-      {key:'discipline', label:'Discipline', required:true, type:'enum', values:DISCIPLINES, example:DISCIPLINES[0]},
-      {key:'source', label:'Source', required:true, type:'enum', values:SOURCES, example:SOURCES[0]},
+      {key:'immediate_action_taken', label:'Immediate Action Taken', required:false, type:'text', example:'Gauge removed from service pending recalibration'},
+      {key:'contact_details', label:'Contact Details of Involved Parties', required:false, type:'text', example:'J Smith, Line Supervisor, 082 555 1234'},
       {key:'severity', label:'Severity', required:true, type:'enum', values:['minor','major','critical'], example:'minor'},
       {key:'owner', label:'Owner (exact member name)', required:true, type:'member', example:'David Elliott'},
       {key:'target_close_date', label:'Target Close Date', required:true, type:'date', example:'2026-09-01'},
       {key:'supplier_ref', label:'Supplier ref or name (optional)', required:false, type:'supplier', example:''},
     ],
     buildPayload(row, resolved){
+      const selectedType = STATE.ncTypes.find(t=>t.id===resolved.type);
       return {
-        organisation_id: STATE.org.id, title: row.title, description: row.description || '',
-        discipline: row.discipline, source: row.source, severity: row.severity,
-        raised_by: STATE.user.id, owner_id: resolved.owner,
+        organisation_id: STATE.org.id, title: selectedType ? selectedType.name : row.type, nc_type_id: resolved.type,
+        description: row.description || '', immediate_action_taken: row.immediate_action_taken || '', contact_details: row.contact_details || '',
+        severity: row.severity, raised_by: STATE.user.id, owner_id: resolved.owner,
         target_close_date: row.target_close_date, supplier_id: resolved.supplier_ref || null,
       };
     }
@@ -4625,6 +4921,11 @@ function validateImportValue(col, rawValue){
     if(!id) return { ok:false, error:`No supplier matching "${val}" found` };
     return { ok:true, value:val, resolved:id };
   }
+  if(col.type === 'nc_type'){
+    const id = resolveNcTypeByName(val);
+    if(!id) return { ok:false, error:`No active nonconformance type named "${val}" found — add it under Manage Types first` };
+    return { ok:true, value:val, resolved:id };
+  }
   if(col.type === 'position'){
     const id = resolvePositionByRef(val);
     if(!id) return { ok:false, error:`No position matching "${val}" found — add it under Manage Positions first` };
@@ -4866,7 +5167,7 @@ window.printLegal = async function(id){
       fmtDate(r.review_date), label(r.compliance_status), r.finding_text || '—', r.close_out_date ? fmtDate(r.close_out_date) : '—'
     ]));
   }
-  printRecord('Legal Compliance Record', l.ref_code, meta, body);
+  printRecord('Legal Compliance Record', l.ref_code, meta, body, null, 'legal');
 };
 
 function renderLegalReviewRow(r){
@@ -5105,6 +5406,8 @@ async function openPersonDetail(id){
   const records = competenceFor(id);
   const primary = records.find(c=>c.is_primary);
   const subs = records.filter(c=>!c.is_primary);
+  const linkedNcs = p.linked_profile_id ? STATE.ncs.filter(n=>n.owner_id===p.linked_profile_id) : [];
+  const { data: compliments } = await STATE.supabase.from('compliments').select('*').eq('personnel_id', id).order('compliment_date', {ascending:false});
 
   document.getElementById('pers-detail-slot').innerHTML = `
     <div class="detail-panel">
@@ -5134,7 +5437,46 @@ async function openPersonDetail(id){
         <button class="btn-small" onclick="prefillTrainingFromPerson('${p.id}')">+ Training need</button>
       </div>
 
+      <div class="status-row">
+        <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase;">Watchman login</label>
+        <select id="pd-linked-user">
+          <option value="">Not linked — no login</option>
+          ${STATE.members.map(m=>`<option value="${m.user_id}" ${p.linked_profile_id===m.user_id?'selected':''}>${(m.profiles&&m.profiles.name)||'Unknown'}</option>`).join('')}
+        </select>
+        <button class="btn-small primary" onclick="savePersonLink('${p.id}')">Save link</button>
+      </div>
+      <p style="font-size:11px; color:var(--text-faint); margin-bottom:16px;">Only relevant if this person also has a Watchman login — linking it is what lets their nonconformances show up below.</p>
+
       <div id="person-training-list" style="margin-bottom:16px;"></div>
+
+      ${p.linked_profile_id ? `
+      <div style="margin-bottom:16px;">
+        <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Nonconformances (as owner)</div>
+        ${linkedNcs.length ? linkedNcs.map(n=>`<span class="linked-task-chip" style="cursor:pointer;" onclick="showModule('nonconformances'); setTimeout(()=>openNCDetail('${n.id}'),0);">${n.ref_code} — ${n.title} — ${pill(n.status)}</span>`).join('') : '<p style="font-size:12.5px; color:var(--text-faint);">No nonconformances owned by this person.</p>'}
+      </div>` : ''}
+
+      <div style="margin-bottom:16px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase;">Compliments &amp; Positive Achievements</div>
+          <button class="btn-small" onclick="toggleComplimentForm('${p.id}')">+ Give a compliment</button>
+        </div>
+        <div class="form-panel" id="compliment-form">
+          <div class="form-grid">
+            <div class="field span3"><label>What did they do well?</label><textarea id="cf-description" placeholder="Be specific — what happened, and why it mattered"></textarea></div>
+            <div class="field"><label>Date</label><input type="date" id="cf-date" value="${todayISO()}"></div>
+          </div>
+          <div class="form-actions">
+            <button class="btn-cancel" onclick="toggleComplimentForm('${p.id}')">Cancel</button>
+            <button class="btn-small primary" onclick="submitCompliment('${p.id}')">Save compliment</button>
+          </div>
+        </div>
+        ${compliments && compliments.length ? compliments.map(c=>`
+          <div class="evidence-row"><div style="flex:1;">
+            <div style="font-size:13px; color:var(--text-dim);">${c.description}</div>
+            <div style="font-size:11px; color:var(--text-faint); margin-top:2px;">${fmtDate(c.compliment_date)} · logged by ${memberName(c.given_by)}</div>
+          </div></div>
+        `).join('') : '<p style="font-size:12.5px; color:var(--text-faint);">No compliments logged yet.</p>'}
+      </div>
 
       <div class="detail-card" style="padding:16px; margin-bottom:16px;">
         <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Primary position</h3>
@@ -5212,7 +5554,7 @@ window.printPerson = function(id){
       return [pos ? pos.title : '—', c.level, c.is_primary ? 'Yes' : 'No', c.validated_by_name || '—', fmtDate(c.date_validated)];
     }));
   }
-  printRecord('Personnel Record', p.ref_code, meta, body);
+  printRecord('Personnel Record', p.ref_code, meta, body, null, 'personnel');
 };
 
 function renderCompetenceCard(c, isPrimary){
@@ -5334,6 +5676,33 @@ window.savePersonStatus = async function(personId){
   await loadPersonnel();
   openPersonDetail(personId);
   renderPersonnelView();
+};
+
+window.savePersonLink = async function(personId){
+  const userId = document.getElementById('pd-linked-user').value || null;
+  const { error } = await STATE.supabase.from('personnel').update({ linked_profile_id: userId }).eq('id', personId);
+  if(error){ toast('Could not save the link: ' + error.message, 'error'); return; }
+  await loadPersonnel();
+  openPersonDetail(personId);
+  toast(userId ? 'Login linked.' : 'Login link removed.', 'success');
+};
+
+window.toggleComplimentForm = function(personId){
+  document.getElementById('compliment-form').classList.toggle('open');
+};
+
+window.submitCompliment = async function(personId){
+  const description = document.getElementById('cf-description').value.trim();
+  const date = document.getElementById('cf-date').value;
+  if(!description || !date){ alert('A description and date are required.'); return; }
+  const { error } = await STATE.supabase.from('compliments').insert({
+    organisation_id: STATE.org.id, personnel_id: personId, given_by: STATE.user.id,
+    description, compliment_date: date,
+  });
+  if(error){ toast('Could not save the compliment: ' + error.message, 'error'); return; }
+  toggleComplimentForm(personId);
+  openPersonDetail(personId);
+  toast('Compliment logged.', 'success');
 };
 
 /* ============ Training ============ */
@@ -5470,7 +5839,7 @@ window.printTraining = function(id){
     ['Delivery', t.delivery_type ? label(t.delivery_type) + (t.delivery_type==='internal' ? (trainer ? ' — '+trainer.full_name : '') : (t.external_provider_name ? ' — '+t.external_provider_name : '')) : 'Not yet decided'],
   ];
   const body = t.comments ? `<p><b>Comments</b><br>${t.comments}</p>` : '';
-  printRecord('Training Record', t.ref_code, meta, body);
+  printRecord('Training Record', t.ref_code, meta, body, null, 'training');
 };
 
 window.saveTrainingStatus = async function(trainingId){
@@ -5631,6 +6000,13 @@ async function openAppraisalDetail(id){
   const { data: kpis, error: kErr } = await STATE.supabase.from('appraisal_kpis').select('*').eq('appraisal_id', id).order('sort_order', {ascending:true});
   const { files: evidenceFiles } = await loadEvidence('appraisal', id);
 
+  const periodNcs = (person && person.linked_profile_id)
+    ? STATE.ncs.filter(n=>n.owner_id===person.linked_profile_id && n.raised_date >= a.period_start && n.raised_date <= a.period_end)
+    : [];
+  const { data: periodCompliments } = person
+    ? await STATE.supabase.from('compliments').select('*').eq('personnel_id', person.id).gte('compliment_date', a.period_start).lte('compliment_date', a.period_end).order('compliment_date', {ascending:false})
+    : { data: [] };
+
   document.getElementById('appraisal-detail-slot').innerHTML = `
     <div class="detail-panel">
       <div class="detail-head">
@@ -5645,6 +6021,22 @@ async function openAppraisalDetail(id){
         <div class="dm-item"><div class="l">Line manager</div><div class="v">${memberName(a.line_manager_id)}</div></div>
         <div class="dm-item"><div class="l">Status</div><div class="v">${APPRAISAL_STATUS_LABELS[a.status]}</div></div>
         <div class="dm-item"><div class="l">Result</div><div class="v">${a.overall_achievement_pct!==null && a.overall_achievement_pct!==undefined ? Number(a.overall_achievement_pct).toFixed(1)+'%' : '—'}</div></div>
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Nonconformances raised in this period (as owner)</div>
+        ${periodNcs.length ? periodNcs.map(n=>`<span class="linked-task-chip" style="cursor:pointer;" onclick="showModule('nonconformances'); setTimeout(()=>openNCDetail('${n.id}'),0);">${n.ref_code} — ${n.title} — ${pill(n.status)}</span>`).join('')
+          : `<p style="font-size:12.5px; color:var(--text-faint);">${person && person.linked_profile_id ? 'None raised against this person during the period.' : 'This person has no Watchman login linked to their record — link it under Personnel to see nonconformances here.'}</p>`}
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Compliments &amp; positive achievements in this period</div>
+        ${periodCompliments && periodCompliments.length ? periodCompliments.map(c=>`
+          <div class="evidence-row"><div style="flex:1;">
+            <div style="font-size:13px; color:var(--text-dim);">${c.description}</div>
+            <div style="font-size:11px; color:var(--text-faint); margin-top:2px;">${fmtDate(c.compliment_date)} · logged by ${memberName(c.given_by)}</div>
+          </div></div>
+        `).join('') : '<p style="font-size:12.5px; color:var(--text-faint);">None logged during this period.</p>'}
       </div>
 
       ${a.status === 'draft' ? renderSendSelfAssessment(a) : ''}
@@ -5698,7 +6090,7 @@ window.printAppraisal = async function(id){
     body += `<p style="margin-top:6px;"><b>Manager's comment:</b> ${a.manager_comment || '—'}</p>`;
     body += `<p style="margin-top:6px;"><b>Agreed objectives:</b> ${a.agreed_objectives || '—'}</p>`;
   }
-  printRecord('Performance Appraisal', a.ref_code, meta, body);
+  printRecord('Performance Appraisal', a.ref_code, meta, body, null, 'appraisals');
 };
 
 function renderSendSelfAssessment(a){
@@ -5751,6 +6143,18 @@ window.copyApprLink = function(inputId){
   navigator.clipboard.writeText(input.value).then(()=>toast('Copied.', 'success')).catch(()=>toast('Select and copy manually.', 'error'));
 };
 
+function renderKpiLegendCard(){
+  return `
+  <div class="detail-card" style="padding:18px 20px; margin-bottom:18px; background:var(--grey-tint); border:none;">
+    <p style="font-size:12.5px; color:var(--text-dim); margin-bottom:10px; line-height:1.55;">
+      Rate honestly, not generously — a fair rating is more useful to everyone than a comfortable one. For every KPI, think about what actually happened during the period against its stated target, then prepare something that supports the rating you've chosen: a short performance declaration by email or memo, a task log, or whatever record actually demonstrates it. Attach it as evidence — a rating without something behind it is just an opinion.
+    </p>
+    <table style="width:100%; font-size:12px;">
+      ${KPI_RATING_LEGEND.map(r => `<tr><td style="padding:3px 10px 3px 0; font-weight:700; color:var(--red); width:20px;">${r.value}</td><td style="padding:3px 0; color:var(--text-dim);">${r.label}</td></tr>`).join('')}
+    </table>
+  </div>`;
+}
+
 function kpiOutcomeLabel(pct){
   if(pct === null || pct === undefined) return { text:'—', color:'var(--text-faint)' };
   const n = Number(pct);
@@ -5765,6 +6169,8 @@ function renderAppraisalKpisSection(a, kpis){
   <div class="panel-head"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">KPIs</h3></div>
   ${kpis.map(k => {
     const finalOutcome = kpiOutcomeLabel(k.final_achievement_pct);
+    const selfRating = k.self_achievement_pct!==null && k.self_achievement_pct!==undefined ? Math.round(k.self_achievement_pct/20) : null;
+    const mgrRating = k.manager_achievement_pct!==null && k.manager_achievement_pct!==undefined ? Math.round(k.manager_achievement_pct/20) : null;
     return `
     <div class="detail-card" style="margin-bottom:8px; padding:14px 16px;">
       <div style="display:flex; justify-content:space-between; align-items:flex-start;">
@@ -5775,16 +6181,19 @@ function renderAppraisalKpisSection(a, kpis){
       ${k.kpi_description ? `<p style="font-size:12px; color:var(--text-faint); margin-top:2px;">${k.kpi_description}</p>` : ''}
       <div style="display:flex; gap:24px; margin-top:10px; flex-wrap:wrap;">
         <div>
-          <div style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase;">Self — % of target</div>
-          <div style="font-size:14px; font-weight:600;">${k.self_achievement_pct!==null && k.self_achievement_pct!==undefined ? k.self_achievement_pct+'%' : '—'}</div>
+          <div style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase;">Self</div>
+          <div style="font-size:14px; font-weight:600;">${selfRating ? selfRating+' / 5 — '+k.self_achievement_pct+'%' : '—'}</div>
           ${k.self_actual_notes ? `<p style="font-size:12px; color:var(--text-dim); max-width:260px;">${k.self_actual_notes}</p>` : ''}
         </div>
         <div>
-          <div style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase;">Manager — % of target</div>
+          <div style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase;">Manager</div>
           ${isReview ? `
-            <input type="number" id="mgr-pct-${k.id}" placeholder="e.g. 92" step="0.1" value="${k.manager_achievement_pct ?? ''}" style="border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:13px; width:90px; margin-bottom:6px;">
-            <input type="text" id="mgr-comment-${k.id}" placeholder="Actual / notes" value="${(k.manager_actual_notes||'').replace(/"/g,'&quot;')}" style="display:block; border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12px; width:220px;">
-          ` : `<div style="font-size:14px; font-weight:600;">${k.manager_achievement_pct!==null && k.manager_achievement_pct!==undefined ? k.manager_achievement_pct+'%' : '—'}</div>${k.manager_actual_notes ? `<p style="font-size:12px; color:var(--text-dim); max-width:260px;">${k.manager_actual_notes}</p>` : ''}`}
+            <select id="mgr-rating-${k.id}" style="border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12.5px; margin-bottom:6px; max-width:280px;">
+              <option value="">Select a rating…</option>
+              ${KPI_RATING_LEGEND.map(r=>`<option value="${r.value}" ${mgrRating===r.value?'selected':''}>${r.value} — ${r.label}</option>`).join('')}
+            </select>
+            <input type="text" id="mgr-comment-${k.id}" placeholder="Actual / notes" value="${(k.manager_actual_notes||'').replace(/"/g,'&quot;')}" style="display:block; border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12px; width:260px;">
+          ` : `<div style="font-size:14px; font-weight:600;">${mgrRating ? mgrRating+' / 5 — '+k.manager_achievement_pct+'%' : '—'}</div>${k.manager_actual_notes ? `<p style="font-size:12px; color:var(--text-dim); max-width:260px;">${k.manager_actual_notes}</p>` : ''}`}
         </div>
         ${k.final_achievement_pct!==null && k.final_achievement_pct!==undefined ? `<div>
           <div style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase;">Final</div>
@@ -5795,6 +6204,7 @@ function renderAppraisalKpisSection(a, kpis){
     </div>
   `;}).join('')}
   ${isReview ? `
+    <p style="font-size:11.5px; color:var(--text-faint); margin-bottom:14px;">Attach whatever supports each rating — a performance declaration, a task log, anything that backs it up — in the Evidence section further down before finalizing.</p>
     <div class="detail-card" style="padding:16px; margin-bottom:16px;">
       <div class="field" style="margin-bottom:10px;"><label>Manager's overall comment — for the individual</label><textarea id="mgr-overall-comment">${a.manager_comment||''}</textarea></div>
       <div class="field" style="margin-bottom:10px;"><label>Agreed objectives for next period</label><textarea id="mgr-agreed-objectives">${a.agreed_objectives||''}</textarea></div>
@@ -5817,13 +6227,13 @@ window.finalizeAppraisal = async function(appraisalId){
 
   let anyMissing = false;
   for(const k of kpis){
-    const pctEl = document.getElementById('mgr-pct-'+k.id);
-    if(!pctEl || pctEl.value === ''){ anyMissing = true; continue; }
-    const managerPct = parseFloat(pctEl.value);
+    const ratingEl = document.getElementById('mgr-rating-'+k.id);
+    if(!ratingEl || ratingEl.value === ''){ anyMissing = true; continue; }
+    const managerPct = kpiRatingToPct(parseInt(ratingEl.value, 10));
     const commentEl = document.getElementById('mgr-comment-'+k.id);
-    // Final is the average of self and manager's assessed achievement —
-    // same "both voices count" principle the old rating system used, just
-    // applied to a real percentage-of-target now instead of a 1-5 guess.
+    // Final is the average of self and manager's assessed rating — both
+    // voices count, same principle whether the input was a percentage or,
+    // as now, a 1-5 rating converted to one.
     const finalPct = (k.self_achievement_pct !== null && k.self_achievement_pct !== undefined)
       ? (managerPct + Number(k.self_achievement_pct)) / 2 : managerPct;
     const { error } = await STATE.supabase.from('appraisal_kpis').update({
@@ -5831,7 +6241,7 @@ window.finalizeAppraisal = async function(appraisalId){
     }).eq('id', k.id);
     if(error){ toast('Could not save a KPI result: ' + error.message, 'error'); return; }
   }
-  if(anyMissing){ alert('Enter a % achievement for every KPI before finalizing.'); return; }
+  if(anyMissing){ alert('Select a rating for every KPI before finalizing.'); return; }
 
   const { data: updatedKpis } = await STATE.supabase.from('appraisal_kpis').select('*').eq('appraisal_id', appraisalId);
   // A genuine weighted average, not a plain mean — a KPI weighted at 40%
@@ -6045,7 +6455,7 @@ window.printAsset = async function(id){
       fmtDate(insp.inspection_date), insp.inspected_by_name || '—', insp.status ? label(insp.status) : 'In progress', insp.overall_notes || '—'
     ]));
   }
-  printRecord('Asset Record', a.ref_code, meta, body);
+  printRecord('Asset Record', a.ref_code, meta, body, null, 'assets');
 };
 
 window.startAssetInspection = async function(assetId){
@@ -6262,7 +6672,7 @@ window.printBulletin = function(id){
   if(!b) return;
   const meta = [['Type', BULLETIN_TYPE_LABELS[b.type]], ['Published', fmtDate(b.published_date)]];
   const body = `<p style="white-space:pre-wrap;">${b.content}</p>`;
-  printRecord(BULLETIN_TYPE_LABELS[b.type], b.ref_code, meta, body);
+  printRecord(BULLETIN_TYPE_LABELS[b.type], b.ref_code, meta, body, null, 'bulletins');
 };
 
 /* ---- Sign-in popup for the latest bulletin — shown before the reminders
@@ -6276,20 +6686,13 @@ function showLatestBulletinPopup(){
     <p class="sub">Published ${fmtDate(latest.published_date)}</p>
     <p style="font-size:13.5px; color:var(--text-dim); line-height:1.6; margin-bottom:18px; white-space:pre-wrap;">${preview}</p>
     <div class="form-actions">
-      <button class="btn-cancel" onclick="dismissBulletinPopup()">Dismiss</button>
-      <button class="btn-primary" onclick="readBulletinAndContinue('${latest.id}')">Read in full</button>
+      <button class="btn-primary" onclick="dismissBulletinPopup()">Dismiss</button>
     </div>
   `;
   document.getElementById('reminder-overlay').classList.add('active');
 }
 window.dismissBulletinPopup = function(){
   closeReminderPopup();
-  showReminderPopup();
-};
-window.readBulletinAndContinue = function(bulletinId){
-  closeReminderPopup();
-  showModule('bulletins');
-  setTimeout(()=>openBulletinDetail(bulletinId), 0);
   showReminderPopup();
 };
 
@@ -6397,13 +6800,15 @@ window.renderComplianceDashboard = renderComplianceDashboard;
 // on-screen editable panel — the editable UI has buttons, dropdowns, and
 // file pickers baked into its structure that have no business appearing
 // on something you're about to email to a supplier.
-function printRecord(docTitle, refLine, metaPairs, bodyHtml, extraHtml){
+function printRecord(docTitle, refLine, metaPairs, bodyHtml, extraHtml, moduleKey){
   const container = document.getElementById('print-container');
+  const formId = moduleKey ? formIdLine(moduleKey) : null;
   container.innerHTML = `
     <div class="print-header">
       <div class="print-brand">${STATE.org.name}</div>
       <div class="print-doc-title">${docTitle}</div>
       <div class="print-ref">${refLine} · Printed ${new Date().toLocaleString('en-GB')} by ${STATE.profile.name || STATE.user.email}</div>
+      ${formId ? `<div class="print-ref" style="margin-top:2px;"><b>Form ID:</b> ${formId}</div>` : ''}
     </div>
     <div class="print-meta-grid">
       ${metaPairs.map(([k,v])=>`<div><b>${k}:</b> ${v ?? '—'}</div>`).join('')}
@@ -6424,12 +6829,14 @@ function printTable(headers, rows){
 
 // Prints the currently visible register/table for a module — same engine,
 // just fed a table instead of a single record's fields.
-function printRegister(moduleLabel, headers, rows){
+function printRegister(moduleLabel, headers, rows, moduleKey){
   printRecord(
     moduleLabel,
     `${rows.length} record${rows.length===1?'':'s'}`,
     [],
-    printTable(headers, rows)
+    printTable(headers, rows),
+    null,
+    moduleKey
   );
 }
 window.printRegister = printRegister;
@@ -6470,8 +6877,9 @@ function getModuleExportConfig(moduleKey){
   const orgSlug = (STATE.org.name || 'export').replace(/[^a-zA-Z0-9]+/g,'-').toLowerCase();
   const configs = {
     nonconformances: { rows: STATE.ncs, filename: `nonconformances-${orgSlug}.xlsx`, columns: [
-      {header:'Ref', get:r=>r.ref_code}, {header:'Title', get:r=>r.title}, {header:'Description', get:r=>r.description},
-      {header:'Discipline', get:r=>r.discipline}, {header:'Source', get:r=>r.source}, {header:'Severity', get:r=>r.severity},
+      {header:'Ref', get:r=>r.ref_code}, {header:'Type', get:r=>r.title}, {header:'Description', get:r=>r.description},
+      {header:'Immediate Action Taken', get:r=>r.immediate_action_taken}, {header:'Contact Details', get:r=>r.contact_details},
+      {header:'Severity', get:r=>r.severity},
       {header:'Status', get:r=>r.status}, {header:'Raised Date', get:r=>r.raised_date}, {header:'Target Close', get:r=>r.target_close_date},
       {header:'Owner', get:r=>memberName(r.owner_id)},
     ]},
@@ -6480,7 +6888,7 @@ function getModuleExportConfig(moduleKey){
       {header:'Priority', get:r=>r.priority}, {header:'Assignee', get:r=>memberName(r.assignee_id)}, {header:'Due Date', get:r=>r.due_date},
     ]},
     documents: { rows: STATE.documents, filename: `documents-${orgSlug}.xlsx`, columns: [
-      {header:'Doc #', get:r=>r.doc_number}, {header:'Title', get:r=>r.title}, {header:'Revision', get:r=>r.current_revision},
+      {header:'Identification', get:r=>r.doc_number+'-Rev'+r.current_revision}, {header:'Title', get:r=>r.title},
       {header:'Introduced', get:r=>r.introduced_date}, {header:'Revision Date', get:r=>r.current_revision_date},
       {header:'Approval', get:r=>r.approval_status}, {header:'Status', get:r=>r.status}, {header:'Owner', get:r=>memberName(r.owner_id)},
       {header:'Next Review', get:r=>r.next_review_date},
@@ -6545,7 +6953,7 @@ async function printCurrentRegister(moduleKey, moduleLabel){
   if(!cfg){ toast('Print not available for this module yet.', 'error'); return; }
   const headers = cfg.columns.map(c=>c.header);
   const rows = cfg.rows.map(row => cfg.columns.map(c => c.get(row) ?? ''));
-  printRegister(moduleLabel, headers, rows);
+  printRegister(moduleLabel, headers, rows, moduleKey);
 }
 window.printCurrentRegister = printCurrentRegister;
 
