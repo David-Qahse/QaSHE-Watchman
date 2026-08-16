@@ -153,6 +153,18 @@
   .compliance-legend .cl-row{display:flex; align-items:center; gap:7px; font-size:11px; color:var(--text-dim); margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .compliance-legend .cl-dot{width:8px; height:8px; border-radius:50%; flex-shrink:0;}
   .compliance-legend .cl-count{margin-left:auto; font-family:'JetBrains Mono'; font-weight:600; color:var(--text);}
+  .mr-section{background:#fff; border:1px solid var(--border); border-radius:12px; padding:20px 22px; margin-bottom:16px;}
+  .mr-section-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;}
+  .mr-section-head h3{font-family:'Poppins'; font-size:15.5px; font-weight:600; color:var(--text);}
+  .mr-stat-row{display:flex; gap:28px; flex-wrap:wrap; margin-bottom:6px;}
+  .mr-stat{min-width:130px;}
+  .mr-stat-value{font-family:'Poppins'; font-size:26px; font-weight:700; line-height:1.1;}
+  .mr-stat-label{font-size:11.5px; color:var(--text-dim); margin-top:2px;}
+  .mr-stat-sub{font-size:10.5px; color:var(--text-faint); margin-top:1px;}
+  .mr-subhead{font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.05em; margin:14px 0 8px;}
+  .mr-bar{display:flex; height:14px; border-radius:7px; overflow:hidden; background:var(--border-soft); margin-bottom:8px;}
+  .mr-bar-legend{display:flex; gap:16px; flex-wrap:wrap; font-size:11.5px; color:var(--text-dim);}
+  .mr-dot{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; vertical-align:middle;}
   @media (max-width:1100px){.kpi-grid{grid-template-columns:repeat(2,1fr);}}
   .kpi-card{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:18px;}
   .kpi-card .k-label{font-family:'JetBrains Mono'; font-size:10.5px; color:var(--text-faint); letter-spacing:.06em; text-transform:uppercase; margin-bottom:9px;}
@@ -458,7 +470,7 @@
     <div class="mod-card live" onclick="goTo('dashboard','audits')"><span class="tag live">LIVE</span>
       <div class="code">MOD-04</div>
       <div class="mod-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg></div>
-      <h3>Internal Audit</h3>
+      <h3>Audits</h3>
       <p>Audits, findings, and promoting a finding straight into the nonconformance register.</p>
     </div>
     <div class="mod-card live" onclick="goTo('dashboard','risks')"><span class="tag live">LIVE</span>
@@ -615,7 +627,7 @@
       <div class="nav-item" data-mod="nonconformances" onclick="showModule('nonconformances')"><svg viewBox="0 0 24 24"><path d="M12 3l10 18H2L12 3z"/><line x1="12" y1="10" x2="12" y2="14"/><line x1="12" y1="17" x2="12" y2="17.01"/></svg> Nonconformances <span class="nd red" id="nd-nc"></span></div>
       <div class="nav-item" data-mod="tasks" onclick="showModule('tasks')"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12l3 3 6-6"/></svg> Tasks <span class="nd amber" id="nd-task"></span></div>
       <div class="nav-item" data-mod="documents" onclick="showModule('documents')"><svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z"/><line x1="9" y1="12" x2="17" y2="12"/><line x1="9" y1="16" x2="17" y2="16"/></svg> Documents <span class="nd amber" id="nd-doc"></span></div>
-      <div class="nav-item" data-mod="audits" onclick="showModule('audits')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg> Internal Audit <span class="nd amber" id="nd-audit"></span></div>
+      <div class="nav-item" data-mod="audits" onclick="showModule('audits')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg> Audits <span class="nd amber" id="nd-audit"></span></div>
       <div class="nav-item" data-mod="risks" onclick="showModule('risks')"><svg viewBox="0 0 24 24"><path d="M3 12h4l2 6 4-12 2 6h6"/></svg> Risk &amp; Opportunity <span class="nd red" id="nd-risk"></span></div>
       <div class="nav-item" data-mod="suppliers" onclick="showModule('suppliers')"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a4 4 0 018 0v2"/></svg> Suppliers <span class="nd amber" id="nd-supplier"></span></div>
       <div class="nav-item" data-mod="customers" onclick="showModule('customers')"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21v-2a5 5 0 015-5h4a5 5 0 015 5v2"/><path d="M17 4a4 4 0 010 8"/><path d="M22 21v-2a5 5 0 00-4-4.9"/></svg> Customers <span class="nd amber" id="nd-customer"></span></div>
@@ -710,6 +722,7 @@ const STATE = {
   assetChecklistTemplates:[], assetChecklistItems:[], assets:[], bulletins:[],
   checklistTemplates:[],
   docDepartments:[], docTypes:[], formIdentifications:[], ncTypes:[],
+  assessmentTemplates:[], assessmentItems:[], assessmentRecords:[], customerSurveys:[],
 };
 let personnelView = 'register';
 let pendingModule = 'overview';
@@ -858,6 +871,10 @@ window.selectOrg = async function(orgId){
 
   await loadNCs();
   await loadNCTypes();
+  await loadAssessmentTemplates();
+  await loadAssessmentItems();
+  await loadAssessmentRecords();
+  await loadCustomerSurveys();
   await loadTasks();
   await loadAudits();
   await loadRisks();
@@ -903,6 +920,26 @@ async function loadNCTypes(){
   const { data, error } = await STATE.supabase.from('nc_types').select('*').eq('organisation_id', STATE.org.id).order('sort_order', {ascending:true});
   if(error){ toast('Could not load nonconformance types: ' + error.message, 'error'); return; }
   STATE.ncTypes = data || [];
+}
+async function loadAssessmentTemplates(){
+  const { data, error } = await STATE.supabase.from('assessment_checklist_templates').select('*').eq('organisation_id', STATE.org.id);
+  if(error){ toast('Could not load assessment checklists: ' + error.message, 'error'); return; }
+  STATE.assessmentTemplates = data || [];
+}
+async function loadAssessmentItems(){
+  const { data, error } = await STATE.supabase.from('assessment_checklist_items').select('*').eq('organisation_id', STATE.org.id).order('sort_order', {ascending:true});
+  if(error){ toast('Could not load assessment checklist items: ' + error.message, 'error'); return; }
+  STATE.assessmentItems = data || [];
+}
+async function loadAssessmentRecords(){
+  const { data, error } = await STATE.supabase.from('assessment_records').select('*').eq('organisation_id', STATE.org.id);
+  if(error){ toast('Could not load assessment records: ' + error.message, 'error'); return; }
+  STATE.assessmentRecords = data || [];
+}
+async function loadCustomerSurveys(){
+  const { data, error } = await STATE.supabase.from('satisfaction_surveys').select('*').eq('organisation_id', STATE.org.id);
+  if(error){ toast('Could not load satisfaction surveys: ' + error.message, 'error'); return; }
+  STATE.customerSurveys = data || [];
 }
 async function loadTasks(){
   const { data, error } = await STATE.supabase.from('tasks').select('*').eq('organisation_id', STATE.org.id).order('due_date', {ascending:true});
@@ -1027,7 +1064,7 @@ const MODULE_META = {
   nonconformances:{title:'Nonconformances', sub:() => 'MOD-01 · Opportunities for Improvement register'},
   tasks:{title:'Task Management', sub:() => 'MOD-02 · Every action, linked back to its source'},
   documents:{title:'Document Control', sub:() => 'MOD-03 · Controlled documents, revisions archived automatically'},
-  audits:{title:'Internal Audit', sub:() => 'MOD-04 · Audits, findings, and promotion to nonconformance'},
+  audits:{title:'Audits', sub:() => 'MOD-04 · Audits, findings, and promotion to nonconformance'},
   risks:{title:'Risk & Opportunity Register', sub:() => 'MOD-05 · Scored, treated, and linked back to nonconformances'},
   suppliers:{title:'Supplier & Subcontractor Management', sub:() => 'MOD-07 · Risk-classified register, audit or exception-monitored'},
   customers:{title:'Customers', sub:() => 'MOD-08 · Register and satisfaction monitoring'},
@@ -1310,7 +1347,13 @@ const RENDERERS = {
   },
 
   compliance: () => `
-    <div class="compliance-grid" id="compliance-grid"></div>
+    <div class="toolbar">
+      <div>
+        <div style="font-size:12.5px; color:var(--text-dim);">A live statistical snapshot across every module — built to be read straight into a management review, not just browsed.</div>
+      </div>
+      <button class="btn-small primary" onclick="printComplianceDashboard()">Print / PDF</button>
+    </div>
+    <div id="compliance-report"></div>
   `,
 
   nonconformances: () => `
@@ -1431,7 +1474,7 @@ const RENDERERS = {
         </select>
       </div>
       <button class="btn-small" onclick="exportModuleExcel('audits')">Export Excel</button>
-      <button class="btn-small" onclick="printCurrentRegister('audits','Internal Audit Register')">Print Register</button>
+      <button class="btn-small" onclick="printCurrentRegister('audits','Audits Register')">Print Register</button>
       <button class="btn-primary btn-add" onclick="toggleAuditForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Audit</button>
     </div>
 
@@ -2547,7 +2590,7 @@ window.addTaskComment = async function(id){
   openTaskDetail(id);
 };
 
-/* ============ Internal Audit: form + list + detail + findings ============ */
+/* ============ Audits: form + list + detail + findings ============ */
 function findingBadge(type){
   const cls = (type==='major_nc') ? 'critical' : (type==='minor_nc') ? 'major' : 'minor';
   return `<span class="sev-badge ${cls}">${label(type)}</span>`;
@@ -2713,7 +2756,7 @@ window.printAudit = async function(id){
     body += printSectionTitle('Findings');
     body += printTable(['Type','Clause','Description'], findings.map(f => [label(f.finding_type), f.clause_reference||'—', f.description]));
   }
-  printRecord('Internal Audit Report', audit.audit_ref, meta, body, null, 'audits');
+  printRecord('Audit Report', audit.audit_ref, meta, body, null, 'audits');
 };
 
 function renderFindingRow(f){
@@ -3235,7 +3278,7 @@ window.reopenRCA = async function(ncId){
   await openNCDetail(ncId);
 };
 
-/* ============ Evidence attachments (Nonconformances + Internal Audit) ============ */
+/* ============ Evidence attachments (Nonconformances + Audits) ============ */
 async function loadEvidence(entityType, entityId){
   const { data, error } = await STATE.supabase.from('evidence_files')
     .select('*').eq('entity_type', entityType).eq('entity_id', entityId)
@@ -3809,7 +3852,7 @@ window.submitNewRevision = async function(id){
   toast(`Revision ${nextRevision} issued.`, 'success');
 };
 
-/* ============ ISO Checklists (within Internal Audit) ============ */
+/* ============ ISO Checklists (within Audits) ============ */
 function renderChecklistSection(audit, responses){
   if(!audit.checklist_template_id) return '';
   const sorted = [...responses].sort((a,b)=> ((a.checklist_template_items&&a.checklist_template_items.sort_order)||0) - ((b.checklist_template_items&&b.checklist_template_items.sort_order)||0));
@@ -3979,6 +4022,7 @@ async function openSupplierDetail(id){
     reviews = data || [];
   }
   const { data: excCount } = await STATE.supabase.from('nonconformances').select('id', {count:'exact', head:true}).eq('supplier_id', id);
+  const { data: assessments } = await STATE.supabase.from('assessment_records').select('*').eq('entity_type','supplier').eq('entity_id', id).order('assessment_date', {ascending:false});
 
   const qualAudit = s.qualification_audit_id ? STATE.audits.find(a=>a.id===s.qualification_audit_id) : null;
 
@@ -4005,6 +4049,8 @@ async function openSupplierDetail(id){
         <button class="btn-small primary" onclick="saveSupplierStatus('${s.id}')">Update status</button>
       </div>
       <div id="sup-status-warning"></div>
+
+      ${renderAssessmentSection('supplier', s.id, assessments || [], s.risk_classification)}
 
       ${s.risk_classification === 'high' ? renderHighRiskQualification(s, qualAudit) : renderLowRiskMonitoring(s, reviews)}
     </div>
@@ -4039,11 +4085,204 @@ window.printSupplier = async function(id){
   printRecord('Supplier Record', s.ref_code, meta, body, null, 'suppliers');
 };
 
+const ASSESSMENT_SCALE = [
+  { value: 1, label: 'Fully compliant' },
+  { value: 2, label: 'Partially compliant' },
+  { value: 3, label: 'In progress' },
+  { value: 4, label: 'Non compliant' },
+  { value: 5, label: 'Negligent' },
+];
+
+function assessmentOutcome(entityType, avgScore){
+  if(entityType === 'supplier'){
+    if(avgScore <= 2) return { text:'Authorised Preferred Vendor', color:'var(--green)' };
+    if(avgScore <= 3) return { text:'Authorised Vendor', color:'var(--green)' };
+    if(avgScore <= 4) return { text:'Not Authorised — Further Assessment Required', color:'var(--amber)' };
+    return { text:'Not Authorised — No Further Consideration', color:'var(--red)' };
+  }
+  if(avgScore <= 2) return { text:'Onboarding Thorough', color:'var(--green)' };
+  if(avgScore <= 3) return { text:'Onboarding Adequate', color:'var(--green)' };
+  if(avgScore <= 4) return { text:'Gaps Identified — Follow Up Required', color:'var(--amber)' };
+  return { text:'Significant Gaps Identified', color:'var(--red)' };
+}
+
+function getAssessmentTemplate(entityType){
+  return STATE.assessmentTemplates.find(t=>t.applies_to===entityType);
+}
+
+function renderAssessmentSection(entityType, entityId, assessments, riskClassification){
+  const template = getAssessmentTemplate(entityType);
+  const label = entityType === 'supplier' ? 'Supplier Assessment' : 'Customer Onboarding Assessment';
+  return `
+  <div style="margin-bottom:16px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+      <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase;">${label}</div>
+      <div style="display:flex; gap:6px;">
+        <button class="btn-small" onclick="toggleManageAssessmentItems('${entityType}')">Manage Checklist</button>
+        <button class="btn-small primary" onclick="toggleNewAssessmentForm('${entityType}','${entityId}')">+ New Assessment</button>
+      </div>
+    </div>
+    <div class="form-panel" id="manage-assessment-items-${entityType}"></div>
+    <div class="form-panel" id="new-assessment-form-${entityType}-${entityId}"></div>
+    ${!template ? '<p style="font-size:12.5px; color:var(--text-faint);">No checklist template found for this organisation.</p>' :
+      assessments.length ? assessments.map(a => {
+        const outcome = assessmentOutcome(entityType, Number(a.overall_score));
+        return `<div class="evidence-row"><div style="flex:1;">
+          <div><b>${fmtDate(a.assessment_date)}</b> — Score ${Number(a.overall_score).toFixed(1)}/5 — <span style="color:${outcome.color}; font-weight:600;">${outcome.text}</span></div>
+          <div style="font-size:11px; color:var(--text-faint); margin-top:2px;">Assessed by ${memberName(a.assessed_by)}${a.physical_audit_required ? (a.physical_audit_completed_date ? ` · Physical audit completed ${fmtDate(a.physical_audit_completed_date)}` : ' · Physical audit required, not yet completed') : ''}</div>
+        </div></div>`;
+      }).join('') : '<p style="font-size:12.5px; color:var(--text-faint);">No assessments recorded yet.</p>'
+    }
+  </div>`;
+}
+window.renderAssessmentSection = renderAssessmentSection;
+
+window.toggleNewAssessmentForm = function(entityType, entityId){
+  const slot = document.getElementById(`new-assessment-form-${entityType}-${entityId}`);
+  if(!slot) return;
+  if(slot.classList.contains('open')){ slot.classList.remove('open'); slot.innerHTML=''; return; }
+  const template = getAssessmentTemplate(entityType);
+  if(!template){ alert('No checklist template exists yet — add items under "Manage Checklist" first.'); return; }
+  const items = STATE.assessmentItems.filter(i=>i.template_id===template.id && i.is_active);
+  if(!items.length){ alert('No active checklist items — add some under "Manage Checklist" first.'); return; }
+
+  slot.classList.add('open');
+  slot.innerHTML = `
+    <h3 style="font-family:'Poppins'; font-size:14.5px; font-weight:600; margin-bottom:6px;">${template.title}</h3>
+    <p style="font-size:11.5px; color:var(--text-faint); margin-bottom:14px;">${template.description || ''}</p>
+    ${items.map(it => `
+      <div style="margin-bottom:14px; padding-bottom:12px; border-bottom:1px solid var(--border-soft);">
+        <div style="font-size:12.5px; color:var(--text); margin-bottom:6px;">${it.item_text}</div>
+        <select id="asm-score-${it.id}" style="border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12px; margin-bottom:6px;">
+          ${ASSESSMENT_SCALE.map(sc=>`<option value="${sc.value}">${sc.value} — ${sc.label}</option>`).join('')}
+        </select>
+        <input type="text" id="asm-notes-${it.id}" placeholder="Notes (optional)" style="display:block; width:100%; border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12px;">
+      </div>
+    `).join('')}
+    ${entityType === 'supplier' ? `<div class="field" style="margin-bottom:12px;"><label>Physical audit required?</label>
+      <select id="asm-physical-required">
+        <option value="auto">Decide automatically from risk classification and score</option>
+        <option value="yes">Yes, require one regardless</option>
+        <option value="no">No</option>
+      </select>
+    </div>` : ''}
+    <div class="field" style="margin-bottom:12px;"><label>Overall notes</label><textarea id="asm-overall-notes"></textarea></div>
+    <div class="form-actions">
+      <button class="btn-cancel" onclick="toggleNewAssessmentForm('${entityType}','${entityId}')">Cancel</button>
+      <button class="btn-primary" onclick="submitAssessment('${entityType}','${entityId}')">Save assessment</button>
+    </div>
+  `;
+};
+
+window.submitAssessment = async function(entityType, entityId){
+  const template = getAssessmentTemplate(entityType);
+  const items = STATE.assessmentItems.filter(i=>i.template_id===template.id && i.is_active);
+  const scores = [];
+  for(const it of items){
+    const sel = document.getElementById('asm-score-'+it.id);
+    if(!sel || !sel.value){ alert('Score every item before saving.'); return; }
+    scores.push({ item: it, score: parseInt(sel.value, 10), notes: document.getElementById('asm-notes-'+it.id).value.trim() });
+  }
+  const avgScore = scores.reduce((s,x)=>s+x.score,0) / scores.length;
+  const outcome = assessmentOutcome(entityType, avgScore);
+
+  let physicalRequired = false;
+  if(entityType === 'supplier'){
+    const choice = document.getElementById('asm-physical-required').value;
+    if(choice === 'yes') physicalRequired = true;
+    else if(choice === 'no') physicalRequired = false;
+    else {
+      const supplier = supplierById(entityId);
+      physicalRequired = (supplier && supplier.risk_classification === 'high') || avgScore > 3;
+    }
+  }
+
+  const { data: record, error: recErr } = await STATE.supabase.from('assessment_records').insert({
+    organisation_id: STATE.org.id, entity_type: entityType, entity_id: entityId, template_id: template.id,
+    assessed_by: STATE.user.id, overall_score: avgScore, outcome: outcome.text,
+    physical_audit_required: physicalRequired, notes: document.getElementById('asm-overall-notes').value.trim(),
+  }).select().single();
+  if(recErr){ toast('Could not save the assessment: ' + recErr.message, 'error'); return; }
+
+  const responseRows = scores.map(x => ({
+    assessment_id: record.id, item_id: x.item.id, item_text_snapshot: x.item.item_text, score: x.score, notes: x.notes,
+  }));
+  const { error: respErr } = await STATE.supabase.from('assessment_item_responses').insert(responseRows);
+  if(respErr){ toast('Assessment saved, but the item scores could not be recorded: ' + respErr.message, 'error'); }
+
+  toggleNewAssessmentForm(entityType, entityId);
+  if(entityType === 'supplier') openSupplierDetail(entityId); else openCustomerDetail(entityId);
+  toast(`Assessment saved — ${outcome.text}.`, 'success');
+};
+
+window.toggleManageAssessmentItems = function(entityType){
+  const slot = document.getElementById('manage-assessment-items-'+entityType);
+  if(!slot) return;
+  if(slot.classList.contains('open')){ slot.classList.remove('open'); slot.innerHTML=''; return; }
+  slot.classList.add('open');
+  renderAssessmentItemsManager(entityType);
+};
+
+function renderAssessmentItemsManager(entityType){
+  const slot = document.getElementById('manage-assessment-items-'+entityType);
+  if(!slot) return;
+  const template = getAssessmentTemplate(entityType);
+  const items = template ? STATE.assessmentItems.filter(i=>i.template_id===template.id) : [];
+  slot.innerHTML = `
+    <h3 style="font-family:'Poppins'; font-size:14px; font-weight:600; margin-bottom:10px;">${template ? template.title : 'Checklist'}</h3>
+    <div style="max-height:240px; overflow-y:auto; margin-bottom:12px;">
+      ${items.length ? items.map(it => `
+        <div class="evidence-row" style="${!it.is_active?'opacity:.5;':''}">
+          <div style="flex:1; font-size:12.5px;">${it.item_text}${!it.is_active ? ' <span class="mono" style="color:var(--text-faint); font-size:10px;">(inactive)</span>' : ''}</div>
+          <button class="btn-small" onclick="toggleAssessmentItemActive('${it.id}','${entityType}', ${!it.is_active})">${it.is_active ? 'Deactivate' : 'Activate'}</button>
+        </div>
+      `).join('') : '<p style="font-size:12px; color:var(--text-faint);">No items yet.</p>'}
+    </div>
+    <div style="display:flex; gap:6px;">
+      <input type="text" id="new-assessment-item-${entityType}" placeholder="Add a new checklist item" style="flex:1; border:1px solid var(--border); border-radius:6px; padding:8px 10px; font-size:12.5px;">
+      <button class="btn-small primary" onclick="addAssessmentItem('${entityType}')">Add</button>
+    </div>
+  `;
+}
+
+window.addAssessmentItem = async function(entityType){
+  const input = document.getElementById('new-assessment-item-'+entityType);
+  const text = input.value.trim();
+  if(!text) return;
+  let template = getAssessmentTemplate(entityType);
+  if(!template){
+    const { data: newTemplate, error: tErr } = await STATE.supabase.from('assessment_checklist_templates').insert({
+      organisation_id: STATE.org.id, applies_to: entityType,
+      title: entityType === 'supplier' ? 'Supplier & Subcontractor Basic Assessment' : 'New Customer Onboarding Checklist',
+      created_by: STATE.user.id,
+    }).select().single();
+    if(tErr){ toast('Could not create the checklist: ' + tErr.message, 'error'); return; }
+    template = newTemplate;
+    await loadAssessmentTemplates();
+  }
+  const nextSort = STATE.assessmentItems.filter(i=>i.template_id===template.id).length * 10 + 10;
+  const { error } = await STATE.supabase.from('assessment_checklist_items').insert({
+    organisation_id: STATE.org.id, template_id: template.id, item_text: text, sort_order: nextSort,
+  });
+  if(error){ toast('Could not add the item: ' + error.message, 'error'); return; }
+  input.value = '';
+  await loadAssessmentItems();
+  renderAssessmentItemsManager(entityType);
+  toast('Item added.', 'success');
+};
+
+window.toggleAssessmentItemActive = async function(itemId, entityType, newVal){
+  const { error } = await STATE.supabase.from('assessment_checklist_items').update({ is_active:newVal }).eq('id', itemId);
+  if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+  await loadAssessmentItems();
+  renderAssessmentItemsManager(entityType);
+};
+
 function renderHighRiskQualification(s, qualAudit){
   return `
   <div class="detail-card" style="margin-bottom:0; padding:16px;">
     <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Qualification audit</h3></div>
-    <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:12px;">High-risk suppliers can't be approved until a qualification audit's report has been approved and issued. Schedule one from Internal Audit, then link it here.</p>
+    <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:12px;">High-risk suppliers can't be approved until a qualification audit's report has been approved and issued. Schedule one from Audits, then link it here.</p>
     ${qualAudit ? `
       <div class="linked-task-chip" style="margin-bottom:10px;"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>${qualAudit.audit_ref} — ${qualAudit.title} · ${pill(qualAudit.status)}</div>
       <div><a href="#" onclick="showModule('audits'); setTimeout(()=>openAuditDetail('${qualAudit.id}'),0); return false;" style="color:var(--red); font-size:12.5px;">Open audit →</a></div>
@@ -4261,6 +4500,16 @@ window.submitCustomer = async function(){
   toast(`${newCust.ref_code} added.`, 'success');
 };
 
+function customerSurveySummary(customerId){
+  const surveys = STATE.customerSurveys.filter(s=>s.customer_id===customerId);
+  const completed = surveys.filter(s=>s.status==='completed' || s.overall_rating!==null);
+  if(!surveys.length) return { text:'Not surveyed', color:'var(--text-faint)' };
+  if(!completed.length) return { text:`${surveys.length} sent, awaiting response`, color:'var(--amber)' };
+  const avg = completed.reduce((s,x)=>s+Number(x.overall_rating||0),0) / completed.length;
+  const color = avg >= 4 ? 'var(--green)' : avg >= 3 ? 'var(--amber)' : 'var(--red)';
+  return { text:`${avg.toFixed(1)}/5 (${completed.length}/${surveys.length} responded)`, color };
+}
+
 function renderCustomersTable(){
   const wrap = document.getElementById('cust-table-wrap');
   if(!wrap) return;
@@ -4271,14 +4520,15 @@ function renderCustomersTable(){
     return;
   }
   wrap.innerHTML = `<table>
-    <tr><th>Ref</th><th>Name</th><th>Contact</th><th>Owner</th><th>Status</th></tr>
-    ${rows.map(c=>`<tr class="clickable" onclick="openCustomerDetail('${c.id}')">
+    <tr><th>Ref</th><th>Name</th><th>Contact</th><th>Owner</th><th>Satisfaction</th><th>Status</th></tr>
+    ${rows.map(c=>{ const summary = customerSurveySummary(c.id); return `<tr class="clickable" onclick="openCustomerDetail('${c.id}')">
       <td class="mono-cell">${c.ref_code}</td>
       <td class="strong">${c.name}</td>
       <td>${c.contact_email || c.contact_name || '—'}</td>
       <td>${memberName(c.account_owner_id)}</td>
+      <td style="color:${summary.color}; font-size:12.5px;">${summary.text}</td>
       <td>${pill(c.status)}</td>
-    </tr>`).join('')}
+    </tr>`;}).join('')}
   </table>`;
 }
 window.renderCustomersTable = renderCustomersTable;
@@ -4288,6 +4538,7 @@ async function openCustomerDetail(id){
   if(!c) return;
   const { data: surveys, error: sErr } = await STATE.supabase.from('satisfaction_surveys')
     .select('*').eq('customer_id', id).order('sent_at', {ascending:false});
+  const { data: assessments } = await STATE.supabase.from('assessment_records').select('*').eq('entity_type','customer').eq('entity_id', id).order('assessment_date', {ascending:false});
 
   document.getElementById('cust-detail-slot').innerHTML = `
     <div class="detail-panel">
@@ -4304,6 +4555,8 @@ async function openCustomerDetail(id){
         <div class="dm-item"><div class="l">Owner</div><div class="v">${memberName(c.account_owner_id)}</div></div>
         <div class="dm-item"><div class="l">Status</div><div class="v">${pill(c.status)}</div></div>
       </div>
+
+      ${renderAssessmentSection('customer', c.id, assessments || [])}
 
       <div class="panel-head" style="margin-top:6px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Satisfaction surveys</h3></div>
       <div class="field" style="margin-bottom:10px;"><label>Survey page URL (set once, remembered on this computer)</label><input id="survey-page-url" value="${loadSurveyPageUrl()}" placeholder="https://your-site/survey.html" oninput="saveSurveyPageUrl(this.value.trim())"></div>
@@ -6780,56 +7033,198 @@ function renderDonutSVG(counts, size=100){
   </svg>`;
 }
 
-const COMPLIANCE_MODULES = [
-  { key:'nonconformances', label:'Nonconformances', list:() => STATE.ncs, field:'status' },
-  { key:'tasks', label:'Tasks', list:() => STATE.tasks, field:'status' },
-  { key:'documents', label:'Documents', list:() => STATE.documents, field:'status' },
-  { key:'audits', label:'Internal Audit', list:() => STATE.audits, field:'status' },
-  { key:'risks', label:'Risk & Opportunity', list:() => STATE.risks, field:'status' },
-  { key:'legal', label:'Legal Compliance', list:() => STATE.legalRegister, field:'current_status' },
-  { key:'suppliers', label:'Suppliers', list:() => STATE.suppliers, field:'status' },
-  { key:'objectives', label:'Objectives & Targets', list:() => STATE.objectives, field:'status' },
-  { key:'personnel', label:'Personnel & Competence', list:() => STATE.personnel, field:'status' },
-  { key:'training', label:'Training', list:() => STATE.training, field:'status' },
-  { key:'appraisals', label:'KPIs & Appraisals', list:() => STATE.appraisals, field:'status' },
-  { key:'assets', label:'Assets & Maintenance', list:() => STATE.assets, field:'current_status' },
-  // Customers and Bulletins are deliberately excluded — neither has a
-  // status field that means anything as a compliance breakdown.
-];
+/* ============ Compliance Dashboard — Management Review Report ============ */
+
+function mrStatCard(value, label, sub, color){
+  return `<div class="mr-stat">
+    <div class="mr-stat-value" style="color:${color||'var(--text)'};">${value}</div>
+    <div class="mr-stat-label">${label}</div>
+    ${sub ? `<div class="mr-stat-sub">${sub}</div>` : ''}
+  </div>`;
+}
+
+function mrBar(segments, total){
+  // segments: [{label, count, color}]
+  if(!total) return `<div style="font-size:12px; color:var(--text-faint);">No records yet.</div>`;
+  return `
+    <div class="mr-bar">${segments.filter(s=>s.count>0).map(s=>`<div style="width:${(s.count/total*100).toFixed(1)}%; background:${s.color};" title="${s.label}: ${s.count}"></div>`).join('')}</div>
+    <div class="mr-bar-legend">${segments.map(s=>`<span><span class="mr-dot" style="background:${s.color};"></span>${s.label} (${s.count})</span>`).join('')}</div>
+  `;
+}
+
+function mrSection(title, moduleKey, bodyHtml){
+  return `<div class="mr-section">
+    <div class="mr-section-head">
+      <h3>${title}</h3>
+      ${moduleKey ? `<button class="btn-small" onclick="showModule('${moduleKey}')">Open module →</button>` : ''}
+    </div>
+    ${bodyHtml}
+  </div>`;
+}
 
 function renderComplianceDashboard(){
-  const grid = document.getElementById('compliance-grid');
-  if(!grid) return;
+  const wrap = document.getElementById('compliance-report');
+  if(!wrap) return;
 
-  grid.innerHTML = COMPLIANCE_MODULES.map(mod => {
-    const items = mod.list();
-    const counts = {};
-    items.forEach(item => {
-      const raw = item[mod.field];
-      const key = raw || 'Not set';
-      counts[key] = (counts[key] || 0) + 1;
-    });
-    const breakdown = Object.entries(counts)
-      .map(([status, count]) => ({ status, count, color: classifyStatusColor(status === 'Not set' ? null : status) }))
-      .sort((a,b) => b.count - a.count);
+  let html = '';
 
-    return `<div class="compliance-card" onclick="showModule('${mod.key}')">
-      <h4>${mod.label}</h4>
-      <div class="cc-total">${items.length} record${items.length===1?'':'s'}</div>
-      <div class="cc-body">
-        ${renderDonutSVG(breakdown, 88)}
-        <div class="compliance-legend">
-          ${breakdown.length ? breakdown.map(b => `<div class="cl-row">
-            <span class="cl-dot" style="background:${DONUT_COLORS[b.color]};"></span>
-            <span>${label(b.status)}</span>
-            <span class="cl-count">${b.count}</span>
-          </div>`).join('') : '<div class="cl-row" style="color:var(--text-faint);">No records yet</div>'}
-        </div>
+  // ---- Customer Satisfaction ---------------------------------------------
+  {
+    const surveys = STATE.customerSurveys;
+    const completed = surveys.filter(s=>s.status==='completed' || s.overall_rating!==null);
+    const avgRating = completed.length ? completed.reduce((s,x)=>s+Number(x.overall_rating||0),0)/completed.length : null;
+    const withComments = completed.filter(s=>s.comments && s.comments.trim()).length;
+    html += mrSection('Customer Satisfaction', 'customers', `
+      <div class="mr-stat-row">
+        ${mrStatCard(avgRating!==null ? avgRating.toFixed(1)+'/5' : '—', 'Average rating', completed.length+' response'+(completed.length===1?'':'s'), avgRating!==null ? (avgRating>=4?'var(--green)':avgRating>=3?'var(--amber)':'var(--red)') : null)}
+        ${mrStatCard(surveys.length ? Math.round(completed.length/surveys.length*100)+'%' : '—', 'Response rate', surveys.length+' sent', null)}
+        ${mrStatCard(withComments, 'Responses with comments', 'Worth a read before the review', withComments>0?'var(--amber)':null)}
       </div>
-    </div>`;
-  }).join('');
+    `);
+  }
+
+  // ---- Nonconformances & Corrective Action -------------------------------
+  {
+    const ncs = STATE.ncs;
+    const open = ncs.filter(n=>n.status!=='closed').length;
+    const overdue = ncs.filter(n=>n.status!=='closed' && n.target_close_date && new Date(n.target_close_date) < new Date()).length;
+    const closed = ncs.filter(n=>n.status==='closed').length;
+    const closureRate = ncs.length ? Math.round(closed/ncs.length*100) : null;
+    const bySeverity = ['critical','major','minor'].map(sev => ({ label:label(sev), count: ncs.filter(n=>n.severity===sev).length, color: sev==='critical'?'#B21616':sev==='major'?'#B8791C':'#A6A6A6' }));
+    const now = new Date();
+    const q1start = new Date(now); q1start.setDate(now.getDate()-90);
+    const q2start = new Date(now); q2start.setDate(now.getDate()-180);
+    const thisQuarter = ncs.filter(n=>n.raised_date && new Date(n.raised_date)>=q1start).length;
+    const lastQuarter = ncs.filter(n=>n.raised_date && new Date(n.raised_date)>=q2start && new Date(n.raised_date)<q1start).length;
+    html += mrSection('Nonconformances & Corrective Action', 'nonconformances', `
+      <div class="mr-stat-row">
+        ${mrStatCard(ncs.length, 'Total raised', 'All time', null)}
+        ${mrStatCard(open, 'Open', overdue+' overdue', overdue>0?'var(--red)':'var(--green)')}
+        ${mrStatCard(closureRate!==null ? closureRate+'%' : '—', 'Closure rate', null, null)}
+        ${mrStatCard(thisQuarter, 'Raised, last 90 days', (lastQuarter ? (thisQuarter>lastQuarter ? '↑ from '+lastQuarter+' the 90 days before' : thisQuarter<lastQuarter ? '↓ from '+lastQuarter+' the 90 days before' : 'Same as the 90 days before') : null), null)}
+      </div>
+      <div class="mr-subhead">By severity</div>
+      ${mrBar(bySeverity, ncs.length)}
+    `);
+  }
+
+  // ---- Internal Audits -----------------------------------------------------
+  {
+    const audits = STATE.audits;
+    const byStatus = ['planned','in_progress','completed','report_issued'].map(st => ({ label:label(st), count: audits.filter(a=>a.status===st).length, color: st==='completed'||st==='report_issued'?'#2E7D4F':st==='in_progress'?'#B8791C':'#A6A6A6' }));
+    html += mrSection('Audits', 'audits', `
+      <div class="mr-stat-row">
+        ${mrStatCard(audits.length, 'Total audits', null, null)}
+        ${mrStatCard(audits.filter(a=>a.status==='completed'||a.status==='report_issued').length, 'Completed', null, 'var(--green)')}
+      </div>
+      <div class="mr-subhead">By status</div>
+      ${mrBar(byStatus, audits.length)}
+    `);
+  }
+
+  // ---- Risk & Opportunity ---------------------------------------------------
+  {
+    const risks = STATE.risks;
+    const withResidual = risks.filter(r=>r.residual_score!==null && r.residual_score!==undefined);
+    const avgResidual = withResidual.length ? (withResidual.reduce((s,r)=>s+Number(r.residual_score),0)/withResidual.length).toFixed(1) : null;
+    const openCritical = risks.filter(r=>r.status!=='closed' && (r.residual_score>=15 || (r.residual_score==null && r.inherent_score>=15))).length;
+    html += mrSection('Risk & Opportunity', 'risks', `
+      <div class="mr-stat-row">
+        ${mrStatCard(risks.length, 'Total entries', null, null)}
+        ${mrStatCard(avgResidual!==null ? avgResidual : '—', 'Average residual score', withResidual.length+' assessed', null)}
+        ${mrStatCard(openCritical, 'Open, critical severity', null, openCritical>0?'var(--red)':'var(--green)')}
+      </div>
+    `);
+  }
+
+  // ---- Objectives & Targets ---------------------------------------------------
+  {
+    const objs = STATE.objectives;
+    const byStatus = [
+      { label:'Achieved', count: objs.filter(o=>o.status==='achieved').length, color:'#2E7D4F' },
+      { label:'On track', count: objs.filter(o=>['draft','active'].includes(o.status)).length, color:'#B8791C' },
+      { label:'Not achieved / discontinued', count: objs.filter(o=>['not_achieved','discontinued'].includes(o.status)).length, color:'#B21616' },
+    ];
+    html += mrSection('Objectives & Targets', 'objectives', `
+      <div class="mr-stat-row">${mrStatCard(objs.length, 'Total objectives', null, null)}</div>
+      ${mrBar(byStatus, objs.length)}
+    `);
+  }
+
+  // ---- Supplier & Subcontractor Performance ------------------------------
+  {
+    const suppliers = STATE.suppliers;
+    const supplierAssessments = STATE.assessmentRecords.filter(a=>a.entity_type==='supplier');
+    const assessedSupplierIds = new Set(supplierAssessments.map(a=>a.entity_id));
+    const authorised = supplierAssessments.filter(a=>a.outcome && a.outcome.startsWith('Authorised')).length;
+    const notAuthorised = supplierAssessments.filter(a=>a.outcome && a.outcome.startsWith('Not Authorised')).length;
+    const byRisk = [
+      { label:'High risk', count: suppliers.filter(s=>s.risk_classification==='high').length, color:'#B21616' },
+      { label:'Low risk', count: suppliers.filter(s=>s.risk_classification==='low').length, color:'#A6A6A6' },
+    ];
+    html += mrSection('Supplier & Subcontractor Performance', 'suppliers', `
+      <div class="mr-stat-row">
+        ${mrStatCard(suppliers.length, 'Total suppliers', null, null)}
+        ${mrStatCard(suppliers.length ? Math.round(assessedSupplierIds.size/suppliers.length*100)+'%' : '—', 'Have an assessment on file', assessedSupplierIds.size+' of '+suppliers.length, null)}
+        ${mrStatCard(authorised, 'Assessments — Authorised', null, 'var(--green)')}
+        ${mrStatCard(notAuthorised, 'Assessments — Not Authorised', null, notAuthorised>0?'var(--red)':null)}
+      </div>
+      <div class="mr-subhead">By risk classification</div>
+      ${mrBar(byRisk, suppliers.length)}
+    `);
+  }
+
+  // ---- Training & Competence ------------------------------------------------
+  {
+    const training = STATE.training;
+    const completed = training.filter(t=>t.status==='completed').length;
+    const overdue = training.filter(t=>t.status!=='completed' && t.status!=='cancelled' && t.due_date && new Date(t.due_date)<new Date()).length;
+    const completionRate = training.length ? Math.round(completed/training.length*100) : null;
+    html += mrSection('Training & Competence', 'training', `
+      <div class="mr-stat-row">
+        ${mrStatCard(training.length, 'Total training records', null, null)}
+        ${mrStatCard(completionRate!==null ? completionRate+'%' : '—', 'Completion rate', null, null)}
+        ${mrStatCard(overdue, 'Overdue', null, overdue>0?'var(--red)':'var(--green)')}
+      </div>
+    `);
+  }
+
+  // ---- KPIs & Appraisals ---------------------------------------------------
+  {
+    const finalized = STATE.appraisals.filter(a=>a.status==='finalized' && a.overall_achievement_pct!==null && a.overall_achievement_pct!==undefined);
+    const avgPerf = finalized.length ? (finalized.reduce((s,a)=>s+Number(a.overall_achievement_pct),0)/finalized.length).toFixed(1) : null;
+    html += mrSection('KPIs & Appraisals', 'appraisals', `
+      <div class="mr-stat-row">
+        ${mrStatCard(STATE.appraisals.length, 'Total appraisals', null, null)}
+        ${mrStatCard(avgPerf!==null ? avgPerf+'%' : '—', 'Average performance', finalized.length+' finalized', avgPerf!==null ? (avgPerf>=100?'var(--green)':avgPerf>=80?'var(--amber)':'var(--red)') : null)}
+      </div>
+    `);
+  }
+
+  // ---- Legal Compliance -----------------------------------------------------
+  {
+    const legal = STATE.legalRegister;
+    const byStatus = [
+      { label:'Compliant', count: legal.filter(l=>l.current_status==='compliant').length, color:'#2E7D4F' },
+      { label:'Semi-compliant', count: legal.filter(l=>l.current_status==='semi_compliant').length, color:'#B8791C' },
+      { label:'Non-compliant', count: legal.filter(l=>l.current_status==='non_compliant').length, color:'#B21616' },
+      { label:'Not yet reviewed', count: legal.filter(l=>!l.current_status).length, color:'#A6A6A6' },
+    ];
+    html += mrSection('Legal Compliance', 'legal', `
+      <div class="mr-stat-row">${mrStatCard(legal.length, 'Total legal register entries', null, null)}</div>
+      ${mrBar(byStatus, legal.length)}
+    `);
+  }
+
+  wrap.innerHTML = html;
 }
 window.renderComplianceDashboard = renderComplianceDashboard;
+
+window.printComplianceDashboard = function(){
+  const bodyHtml = document.getElementById('compliance-report').innerHTML
+    .replace(/<button[^>]*>.*?<\/button>/g, ''); // strip the "Open module" buttons from the print output
+  printRecord('Management Review Report', `${STATE.org.name} — ${new Date().toLocaleDateString('en-GB')}`, [], bodyHtml);
+};
 
 /* ============ Print / PDF and Excel export — shared across every module ============ */
 
@@ -6956,6 +7351,7 @@ function getModuleExportConfig(moduleKey){
     customers: { rows: STATE.customers, filename: `customers-${orgSlug}.xlsx`, columns: [
       {header:'Ref', get:r=>r.ref_code||''}, {header:'Name', get:r=>r.name}, {header:'Contact Name', get:r=>r.contact_name},
       {header:'Contact Email', get:r=>r.contact_email}, {header:'Contact Phone', get:r=>r.contact_phone},
+      {header:'Satisfaction', get:r=>customerSurveySummary(r.id).text},
     ]},
     objectives: { rows: STATE.objectives, filename: `objectives-${orgSlug}.xlsx`, columns: [
       {header:'Ref', get:r=>r.ref_code}, {header:'Category', get:r=>r.category}, {header:'Specific', get:r=>r.specific_statement},
