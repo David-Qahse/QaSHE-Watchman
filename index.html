@@ -197,6 +197,8 @@
   .pill.pending_verification{background:#EFE9FB; color:#6B4FBF;}
   .pill.closed, .pill.done{background:var(--green-tint); color:var(--green);}
   .pill.blocked{background:var(--grey-tint); color:var(--text-faint);}
+  .pill.yes{background:var(--green-tint); color:var(--green);}
+  .pill.no{background:var(--red-tint); color:var(--red);}
   .pill-dot{width:5px; height:5px; border-radius:50%; background:currentColor;}
   .sev-badge{font-family:'JetBrains Mono'; font-size:10.5px; padding:3px 8px; border-radius:5px; text-transform:capitalize;}
   .sev-badge.critical{background:var(--red-tint); color:var(--red);}
@@ -638,6 +640,7 @@
       <div class="nav-item" data-mod="appraisals" onclick="showModule('appraisals')"><svg viewBox="0 0 24 24"><path d="M12 20V10M18 20V4M6 20v-4"/></svg> KPIs &amp; Appraisals <span class="nd amber" id="nd-appraisal"></span></div>
       <div class="nav-item" data-mod="assets" onclick="showModule('assets')"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg> Assets &amp; Maintenance <span class="nd amber" id="nd-asset"></span></div>
       <div class="nav-item" data-mod="bulletins" onclick="showModule('bulletins')"><svg viewBox="0 0 24 24"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a2 2 0 11-3.2 2.4"/></svg> Bulletins &amp; Toolbox Talks</div>
+      <div class="nav-item" data-mod="all_documents" onclick="showModule('all_documents')"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg> All Documents</div>
       <div class="sb-foot">
         <a class="exit-link" id="switch-org-link" onclick="showOrgPicker()" style="display:none; margin-bottom:8px;"><svg viewBox="0 0 24 24"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg> Switch organisation</a>
         <a class="exit-link" onclick="doSignOut()"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Sign out</a>
@@ -722,7 +725,7 @@ const STATE = {
   assetChecklistTemplates:[], assetChecklistItems:[], assets:[], bulletins:[],
   checklistTemplates:[],
   docDepartments:[], docTypes:[], formIdentifications:[], ncTypes:[],
-  assessmentTemplates:[], assessmentItems:[], assessmentRecords:[], customerSurveys:[],
+  assessmentTemplates:[], assessmentItems:[], assessmentRecords:[], customerSurveys:[], bulkDocuments:[],
 };
 let personnelView = 'register';
 let pendingModule = 'overview';
@@ -830,7 +833,7 @@ async function afterSignIn(user){
 
   const { data: memberships, error: memErr } = await STATE.supabase
     .from('organisation_members')
-    .select('organisation_id, role, module_access, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color)')
+    .select('organisation_id, role, module_access, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color, all_documents_enabled)')
     .eq('user_id', user.id).eq('status','active');
 
   if(memErr){ toast('Could not load your organisations: ' + memErr.message, 'error'); return; }
@@ -1075,12 +1078,14 @@ const MODULE_META = {
   appraisals:{title:'KPIs & Appraisals', sub:() => 'MOD-13 · Position KPIs, self-assessment, and manager review'},
   assets:{title:'Assets Management & Maintenance', sub:() => 'MOD-14 · Register, inspection checklists, certificates'},
   bulletins:{title:'Bulletins & Toolbox Talks', sub:() => 'MOD-15 · Notices with downloadable material'},
+  all_documents:{title:'All Documents', sub:() => 'Emergency bulk document register — enabled by Group QaSHE CG per client'},
 };
 
-const GATED_MODULES = ['nonconformances','tasks','documents','audits','risks','suppliers','customers','objectives','legal','personnel','training','appraisals','assets','bulletins'];
+const GATED_MODULES = ['nonconformances','tasks','documents','audits','risks','suppliers','customers','objectives','legal','personnel','training','appraisals','assets','bulletins','all_documents'];
 
 function canAccessModule(mod){
   if(!GATED_MODULES.includes(mod)) return true; // overview, compliance — always visible
+  if(mod === 'all_documents' && !STATE.org.all_documents_enabled) return false; // off for this org entirely, regardless of role
   if(STATE.myRole === 'admin') return true;
   return (STATE.myModuleAccess || []).includes(mod);
 }
@@ -1120,6 +1125,7 @@ function showModule(mod){
   if(mod === 'assets') renderAssetsTable();
   if(mod === 'bulletins') renderBulletinsTable();
   if(mod === 'compliance') renderComplianceDashboard();
+  if(mod === 'all_documents') renderBulkDocumentsRegister();
 }
 window.showModule = showModule;
 
@@ -2104,6 +2110,28 @@ const RENDERERS = {
 
     <div class="panel" style="padding:0; overflow:hidden;">
       <div id="bulletin-table-wrap"></div>
+    </div>
+  `,
+
+  all_documents: () => `
+    <div class="toolbar">
+      <div></div>
+      <button class="btn-small" onclick="exportModuleExcel('all_documents')">Export Excel</button>
+      <button class="btn-small" onclick="printCurrentRegister('all_documents','All Documents Register')">Print Register</button>
+    </div>
+    <div class="warn-note" style="margin-bottom:18px;">
+      <svg viewBox="0 0 24 24"><path d="M12 3l10 18H2L12 3z"/><line x1="12" y1="10" x2="12" y2="14"/><line x1="12" y1="17" x2="12" y2="17.01"/></svg>
+      <div>This is a simple register, not the full Document Control system — no separate revision history, no approval workflow. Document number and description are read straight from each filename (everything before the first underscore is the number, the rest is the description) — name your files <b>DocNumber_Description.ext</b>, e.g. "TT-1-RGR-001-0_Master Documents Register.pdf", and nothing needs typing by hand. Every document is marked Current and Approved by default, since you control what goes in — correct either one individually if that ever changes.</div>
+    </div>
+    <div class="form-panel open" style="margin-bottom:18px;">
+      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:10px;">Bulk upload</h3>
+      <input type="file" id="bulkdoc-files" multiple>
+      <p style="font-size:11px; color:var(--text-faint); margin:8px 0 12px;">Select as many files as you need at once — accepted formats: PDF, Word, Excel, JPG, PNG. Maximum ${EVIDENCE_MAX_SIZE_MB}MB per file.</p>
+      <button class="btn-primary" onclick="uploadBulkDocuments()" id="bulkdoc-upload-btn">Upload</button>
+      <div id="bulkdoc-progress" style="margin-top:12px;"></div>
+    </div>
+    <div class="panel" style="padding:0; overflow:hidden;">
+      <div id="bulkdoc-table-wrap"></div>
     </div>
   `,
 };
@@ -6968,6 +6996,122 @@ window.printBulletin = function(id){
   printRecord(BULLETIN_TYPE_LABELS[b.type], b.ref_code, meta, body, null, 'bulletins');
 };
 
+/* ============ All Documents — emergency bulk register ============ */
+function parseBulkDocFilename(filename){
+  const dotIdx = filename.lastIndexOf('.');
+  const nameOnly = dotIdx > 0 ? filename.slice(0, dotIdx) : filename;
+  const underscoreIdx = nameOnly.indexOf('_');
+  if(underscoreIdx === -1) return { docNumber: nameOnly, description: '' };
+  return {
+    docNumber: nameOnly.slice(0, underscoreIdx),
+    description: nameOnly.slice(underscoreIdx + 1).replace(/_/g, ' '),
+  };
+}
+
+async function renderBulkDocumentsRegister(){
+  const wrap = document.getElementById('bulkdoc-table-wrap');
+  if(!wrap) return;
+  wrap.innerHTML = '<div class="empty-state"><p>Loading…</p></div>';
+  const { data, error } = await STATE.supabase.from('bulk_documents').select('*').eq('organisation_id', STATE.org.id).order('doc_number', {ascending:true});
+  if(error){ toast('Could not load documents: ' + error.message, 'error'); return; }
+  STATE.bulkDocuments = data || [];
+  if(!data.length){
+    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg><p>No documents uploaded yet.</p></div>`;
+    return;
+  }
+  wrap.innerHTML = `<table>
+    <tr><th>Document Number</th><th>Document Description</th><th>Current</th><th>Approved</th><th></th></tr>
+    ${data.map(d=>`<tr>
+      <td class="mono-cell strong" id="bulkdoc-num-${d.id}">${d.doc_number || '—'}</td>
+      <td id="bulkdoc-desc-${d.id}">${d.doc_description || '—'}</td>
+      <td>${d.current_status ? pill('yes') : pill('no')}</td>
+      <td>${d.approved_status ? pill('yes') : pill('no')}</td>
+      <td style="text-align:right; white-space:nowrap;">
+        <button class="btn-small" onclick="toggleEditBulkDoc('${d.id}')">Edit</button>
+        <button class="btn-small" onclick="downloadFromBucket('documents','${d.storage_path}')">Download</button>
+        <button class="btn-small" onclick="deleteBulkDocument('${d.id}','${d.storage_path}')">Delete</button>
+      </td>
+    </tr>
+    <tr id="bulkdoc-edit-row-${d.id}" style="display:none;"><td colspan="5" style="padding:12px 16px; background:var(--grey-tint);">
+      <div class="form-grid" style="margin-bottom:8px;">
+        <div class="field"><label>Document Number</label><input id="bulkdoc-edit-num-${d.id}" value="${(d.doc_number||'').replace(/"/g,'&quot;')}"></div>
+        <div class="field span2"><label>Document Description</label><input id="bulkdoc-edit-desc-${d.id}" value="${(d.doc_description||'').replace(/"/g,'&quot;')}"></div>
+      </div>
+      <label style="font-size:12px; margin-right:16px;"><input type="checkbox" id="bulkdoc-edit-current-${d.id}" ${d.current_status?'checked':''} style="width:auto; margin-right:6px;">Current</label>
+      <label style="font-size:12px; margin-right:16px;"><input type="checkbox" id="bulkdoc-edit-approved-${d.id}" ${d.approved_status?'checked':''} style="width:auto; margin-right:6px;">Approved</label>
+      <button class="btn-small primary" onclick="saveBulkDocEdit('${d.id}')">Save</button>
+      <button class="btn-small" onclick="toggleEditBulkDoc('${d.id}')">Cancel</button>
+    </td></tr>`).join('')}
+  </table>`;
+}
+window.renderBulkDocumentsRegister = renderBulkDocumentsRegister;
+
+window.toggleEditBulkDoc = function(id){
+  const row = document.getElementById('bulkdoc-edit-row-'+id);
+  if(row) row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+};
+
+window.saveBulkDocEdit = async function(id){
+  const patch = {
+    doc_number: document.getElementById('bulkdoc-edit-num-'+id).value.trim(),
+    doc_description: document.getElementById('bulkdoc-edit-desc-'+id).value.trim(),
+    current_status: document.getElementById('bulkdoc-edit-current-'+id).checked,
+    approved_status: document.getElementById('bulkdoc-edit-approved-'+id).checked,
+  };
+  const { error } = await STATE.supabase.from('bulk_documents').update(patch).eq('id', id);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  renderBulkDocumentsRegister();
+  toast('Updated.', 'success');
+};
+
+window.uploadBulkDocuments = async function(){
+  const fileInput = document.getElementById('bulkdoc-files');
+  const files = Array.from(fileInput.files);
+  if(!files.length){ alert('Choose at least one file first.'); return; }
+
+  const tooLarge = files.filter(f => f.size > EVIDENCE_MAX_SIZE_MB * 1024 * 1024);
+  const wrongFormat = files.filter(f => !EVIDENCE_ALLOWED_EXT.includes(f.name.split('.').pop().toLowerCase()));
+  const toUpload = files.filter(f => !tooLarge.includes(f) && !wrongFormat.includes(f));
+  if(tooLarge.length) toast(`${tooLarge.length} file(s) over ${EVIDENCE_MAX_SIZE_MB}MB were skipped.`, 'error');
+  if(wrongFormat.length) toast(`${wrongFormat.length} file(s) in an unsupported format were skipped.`, 'error');
+  if(!toUpload.length) return;
+
+  const btn = document.getElementById('bulkdoc-upload-btn');
+  const progressEl = document.getElementById('bulkdoc-progress');
+  btn.disabled = true;
+  let successCount = 0, failCount = 0;
+
+  for(let i = 0; i < toUpload.length; i++){
+    const file = toUpload[i];
+    progressEl.textContent = `Uploading ${i+1} of ${toUpload.length}: ${file.name}`;
+    const { docNumber, description } = parseBulkDocFilename(file.name);
+    const path = `${STATE.org.id}/bulk/${Date.now()}-${sanitizeFileName(file.name)}`;
+    const { error: upErr } = await STATE.supabase.storage.from('documents').upload(path, file);
+    if(upErr){ failCount++; continue; }
+    const { error: rowErr } = await STATE.supabase.from('bulk_documents').insert({
+      organisation_id: STATE.org.id, file_name: file.name, storage_path: path,
+      file_type: file.type, file_size: file.size, uploaded_by: STATE.user.id,
+      doc_number: docNumber, doc_description: description,
+    });
+    if(rowErr){ failCount++; } else { successCount++; }
+  }
+
+  btn.disabled = false;
+  progressEl.textContent = '';
+  fileInput.value = '';
+  toast(`${successCount} file${successCount===1?'':'s'} uploaded${failCount ? `, ${failCount} failed` : ''}.`, failCount ? 'error' : 'success');
+  renderBulkDocumentsRegister();
+};
+
+window.deleteBulkDocument = async function(id, storagePath){
+  if(!confirm('Delete this document? This cannot be undone.')) return;
+  await STATE.supabase.storage.from('documents').remove([storagePath]);
+  const { error } = await STATE.supabase.from('bulk_documents').delete().eq('id', id);
+  if(error){ toast('Could not delete: ' + error.message, 'error'); return; }
+  renderBulkDocumentsRegister();
+  toast('Document deleted.', 'success');
+};
+
 /* ---- Sign-in popup for the latest bulletin — shown before the reminders
    popup, so an announcement surfaces first, then anything overdue. ---- */
 function showLatestBulletinPopup(){
@@ -7379,6 +7523,10 @@ function getModuleExportConfig(moduleKey){
     bulletins: { rows: STATE.bulletins, filename: `bulletins-${orgSlug}.xlsx`, columns: [
       {header:'Ref', get:r=>r.ref_code}, {header:'Type', get:r=>r.type}, {header:'Title', get:r=>r.title},
       {header:'Published', get:r=>r.published_date},
+    ]},
+    all_documents: { rows: STATE.bulkDocuments, filename: `all-documents-${orgSlug}.xlsx`, columns: [
+      {header:'Document Number', get:r=>r.doc_number}, {header:'Document Description', get:r=>r.doc_description},
+      {header:'Current', get:r=>r.current_status ? 'Yes' : 'No'}, {header:'Approved', get:r=>r.approved_status ? 'Yes' : 'No'},
     ]},
   };
   return configs[moduleKey];
