@@ -2116,19 +2116,19 @@ const RENDERERS = {
   all_documents: () => `
     <div class="toolbar">
       <div></div>
+      <button class="btn-small" onclick="toggleBulkUploadPanel()">+ Upload Documents</button>
       <button class="btn-small" onclick="exportModuleExcel('all_documents')">Export Excel</button>
       <button class="btn-small" onclick="printCurrentRegister('all_documents','All Documents Register')">Print Register</button>
     </div>
-    <div class="warn-note" style="margin-bottom:18px;">
-      <svg viewBox="0 0 24 24"><path d="M12 3l10 18H2L12 3z"/><line x1="12" y1="10" x2="12" y2="14"/><line x1="12" y1="17" x2="12" y2="17.01"/></svg>
-      <div>This is a simple register, not the full Document Control system — no separate revision history, no approval workflow. Document number and description are read straight from each filename (everything before the first underscore is the number, the rest is the description) — name your files <b>DocNumber_Description.ext</b>, e.g. "TT-1-RGR-001-0_Master Documents Register.pdf", and nothing needs typing by hand. Every document is marked Current and Approved by default, since you control what goes in — correct either one individually if that ever changes.</div>
-    </div>
-    <div class="form-panel open" style="margin-bottom:18px;">
+    <div class="form-panel" id="bulkdoc-upload-panel">
       <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:10px;">Bulk upload</h3>
       <input type="file" id="bulkdoc-files" multiple>
-      <p style="font-size:11px; color:var(--text-faint); margin:8px 0 12px;">Select as many files as you need at once — accepted formats: PDF, Word, Excel, JPG, PNG. Maximum ${EVIDENCE_MAX_SIZE_MB}MB per file.</p>
+      <p style="font-size:11px; color:var(--text-faint); margin:8px 0 12px;">Select as many files as you need at once — accepted formats: PDF, Word, Excel, JPG, PNG. Maximum ${EVIDENCE_MAX_SIZE_MB}MB per file. Name files as <b>DocNumber_Description.ext</b> to have the document number read automatically.</p>
       <button class="btn-primary" onclick="uploadBulkDocuments()" id="bulkdoc-upload-btn">Upload</button>
       <div id="bulkdoc-progress" style="margin-top:12px;"></div>
+    </div>
+    <div class="field" style="max-width:380px; margin-bottom:14px;">
+      <input type="text" id="bulkdoc-search" placeholder="Search by document number or name…" oninput="filterBulkDocuments(this.value)">
     </div>
     <div class="panel" style="padding:0; overflow:hidden;">
       <div id="bulkdoc-table-wrap"></div>
@@ -7008,6 +7008,11 @@ function parseBulkDocFilename(filename){
   };
 }
 
+function toggleBulkUploadPanel(){
+  document.getElementById('bulkdoc-upload-panel').classList.toggle('open');
+}
+window.toggleBulkUploadPanel = toggleBulkUploadPanel;
+
 async function renderBulkDocumentsRegister(){
   const wrap = document.getElementById('bulkdoc-table-wrap');
   if(!wrap) return;
@@ -7015,15 +7020,40 @@ async function renderBulkDocumentsRegister(){
   const { data, error } = await STATE.supabase.from('bulk_documents').select('*').eq('organisation_id', STATE.org.id).order('doc_number', {ascending:true});
   if(error){ toast('Could not load documents: ' + error.message, 'error'); return; }
   STATE.bulkDocuments = data || [];
-  if(!data.length){
+  const searchInput = document.getElementById('bulkdoc-search');
+  renderBulkDocumentsTable(searchInput ? searchInput.value : '');
+}
+window.renderBulkDocumentsRegister = renderBulkDocumentsRegister;
+
+// Filters what's already loaded in memory rather than re-querying the
+// database on every keystroke — instant, and the search stays responsive
+// even with a genuinely large register.
+window.filterBulkDocuments = function(term){
+  renderBulkDocumentsTable(term);
+};
+
+function renderBulkDocumentsTable(searchTerm){
+  const wrap = document.getElementById('bulkdoc-table-wrap');
+  if(!wrap) return;
+  const term = (searchTerm || '').trim().toLowerCase();
+  const data = term
+    ? STATE.bulkDocuments.filter(d =>
+        (d.doc_number || '').toLowerCase().includes(term) ||
+        (d.file_name || '').toLowerCase().includes(term))
+    : STATE.bulkDocuments;
+
+  if(!STATE.bulkDocuments.length){
     wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg><p>No documents uploaded yet.</p></div>`;
     return;
   }
+  if(!data.length){
+    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><p>No documents match "${searchTerm}".</p></div>`;
+    return;
+  }
   wrap.innerHTML = `<table>
-    <tr><th>Document Number</th><th>Document Description</th><th>Current</th><th>Approved</th><th></th></tr>
+    <tr><th>Document Number</th><th>Current</th><th>Approved</th><th></th></tr>
     ${data.map(d=>`<tr>
       <td class="mono-cell strong" id="bulkdoc-num-${d.id}">${d.doc_number || '—'}</td>
-      <td id="bulkdoc-desc-${d.id}">${d.doc_description || '—'}</td>
       <td>${d.current_status ? pill('yes') : pill('no')}</td>
       <td>${d.approved_status ? pill('yes') : pill('no')}</td>
       <td style="text-align:right; white-space:nowrap;">
@@ -7032,10 +7062,9 @@ async function renderBulkDocumentsRegister(){
         <button class="btn-small" onclick="deleteBulkDocument('${d.id}','${d.storage_path}')">Delete</button>
       </td>
     </tr>
-    <tr id="bulkdoc-edit-row-${d.id}" style="display:none;"><td colspan="5" style="padding:12px 16px; background:var(--grey-tint);">
+    <tr id="bulkdoc-edit-row-${d.id}" style="display:none;"><td colspan="4" style="padding:12px 16px; background:var(--grey-tint);">
       <div class="form-grid" style="margin-bottom:8px;">
-        <div class="field"><label>Document Number</label><input id="bulkdoc-edit-num-${d.id}" value="${(d.doc_number||'').replace(/"/g,'&quot;')}"></div>
-        <div class="field span2"><label>Document Description</label><input id="bulkdoc-edit-desc-${d.id}" value="${(d.doc_description||'').replace(/"/g,'&quot;')}"></div>
+        <div class="field span3"><label>Document Number</label><input id="bulkdoc-edit-num-${d.id}" value="${(d.doc_number||'').replace(/"/g,'&quot;')}"></div>
       </div>
       <label style="font-size:12px; margin-right:16px;"><input type="checkbox" id="bulkdoc-edit-current-${d.id}" ${d.current_status?'checked':''} style="width:auto; margin-right:6px;">Current</label>
       <label style="font-size:12px; margin-right:16px;"><input type="checkbox" id="bulkdoc-edit-approved-${d.id}" ${d.approved_status?'checked':''} style="width:auto; margin-right:6px;">Approved</label>
@@ -7044,7 +7073,6 @@ async function renderBulkDocumentsRegister(){
     </td></tr>`).join('')}
   </table>`;
 }
-window.renderBulkDocumentsRegister = renderBulkDocumentsRegister;
 
 window.toggleEditBulkDoc = function(id){
   const row = document.getElementById('bulkdoc-edit-row-'+id);
@@ -7054,7 +7082,6 @@ window.toggleEditBulkDoc = function(id){
 window.saveBulkDocEdit = async function(id){
   const patch = {
     doc_number: document.getElementById('bulkdoc-edit-num-'+id).value.trim(),
-    doc_description: document.getElementById('bulkdoc-edit-desc-'+id).value.trim(),
     current_status: document.getElementById('bulkdoc-edit-current-'+id).checked,
     approved_status: document.getElementById('bulkdoc-edit-approved-'+id).checked,
   };
@@ -7525,7 +7552,7 @@ function getModuleExportConfig(moduleKey){
       {header:'Published', get:r=>r.published_date},
     ]},
     all_documents: { rows: STATE.bulkDocuments, filename: `all-documents-${orgSlug}.xlsx`, columns: [
-      {header:'Document Number', get:r=>r.doc_number}, {header:'Document Description', get:r=>r.doc_description},
+      {header:'Document Number', get:r=>r.doc_number},
       {header:'Current', get:r=>r.current_status ? 'Yes' : 'No'}, {header:'Approved', get:r=>r.approved_status ? 'Yes' : 'No'},
     ]},
   };
