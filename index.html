@@ -833,7 +833,7 @@ async function afterSignIn(user){
 
   const { data: memberships, error: memErr } = await STATE.supabase
     .from('organisation_members')
-    .select('organisation_id, role, module_access, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color, all_documents_enabled)')
+    .select('organisation_id, role, module_access, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color, all_documents_enabled, ebitda)')
     .eq('user_id', user.id).eq('status','active');
 
   if(memErr){ toast('Could not load your organisations: ' + memErr.message, 'error'); return; }
@@ -1085,7 +1085,7 @@ const GATED_MODULES = ['nonconformances','tasks','documents','audits','risks','s
 
 function canAccessModule(mod){
   if(!GATED_MODULES.includes(mod)) return true; // overview, compliance — always visible
-  if(mod === 'all_documents' && !STATE.org.all_documents_enabled) return false; // off for this org entirely, regardless of role
+  if(mod === 'all_documents') return !!STATE.org.all_documents_enabled; // org-level switch only — everyone sees it when on, nobody when off, regardless of role or per-user module access
   if(STATE.myRole === 'admin') return true;
   return (STATE.myModuleAccess || []).includes(mod);
 }
@@ -1409,7 +1409,19 @@ const RENDERERS = {
         <div class="field"><label>Standard / clause</label><input id="f-clause" placeholder="e.g. ISO 9001:2015 - 8.7"></div>
         <div class="field"><label>Owner</label><select id="f-owner">${memberOptions(STATE.user.id)}</select></div>
         <div class="field"><label>Target close date</label><input type="date" id="f-target" value="${todayISO()}"></div>
-        <div class="field"><label>Supplier (if applicable)</label><select id="f-supplier"><option value="">None</option>${STATE.suppliers.map(s=>`<option value="${s.id}">${s.ref_code} — ${s.name}</option>`).join('')}</select></div>
+        <div class="field"><label>Supplier (if applicable)</label><select id="f-supplier" onchange="toggleSupplierSeverityField()"><option value="">None</option>${STATE.suppliers.map(s=>`<option value="${s.id}">${s.ref_code} — ${s.name}</option>`).join('')}</select></div>
+        <div class="field"><label>Estimated cost of this nonconformance (optional)</label><input type="number" id="f-cost" placeholder="R"></div>
+        <div class="field" id="f-supplier-severity-field" style="display:none;">
+          <label>Impact on supplier performance</label>
+          <select id="f-supplier-severity">
+            <option value="">Not scored</option>
+            <option value="1">1 — Catastrophic</option>
+            <option value="2">2 — Severe</option>
+            <option value="3">3 — Major</option>
+            <option value="4">4 — Minor</option>
+            <option value="5">5 — No negative impact, fully resolved</option>
+          </select>
+        </div>
       </div>
       <div class="form-actions">
         <button class="btn-cancel" onclick="toggleNCForm()">Cancel</button>
@@ -2140,11 +2152,18 @@ const RENDERERS = {
 function toggleNCForm(){ document.getElementById('nc-form').classList.toggle('open'); }
 window.toggleNCForm = toggleNCForm;
 
+window.toggleSupplierSeverityField = function(){
+  const hasSupplier = document.getElementById('f-supplier').value;
+  document.getElementById('f-supplier-severity-field').style.display = hasSupplier ? 'flex' : 'none';
+};
+
 window.submitNC = async function(){
   const typeId = document.getElementById('f-type').value;
   const target_close_date = document.getElementById('f-target').value;
   if(!typeId || !target_close_date){ alert('Type and target close date are required.'); return; }
   const selectedType = STATE.ncTypes.find(t=>t.id===typeId);
+  const costVal = document.getElementById('f-cost').value;
+  const severityVal = document.getElementById('f-supplier-severity').value;
   const payload = {
     organisation_id: STATE.org.id,
     title: selectedType ? selectedType.name : '',
@@ -2158,6 +2177,8 @@ window.submitNC = async function(){
     owner_id: document.getElementById('f-owner').value,
     target_close_date,
     supplier_id: document.getElementById('f-supplier').value || null,
+    estimated_cost: costVal ? parseFloat(costVal) : null,
+    supplier_impact_severity: severityVal ? parseInt(severityVal, 10) : null,
   };
   const { error } = await STATE.supabase.from('nonconformances').insert(payload);
   if(error){ toast('Could not raise nonconformance: ' + error.message, 'error'); return; }
@@ -7233,6 +7254,16 @@ function mrSection(title, moduleKey, bodyHtml){
   </div>`;
 }
 
+window.saveOrgEbitda = async function(){
+  const val = document.getElementById('mr-ebitda-input').value;
+  const ebitda = val ? parseFloat(val) : null;
+  const { error } = await STATE.supabase.from('organisations').update({ ebitda }).eq('id', STATE.org.id);
+  if(error){ toast('Could not save EBITDA: ' + error.message, 'error'); return; }
+  STATE.org.ebitda = ebitda;
+  renderComplianceDashboard();
+  toast('EBITDA updated.', 'success');
+};
+
 function renderComplianceDashboard(){
   const wrap = document.getElementById('compliance-report');
   if(!wrap) return;
@@ -7244,10 +7275,11 @@ function renderComplianceDashboard(){
     const surveys = STATE.customerSurveys;
     const completed = surveys.filter(s=>s.status==='completed' || s.overall_rating!==null);
     const avgRating = completed.length ? completed.reduce((s,x)=>s+Number(x.overall_rating||0),0)/completed.length : null;
+    const avgPct = avgRating!==null ? (avgRating/5*100) : null;
     const withComments = completed.filter(s=>s.comments && s.comments.trim()).length;
     html += mrSection('Customer Satisfaction', 'customers', `
       <div class="mr-stat-row">
-        ${mrStatCard(avgRating!==null ? avgRating.toFixed(1)+'/5' : '—', 'Average rating', completed.length+' response'+(completed.length===1?'':'s'), avgRating!==null ? (avgRating>=4?'var(--green)':avgRating>=3?'var(--amber)':'var(--red)') : null)}
+        ${mrStatCard(avgPct!==null ? avgPct.toFixed(1)+'%' : '—', 'Average satisfaction', completed.length+' response'+(completed.length===1?'':'s')+' · target >95%', avgPct!==null ? (avgPct>=95?'var(--green)':avgPct>=80?'var(--amber)':'var(--red)') : null)}
         ${mrStatCard(surveys.length ? Math.round(completed.length/surveys.length*100)+'%' : '—', 'Response rate', surveys.length+' sent', null)}
         ${mrStatCard(withComments, 'Responses with comments', 'Worth a read before the review', withComments>0?'var(--amber)':null)}
       </div>
@@ -7267,6 +7299,9 @@ function renderComplianceDashboard(){
     const q2start = new Date(now); q2start.setDate(now.getDate()-180);
     const thisQuarter = ncs.filter(n=>n.raised_date && new Date(n.raised_date)>=q1start).length;
     const lastQuarter = ncs.filter(n=>n.raised_date && new Date(n.raised_date)>=q2start && new Date(n.raised_date)<q1start).length;
+    const totalCost = ncs.reduce((s,n)=>s+(Number(n.estimated_cost)||0), 0);
+    const ebitda = STATE.org.ebitda ? Number(STATE.org.ebitda) : null;
+    const costPct = (ebitda && ebitda !== 0) ? (totalCost/ebitda*100) : null;
     html += mrSection('Nonconformances & Corrective Action', 'nonconformances', `
       <div class="mr-stat-row">
         ${mrStatCard(ncs.length, 'Total raised', 'All time', null)}
@@ -7276,6 +7311,19 @@ function renderComplianceDashboard(){
       </div>
       <div class="mr-subhead">By severity</div>
       ${mrBar(bySeverity, ncs.length)}
+      <div class="mr-subhead">Cost of nonconformance vs EBITDA — target &lt;1%</div>
+      <div style="display:flex; align-items:center; gap:20px; flex-wrap:wrap;">
+        <div class="mr-stat">
+          <div class="mr-stat-value" style="color:${costPct===null?'var(--text)':(costPct<1?'var(--green)':'var(--red)')};">${costPct!==null ? costPct.toFixed(2)+'%' : '—'}</div>
+          <div class="mr-stat-label">Total cost logged: R${totalCost.toLocaleString('en-ZA', {minimumFractionDigits:2, maximumFractionDigits:2})}</div>
+        </div>
+        <div class="field" style="max-width:220px; margin-bottom:0;">
+          <label style="font-size:10.5px;">Current EBITDA (this period)</label>
+          <input type="number" id="mr-ebitda-input" value="${STATE.org.ebitda ?? ''}" placeholder="R">
+        </div>
+        <button class="btn-small primary" onclick="saveOrgEbitda()">Save</button>
+      </div>
+      <p style="font-size:11px; color:var(--text-faint); margin-top:6px;">Cost is only counted for nonconformances where a cost was actually entered — it's optional per record, so this reflects what's been logged, not necessarily every nonconformance raised.</p>
     `);
   }
 
@@ -7333,6 +7381,26 @@ function renderComplianceDashboard(){
       { label:'High risk', count: suppliers.filter(s=>s.risk_classification==='high').length, color:'#B21616' },
       { label:'Low risk', count: suppliers.filter(s=>s.risk_classification==='low').length, color:'#A6A6A6' },
     ];
+
+    // 100% baseline per supplier, penalised per linked nonconformance
+    // according to its impact severity — 25% for catastrophic down to 0%
+    // for one resolved to full satisfaction with no negative impact.
+    const SEVERITY_PENALTY = { 1:25, 2:20, 3:15, 4:10, 5:0 };
+    const supplierScores = {};
+    STATE.ncs.forEach(n => {
+      if(!n.supplier_id || !n.supplier_impact_severity) return;
+      const penalty = SEVERITY_PENALTY[n.supplier_impact_severity] ?? 0;
+      supplierScores[n.supplier_id] = (supplierScores[n.supplier_id] ?? 100) - penalty;
+    });
+    const scoredSupplierIds = Object.keys(supplierScores);
+    const scores = scoredSupplierIds.map(id => Math.max(0, supplierScores[id]));
+    const avgSupplierPerf = scores.length ? scores.reduce((s,x)=>s+x,0)/scores.length : null;
+    const worstSuppliers = scoredSupplierIds
+      .map(id => ({ supplier: suppliers.find(s=>s.id===id), score: Math.max(0, supplierScores[id]) }))
+      .filter(x=>x.supplier)
+      .sort((a,b)=>a.score-b.score)
+      .slice(0,5);
+
     html += mrSection('Supplier & Subcontractor Performance', 'suppliers', `
       <div class="mr-stat-row">
         ${mrStatCard(suppliers.length, 'Total suppliers', null, null)}
@@ -7342,6 +7410,11 @@ function renderComplianceDashboard(){
       </div>
       <div class="mr-subhead">By risk classification</div>
       ${mrBar(byRisk, suppliers.length)}
+      <div class="mr-subhead">Performance — 100% baseline, target 100%</div>
+      <div class="mr-stat-row">
+        ${mrStatCard(avgSupplierPerf!==null ? avgSupplierPerf.toFixed(0)+'%' : '—', 'Average, scored suppliers', scores.length+' with a scored nonconformance', avgSupplierPerf!==null ? (avgSupplierPerf>=100?'var(--green)':avgSupplierPerf>=80?'var(--amber)':'var(--red)') : null)}
+      </div>
+      ${worstSuppliers.length ? `<table style="margin-top:8px;"><tr><th>Supplier</th><th>Performance</th></tr>${worstSuppliers.map(x=>`<tr><td>${x.supplier.ref_code} — ${x.supplier.name}</td><td>${x.score.toFixed(0)}%</td></tr>`).join('')}</table>` : '<p style="font-size:12px; color:var(--text-faint);">No nonconformances have been scored against a supplier yet — set "Impact on supplier performance" when raising one linked to a supplier.</p>'}
     `);
   }
 
@@ -7429,8 +7502,10 @@ window.printRecord = printRecord;
 
 function printSectionTitle(text){ return `<div class="print-section-title">${text}</div>`; }
 function printTable(headers, rows){
-  return `<table class="print-table"><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr>
-    ${rows.map(r=>`<tr>${r.map(c=>`<td>${c ?? '—'}</td>`).join('')}</tr>`).join('')}</table>`;
+  return `<table class="print-table">
+    <thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c ?? '—'}</td>`).join('')}</tr>`).join('')}</tbody>
+  </table>`;
 }
 
 // Prints the currently visible register/table for a module — same engine,
