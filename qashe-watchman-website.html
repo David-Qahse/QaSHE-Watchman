@@ -102,8 +102,19 @@
   .signup-panel p.sub{font-size:13px; color:var(--text-dim); margin-bottom:20px;}
   .field{margin-bottom:15px;}
   .field label{font-size:12px; font-weight:600; color:var(--text-dim); display:block; margin-bottom:6px;}
-  .field input, .field textarea{width:100%; border:1px solid var(--border); border-radius:8px; padding:10px 12px; background:#fff;}
-  .field input:focus, .field textarea:focus{outline:none; border-color:var(--red);}
+  .field input, .field textarea, .field select{width:100%; border:1px solid var(--border); border-radius:8px; padding:10px 12px; background:#fff; font-family:'Inter',sans-serif; font-size:13.5px; color:var(--text);}
+  .field input:focus, .field textarea:focus, .field select:focus{outline:none; border-color:var(--red);}
+  .field textarea{min-height:80px; resize:vertical;}
+
+  .services-wrap{max-width:1000px; margin:0 auto;}
+  .services-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:24px;}
+  .service-card{background:#fff; border:1px solid var(--border); border-radius:14px; padding:28px; display:flex; flex-direction:column;}
+  .service-card h3{font-family:'Poppins'; font-size:16px; font-weight:700; margin-bottom:10px;}
+  .service-card p{font-size:13px; color:var(--text-dim); line-height:1.55; margin-bottom:20px; flex:1;}
+  @media (max-width:900px){.services-grid{grid-template-columns:1fr;}}
+  .checkbox-row{margin-bottom:6px;}
+  .checkbox-row label{display:flex; align-items:center; gap:8px; font-size:13px; font-weight:400; color:var(--text-dim); cursor:pointer;}
+  .checkbox-row input[type="checkbox"]{width:auto; margin:0;}
   .error-msg{background:var(--red-tint); color:var(--red); font-size:12.5px; padding:10px 12px; border-radius:7px; margin-bottom:14px; line-height:1.5;}
   .btn-submit{width:100%; margin-top:4px;}
   .btn-submit:disabled{opacity:.5;}
@@ -334,12 +345,12 @@
   <div class="pricing-wrap">
     <div class="price-card">
       <!-- Placeholder pricing — edit to match your actual PAYFAST_AMOUNT before going live. -->
-      <div class="plan-name">Standard Plan</div>
-      <div class="amount"><sup>R</sup> X,XXX<sup>/mo</sup></div>
+      <div class="plan-name">All-Inclusive Plan</div>
+      <div class="amount"><sup>R</sup> R4,800<sup>/mo</sup></div>
       <div class="cadence">Billed monthly · cancel anytime</div>
       <ul class="price-list">
         <li>Every live module, unlimited use</li>
-        <li>Unlimited users on your team</li>
+        <li>1 Admin, 2 Manager, 4 Contributor, 20 Viewer users included</li>
         <li>Bulk CSV import for every register</li>
         <li>New modules included as they ship</li>
       </ul>
@@ -356,6 +367,87 @@
     <div class="field"><label>Email</label><input id="sf-email" type="email" placeholder="you@company.com"></div>
     <div class="field"><label>Password</label><input id="sf-password" type="password" placeholder="At least 8 characters"></div>
     <button class="btn btn-primary btn-submit" id="signup-btn" onclick="submitSignup()">Continue to Payment</button>
+  </div>
+
+  <div class="services-wrap">
+    <div class="section-label" style="margin-top:56px;">// Additional Services</div>
+    <h2 class="section-title" style="font-size:28px;">Quoted to fit your organisation, not a flat rate.</h2>
+    <p style="font-size:14px; color:var(--text-dim); max-width:640px; margin-bottom:32px;">Priced individually based on your organisation's size, reach, scope, and complexity — not something that fits a single number for every business.</p>
+    <div class="services-grid">
+      <div class="service-card">
+        <h3>Onboarding Training &amp; Assistance</h3>
+        <p>Hands-on setup and training so your team is genuinely working in Watchman from week one, not still finding their way around it a month in.</p>
+        <button class="btn btn-ghost" style="width:100%;" onclick="openQuoteForm('onboarding')">Request a Quotation</button>
+      </div>
+      <div class="service-card">
+        <h3>ISO Standards Compliance Assistance</h3>
+        <p>Direct support working toward certification against any of the standards Watchman is built around — from gap analysis through to audit readiness.</p>
+        <button class="btn btn-ghost" style="width:100%;" onclick="openQuoteForm('iso_compliance')">Request a Quotation</button>
+      </div>
+      <div class="service-card">
+        <h3>Auditing &amp; Consultation</h3>
+        <p>Independent internal audits and hands-on SHERQ consultation from Group QaSHE CG's own consulting practice, not just the software.</p>
+        <button class="btn btn-ghost" style="width:100%;" onclick="openQuoteForm('auditing_consultation')">Request a Quotation</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="signup-panel" id="quote-panel">
+    <h3>Request a quotation</h3>
+    <p class="sub">Tell us about your organisation and we'll come back with pricing that actually fits it.</p>
+    <div id="quote-error"></div>
+    <div class="field"><label>Company name</label><input id="qf-company" placeholder="Your company (Pty) Ltd"></div>
+    <div class="field"><label>Contact name</label><input id="qf-name" placeholder="Full name"></div>
+    <div class="field"><label>Email</label><input id="qf-email" type="email" placeholder="you@company.com"></div>
+    <div class="field"><label>Phone</label><input id="qf-phone" placeholder="082 000 0000"></div>
+    <div class="field">
+      <label>Which service(s) are you interested in?</label>
+      <div class="checkbox-row"><label><input type="checkbox" class="qf-service" value="onboarding"> Onboarding Training &amp; Assistance</label></div>
+      <div class="checkbox-row"><label><input type="checkbox" class="qf-service" value="iso_compliance"> ISO Standards Compliance Assistance</label></div>
+      <div class="checkbox-row"><label><input type="checkbox" class="qf-service" value="auditing_consultation"> Auditing &amp; Consultation</label></div>
+    </div>
+    <div class="field"><label>Number of employees</label>
+      <select id="qf-employees">
+        <option value="">Select…</option>
+        <option value="1-10">1–10</option>
+        <option value="11-50">11–50</option>
+        <option value="51-200">51–200</option>
+        <option value="201-500">201–500</option>
+        <option value="500+">500+</option>
+      </select>
+    </div>
+    <div class="field"><label>Number of sites / locations</label><input id="qf-sites" placeholder="e.g. 1"></div>
+    <div class="field">
+      <label>ISO standards of interest</label>
+      <div class="checkbox-row"><label><input type="checkbox" class="qf-standard" value="ISO 9001"> ISO 9001 — Quality</label></div>
+      <div class="checkbox-row"><label><input type="checkbox" class="qf-standard" value="ISO 45001"> ISO 45001 — Health &amp; Safety</label></div>
+      <div class="checkbox-row"><label><input type="checkbox" class="qf-standard" value="ISO 14001"> ISO 14001 — Environment</label></div>
+      <div class="checkbox-row"><label><input type="checkbox" class="qf-standard" value="ISO 27001"> ISO 27001 — Information Security</label></div>
+      <div class="checkbox-row"><label><input type="checkbox" class="qf-standard" value="ISO 37000"> ISO 37000 — Corporate Governance</label></div>
+      <div class="checkbox-row"><label><input type="checkbox" class="qf-standard" value="ISO 37001"> ISO 37001 — Anti-Bribery</label></div>
+      <div class="checkbox-row"><label><input type="checkbox" class="qf-standard" value="ISO 31000"> ISO 31000 — Risk Management</label></div>
+    </div>
+    <div class="field"><label>Where are you today?</label>
+      <select id="qf-maturity">
+        <option value="">Select…</option>
+        <option value="No formal system yet">No formal system yet</option>
+        <option value="Paper-based system">Paper-based system</option>
+        <option value="Partial digital system">Partial digital system</option>
+        <option value="Using another software platform">Using another software platform</option>
+        <option value="Certified and maintaining">Certified and maintaining a system already</option>
+      </select>
+    </div>
+    <div class="field"><label>Timeline</label>
+      <select id="qf-timeline">
+        <option value="">Select…</option>
+        <option value="Immediate">Immediate</option>
+        <option value="Within 3 months">Within 3 months</option>
+        <option value="Within 6 months">Within 6 months</option>
+        <option value="Just exploring">Just exploring for now</option>
+      </select>
+    </div>
+    <div class="field"><label>Anything else we should know?</label><textarea id="qf-details" placeholder="Tell us a bit more about what you're looking for"></textarea></div>
+    <button class="btn btn-primary btn-submit" id="quote-btn" onclick="submitQuoteRequest()">Send Request</button>
   </div>
 </section>
 
@@ -374,7 +466,7 @@
       <h5>Group QaSHE CG (Pty) Ltd</h5>
       <p>Part of your team.</p>
       <p>61 Goodman Str, Rynfield, Benoni, 1514</p>
-      <a href="mailto:david@qashewatchman.co.za">david@qashewatchman.co.za</a>
+      <a href="mailto:davide@groupqashecg.com">davide@groupqashecg.com</a>
       <p>+27 82 330 5271</p>
     </div>
     <div>
@@ -424,6 +516,55 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 window.showSignup = function(){
   document.getElementById('signup-panel').classList.add('active');
   document.getElementById('signup-panel').scrollIntoView({behavior:'smooth', block:'center'});
+};
+
+window.openQuoteForm = function(preselectService){
+  const panel = document.getElementById('quote-panel');
+  panel.classList.add('active');
+  if(preselectService){
+    const cb = panel.querySelector(`.qf-service[value="${preselectService}"]`);
+    if(cb) cb.checked = true;
+  }
+  panel.scrollIntoView({behavior:'smooth', block:'center'});
+};
+
+window.submitQuoteRequest = async function(){
+  const errEl = document.getElementById('quote-error');
+  errEl.innerHTML = '';
+  const company = document.getElementById('qf-company').value.trim();
+  const name = document.getElementById('qf-name').value.trim();
+  const email = document.getElementById('qf-email').value.trim();
+  const services = Array.from(document.querySelectorAll('.qf-service:checked')).map(el => el.value);
+
+  if(!company || !name || !email){ errEl.innerHTML = '<div class="error-msg">Company name, contact name, and email are required.</div>'; return; }
+  if(!services.length){ errEl.innerHTML = '<div class="error-msg">Select at least one service you\'re interested in.</div>'; return; }
+
+  const btn = document.getElementById('quote-btn');
+  btn.disabled = true; btn.textContent = 'Sending…';
+
+  try {
+    const { error } = await supabase.from('quote_requests').insert({
+      company_name: company, contact_name: name, email,
+      phone: document.getElementById('qf-phone').value.trim(),
+      services,
+      employee_count: document.getElementById('qf-employees').value,
+      site_count: document.getElementById('qf-sites').value.trim(),
+      standards_of_interest: Array.from(document.querySelectorAll('.qf-standard:checked')).map(el => el.value),
+      current_maturity: document.getElementById('qf-maturity').value,
+      timeline: document.getElementById('qf-timeline').value,
+      details: document.getElementById('qf-details').value.trim(),
+    });
+    if(error){ errEl.innerHTML = `<div class="error-msg">${error.message}</div>`; return; }
+
+    document.getElementById('quote-panel').innerHTML = `
+      <h3>Thank you</h3>
+      <p class="sub">Your request has been received — we'll come back to you with pricing shortly.</p>
+    `;
+  } catch(e) {
+    errEl.innerHTML = `<div class="error-msg">Something went wrong: ${e.message || 'please try again.'}</div>`;
+  } finally {
+    if(btn.isConnected){ btn.disabled = false; btn.textContent = 'Send Request'; }
+  }
 };
 
 function redirectToPayfast(payfastUrl, fields){
