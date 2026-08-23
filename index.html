@@ -199,6 +199,10 @@
   .pill.closed, .pill.done{background:var(--green-tint); color:var(--green);}
   .pill.blocked{background:var(--grey-tint); color:var(--text-faint);}
   .pill.yes{background:var(--green-tint); color:var(--green);}
+  .pill.scheduled{background:var(--grey-tint); color:var(--text-faint);}
+  .pill.completed, .pill.conforms{background:var(--green-tint); color:var(--green);}
+  .pill.observation{background:var(--amber-tint); color:var(--amber);}
+  .pill.nonconformance{background:var(--red-tint); color:var(--red);}
   .pill.no{background:var(--red-tint); color:var(--red);}
   .pill-dot{width:5px; height:5px; border-radius:50%; background:currentColor;}
   .sev-badge{font-family:'JetBrains Mono'; font-size:10.5px; padding:3px 8px; border-radius:5px; text-transform:capitalize;}
@@ -309,7 +313,7 @@
 
   .reminder-overlay{position:fixed; inset:0; background:rgba(30,28,27,.45); z-index:110; display:none; align-items:center; justify-content:center; padding:20px;}
   .reminder-overlay.active{display:flex;}
-  .reminder-modal{background:#fff; border-radius:12px; max-width:480px; width:100%; padding:28px; max-height:85vh; overflow-y:auto;}
+  .reminder-modal{background:#fff; border-radius:12px; max-width:640px; width:100%; padding:28px; max-height:85vh; overflow-y:auto; position:relative;}
   .reminder-modal h3{font-family:'Poppins'; font-size:18px; font-weight:700; margin-bottom:4px;}
   .reminder-modal p.sub{font-size:12.5px; color:var(--text-faint); margin-bottom:18px;}
   .reminder-row{display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border-soft); cursor:pointer;}
@@ -642,6 +646,7 @@
       <div class="nav-item" data-mod="assets" onclick="showModule('assets')"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg> Assets &amp; Maintenance <span class="nd amber" id="nd-asset"></span></div>
       <div class="nav-item" data-mod="bulletins" onclick="showModule('bulletins')"><svg viewBox="0 0 24 24"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a2 2 0 11-3.2 2.4"/></svg> Bulletins &amp; Toolbox Talks</div>
       <div class="nav-item" data-mod="all_documents" onclick="showModule('all_documents')"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg> All Documents</div>
+      <div class="nav-item" data-mod="five_s" onclick="showModule('five_s')"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg> 5S Inspections</div>
       <div class="sb-foot">
         <a class="exit-link" id="switch-org-link" onclick="showOrgPicker()" style="display:none; margin-bottom:8px;"><svg viewBox="0 0 24 24"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg> Switch organisation</a>
         <a class="exit-link" onclick="doSignOut()"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Sign out</a>
@@ -726,7 +731,7 @@ const STATE = {
   assetChecklistTemplates:[], assetChecklistItems:[], assets:[], bulletins:[],
   checklistTemplates:[],
   docDepartments:[], docTypes:[], formIdentifications:[], ncTypes:[],
-  assessmentTemplates:[], assessmentItems:[], assessmentRecords:[], customerSurveys:[], bulkDocuments:[],
+  assessmentTemplates:[], assessmentItems:[], assessmentRecords:[], customerSurveys:[], bulkDocuments:[], fiveSInspections:[],
 };
 let personnelView = 'register';
 let pendingModule = 'overview';
@@ -834,7 +839,7 @@ async function afterSignIn(user){
 
   const { data: memberships, error: memErr } = await STATE.supabase
     .from('organisation_members')
-    .select('organisation_id, role, module_access, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color, all_documents_enabled, ebitda)')
+    .select('organisation_id, role, module_access, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color, all_documents_enabled, document_control_enabled, ebitda)')
     .eq('user_id', user.id).eq('status','active');
 
   if(memErr){ toast('Could not load your organisations: ' + memErr.message, 'error'); return; }
@@ -879,6 +884,7 @@ window.selectOrg = async function(orgId){
   await loadAssessmentItems();
   await loadAssessmentRecords();
   await loadCustomerSurveys();
+  await loadFiveSInspections();
   await loadTasks();
   await loadAudits();
   await loadRisks();
@@ -944,6 +950,11 @@ async function loadCustomerSurveys(){
   const { data, error } = await STATE.supabase.from('satisfaction_surveys').select('*').eq('organisation_id', STATE.org.id);
   if(error){ toast('Could not load satisfaction surveys: ' + error.message, 'error'); return; }
   STATE.customerSurveys = data || [];
+}
+async function loadFiveSInspections(){
+  const { data, error } = await STATE.supabase.from('five_s_inspections').select('*').eq('organisation_id', STATE.org.id).order('scheduled_date', {ascending:false});
+  if(error){ toast('Could not load 5S inspections: ' + error.message, 'error'); return; }
+  STATE.fiveSInspections = data || [];
 }
 async function loadTasks(){
   const { data, error } = await STATE.supabase.from('tasks').select('*').eq('organisation_id', STATE.org.id).order('due_date', {ascending:true});
@@ -1080,13 +1091,15 @@ const MODULE_META = {
   assets:{title:'Assets Management & Maintenance', sub:() => 'MOD-14 · Register, inspection checklists, certificates'},
   bulletins:{title:'Bulletins & Toolbox Talks', sub:() => 'MOD-15 · Notices with downloadable material'},
   all_documents:{title:'All Documents', sub:() => 'Emergency bulk document register — enabled by Group QaSHE CG per client'},
+  five_s:{title:'5S Inspections', sub:() => 'Open participation inspections across Health, Safety, Environment, Quality, Info Security, Risk, Opportunity, Legal Compliance & Governance'},
 };
 
-const GATED_MODULES = ['nonconformances','tasks','documents','audits','risks','suppliers','customers','objectives','legal','personnel','training','appraisals','assets','bulletins','all_documents'];
+const GATED_MODULES = ['nonconformances','tasks','documents','audits','risks','suppliers','customers','objectives','legal','personnel','training','appraisals','assets','bulletins','all_documents','five_s'];
 
 function canAccessModule(mod){
   if(!GATED_MODULES.includes(mod)) return true; // overview, compliance — always visible
-  if(mod === 'all_documents') return !!STATE.org.all_documents_enabled; // org-level switch only — everyone sees it when on, nobody when off, regardless of role or per-user module access
+  if(mod === 'all_documents') return !!STATE.org.all_documents_enabled; // org-level switch only — everyone sees it when on, nobody when off
+  if(mod === 'documents') return !!STATE.org.document_control_enabled; // same mechanism — org-level switch only
   if(STATE.myRole === 'admin') return true;
   return (STATE.myModuleAccess || []).includes(mod);
 }
@@ -1127,6 +1140,7 @@ function showModule(mod){
   if(mod === 'bulletins') renderBulletinsTable();
   if(mod === 'compliance') renderComplianceDashboard();
   if(mod === 'all_documents') renderBulkDocumentsRegister();
+  if(mod === 'five_s') renderFiveSTable();
 }
 window.showModule = showModule;
 
@@ -1217,7 +1231,8 @@ function showReminderPopup(){
   const totalOverdue = summary.reduce((s,m)=>s+m.overdue,0);
   const totalDueSoon = summary.reduce((s,m)=>s+m.dueSoon,0);
   document.getElementById('reminder-modal-content').innerHTML = `
-    <h3>Reminders</h3>
+    <button class="close-btn" style="position:absolute; top:20px; right:20px;" onclick="closeReminderPopup()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    <h3 style="padding-right:36px;">Reminders</h3>
     <p class="sub">${totalOverdue} item${totalOverdue===1?'':'s'} overdue, ${totalDueSoon} due within 30 days.</p>
     ${summary.map(m => `
       <div class="reminder-group-label" onclick="closeReminderPopup(); showModule('${m.key}');">${m.label}</div>
@@ -1228,9 +1243,6 @@ function showReminderPopup(){
         </div>
       `).join('')}
     `).join('')}
-    <div class="form-actions" style="margin-top:16px;">
-      <button class="btn-primary" style="width:100%;" onclick="closeReminderPopup()">Dismiss</button>
-    </div>
   `;
   document.getElementById('reminder-overlay').classList.add('active');
 }
@@ -2145,6 +2157,45 @@ const RENDERERS = {
     </div>
     <div class="panel" style="padding:0; overflow:hidden;">
       <div id="bulkdoc-table-wrap"></div>
+    </div>
+  `,
+
+  five_s: () => `
+    <div class="toolbar">
+      <div class="filters">
+        <select id="fives-filter-status" onchange="renderFiveSTable()">
+          <option value="">All statuses</option>
+          <option value="scheduled">Scheduled</option>
+          <option value="in_progress">In Progress</option>
+          <option value="completed">Completed</option>
+        </select>
+      </div>
+      <button class="btn-small" onclick="toggleFiveSChecklistPanel()">Manage Checklist</button>
+      <button class="btn-small" onclick="exportModuleExcel('five_s')">Export Excel</button>
+      <button class="btn-small" onclick="printCurrentRegister('five_s','5S Inspections Register')">Print Register</button>
+      <button class="btn-primary btn-add" onclick="toggleFiveSForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Inspection</button>
+    </div>
+
+    <div class="form-panel" id="manage-assessment-items-5s_inspection"></div>
+
+    <div class="form-panel" id="fives-form">
+      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:6px;">Raise a 5S inspection</h3>
+      <p style="font-size:11.5px; color:var(--text-faint); margin-bottom:14px;">Anyone with access to this module can raise and conduct one — it's meant to be open, not limited to a designated auditor.</p>
+      <div class="form-grid">
+        <div class="field span2"><label>Area / location</label><input id="fs-area" placeholder="e.g. Warehouse floor, Office block A"></div>
+        <div class="field"><label>Inspector</label><select id="fs-inspector">${memberOptions(STATE.user.id)}</select></div>
+        <div class="field"><label>Scheduled date</label><input type="date" id="fs-scheduled" value="${todayISO()}"></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-cancel" onclick="toggleFiveSForm()">Cancel</button>
+        <button class="btn-primary" onclick="submitFiveSInspection()">Raise inspection</button>
+      </div>
+    </div>
+
+    <div id="fives-detail-slot"></div>
+
+    <div class="panel" style="padding:0; overflow:hidden;">
+      <div id="fives-table-wrap"></div>
     </div>
   `,
 };
@@ -4273,22 +4324,30 @@ window.toggleManageAssessmentItems = function(entityType){
   renderAssessmentItemsManager(entityType);
 };
 
+const FIVE_S_CATEGORY_LABELS = {
+  health:'Health', safety:'Safety', environment:'Environment', quality:'Quality',
+  information_security:'Information Security', risk:'Risk', opportunity:'Opportunity',
+  legal_compliance:'Legal Compliance', governance:'Governance',
+};
+
 function renderAssessmentItemsManager(entityType){
   const slot = document.getElementById('manage-assessment-items-'+entityType);
   if(!slot) return;
   const template = getAssessmentTemplate(entityType);
   const items = template ? STATE.assessmentItems.filter(i=>i.template_id===template.id) : [];
+  const isFiveS = entityType === '5s_inspection';
   slot.innerHTML = `
     <h3 style="font-family:'Poppins'; font-size:14px; font-weight:600; margin-bottom:10px;">${template ? template.title : 'Checklist'}</h3>
     <div style="max-height:240px; overflow-y:auto; margin-bottom:12px;">
       ${items.length ? items.map(it => `
         <div class="evidence-row" style="${!it.is_active?'opacity:.5;':''}">
-          <div style="flex:1; font-size:12.5px;">${it.item_text}${!it.is_active ? ' <span class="mono" style="color:var(--text-faint); font-size:10px;">(inactive)</span>' : ''}</div>
+          <div style="flex:1; font-size:12.5px;">${isFiveS && it.five_s_category ? `<span class="mono" style="color:var(--text-faint); font-size:10px; text-transform:uppercase;">${FIVE_S_CATEGORY_LABELS[it.five_s_category]}</span> — ` : ''}${it.item_text}${!it.is_active ? ' <span class="mono" style="color:var(--text-faint); font-size:10px;">(inactive)</span>' : ''}</div>
           <button class="btn-small" onclick="toggleAssessmentItemActive('${it.id}','${entityType}', ${!it.is_active})">${it.is_active ? 'Deactivate' : 'Activate'}</button>
         </div>
       `).join('') : '<p style="font-size:12px; color:var(--text-faint);">No items yet.</p>'}
     </div>
     <div style="display:flex; gap:6px;">
+      ${isFiveS ? `<select id="new-assessment-item-category-${entityType}" style="border:1px solid var(--border); border-radius:6px; padding:8px; font-size:12.5px;">${Object.entries(FIVE_S_CATEGORY_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select>` : ''}
       <input type="text" id="new-assessment-item-${entityType}" placeholder="Add a new checklist item" style="flex:1; border:1px solid var(--border); border-radius:6px; padding:8px 10px; font-size:12.5px;">
       <button class="btn-small primary" onclick="addAssessmentItem('${entityType}')">Add</button>
     </div>
@@ -4301,18 +4360,19 @@ window.addAssessmentItem = async function(entityType){
   if(!text) return;
   let template = getAssessmentTemplate(entityType);
   if(!template){
+    const titles = { supplier:'Supplier & Subcontractor Basic Assessment', customer:'New Customer Onboarding Checklist', '5s_inspection':'5S Standard Inspection Checklist' };
     const { data: newTemplate, error: tErr } = await STATE.supabase.from('assessment_checklist_templates').insert({
-      organisation_id: STATE.org.id, applies_to: entityType,
-      title: entityType === 'supplier' ? 'Supplier & Subcontractor Basic Assessment' : 'New Customer Onboarding Checklist',
-      created_by: STATE.user.id,
+      organisation_id: STATE.org.id, applies_to: entityType, title: titles[entityType] || 'Checklist', created_by: STATE.user.id,
     }).select().single();
     if(tErr){ toast('Could not create the checklist: ' + tErr.message, 'error'); return; }
     template = newTemplate;
     await loadAssessmentTemplates();
   }
   const nextSort = STATE.assessmentItems.filter(i=>i.template_id===template.id).length * 10 + 10;
+  const categoryEl = document.getElementById('new-assessment-item-category-'+entityType);
   const { error } = await STATE.supabase.from('assessment_checklist_items').insert({
     organisation_id: STATE.org.id, template_id: template.id, item_text: text, sort_order: nextSort,
+    five_s_category: categoryEl ? categoryEl.value : null,
   });
   if(error){ toast('Could not add the item: ' + error.message, 'error'); return; }
   input.value = '';
@@ -7035,6 +7095,200 @@ function toggleBulkUploadPanel(){
 }
 window.toggleBulkUploadPanel = toggleBulkUploadPanel;
 
+/* ============ 5S Inspections ============ */
+window.toggleFiveSForm = function(){
+  document.getElementById('fives-form').classList.toggle('open');
+};
+
+window.toggleFiveSChecklistPanel = function(){
+  const slot = document.getElementById('manage-assessment-items-5s_inspection');
+  if(!slot) return;
+  if(slot.classList.contains('open')){ slot.classList.remove('open'); slot.innerHTML=''; return; }
+  slot.classList.add('open');
+  renderAssessmentItemsManager('5s_inspection');
+};
+
+window.submitFiveSInspection = async function(){
+  const area = document.getElementById('fs-area').value.trim();
+  const scheduled = document.getElementById('fs-scheduled').value;
+  if(!area || !scheduled){ alert('Area and scheduled date are required.'); return; }
+
+  const { data: inspection, error: insErr } = await STATE.supabase.from('five_s_inspections').insert({
+    organisation_id: STATE.org.id, area, inspector_id: document.getElementById('fs-inspector').value,
+    scheduled_date: scheduled, status: 'scheduled', created_by: STATE.user.id,
+  }).select().single();
+  if(insErr){ toast('Could not raise the inspection: ' + insErr.message, 'error'); return; }
+
+  const template = getAssessmentTemplate('5s_inspection');
+  const activeItems = template ? STATE.assessmentItems.filter(i=>i.template_id===template.id && i.is_active) : [];
+  if(activeItems.length){
+    const rows = activeItems.map(it => ({
+      inspection_id: inspection.id, checklist_item_id: it.id, item_text_snapshot: it.item_text, five_s_category: it.five_s_category,
+    }));
+    const { error: itemsErr } = await STATE.supabase.from('five_s_inspection_items').insert(rows);
+    if(itemsErr) toast('Inspection created, but checklist items could not be attached: ' + itemsErr.message, 'error');
+  }
+
+  toggleFiveSForm();
+  document.getElementById('fs-area').value = '';
+  await loadFiveSInspections();
+  renderFiveSTable();
+  toast('Inspection raised.', 'success');
+  openFiveSDetail(inspection.id);
+};
+
+function renderFiveSTable(){
+  const wrap = document.getElementById('fives-table-wrap');
+  if(!wrap) return;
+  const fStatus = document.getElementById('fives-filter-status').value;
+  const rows = STATE.fiveSInspections.filter(i => !fStatus || i.status === fStatus);
+  if(!rows.length){
+    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg><p>No 5S inspections match this filter.</p></div>`;
+    return;
+  }
+  wrap.innerHTML = `<table>
+    <tr><th>Ref</th><th>Area</th><th>Inspector</th><th>Scheduled</th><th>Status</th></tr>
+    ${rows.map(i=>`<tr class="clickable" onclick="openFiveSDetail('${i.id}')">
+      <td class="mono-cell">${i.ref_code}</td>
+      <td class="strong">${i.area}</td>
+      <td>${memberName(i.inspector_id)}</td>
+      <td>${fmtDate(i.scheduled_date)}</td>
+      <td>${pill(i.status)}</td>
+    </tr>`).join('')}
+  </table>`;
+}
+window.renderFiveSTable = renderFiveSTable;
+
+async function openFiveSDetail(id){
+  const insp = STATE.fiveSInspections.find(x=>x.id===id);
+  if(!insp) return;
+  const { data: items, error } = await STATE.supabase.from('five_s_inspection_items').select('*').eq('inspection_id', id).order('five_s_category', {ascending:true});
+  if(error){ toast('Could not load checklist items: ' + error.message, 'error'); return; }
+
+  const isComplete = insp.status === 'completed';
+  const byCategory = {};
+  (items||[]).forEach(it => { const cat = it.five_s_category || 'other'; (byCategory[cat] = byCategory[cat] || []).push(it); });
+
+  document.getElementById('fives-detail-slot').innerHTML = `
+    <div class="detail-panel">
+      <div class="detail-head">
+        <div><span class="ref">${insp.ref_code}</span><h3>${insp.area}</h3></div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-small" onclick="printFiveS('${insp.id}')">Print / PDF</button>
+          <button class="close-btn" onclick="closeFiveSDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+      </div>
+      <div class="detail-meta">
+        <div class="dm-item"><div class="l">Inspector</div><div class="v">${memberName(insp.inspector_id)}</div></div>
+        <div class="dm-item"><div class="l">Scheduled</div><div class="v">${fmtDate(insp.scheduled_date)}</div></div>
+        <div class="dm-item"><div class="l">Completed</div><div class="v">${insp.actual_date ? fmtDate(insp.actual_date) : '—'}</div></div>
+        <div class="dm-item"><div class="l">Status</div><div class="v">${pill(insp.status)}</div></div>
+      </div>
+
+      ${Object.keys(byCategory).sort().map(cat => `
+        <div class="mr-subhead" style="margin-top:16px;">${FIVE_S_CATEGORY_LABELS[cat] || 'Other'}</div>
+        ${byCategory[cat].map(it => `
+          <div class="detail-card" style="padding:12px 14px; margin-bottom:6px;">
+            <div style="font-size:13px; color:var(--text); margin-bottom:8px;">${it.item_text_snapshot}</div>
+            ${isComplete ? `
+              <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                ${it.result ? pill(it.result) : '<span style="color:var(--text-faint); font-size:12px;">Not scored</span>'}
+                ${it.notes ? `<span style="font-size:12px; color:var(--text-dim);">${it.notes}</span>` : ''}
+                ${it.result === 'nonconformance' ? (it.nonconformance_id
+                  ? `<span class="linked-task-chip">Promoted to NC</span>`
+                  : `<button class="btn-small" onclick="promoteFiveSItemToNC('${it.id}')">Promote to Nonconformance</button>
+                     <button class="btn-small" onclick="quickTaskFromFiveSItem('${it.id}')">+ Task</button>`) : ''}
+              </div>
+            ` : `
+              <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                <select id="fsi-result-${it.id}" style="border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12.5px;">
+                  <option value="">Not scored</option>
+                  <option value="conforms" ${it.result==='conforms'?'selected':''}>Conforms</option>
+                  <option value="observation" ${it.result==='observation'?'selected':''}>Observation</option>
+                  <option value="nonconformance" ${it.result==='nonconformance'?'selected':''}>Nonconformance</option>
+                </select>
+                <input type="text" id="fsi-notes-${it.id}" placeholder="Notes" value="${(it.notes||'').replace(/"/g,'&quot;')}" style="flex:1; min-width:160px; border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12.5px;">
+                <button class="btn-small" onclick="saveFiveSItemResult('${it.id}')">Save</button>
+              </div>
+            `}
+          </div>
+        `).join('')}
+      `).join('')}
+
+      ${!isComplete ? `<div class="form-actions" style="margin-top:16px;"><button class="btn-primary" onclick="completeFiveSInspection('${insp.id}')">Complete inspection</button></div>` : ''}
+    </div>
+  `;
+}
+window.openFiveSDetail = openFiveSDetail;
+
+window.closeFiveSDetail = function(){ document.getElementById('fives-detail-slot').innerHTML = ''; };
+
+window.saveFiveSItemResult = async function(itemRowId){
+  const result = document.getElementById('fsi-result-'+itemRowId).value || null;
+  const notes = document.getElementById('fsi-notes-'+itemRowId).value.trim();
+  const { error } = await STATE.supabase.from('five_s_inspection_items').update({ result, notes }).eq('id', itemRowId);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  toast('Saved.', 'success');
+};
+
+window.completeFiveSInspection = async function(id){
+  const { error } = await STATE.supabase.from('five_s_inspections').update({ status:'completed', actual_date: todayISO() }).eq('id', id);
+  if(error){ toast('Could not complete the inspection: ' + error.message, 'error'); return; }
+  await loadFiveSInspections();
+  renderFiveSTable();
+  openFiveSDetail(id);
+  toast('Inspection completed.', 'success');
+};
+
+window.promoteFiveSItemToNC = async function(itemRowId){
+  const { data: item, error: itemErr } = await STATE.supabase.from('five_s_inspection_items').select('*, five_s_inspections(*)').eq('id', itemRowId).single();
+  if(itemErr || !item){ toast('Could not load the item.', 'error'); return; }
+  const insp = item.five_s_inspections;
+  const auditTypeMatch = STATE.ncTypes.find(t=>t.name.toLowerCase().includes('internal') && t.is_active) || STATE.ncTypes.find(t=>t.is_active);
+  if(!auditTypeMatch){ alert('No active nonconformance types exist — add one under Nonconformances first.'); return; }
+
+  const { data: nc, error: ncErr } = await STATE.supabase.from('nonconformances').insert({
+    organisation_id: STATE.org.id, title: auditTypeMatch.name, nc_type_id: auditTypeMatch.id,
+    description: `${item.item_text_snapshot}\n\nFound during 5S inspection ${insp.ref_code} (${insp.area}).${item.notes ? '\n\nNotes: '+item.notes : ''}`,
+    severity: 'minor', raised_by: STATE.user.id, owner_id: insp.inspector_id || STATE.user.id,
+    target_close_date: new Date(Date.now() + 14*24*60*60*1000).toISOString().slice(0,10),
+  }).select().single();
+  if(ncErr){ toast('Could not create the nonconformance: ' + ncErr.message, 'error'); return; }
+
+  await STATE.supabase.from('five_s_inspection_items').update({ nonconformance_id: nc.id }).eq('id', itemRowId);
+  toast(`Nonconformance ${nc.ref_code} created.`, 'success');
+  openFiveSDetail(insp.id);
+};
+
+window.quickTaskFromFiveSItem = async function(itemRowId){
+  const { data: item, error: itemErr } = await STATE.supabase.from('five_s_inspection_items').select('*, five_s_inspections(*)').eq('id', itemRowId).single();
+  if(itemErr || !item){ toast('Could not load the item.', 'error'); return; }
+  const insp = item.five_s_inspections;
+  const { error } = await STATE.supabase.from('tasks').insert({
+    organisation_id: STATE.org.id, title: item.item_text_snapshot.slice(0,120),
+    description: `Follow-up from 5S inspection ${insp.ref_code} (${insp.area}).${item.notes ? '\n\nNotes: '+item.notes : ''}`,
+    linked_type: 'five_s_inspection', linked_id: insp.id,
+    assignee_id: insp.inspector_id || STATE.user.id, due_date: new Date(Date.now() + 7*24*60*60*1000).toISOString().slice(0,10),
+    created_by: STATE.user.id,
+  });
+  if(error){ toast('Could not create the task: ' + error.message, 'error'); return; }
+  toast('Task created.', 'success');
+};
+
+window.printFiveS = async function(id){
+  const insp = STATE.fiveSInspections.find(x=>x.id===id);
+  if(!insp) return;
+  const { data: items } = await STATE.supabase.from('five_s_inspection_items').select('*').eq('inspection_id', id).order('five_s_category', {ascending:true});
+  const meta = [
+    ['Area', insp.area], ['Inspector', memberName(insp.inspector_id)], ['Scheduled', fmtDate(insp.scheduled_date)],
+    ['Completed', insp.actual_date ? fmtDate(insp.actual_date) : '—'], ['Status', label(insp.status)],
+  ];
+  const body = printTable(['Category','Item','Result','Notes'], (items||[]).map(it => [
+    FIVE_S_CATEGORY_LABELS[it.five_s_category] || '—', it.item_text_snapshot, it.result ? label(it.result) : 'Not scored', it.notes || '',
+  ]));
+  printRecord('5S Inspection', insp.ref_code, meta, body, null, 'five_s');
+};
+
 async function renderBulkDocumentsRegister(){
   const wrap = document.getElementById('bulkdoc-table-wrap');
   if(!wrap) return;
@@ -7630,6 +7884,10 @@ function getModuleExportConfig(moduleKey){
     all_documents: { rows: STATE.bulkDocuments, filename: `all-documents-${orgSlug}.xlsx`, columns: [
       {header:'Document Number', get:r=>r.doc_number},
       {header:'Current', get:r=>r.current_status ? 'Yes' : 'No'}, {header:'Approved', get:r=>r.approved_status ? 'Yes' : 'No'},
+    ]},
+    five_s: { rows: STATE.fiveSInspections, filename: `5s-inspections-${orgSlug}.xlsx`, columns: [
+      {header:'Ref', get:r=>r.ref_code}, {header:'Area', get:r=>r.area}, {header:'Inspector', get:r=>memberName(r.inspector_id)},
+      {header:'Scheduled', get:r=>r.scheduled_date}, {header:'Completed', get:r=>r.actual_date||''}, {header:'Status', get:r=>r.status},
     ]},
   };
   return configs[moduleKey];
