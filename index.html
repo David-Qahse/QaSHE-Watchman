@@ -740,7 +740,7 @@ const STATE = {
   checklistTemplates:[],
   docDepartments:[], docTypes:[], formIdentifications:[], ncTypes:[],
   assessmentTemplates:[], assessmentItems:[], assessmentRecords:[], customerSurveys:[], bulkDocuments:[], fiveSInspections:[],
-  processes:[], processKpis:[], processReviews:[], managementReviews:[],
+  processes:[], processKpis:[], processReviews:[], managementReviews:[], managementReviewActions:[],
 };
 let personnelView = 'register';
 let pendingModule = 'overview';
@@ -898,6 +898,7 @@ window.selectOrg = async function(orgId){
   await loadProcesses();
   await loadProcessKpis();
   await loadManagementReviews();
+  await loadManagementReviewActions();
   await loadProcessReviews();
   await loadTasks();
   await loadAudits();
@@ -984,6 +985,11 @@ async function loadManagementReviews(){
   const { data, error } = await STATE.supabase.from('management_reviews').select('*').eq('organisation_id', STATE.org.id).order('meeting_date', {ascending:false});
   if(error){ toast('Could not load management reviews: ' + error.message, 'error'); return; }
   STATE.managementReviews = data || [];
+}
+async function loadManagementReviewActions(){
+  const { data, error } = await STATE.supabase.from('management_review_actions').select('*').eq('organisation_id', STATE.org.id);
+  if(error){ toast('Could not load management review actions: ' + error.message, 'error'); return; }
+  STATE.managementReviewActions = data || [];
 }
 async function loadProcessReviews(){
   const { data, error } = await STATE.supabase.from('process_reviews').select('*').eq('organisation_id', STATE.org.id).order('review_date', {ascending:false});
@@ -8418,6 +8424,42 @@ function renderComplianceDashboard(){
     html += mrSection('Legal Compliance', 'legal', `
       <div class="mr-stat-row">${mrStatCard(legal.length, 'Total legal register entries', null, null)}</div>
       ${mrBar(byStatus, legal.length)}
+    `);
+  }
+
+  // ---- Process Performance ---------------------------------------------------
+  {
+    const withReview = new Set(STATE.processReviews.map(r=>r.process_id));
+    const latestByProcess = {};
+    STATE.processReviews.forEach(r => { if(!latestByProcess[r.process_id] || r.review_date > latestByProcess[r.process_id].review_date) latestByProcess[r.process_id] = r; });
+    const scores = Object.values(latestByProcess).map(r=>Number(r.overall_achievement_pct)).filter(n=>!isNaN(n));
+    const avgProcessScore = scores.length ? scores.reduce((s,x)=>s+x,0)/scores.length : null;
+    const belowTarget = scores.filter(s=>s<100).length;
+    html += mrSection('Process Performance', 'processes', `
+      <div class="mr-stat-row">
+        ${mrStatCard(STATE.processes.length, 'Total processes', null, null)}
+        ${mrStatCard(withReview.size, 'Reviewed at least once', STATE.processes.length ? Math.round(withReview.size/STATE.processes.length*100)+'% of all processes' : null, null)}
+        ${mrStatCard(avgProcessScore!==null ? avgProcessScore.toFixed(1)+'%' : '—', 'Average latest score', 'target 100%', avgProcessScore!==null ? (avgProcessScore>=100?'var(--green)':avgProcessScore>=80?'var(--amber)':'var(--red)') : null)}
+        ${mrStatCard(belowTarget, 'Below target', null, belowTarget>0?'var(--amber)':'var(--green)')}
+      </div>
+    `);
+  }
+
+  // ---- Management Review ------------------------------------------------------
+  {
+    const reviews = STATE.managementReviews;
+    const finalizedReviews = reviews.filter(r=>r.status==='finalized');
+    const latestReview = reviews.length ? reviews.reduce((a,b)=> new Date(a.meeting_date) > new Date(b.meeting_date) ? a : b) : null;
+    const openActions = STATE.managementReviewActions.filter(a=>a.status==='open');
+    const overdueActions = openActions.filter(a=>a.target_date && new Date(a.target_date) < new Date());
+    const nextDueOverdue = latestReview && latestReview.next_meeting_date && new Date(latestReview.next_meeting_date) < new Date();
+    html += mrSection('Management Review', 'management_review', `
+      <div class="mr-stat-row">
+        ${mrStatCard(finalizedReviews.length, 'Reviews held', null, null)}
+        ${mrStatCard(latestReview ? fmtDate(latestReview.meeting_date) : '—', 'Most recent review', null, null)}
+        ${mrStatCard(latestReview ? fmtDate(latestReview.next_meeting_date) : '—', 'Next review due', 'Quarterly, per Section 19 of the OHS Act', nextDueOverdue?'var(--red)':null)}
+        ${mrStatCard(openActions.length, 'Open actions', overdueActions.length+' overdue', overdueActions.length>0?'var(--red)':(openActions.length>0?'var(--amber)':'var(--green)'))}
+      </div>
     `);
   }
 
