@@ -311,9 +311,10 @@
   .date-badge.yellow{background:var(--amber-tint); color:var(--amber);}
   .date-badge.red{background:var(--red-tint); color:var(--red);}
 
+  .qw-modal-lg{width:75vw; max-width:1200px; height:75vh; max-height:820px;}
   .reminder-overlay{position:fixed; inset:0; background:rgba(30,28,27,.45); z-index:110; display:none; align-items:center; justify-content:center; padding:20px;}
   .reminder-overlay.active{display:flex;}
-  .reminder-modal{background:#fff; border-radius:12px; max-width:640px; width:100%; padding:28px; max-height:85vh; overflow-y:auto; position:relative;}
+  .reminder-modal{background:#fff; border-radius:12px; padding:32px; overflow-y:auto; position:relative;}
   .reminder-modal h3{font-family:'Poppins'; font-size:18px; font-weight:700; margin-bottom:4px;}
   .reminder-modal p.sub{font-size:12.5px; color:var(--text-faint); margin-bottom:18px;}
   .reminder-row{display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border-soft); cursor:pointer;}
@@ -335,14 +336,18 @@
   .watchman-chat-fab{position:fixed; bottom:24px; right:24px; width:56px; height:56px; border-radius:50%; background:var(--red); color:#fff; display:flex; align-items:center; justify-content:center; box-shadow:0 6px 20px rgba(178,22,22,.35); z-index:200; cursor:pointer;}
   .watchman-chat-fab:hover{background:var(--red-dark);}
   .watchman-chat-fab svg{width:24px; height:24px;}
-  .watchman-chat-panel{position:fixed; bottom:24px; right:24px; width:380px; max-width:calc(100vw - 40px); height:min(560px, calc(100vh - 60px)); background:#fff; border-radius:16px; box-shadow:0 12px 40px rgba(0,0,0,.18); display:none; flex-direction:column; z-index:201; overflow:hidden;}
+  .watchman-chat-backdrop{position:fixed; inset:0; background:rgba(30,28,27,.45); z-index:200; display:none;}
+  .watchman-chat-backdrop.open{display:block;}
+  .watchman-chat-panel{position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:75vw; max-width:1200px; height:75vh; max-height:820px; background:#fff; border-radius:16px; box-shadow:0 20px 60px rgba(0,0,0,.25); display:none; flex-direction:column; z-index:201; overflow:hidden;}
   .watchman-chat-panel.open{display:flex;}
   .watchman-chat-header{background:var(--charcoal-dark); color:#fff; padding:16px 18px; display:flex; align-items:center; justify-content:space-between;}
   .watchman-chat-header .wc-title{font-family:'Poppins'; font-weight:700; font-size:15px;}
   .watchman-chat-header .wc-sub{font-size:11px; color:#B8B4B0; margin-top:2px;}
+  .watchman-chat-header .close-btn{background:var(--red); border:none; border-radius:50%;}
+  .watchman-chat-header .close-btn:hover{background:var(--red-dark);}
   .watchman-chat-header .close-btn svg{stroke:#fff;}
   .watchman-chat-messages{flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:10px; background:var(--bg);}
-  .wc-msg{max-width:85%; padding:10px 13px; border-radius:12px; font-size:13px; line-height:1.5; white-space:pre-wrap;}
+  .wc-msg{max-width:min(75%, 620px); padding:10px 13px; border-radius:12px; font-size:13px; line-height:1.5; white-space:pre-wrap;}
   .wc-msg-bot{background:#fff; border:1px solid var(--border); align-self:flex-start; color:var(--text);}
   .wc-msg-user{background:var(--red); color:#fff; align-self:flex-end;}
   .wc-msg-error{background:var(--red-tint); color:var(--red); align-self:flex-start; font-size:12.5px;}
@@ -589,6 +594,7 @@
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
 </button>
 
+<div class="watchman-chat-backdrop" id="watchman-chat-backdrop" onclick="toggleWatchmanChat()"></div>
 <div class="watchman-chat-panel" id="watchman-chat-panel">
   <div class="watchman-chat-header">
     <div>
@@ -610,7 +616,7 @@
   <div class="import-modal" id="import-modal-content"></div>
 </div>
 <div class="reminder-overlay" id="reminder-overlay">
-  <div class="reminder-modal" id="reminder-modal-content"></div>
+  <div class="reminder-modal qw-modal-lg" id="reminder-modal-content"></div>
 </div>
 
 <!-- ================= DASHBOARD ================= -->
@@ -647,6 +653,8 @@
       <div class="nav-item" data-mod="bulletins" onclick="showModule('bulletins')"><svg viewBox="0 0 24 24"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a2 2 0 11-3.2 2.4"/></svg> Bulletins &amp; Toolbox Talks</div>
       <div class="nav-item" data-mod="all_documents" onclick="showModule('all_documents')"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg> All Documents</div>
       <div class="nav-item" data-mod="five_s" onclick="showModule('five_s')"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg> 5S Inspections</div>
+      <div class="nav-item" data-mod="processes" onclick="showModule('processes')"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.1-2.8-2.8L7 14"/></svg> Process Performance</div>
+      <div class="nav-item" data-mod="management_review" onclick="showModule('management_review')"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg> Management Review</div>
       <div class="sb-foot">
         <a class="exit-link" id="switch-org-link" onclick="showOrgPicker()" style="display:none; margin-bottom:8px;"><svg viewBox="0 0 24 24"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg> Switch organisation</a>
         <a class="exit-link" onclick="doSignOut()"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Sign out</a>
@@ -732,11 +740,13 @@ const STATE = {
   checklistTemplates:[],
   docDepartments:[], docTypes:[], formIdentifications:[], ncTypes:[],
   assessmentTemplates:[], assessmentItems:[], assessmentRecords:[], customerSurveys:[], bulkDocuments:[], fiveSInspections:[],
+  processes:[], processKpis:[], processReviews:[], managementReviews:[],
 };
 let personnelView = 'register';
 let pendingModule = 'overview';
 
 function todayISO(){ return new Date().toISOString().slice(0,10); }
+function threeMonthsFromToday(){ const d = new Date(); d.setMonth(d.getMonth()+3); return d.toISOString().slice(0,10); }
 function fmtDate(d){ if(!d) return '—'; const dt=new Date(d+'T00:00:00'); return dt.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); }
 function label(s){ return (s||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()); }
 const RISK_CATEGORY_LABELS = {
@@ -885,6 +895,10 @@ window.selectOrg = async function(orgId){
   await loadAssessmentRecords();
   await loadCustomerSurveys();
   await loadFiveSInspections();
+  await loadProcesses();
+  await loadProcessKpis();
+  await loadManagementReviews();
+  await loadProcessReviews();
   await loadTasks();
   await loadAudits();
   await loadRisks();
@@ -955,6 +969,26 @@ async function loadFiveSInspections(){
   const { data, error } = await STATE.supabase.from('five_s_inspections').select('*').eq('organisation_id', STATE.org.id).order('scheduled_date', {ascending:false});
   if(error){ toast('Could not load 5S inspections: ' + error.message, 'error'); return; }
   STATE.fiveSInspections = data || [];
+}
+async function loadProcesses(){
+  const { data, error } = await STATE.supabase.from('processes').select('*').eq('organisation_id', STATE.org.id).order('ref_code', {ascending:true});
+  if(error){ toast('Could not load processes: ' + error.message, 'error'); return; }
+  STATE.processes = data || [];
+}
+async function loadProcessKpis(){
+  const { data, error } = await STATE.supabase.from('process_kpis').select('*').eq('organisation_id', STATE.org.id).order('sort_order', {ascending:true});
+  if(error){ toast('Could not load process KPIs: ' + error.message, 'error'); return; }
+  STATE.processKpis = data || [];
+}
+async function loadManagementReviews(){
+  const { data, error } = await STATE.supabase.from('management_reviews').select('*').eq('organisation_id', STATE.org.id).order('meeting_date', {ascending:false});
+  if(error){ toast('Could not load management reviews: ' + error.message, 'error'); return; }
+  STATE.managementReviews = data || [];
+}
+async function loadProcessReviews(){
+  const { data, error } = await STATE.supabase.from('process_reviews').select('*').eq('organisation_id', STATE.org.id).order('review_date', {ascending:false});
+  if(error){ toast('Could not load process reviews: ' + error.message, 'error'); return; }
+  STATE.processReviews = data || [];
 }
 async function loadTasks(){
   const { data, error } = await STATE.supabase.from('tasks').select('*').eq('organisation_id', STATE.org.id).order('due_date', {ascending:true});
@@ -1092,9 +1126,11 @@ const MODULE_META = {
   bulletins:{title:'Bulletins & Toolbox Talks', sub:() => 'MOD-15 · Notices with downloadable material'},
   all_documents:{title:'All Documents', sub:() => 'Emergency bulk document register — enabled by Group QaSHE CG per client'},
   five_s:{title:'5S Inspections', sub:() => 'Open participation inspections across Health, Safety, Environment, Quality, Info Security, Risk, Opportunity, Legal Compliance & Governance'},
+  processes:{title:'Process Performance', sub:() => 'A process register with weighted KPIs, monitored and measured over time — linked to objectives and nonconformances'},
+  management_review:{title:'Management Review', sub:() => 'ISO 9.3.2 aligned — quarterly, per Section 19 of the OHS Act — linking data from every module into one agenda'},
 };
 
-const GATED_MODULES = ['nonconformances','tasks','documents','audits','risks','suppliers','customers','objectives','legal','personnel','training','appraisals','assets','bulletins','all_documents','five_s'];
+const GATED_MODULES = ['nonconformances','tasks','documents','audits','risks','suppliers','customers','objectives','legal','personnel','training','appraisals','assets','bulletins','all_documents','five_s','processes','management_review'];
 
 function canAccessModule(mod){
   if(!GATED_MODULES.includes(mod)) return true; // overview, compliance — always visible
@@ -1141,6 +1177,8 @@ function showModule(mod){
   if(mod === 'compliance') renderComplianceDashboard();
   if(mod === 'all_documents') renderBulkDocumentsRegister();
   if(mod === 'five_s') renderFiveSTable();
+  if(mod === 'processes') renderProcessesTable();
+  if(mod === 'management_review') renderMRTable();
 }
 window.showModule = showModule;
 
@@ -1209,6 +1247,7 @@ const DATE_TRACKED_MODULES = [
   { key:'appraisals', label:'KPIs & Appraisals', list:() => STATE.appraisals, dateField:'period_end', isResolved:x=>x.status==='finalized', titleField:null, getPerson:x=>{const p=personById(x.personnel_id); return p?p.full_name:'—';} },
   { key:'assets', label:'Assets — Inspection Due', list:() => STATE.assets, dateField:'next_inspection_date', isResolved:() => false, titleField:'description', getPerson:x=>{const p=x.responsible_person_id?personById(x.responsible_person_id):null; return p?p.full_name:'—';} },
   { key:'assets', label:'Assets — Certificate Expiry', list:() => STATE.assets, dateField:'certificate_expiry_date', isResolved:() => false, titleField:'description', getPerson:x=>{const p=x.responsible_person_id?personById(x.responsible_person_id):null; return p?p.full_name:'—';} },
+  { key:'management_review', label:'Management Review — Next Meeting Due', list:() => STATE.managementReviews, dateField:'next_meeting_date', isResolved:() => false, titleField:null, getPerson:x=>memberName(x.chair_id) },
 ];
 
 function computeDueSummary(){
@@ -1423,6 +1462,7 @@ const RENDERERS = {
         <div class="field"><label>Owner</label><select id="f-owner">${memberOptions(STATE.user.id)}</select></div>
         <div class="field"><label>Target close date</label><input type="date" id="f-target" value="${todayISO()}"></div>
         <div class="field"><label>Supplier (if applicable)</label><select id="f-supplier" onchange="toggleSupplierSeverityField()"><option value="">None</option>${STATE.suppliers.map(s=>`<option value="${s.id}">${s.ref_code} — ${s.name}</option>`).join('')}</select></div>
+        <div class="field"><label>Process (if applicable)</label><select id="f-process"><option value="">None</option>${STATE.processes.map(p=>`<option value="${p.id}">${p.ref_code} — ${p.name}</option>`).join('')}</select></div>
         <div class="field"><label>Estimated cost of this nonconformance (optional)</label><input type="number" id="f-cost" placeholder="R"></div>
         <div class="field" id="f-supplier-severity-field" style="display:none;">
           <label>Impact on supplier performance</label>
@@ -1785,6 +1825,7 @@ const RENDERERS = {
         <div class="field"><label>Category</label><select id="of-category">${optionList(OBJECTIVE_CATEGORIES)}</select></div>
         <div class="field"><label>Department (optional)</label><input id="of-department" placeholder="e.g. Procurement"></div>
         <div class="field"><label>Owner</label><select id="of-owner">${memberOptions(STATE.user.id)}</select></div>
+        <div class="field"><label>Process (optional)</label><select id="of-process"><option value="">None</option>${STATE.processes.map(p=>`<option value="${p.id}">${p.ref_code} — ${p.name}</option>`).join('')}</select></div>
       </div>
 
       <div style="font-family:'JetBrains Mono'; font-size:10.5px; color:var(--red); text-transform:uppercase; letter-spacing:.06em; margin:16px 0 8px;">S — Specific</div>
@@ -2198,6 +2239,80 @@ const RENDERERS = {
       <div id="fives-table-wrap"></div>
     </div>
   `,
+
+  processes: () => `
+    <div class="toolbar">
+      <div class="filters">
+        <select id="proc-filter-status" onchange="renderProcessesTable()">
+          <option value="">All statuses</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+      </div>
+      <button class="btn-small" onclick="exportModuleExcel('processes')">Export Excel</button>
+      <button class="btn-small" onclick="printCurrentRegister('processes','Process Register')">Print Register</button>
+      <button class="btn-primary btn-add" onclick="toggleProcessForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Process</button>
+    </div>
+
+    <div class="form-panel" id="process-form">
+      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:14px;">Add a process</h3>
+      <div class="form-grid">
+        <div class="field span2"><label>Process name</label><input id="pf-name" placeholder="e.g. Sales & Order Processing, Procurement, Production"></div>
+        <div class="field"><label>Owner</label><select id="pf-owner">${memberOptions(STATE.user.id)}</select></div>
+        <div class="field"><label>Review frequency</label>
+          <select id="pf-frequency">
+            <option value="monthly">Monthly</option>
+            <option value="quarterly" selected>Quarterly</option>
+            <option value="biannual">Biannual</option>
+            <option value="annual">Annual</option>
+          </select>
+        </div>
+        <div class="field span2"><label>Purpose</label><textarea id="pf-purpose" placeholder="What this process exists to achieve"></textarea></div>
+        <div class="field"><label>Inputs</label><textarea id="pf-inputs" placeholder="What feeds into this process"></textarea></div>
+        <div class="field"><label>Outputs</label><textarea id="pf-outputs" placeholder="What this process produces"></textarea></div>
+        <div class="field span2"><label>Departments / areas involved</label><input id="pf-departments" placeholder="e.g. Sales, Finance, Operations — processes usually cross more than one"></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-cancel" onclick="toggleProcessForm()">Cancel</button>
+        <button class="btn-primary" onclick="submitProcess()">Add process</button>
+      </div>
+    </div>
+
+    <div id="process-detail-slot"></div>
+
+    <div class="panel" style="padding:0; overflow:hidden;">
+      <div id="process-table-wrap"></div>
+    </div>
+  `,
+
+  management_review: () => `
+    <div class="toolbar">
+      <div style="font-size:12.5px; color:var(--text-dim);">Held quarterly, per ISO 9.3.2 and Section 19 of the OHS Act — every agenda item pulls live data from the module it covers.</div>
+      <button class="btn-primary btn-add" onclick="toggleMRForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Review</button>
+    </div>
+
+    <div class="form-panel" id="mr-form">
+      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:6px;">Schedule a management review</h3>
+      <p style="font-size:11.5px; color:var(--text-faint); margin-bottom:14px;">Any action items still open from previous reviews carry forward automatically into this one.</p>
+      <div class="form-grid">
+        <div class="field"><label>Meeting date</label><input type="date" id="mr-date" value="${todayISO()}"></div>
+        <div class="field"><label>Chair</label><select id="mr-chair">${memberOptions(STATE.user.id)}</select></div>
+        <div class="field"><label>Next meeting due (quarterly)</label><input type="date" id="mr-next-date" value="${threeMonthsFromToday()}"></div>
+        <div class="field span3"><label>Attendees</label><input id="mr-attendees" placeholder="Names, comma separated"></div>
+        <div class="field span3"><label>Apologies</label><input id="mr-apologies" placeholder="Names, or leave blank for none"></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-cancel" onclick="toggleMRForm()">Cancel</button>
+        <button class="btn-primary" onclick="submitMR()">Create review</button>
+      </div>
+    </div>
+
+    <div id="mr-detail-slot"></div>
+
+    <div class="panel" style="padding:0; overflow:hidden;">
+      <div id="mr-table-wrap"></div>
+    </div>
+  `,
 };
 
 /* ============ NC: form + table + detail ============ */
@@ -2229,6 +2344,7 @@ window.submitNC = async function(){
     owner_id: document.getElementById('f-owner').value,
     target_close_date,
     supplier_id: document.getElementById('f-supplier').value || null,
+    process_id: document.getElementById('f-process').value || null,
     estimated_cost: costVal ? parseFloat(costVal) : null,
     supplier_impact_severity: severityVal ? parseInt(severityVal, 10) : null,
   };
@@ -4842,6 +4958,7 @@ window.submitObjective = async function(){
     linked_policy_document_id: document.getElementById('of-doc').value || null,
     evaluation_method: document.getElementById('of-evaluation').value.trim(),
     owner_id: document.getElementById('of-owner').value,
+    process_id: document.getElementById('of-process').value || null,
     status: 'active',
     created_by: STATE.user.id,
   };
@@ -7289,6 +7406,595 @@ window.printFiveS = async function(id){
   printRecord('5S Inspection', insp.ref_code, meta, body, null, 'five_s');
 };
 
+/* ============ Process KPI & Performance Monitoring ============ */
+window.toggleProcessForm = function(){
+  document.getElementById('process-form').classList.toggle('open');
+};
+
+window.submitProcess = async function(){
+  const name = document.getElementById('pf-name').value.trim();
+  if(!name){ alert('Process name is required.'); return; }
+  const { error } = await STATE.supabase.from('processes').insert({
+    organisation_id: STATE.org.id, name, owner_id: document.getElementById('pf-owner').value,
+    review_frequency: document.getElementById('pf-frequency').value,
+    purpose: document.getElementById('pf-purpose').value.trim(),
+    inputs: document.getElementById('pf-inputs').value.trim(),
+    outputs: document.getElementById('pf-outputs').value.trim(),
+    departments_involved: document.getElementById('pf-departments').value.trim(),
+    created_by: STATE.user.id,
+  });
+  if(error){ toast('Could not add the process: ' + error.message, 'error'); return; }
+  toggleProcessForm();
+  document.querySelectorAll('#process-form input, #process-form textarea').forEach(el=>el.value='');
+  await loadProcesses();
+  renderProcessesTable();
+  toast('Process added.', 'success');
+};
+
+function latestProcessScore(processId){
+  const reviews = (STATE._processReviewsCache && STATE._processReviewsCache[processId]) || [];
+  return reviews.find(r=>r.status==='finalized');
+}
+
+function renderProcessesTable(){
+  const wrap = document.getElementById('process-table-wrap');
+  if(!wrap) return;
+  const fStatus = document.getElementById('proc-filter-status').value;
+  const rows = STATE.processes.filter(p => !fStatus || p.status === fStatus);
+  if(!rows.length){
+    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.1-2.8-2.8L7 14"/></svg><p>No processes match this filter.</p></div>`;
+    return;
+  }
+  wrap.innerHTML = `<table>
+    <tr><th>Ref</th><th>Process</th><th>Owner</th><th>Review Frequency</th><th>Status</th></tr>
+    ${rows.map(p=>`<tr class="clickable" onclick="openProcessDetail('${p.id}')">
+      <td class="mono-cell">${p.ref_code}</td>
+      <td class="strong">${p.name}</td>
+      <td>${memberName(p.owner_id)}</td>
+      <td style="text-transform:capitalize">${p.review_frequency||'—'}</td>
+      <td>${pill(p.status)}</td>
+    </tr>`).join('')}
+  </table>`;
+}
+window.renderProcessesTable = renderProcessesTable;
+
+async function openProcessDetail(id){
+  const p = STATE.processes.find(x=>x.id===id);
+  if(!p) return;
+  const { data: reviews } = await STATE.supabase.from('process_reviews').select('*').eq('process_id', id).order('review_date', {ascending:false});
+  const { data: linkedObjectives } = await STATE.supabase.from('objectives').select('*').eq('process_id', id);
+  const { data: linkedNcs } = await STATE.supabase.from('nonconformances').select('*').eq('process_id', id);
+  const kpis = STATE.processKpis.filter(k=>k.process_id===id);
+  const activeKpis = kpis.filter(k=>k.is_active);
+  const weightTotal = activeKpis.reduce((s,k)=>s+Number(k.weight||0), 0);
+
+  document.getElementById('process-detail-slot').innerHTML = `
+    <div class="detail-panel">
+      <div class="detail-head">
+        <div><span class="ref">${p.ref_code}</span><h3>${p.name}</h3></div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-small" onclick="printProcess('${p.id}')">Print / PDF</button>
+          <button class="close-btn" onclick="closeProcessDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+      </div>
+      <div class="detail-meta">
+        <div class="dm-item"><div class="l">Owner</div><div class="v">${memberName(p.owner_id)}</div></div>
+        <div class="dm-item"><div class="l">Review frequency</div><div class="v" style="text-transform:capitalize">${p.review_frequency||'—'}</div></div>
+        <div class="dm-item"><div class="l">Departments involved</div><div class="v">${p.departments_involved||'—'}</div></div>
+        <div class="dm-item"><div class="l">Status</div><div class="v">${pill(p.status)}</div></div>
+      </div>
+      ${p.purpose ? `<p style="font-size:13px; color:var(--text-dim); margin-bottom:12px;"><b>Purpose:</b> ${p.purpose}</p>` : ''}
+      <div style="display:flex; gap:24px; margin-bottom:16px;">
+        ${p.inputs ? `<div style="flex:1;"><div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase;">Inputs</div><p style="font-size:12.5px; color:var(--text-dim);">${p.inputs}</p></div>` : ''}
+        ${p.outputs ? `<div style="flex:1;"><div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase;">Outputs</div><p style="font-size:12.5px; color:var(--text-dim);">${p.outputs}</p></div>` : ''}
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Linked Objectives</div>
+        ${(linkedObjectives||[]).length ? linkedObjectives.map(o=>`<span class="linked-task-chip" style="cursor:pointer;" onclick="showModule('objectives'); setTimeout(()=>openObjectiveDetail('${o.id}'),0);">${o.ref_code} — ${o.specific_statement||'Objective'}</span>`).join('') : '<p style="font-size:12.5px; color:var(--text-faint);">No objectives linked to this process yet — set it from the objective itself.</p>'}
+      </div>
+      <div style="margin-bottom:16px;">
+        <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Nonconformances Linked to This Process</div>
+        ${(linkedNcs||[]).length ? linkedNcs.map(n=>`<span class="linked-task-chip" style="cursor:pointer;" onclick="showModule('nonconformances'); setTimeout(()=>openNCDetail('${n.id}'),0);">${n.ref_code} — ${n.title} — ${pill(n.status)}</span>`).join('') : '<p style="font-size:12.5px; color:var(--text-faint);">None yet — link a nonconformance to this process when raising or editing it.</p>'}
+      </div>
+
+      <div class="detail-card" style="padding:16px; margin-bottom:16px;">
+        <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">KPIs</h3>
+          <span class="mono" style="font-size:11px; color:${weightTotal===100?'var(--green)':'var(--amber)'};">Weight total: ${weightTotal}%</span>
+        </div>
+        ${kpis.length ? kpis.map(k=>`
+          <div class="evidence-row" style="${!k.is_active?'opacity:.5;':''}">
+            <div style="flex:1;">
+              <b>${k.title}</b> <span class="mono" style="font-size:11px; color:var(--text-faint);">Weight ${k.weight}%</span>
+              ${k.target ? `<div style="font-size:12px; color:var(--text-dim);">Target: ${k.target}</div>` : ''}
+            </div>
+            <button class="btn-small" onclick="toggleProcessKpiActive('${k.id}','${p.id}',${!k.is_active})">${k.is_active?'Deactivate':'Activate'}</button>
+          </div>
+        `).join('') : '<p style="font-size:12.5px; color:var(--text-faint); margin-bottom:10px;">No KPIs defined yet.</p>'}
+        <div class="form-panel" id="add-process-kpi-form" style="margin-top:10px;">
+          <div class="form-grid">
+            <div class="field span2"><label>KPI title</label><input id="pk-title" placeholder="What's being measured"></div>
+            <div class="field"><label>Weight (%)</label><input type="number" id="pk-weight" placeholder="e.g. 25"></div>
+            <div class="field span2"><label>Target</label><input id="pk-target" placeholder="e.g. 98% on-time delivery"></div>
+            <div class="field"><label>Source of measure</label><input id="pk-source" placeholder="Where this number comes from"></div>
+          </div>
+          <button class="btn-small primary" onclick="submitProcessKpi('${p.id}')">Add KPI</button>
+        </div>
+        <button class="btn-small" onclick="toggleAddProcessKpiForm()" style="margin-top:8px;">+ Add KPI</button>
+      </div>
+
+      <div class="detail-card" style="padding:16px; margin-bottom:16px;">
+        <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Review History</h3>
+          <button class="btn-small primary" onclick="toggleProcessReviewForm('${p.id}')">+ New Review</button>
+        </div>
+        <div class="form-panel" id="process-review-form"></div>
+        ${(reviews||[]).length ? `<table>
+          <tr><th>Date</th><th>Reviewed By</th><th>Result</th><th>Status</th></tr>
+          ${reviews.map(r=>`<tr>
+            <td>${fmtDate(r.review_date)}</td><td>${memberName(r.reviewed_by)}</td>
+            <td>${r.overall_achievement_pct!==null ? Number(r.overall_achievement_pct).toFixed(1)+'%' : '—'}</td>
+            <td>${pill(r.status)}</td>
+          </tr>`).join('')}
+        </table>` : '<p style="font-size:12.5px; color:var(--text-faint);">No reviews recorded yet.</p>'}
+      </div>
+    </div>
+  `;
+}
+window.openProcessDetail = openProcessDetail;
+window.closeProcessDetail = function(){ document.getElementById('process-detail-slot').innerHTML = ''; };
+
+window.toggleAddProcessKpiForm = function(){
+  document.getElementById('add-process-kpi-form').classList.toggle('open');
+};
+
+window.submitProcessKpi = async function(processId){
+  const title = document.getElementById('pk-title').value.trim();
+  const weight = parseFloat(document.getElementById('pk-weight').value) || 0;
+  if(!title){ alert('KPI title is required.'); return; }
+  const nextSort = STATE.processKpis.filter(k=>k.process_id===processId).length * 10 + 10;
+  const { error } = await STATE.supabase.from('process_kpis').insert({
+    organisation_id: STATE.org.id, process_id: processId, title, weight,
+    target: document.getElementById('pk-target').value.trim(),
+    source_of_measure: document.getElementById('pk-source').value.trim(),
+    sort_order: nextSort,
+  });
+  if(error){ toast('Could not add the KPI: ' + error.message, 'error'); return; }
+  await loadProcessKpis();
+  openProcessDetail(processId);
+  toast('KPI added.', 'success');
+};
+
+window.toggleProcessKpiActive = async function(kpiId, processId, newVal){
+  const { error } = await STATE.supabase.from('process_kpis').update({ is_active:newVal }).eq('id', kpiId);
+  if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+  await loadProcessKpis();
+  openProcessDetail(processId);
+};
+
+window.toggleProcessReviewForm = function(processId){
+  const slot = document.getElementById('process-review-form');
+  if(!slot) return;
+  if(slot.classList.contains('open')){ slot.classList.remove('open'); slot.innerHTML=''; return; }
+  const activeKpis = STATE.processKpis.filter(k=>k.process_id===processId && k.is_active);
+  if(!activeKpis.length){ alert('Add at least one active KPI before running a review.'); return; }
+  slot.classList.add('open');
+  slot.innerHTML = `
+    ${renderKpiLegendCard()}
+    ${activeKpis.map(k => `
+      <div style="margin-bottom:14px; padding-bottom:12px; border-bottom:1px solid var(--border-soft);">
+        <div style="font-size:13px; color:var(--text); margin-bottom:2px;"><b>${k.title}</b> <span class="mono" style="font-size:11px; color:var(--text-faint);">Weight ${k.weight}%</span></div>
+        ${k.target ? `<div style="font-size:11.5px; color:var(--text-faint); margin-bottom:6px;">Target: ${k.target}</div>` : ''}
+        <select id="pr-rating-${k.id}" style="border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12.5px; margin-bottom:6px;">
+          <option value="">Select a rating…</option>
+          ${KPI_RATING_LEGEND.map(r=>`<option value="${r.value}">${r.value} — ${r.label}</option>`).join('')}
+        </select>
+        <input type="text" id="pr-notes-${k.id}" placeholder="Notes (optional)" style="display:block; width:100%; border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12px;">
+      </div>
+    `).join('')}
+    <div class="field" style="margin-bottom:10px;"><label>Overall notes</label><textarea id="pr-overall-notes"></textarea></div>
+    <div class="form-actions">
+      <button class="btn-cancel" onclick="toggleProcessReviewForm('${processId}')">Cancel</button>
+      <button class="btn-primary" onclick="submitProcessReview('${processId}')">Save review</button>
+    </div>
+  `;
+};
+
+window.submitProcessReview = async function(processId){
+  const activeKpis = STATE.processKpis.filter(k=>k.process_id===processId && k.is_active);
+  const scores = [];
+  for(const k of activeKpis){
+    const sel = document.getElementById('pr-rating-'+k.id);
+    if(!sel || !sel.value){ alert('Rate every KPI before saving.'); return; }
+    scores.push({ kpi: k, rating: parseInt(sel.value, 10), notes: document.getElementById('pr-notes-'+k.id).value.trim() });
+  }
+  const totalWeight = activeKpis.reduce((s,k)=>s+Number(k.weight||0), 0) || 1;
+  const overallPct = scores.reduce((s,x)=> s + (kpiRatingToPct(x.rating) * (Number(x.kpi.weight||0)/totalWeight)), 0);
+
+  const { data: review, error: revErr } = await STATE.supabase.from('process_reviews').insert({
+    organisation_id: STATE.org.id, process_id: processId, reviewed_by: STATE.user.id,
+    overall_achievement_pct: overallPct, notes: document.getElementById('pr-overall-notes').value.trim(), status: 'finalized',
+  }).select().single();
+  if(revErr){ toast('Could not save the review: ' + revErr.message, 'error'); return; }
+
+  const scoreRows = scores.map(x => ({
+    review_id: review.id, process_kpi_id: x.kpi.id, kpi_title_snapshot: x.kpi.title, target_snapshot: x.kpi.target,
+    weight_snapshot: x.kpi.weight, rating: x.rating, achievement_pct: kpiRatingToPct(x.rating), notes: x.notes,
+  }));
+  const { error: scoresErr } = await STATE.supabase.from('process_review_kpi_scores').insert(scoreRows);
+  if(scoresErr) toast('Review saved, but KPI scores could not be recorded: ' + scoresErr.message, 'error');
+
+  toggleProcessReviewForm(processId);
+  openProcessDetail(processId);
+  toast(`Review saved — ${overallPct.toFixed(1)}%.`, 'success');
+};
+
+window.printProcess = async function(id){
+  const p = STATE.processes.find(x=>x.id===id);
+  if(!p) return;
+  const { data: reviews } = await STATE.supabase.from('process_reviews').select('*').eq('process_id', id).order('review_date', {ascending:false});
+  const meta = [
+    ['Owner', memberName(p.owner_id)], ['Review frequency', label(p.review_frequency||'')],
+    ['Departments involved', p.departments_involved||'—'], ['Status', label(p.status)],
+  ];
+  let body = `<p><b>Purpose</b><br>${p.purpose || '—'}</p>`;
+  if(p.inputs) body += `<p style="margin-top:10px;"><b>Inputs:</b> ${p.inputs}</p>`;
+  if(p.outputs) body += `<p style="margin-top:6px;"><b>Outputs:</b> ${p.outputs}</p>`;
+  body += printSectionTitle('Review History') + printTable(['Date','Reviewed By','Result','Status'], (reviews||[]).map(r => [
+    fmtDate(r.review_date), memberName(r.reviewed_by), r.overall_achievement_pct!==null ? Number(r.overall_achievement_pct).toFixed(1)+'%' : '—', label(r.status),
+  ]));
+  printRecord('Process Record', p.ref_code, meta, body, null, 'processes');
+};
+
+/* ============ Management Review — the grand finale ============ */
+
+const MGMT_REVIEW_AGENDA = [
+  { key:'previous_actions', title:'Status of Actions from Previous Reviews', iso:'ISO 9.3.2(a)' },
+  { key:'external_internal_issues', title:'Changes in External & Internal Issues Relevant to the Management System', iso:'ISO 9.3.2(b)' },
+  { key:'interested_parties', title:'Needs & Expectations of Interested Parties, Including Compliance Obligations', iso:'ISO 9.3.2(c)' },
+  { key:'customer_satisfaction', title:'Customer Satisfaction & Feedback', iso:'ISO 9.3.2(c)(1)' },
+  { key:'objectives', title:'Extent to Which Objectives & Targets Have Been Met', iso:'ISO 9.3.2(c)(2)' },
+  { key:'process_performance', title:'Process Performance & Conformity', iso:'ISO 9.3.2(c)(3)' },
+  { key:'nonconformances', title:'Nonconformities & Corrective Actions', iso:'ISO 9.3.2(c)(4)' },
+  { key:'audits', title:'Audit Results — Internal, External & 5S Inspections', iso:'ISO 9.3.2(c)(6)' },
+  { key:'supplier_performance', title:'Performance of Suppliers & Subcontractors', iso:'ISO 9.3.2(c)(7)' },
+  { key:'risk_opportunity', title:'Effectiveness of Actions Taken to Address Risks & Opportunities', iso:'ISO 9.3.2(e)' },
+  { key:'legal_compliance', title:'Legal & Other Compliance Obligations', iso:'ISO 9.3.2(c)' },
+  { key:'resources_training', title:'Adequacy of Resources, Training & Competence', iso:'ISO 9.3.2(d)' },
+  { key:'people_participation', title:'People Enablement, Participation & Consultation', iso:'ISO 9.3.2' },
+  { key:'continual_improvement', title:'Opportunities for Continual Improvement', iso:'ISO 9.3.3(a)' },
+  { key:'other_business', title:'Any Other Business', iso:null },
+];
+
+// Reuses the exact same computation approach already proven on the
+// Compliance Dashboard — same numbers, same thresholds, just delivered
+// inline against the agenda item they actually belong to rather than a
+// separate grid. Not every agenda item has live data to show; several
+// are genuinely discussion-only, and that's fine.
+function computeMRAgendaStats(key){
+  if(key === 'customer_satisfaction'){
+    const surveys = STATE.customerSurveys;
+    const completed = surveys.filter(s=>s.status==='completed' || s.overall_rating!==null);
+    const avgPct = completed.length ? (completed.reduce((s,x)=>s+Number(x.overall_rating||0),0)/completed.length)/5*100 : null;
+    return `<div class="mr-stat-row">
+      ${mrStatCard(avgPct!==null ? avgPct.toFixed(1)+'%' : '—', 'Average satisfaction', 'target >95%', avgPct!==null ? (avgPct>=95?'var(--green)':avgPct>=80?'var(--amber)':'var(--red)') : null)}
+      ${mrStatCard(surveys.length ? Math.round(completed.length/surveys.length*100)+'%' : '—', 'Response rate', completed.length+' of '+surveys.length+' sent', null)}
+    </div>`;
+  }
+  if(key === 'objectives'){
+    const objs = STATE.objectives;
+    const achieved = objs.filter(o=>o.status==='achieved').length;
+    const onTrack = objs.filter(o=>['draft','active'].includes(o.status)).length;
+    const notAchieved = objs.filter(o=>['not_achieved','discontinued'].includes(o.status)).length;
+    return `<div class="mr-stat-row">
+      ${mrStatCard(objs.length, 'Total objectives', null, null)}
+      ${mrStatCard(achieved, 'Achieved', null, 'var(--green)')}
+      ${mrStatCard(onTrack, 'On track', null, 'var(--amber)')}
+      ${mrStatCard(notAchieved, 'Not achieved / discontinued', null, notAchieved>0?'var(--red)':null)}
+    </div>`;
+  }
+  if(key === 'process_performance'){
+    const withReview = new Set(STATE.processReviews.map(r=>r.process_id));
+    const latestByProcess = {};
+    STATE.processReviews.forEach(r => { if(!latestByProcess[r.process_id] || r.review_date > latestByProcess[r.process_id].review_date) latestByProcess[r.process_id] = r; });
+    const scores = Object.values(latestByProcess).map(r=>Number(r.overall_achievement_pct)).filter(n=>!isNaN(n));
+    const avg = scores.length ? scores.reduce((s,x)=>s+x,0)/scores.length : null;
+    return `<div class="mr-stat-row">
+      ${mrStatCard(STATE.processes.length, 'Total processes', null, null)}
+      ${mrStatCard(withReview.size, 'Reviewed at least once', null, null)}
+      ${mrStatCard(avg!==null ? avg.toFixed(1)+'%' : '—', 'Average latest score', null, avg!==null ? (avg>=100?'var(--green)':avg>=80?'var(--amber)':'var(--red)') : null)}
+    </div>`;
+  }
+  if(key === 'nonconformances'){
+    const ncs = STATE.ncs;
+    const open = ncs.filter(n=>n.status!=='closed').length;
+    const overdue = ncs.filter(n=>n.status!=='closed' && n.target_close_date && new Date(n.target_close_date) < new Date()).length;
+    const closureRate = ncs.length ? Math.round(ncs.filter(n=>n.status==='closed').length/ncs.length*100) : null;
+    const totalCost = ncs.reduce((s,n)=>s+(Number(n.estimated_cost)||0), 0);
+    const ebitda = STATE.org.ebitda ? Number(STATE.org.ebitda) : null;
+    const costPct = (ebitda && ebitda !== 0) ? (totalCost/ebitda*100) : null;
+    return `<div class="mr-stat-row">
+      ${mrStatCard(ncs.length, 'Total raised', null, null)}
+      ${mrStatCard(open, 'Open', overdue+' overdue', overdue>0?'var(--red)':'var(--green)')}
+      ${mrStatCard(closureRate!==null ? closureRate+'%' : '—', 'Closure rate', null, null)}
+      ${mrStatCard(costPct!==null ? costPct.toFixed(2)+'%' : '—', 'Cost vs EBITDA', 'target <1%', costPct!==null ? (costPct<1?'var(--green)':'var(--red)') : null)}
+    </div>`;
+  }
+  if(key === 'audits'){
+    const audits = STATE.audits;
+    const completed = audits.filter(a=>a.status==='completed'||a.status==='report_issued').length;
+    const fives = STATE.fiveSInspections;
+    const fivesCompleted = fives.filter(i=>i.status==='completed').length;
+    return `<div class="mr-stat-row">
+      ${mrStatCard(audits.length, 'Total audits', null, null)}
+      ${mrStatCard(completed, 'Completed', null, 'var(--green)')}
+      ${mrStatCard(fives.length, '5S inspections', null, null)}
+      ${mrStatCard(fivesCompleted, '5S completed', null, 'var(--green)')}
+    </div>`;
+  }
+  if(key === 'supplier_performance'){
+    const suppliers = STATE.suppliers;
+    const SEVERITY_PENALTY = { 1:25, 2:20, 3:15, 4:10, 5:0 };
+    const supplierScores = {};
+    STATE.ncs.forEach(n => { if(!n.supplier_id || !n.supplier_impact_severity) return; supplierScores[n.supplier_id] = (supplierScores[n.supplier_id] ?? 100) - (SEVERITY_PENALTY[n.supplier_impact_severity] ?? 0); });
+    const scores = Object.values(supplierScores).map(s=>Math.max(0,s));
+    const avg = scores.length ? scores.reduce((s,x)=>s+x,0)/scores.length : null;
+    return `<div class="mr-stat-row">
+      ${mrStatCard(suppliers.length, 'Total suppliers', null, null)}
+      ${mrStatCard(scores.length, 'Scored, this period', null, null)}
+      ${mrStatCard(avg!==null ? avg.toFixed(0)+'%' : '—', 'Average performance', 'target 100%', avg!==null ? (avg>=100?'var(--green)':avg>=80?'var(--amber)':'var(--red)') : null)}
+    </div>`;
+  }
+  if(key === 'risk_opportunity'){
+    const risks = STATE.risks;
+    const withResidual = risks.filter(r=>r.residual_score!==null && r.residual_score!==undefined);
+    const avgResidual = withResidual.length ? (withResidual.reduce((s,r)=>s+Number(r.residual_score),0)/withResidual.length).toFixed(1) : null;
+    const openCritical = risks.filter(r=>r.status!=='closed' && (r.residual_score>=15 || (r.residual_score==null && r.inherent_score>=15))).length;
+    return `<div class="mr-stat-row">
+      ${mrStatCard(risks.length, 'Total entries', null, null)}
+      ${mrStatCard(avgResidual ?? '—', 'Average residual score', null, null)}
+      ${mrStatCard(openCritical, 'Open, critical severity', null, openCritical>0?'var(--red)':'var(--green)')}
+    </div>`;
+  }
+  if(key === 'legal_compliance'){
+    const legal = STATE.legalRegister;
+    const compliant = legal.filter(l=>l.current_status==='compliant').length;
+    const nonCompliant = legal.filter(l=>l.current_status==='non_compliant').length;
+    return `<div class="mr-stat-row">
+      ${mrStatCard(legal.length, 'Total register entries', null, null)}
+      ${mrStatCard(compliant, 'Compliant', null, 'var(--green)')}
+      ${mrStatCard(nonCompliant, 'Non-compliant', null, nonCompliant>0?'var(--red)':null)}
+    </div>`;
+  }
+  if(key === 'resources_training'){
+    const training = STATE.training;
+    const completed = training.filter(t=>t.status==='completed').length;
+    const overdue = training.filter(t=>t.status!=='completed' && t.status!=='cancelled' && t.due_date && new Date(t.due_date)<new Date()).length;
+    return `<div class="mr-stat-row">
+      ${mrStatCard(training.length, 'Total training records', null, null)}
+      ${mrStatCard(training.length ? Math.round(completed/training.length*100)+'%' : '—', 'Completion rate', null, null)}
+      ${mrStatCard(overdue, 'Overdue', null, overdue>0?'var(--red)':'var(--green)')}
+    </div>`;
+  }
+  if(key === 'people_participation'){
+    return `<div class="mr-stat-row">
+      ${mrStatCard(STATE.personnel.length, 'Personnel on record', null, null)}
+      ${mrStatCard(STATE._complimentsCountCache ?? 0, 'Compliments logged', 'All time', null)}
+    </div>`;
+  }
+  return '';
+}
+
+window.toggleMRForm = function(){ document.getElementById('mr-form').classList.toggle('open'); };
+
+window.submitMR = async function(){
+  const meetingDate = document.getElementById('mr-date').value;
+  if(!meetingDate){ alert('Meeting date is required.'); return; }
+
+  const { data: review, error } = await STATE.supabase.from('management_reviews').insert({
+    organisation_id: STATE.org.id, meeting_date: meetingDate, chair_id: document.getElementById('mr-chair').value,
+    attendees: document.getElementById('mr-attendees').value.trim(), apologies: document.getElementById('mr-apologies').value.trim(),
+    next_meeting_date: document.getElementById('mr-next-date').value || null, created_by: STATE.user.id,
+  }).select().single();
+  if(error){ toast('Could not create the review: ' + error.message, 'error'); return; }
+
+  // Carry forward every still-open action from every previous review —
+  // this is what makes "status of actions from previous reviews" a real,
+  // live agenda item rather than something someone has to remember to
+  // check manually.
+  const { data: openActions } = await STATE.supabase.from('management_review_actions').select('*').eq('organisation_id', STATE.org.id).eq('status', 'open');
+  if(openActions && openActions.length){
+    const carried = openActions.map(a => ({
+      organisation_id: STATE.org.id, review_id: review.id, agenda_key: 'previous_actions',
+      description: a.description, responsible_id: a.responsible_id, target_date: a.target_date,
+      task_id: a.task_id, carried_from_action_id: a.id,
+    }));
+    await STATE.supabase.from('management_review_actions').insert(carried);
+  }
+
+  toggleMRForm();
+  await loadManagementReviews();
+  renderMRTable();
+  toast('Review created.', 'success');
+  openMRDetail(review.id);
+};
+
+function renderMRTable(){
+  const wrap = document.getElementById('mr-table-wrap');
+  if(!wrap) return;
+  const rows = STATE.managementReviews;
+  if(!rows.length){
+    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg><p>No management reviews recorded yet.</p></div>`;
+    return;
+  }
+  wrap.innerHTML = `<table>
+    <tr><th>Ref</th><th>Meeting Date</th><th>Chair</th><th>Next Due</th><th>Status</th></tr>
+    ${rows.map(r=>`<tr class="clickable" onclick="openMRDetail('${r.id}')">
+      <td class="mono-cell">${r.ref_code}</td>
+      <td class="strong">${fmtDate(r.meeting_date)}</td>
+      <td>${memberName(r.chair_id)}</td>
+      <td>${fmtDate(r.next_meeting_date)} ${dateStatusBadge(r.next_meeting_date, false)}</td>
+      <td>${pill(r.status)}</td>
+    </tr>`).join('')}
+  </table>`;
+}
+window.renderMRTable = renderMRTable;
+
+async function openMRDetail(id){
+  const review = STATE.managementReviews.find(r=>r.id===id);
+  if(!review) return;
+  const { data: items } = await STATE.supabase.from('management_review_items').select('*').eq('review_id', id);
+  const { data: actions } = await STATE.supabase.from('management_review_actions').select('*').eq('review_id', id);
+  const itemsByKey = {}; (items||[]).forEach(i => itemsByKey[i.agenda_key] = i);
+  const actionsByKey = {}; (actions||[]).forEach(a => { (actionsByKey[a.agenda_key] = actionsByKey[a.agenda_key] || []).push(a); });
+  const isDraft = review.status === 'draft';
+
+  const { count: complimentsCount } = await STATE.supabase.from('compliments').select('id', {count:'exact', head:true}).eq('organisation_id', STATE.org.id);
+  STATE._complimentsCountCache = complimentsCount ?? 0;
+
+  document.getElementById('mr-detail-slot').innerHTML = `
+    <div class="detail-panel">
+      <div class="detail-head">
+        <div><span class="ref">${review.ref_code}</span><h3>Management Review — ${fmtDate(review.meeting_date)}</h3></div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-small" onclick="printMR('${review.id}')">Print / PDF</button>
+          <button class="close-btn" onclick="closeMRDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+      </div>
+      <div class="detail-meta">
+        <div class="dm-item"><div class="l">Chair</div><div class="v">${memberName(review.chair_id)}</div></div>
+        <div class="dm-item"><div class="l">Attendees</div><div class="v">${review.attendees||'—'}</div></div>
+        <div class="dm-item"><div class="l">Apologies</div><div class="v">${review.apologies||'None'}</div></div>
+        <div class="dm-item"><div class="l">Next meeting due</div><div class="v">${fmtDate(review.next_meeting_date)}</div></div>
+      </div>
+
+      ${MGMT_REVIEW_AGENDA.map(item => {
+        const record = itemsByKey[item.key];
+        const itemActions = actionsByKey[item.key] || [];
+        const statsHtml = computeMRAgendaStats(item.key);
+        return `
+        <div class="detail-card" style="padding:18px 20px; margin-bottom:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+            <h4 style="font-family:'Poppins'; font-size:14.5px; font-weight:600;">${item.title}</h4>
+            ${item.iso ? `<span class="mono" style="font-size:10px; color:var(--text-faint); white-space:nowrap;">${item.iso}</span>` : ''}
+          </div>
+          ${statsHtml}
+          ${item.key === 'previous_actions' && itemActions.length ? `<p style="font-size:11.5px; color:var(--text-faint); margin:8px 0;">Carried forward from previous reviews until closed:</p>` : ''}
+          ${itemActions.length ? itemActions.map(a => `
+            <div class="evidence-row">
+              <div style="flex:1;">
+                <div style="font-size:12.5px; ${a.status==='closed'?'text-decoration:line-through; color:var(--text-faint);':''}">${a.description}</div>
+                <div style="font-size:11px; color:var(--text-faint); margin-top:2px;">${memberName(a.responsible_id)} · Target: ${fmtDate(a.target_date)} ${a.task_id ? '· <span class="mono">Linked to a task</span>' : ''}</div>
+              </div>
+              <div class="ev-actions">
+                ${!a.task_id ? `<button class="btn-small" onclick="createTaskFromMRAction('${a.id}')">+ Task</button>` : ''}
+                ${a.status==='open' ? `<button class="btn-small" onclick="closeMRAction('${a.id}','${review.id}')">Close</button>` : ''}
+              </div>
+            </div>
+          `).join('') : ''}
+          ${isDraft ? `
+            <textarea id="mr-comment-${item.key}" placeholder="Discussion notes for this item" style="margin-top:10px;">${record ? (record.comments||'') : ''}</textarea>
+            <div style="display:flex; gap:8px; margin-top:6px;">
+              <button class="btn-small" onclick="saveMRComment('${review.id}','${item.key}')">Save Notes</button>
+              <button class="btn-small" onclick="toggleAddMRAction('${item.key}')">+ Action</button>
+            </div>
+            <div class="form-panel" id="add-action-${item.key}" style="margin-top:8px;">
+              <div class="form-grid">
+                <div class="field span3"><label>Action description</label><input id="ma-desc-${item.key}"></div>
+                <div class="field"><label>Responsible</label><select id="ma-resp-${item.key}">${memberOptions(STATE.user.id)}</select></div>
+                <div class="field"><label>Target date</label><input type="date" id="ma-target-${item.key}"></div>
+              </div>
+              <button class="btn-small primary" onclick="submitMRAction('${review.id}','${item.key}')">Add Action</button>
+            </div>
+          ` : (record && record.comments ? `<p style="font-size:12.5px; color:var(--text-dim); margin-top:10px; white-space:pre-wrap;">${record.comments}</p>` : '')}
+        </div>`;
+      }).join('')}
+
+      ${isDraft ? `<div class="form-actions"><button class="btn-primary" onclick="finalizeMR('${review.id}')">Finalize Review &amp; Minutes</button></div>` : ''}
+    </div>
+  `;
+}
+window.openMRDetail = openMRDetail;
+window.closeMRDetail = function(){ document.getElementById('mr-detail-slot').innerHTML = ''; };
+
+window.toggleAddMRAction = function(key){
+  const slot = document.getElementById('add-action-'+key);
+  if(slot) slot.classList.toggle('open');
+};
+
+window.saveMRComment = async function(reviewId, key){
+  const comments = document.getElementById('mr-comment-'+key).value.trim();
+  const { error } = await STATE.supabase.from('management_review_items').upsert(
+    { review_id: reviewId, agenda_key: key, comments }, { onConflict: 'review_id,agenda_key' }
+  );
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  toast('Notes saved.', 'success');
+};
+
+window.submitMRAction = async function(reviewId, key){
+  const desc = document.getElementById('ma-desc-'+key).value.trim();
+  if(!desc){ alert('Enter what the action actually is.'); return; }
+  const { error } = await STATE.supabase.from('management_review_actions').insert({
+    organisation_id: STATE.org.id, review_id: reviewId, agenda_key: key, description: desc,
+    responsible_id: document.getElementById('ma-resp-'+key).value, target_date: document.getElementById('ma-target-'+key).value || null,
+  });
+  if(error){ toast('Could not add the action: ' + error.message, 'error'); return; }
+  openMRDetail(reviewId);
+  toast('Action added.', 'success');
+};
+
+window.closeMRAction = async function(actionId, reviewId){
+  const { error } = await STATE.supabase.from('management_review_actions').update({ status:'closed', closed_at: new Date().toISOString() }).eq('id', actionId);
+  if(error){ toast('Could not close: ' + error.message, 'error'); return; }
+  openMRDetail(reviewId);
+  toast('Action closed.', 'success');
+};
+
+window.createTaskFromMRAction = async function(actionId){
+  const { data: action, error: actErr } = await STATE.supabase.from('management_review_actions').select('*').eq('id', actionId).single();
+  if(actErr || !action){ toast('Could not load the action.', 'error'); return; }
+  const { data: task, error } = await STATE.supabase.from('tasks').insert({
+    organisation_id: STATE.org.id, title: action.description.slice(0,120), linked_type: 'management_review', linked_id: action.review_id,
+    assignee_id: action.responsible_id || STATE.user.id, due_date: action.target_date || new Date(Date.now()+7*24*60*60*1000).toISOString().slice(0,10),
+    created_by: STATE.user.id,
+  }).select().single();
+  if(error){ toast('Could not create the task: ' + error.message, 'error'); return; }
+  await STATE.supabase.from('management_review_actions').update({ task_id: task.id }).eq('id', actionId);
+  openMRDetail(action.review_id);
+  toast('Task created and linked.', 'success');
+};
+
+window.finalizeMR = async function(id){
+  if(!confirm('Finalize this review? The agenda notes and actions become read-only, matching the meeting minutes as recorded.')) return;
+  const { error } = await STATE.supabase.from('management_reviews').update({ status:'finalized' }).eq('id', id);
+  if(error){ toast('Could not finalize: ' + error.message, 'error'); return; }
+  await loadManagementReviews();
+  renderMRTable();
+  openMRDetail(id);
+  toast('Review finalized.', 'success');
+};
+
+window.printMR = async function(id){
+  const review = STATE.managementReviews.find(r=>r.id===id);
+  if(!review) return;
+  const { data: items } = await STATE.supabase.from('management_review_items').select('*').eq('review_id', id);
+  const { data: actions } = await STATE.supabase.from('management_review_actions').select('*').eq('review_id', id);
+  const itemsByKey = {}; (items||[]).forEach(i => itemsByKey[i.agenda_key] = i);
+  const actionsByKey = {}; (actions||[]).forEach(a => { (actionsByKey[a.agenda_key] = actionsByKey[a.agenda_key] || []).push(a); });
+
+  const meta = [['Chair', memberName(review.chair_id)], ['Attendees', review.attendees||'—'], ['Apologies', review.apologies||'None'], ['Next meeting due', fmtDate(review.next_meeting_date)]];
+  let body = '';
+  MGMT_REVIEW_AGENDA.forEach(item => {
+    const record = itemsByKey[item.key];
+    const itemActions = actionsByKey[item.key] || [];
+    body += printSectionTitle(item.title + (item.iso ? ' ('+item.iso+')' : ''));
+    body += `<p>${(record && record.comments) || 'No discussion recorded.'}</p>`;
+    if(itemActions.length){
+      body += printTable(['Action','Responsible','Target Date','Status'], itemActions.map(a => [a.description, memberName(a.responsible_id), fmtDate(a.target_date), label(a.status)]));
+    }
+  });
+  printRecord('Management Review Minutes', review.ref_code, meta, body, null, 'management_review');
+};
+
 async function renderBulkDocumentsRegister(){
   const wrap = document.getElementById('bulkdoc-table-wrap');
   if(!wrap) return;
@@ -7889,6 +8595,15 @@ function getModuleExportConfig(moduleKey){
       {header:'Ref', get:r=>r.ref_code}, {header:'Area', get:r=>r.area}, {header:'Inspector', get:r=>memberName(r.inspector_id)},
       {header:'Scheduled', get:r=>r.scheduled_date}, {header:'Completed', get:r=>r.actual_date||''}, {header:'Status', get:r=>r.status},
     ]},
+    processes: { rows: STATE.processes, filename: `processes-${orgSlug}.xlsx`, columns: [
+      {header:'Ref', get:r=>r.ref_code}, {header:'Process', get:r=>r.name}, {header:'Owner', get:r=>memberName(r.owner_id)},
+      {header:'Review Frequency', get:r=>r.review_frequency}, {header:'Departments Involved', get:r=>r.departments_involved},
+      {header:'Status', get:r=>r.status},
+    ]},
+    management_review: { rows: STATE.managementReviews, filename: `management-reviews-${orgSlug}.xlsx`, columns: [
+      {header:'Ref', get:r=>r.ref_code}, {header:'Meeting Date', get:r=>r.meeting_date}, {header:'Chair', get:r=>memberName(r.chair_id)},
+      {header:'Next Meeting Due', get:r=>r.next_meeting_date}, {header:'Status', get:r=>r.status},
+    ]},
   };
   return configs[moduleKey];
 }
@@ -7908,6 +8623,7 @@ let watchmanChatSending = false;
 
 function toggleWatchmanChat(){
   document.getElementById('watchman-chat-panel').classList.toggle('open');
+  document.getElementById('watchman-chat-backdrop').classList.toggle('open');
 }
 window.toggleWatchmanChat = toggleWatchmanChat;
 
