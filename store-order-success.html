@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Order Confirmed — Group QaSHE CG</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{ --red:#B21616; --red-dark:#7E0F0F; --bg:#F7F6F5; --text:#1E1C1B; --text-dim:#615C59; --green:#2E7D4F; --green-tint:#E9F5EE; --border:#E3E1DF; --amber:#B8791C; --amber-tint:#FBF1E1; }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--text); font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased; min-height:100vh; display:flex; align-items:flex-start; justify-content:center; padding:40px 20px;}
+  .card{background:#fff; border:1px solid var(--border); border-radius:14px; padding:40px; max-width:520px; width:100%;}
+  .success-icon{width:52px; height:52px; border-radius:50%; background:var(--green-tint); color:var(--green); display:flex; align-items:center; justify-content:center; margin:0 auto 18px;}
+  .success-icon svg{width:26px; height:26px; stroke:currentColor; fill:none; stroke-width:2;}
+  h1{font-family:'Poppins'; font-size:22px; font-weight:800; text-align:center; margin-bottom:8px;}
+  p.sub{font-size:13.5px; color:var(--text-dim); text-align:center; line-height:1.6; margin-bottom:26px;}
+  .order-ref{font-family:'Poppins'; font-weight:700; color:var(--red);}
+  .item{border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:12px;}
+  .item .name{font-weight:600; font-size:13.5px; margin-bottom:4px;}
+  .item .meta{font-size:12px; color:var(--text-dim);}
+  .download-btn{display:inline-block; background:var(--red); color:#fff; font-weight:600; font-size:13px; padding:9px 18px; border-radius:7px; text-decoration:none; margin-top:10px;}
+  .download-btn:hover{background:var(--red-dark);}
+  .waiting-box{background:var(--amber-tint); color:#8A5D14; font-size:12.5px; padding:12px 14px; border-radius:8px; margin-top:10px; line-height:1.5;}
+  .shipping-box{background:var(--bg); border-radius:8px; padding:14px; margin-top:20px; font-size:12.5px; color:var(--text-dim); line-height:1.6;}
+  .loading{text-align:center; padding:30px 0; color:#9C9895; font-size:13px;}
+  .btn-home{display:block; text-align:center; margin-top:24px; font-size:13px; color:var(--text-dim); text-decoration:none;}
+</style>
+</head>
+<body>
+<div class="card" id="card">
+  <div class="loading">Loading your order…</div>
+</div>
+
+<script type="module">
+// ── Configuration ──────────────────────────────────────────────────────────
+const SUPABASE_URL = "https://uzywxhptwavnvpfzbhkb.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_8XxT0I-Qdmswhd2I-TT_jg_CuI8a24f";
+const SITE_URL = "https://www.groupqashecg.com";
+// ─────────────────────────────────────────────────────────────────────────
+
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+function getOrderId(){ return new URLSearchParams(window.location.search).get('order_id'); }
+
+async function init(){
+  const orderId = getOrderId();
+  const card = document.getElementById('card');
+  if(!orderId){
+    card.innerHTML = '<p style="text-align:center; color:var(--text-dim); font-size:13.5px;">No order reference found in this link.</p>';
+    return;
+  }
+
+  const { data, error } = await supabase.rpc('get_order_confirmation', { p_order_id: orderId });
+  if(error || !data || data.error){
+    card.innerHTML = '<p style="text-align:center; color:var(--text-dim); font-size:13.5px;">We couldn\u2019t find that order. If you\u2019ve just paid, wait a moment and refresh this page.</p>';
+    return;
+  }
+
+  if(data.status === 'pending_payment'){
+    card.innerHTML = `
+      <div class="loading">Your payment is still being confirmed — this usually takes just a few seconds.</div>
+      <button class="btn-home" onclick="location.reload()" style="border:1px solid var(--border); border-radius:8px; padding:10px; width:100%; background:#fff; cursor:pointer;">Refresh</button>
+    `;
+    return;
+  }
+
+  const digitalItems = data.items.filter(i => i.product_type === 'digital');
+  const physicalItems = data.items.filter(i => i.product_type === 'physical');
+
+  card.innerHTML = `
+    <div class="success-icon"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+    <h1>Order confirmed</h1>
+    <p class="sub">Thank you, ${data.customer_name} — order <span class="order-ref">${data.order_ref}</span> is confirmed. Total: R${Number(data.total).toFixed(2)}</p>
+
+    ${digitalItems.map(i => `
+      <div class="item">
+        <div class="name">${i.product_name} <span style="color:var(--text-dim); font-weight:400;">× ${i.quantity}</span></div>
+        ${i.download_url
+          ? `<a class="download-btn" href="${i.download_url}" target="_blank">Download</a><div class="meta" style="margin-top:6px;">Link expires ${new Date(i.download_expires_at).toLocaleDateString('en-GB')} — save your file before then.</div>`
+          : `<div class="waiting-box">Your download link is still being prepared — refresh this page in a moment. If it doesn't appear shortly, contact us and we'll send it directly.</div>`}
+      </div>
+    `).join('')}
+
+    ${physicalItems.length ? `
+      <div class="shipping-box">
+        <b>Shipping to:</b><br>${data.shipping_address || '—'}
+        ${data.tracking_number ? `<br><br><b>Tracking number:</b> ${data.tracking_number}` : '<br><br>We\'ll be in touch once your order ships — a tracking number will appear here.'}
+      </div>
+    ` : ''}
+
+    <a class="btn-home" href="${SITE_URL}">← Back to Group QaSHE CG</a>
+  `;
+}
+
+init();
+</script>
+</body>
+</html>
