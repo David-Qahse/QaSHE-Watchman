@@ -45,6 +45,20 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 function getOrderId(){ return new URLSearchParams(window.location.search).get('order_id'); }
 
+// PayFast confirms payment and redirects the customer's browser back here
+// at roughly the same time it separately notifies our own server — but
+// those two things aren't guaranteed to happen in order. Landing here
+// before that server-to-server confirmation has finished is normal, not
+// an error, so this checks a few times automatically before asking the
+// customer to do anything themselves.
+async function checkOrderStatus(orderId){
+  const { data, error } = await supabase.rpc('get_order_confirmation', { p_order_id: orderId });
+  if(error || !data || data.error){
+    throw new Error((data && data.error) || error?.message || 'We couldn\u2019t find that order.');
+  }
+  return data;
+}
+
 async function init(){
   const orderId = getOrderId();
   const card = document.getElementById('card');
@@ -53,20 +67,40 @@ async function init(){
     return;
   }
 
-  const { data, error } = await supabase.rpc('get_order_confirmation', { p_order_id: orderId });
-  if(error || !data || data.error){
-    card.innerHTML = '<p style="text-align:center; color:var(--text-dim); font-size:13.5px;">We couldn\u2019t find that order. If you\u2019ve just paid, wait a moment and refresh this page.</p>';
-    return;
-  }
+  const MAX_ATTEMPTS = 8; // roughly 30 seconds of automatic checking before asking the customer to refresh manually
 
-  if(data.status === 'pending_payment'){
-    card.innerHTML = `
-      <div class="loading">Your payment is still being confirmed — this usually takes just a few seconds.</div>
-      <button class="btn-home" onclick="location.reload()" style="border:1px solid var(--border); border-radius:8px; padding:10px; width:100%; background:#fff; cursor:pointer;">Refresh</button>
-    `;
-    return;
-  }
+  try {
+    for(let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++){
+      const data = await checkOrderStatus(orderId);
 
+      if(data.status === 'pending_payment'){
+        if(attempt < MAX_ATTEMPTS){
+          card.innerHTML = '<div class="loading">Confirming your payment\u2026 this usually takes just a few seconds.</div>';
+          await new Promise(r => setTimeout(r, 3500));
+          continue; // check again automatically, rather than leaving this sitting here
+        }
+        // Genuinely taking longer than expected — stop auto-checking and
+        // hand control to the customer rather than loop forever.
+        card.innerHTML = `
+          <div class="loading">Your payment is taking longer than usual to confirm.</div>
+          <button class="btn-home" onclick="location.reload()" style="border:1px solid var(--border); border-radius:8px; padding:10px; width:100%; background:#fff; cursor:pointer;">Check again</button>
+        `;
+        return;
+      }
+
+      renderConfirmedOrder(data);
+      return;
+    }
+  } catch(e) {
+    // Anything unexpected — lands here with a real message on screen,
+    // instead of leaving the page stuck on "Loading your order..." with
+    // no explanation and nothing the customer can do about it.
+    card.innerHTML = `<p style="text-align:center; color:var(--text-dim); font-size:13.5px;">${e.message || 'Something went wrong loading your order.'} If you\u2019ve just paid, your payment is very likely fine \u2014 contact us and we\u2019ll confirm it directly.</p>`;
+  }
+}
+
+function renderConfirmedOrder(data){
+  const card = document.getElementById('card');
   const digitalItems = data.items.filter(i => i.product_type === 'digital');
   const physicalItems = data.items.filter(i => i.product_type === 'physical');
 
