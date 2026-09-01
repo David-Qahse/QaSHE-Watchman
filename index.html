@@ -135,7 +135,12 @@
   .topbar{display:flex; align-items:center; justify-content:space-between; padding:16px 30px; border-bottom:1px solid var(--border); background:rgba(255,255,255,.85); backdrop-filter:blur(6px); position:sticky; top:0; z-index:5;}
   .topbar-left h2{font-family:'Poppins'; font-size:19px; font-weight:700;}
   .topbar-left p{font-size:12px; color:var(--text-faint); margin-top:2px;}
-  .avatar{width:30px; height:30px; border-radius:50%; background:var(--charcoal); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; font-family:'Poppins'; font-weight:600;}
+  .avatar{width:30px; height:30px; border-radius:50%; background:var(--charcoal); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; font-family:'Poppins'; font-weight:600; cursor:pointer; position:relative;}
+  .avatar-menu{position:absolute; top:40px; right:0; background:#fff; border:1px solid var(--border); border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.1); padding:6px; min-width:190px; display:none; z-index:50;}
+  .avatar-menu.open{display:block;}
+  .avatar-menu a{font-size:12.5px; color:var(--text-dim); display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:6px; cursor:pointer;}
+  .avatar-menu a:hover{background:var(--panel-alt, #F7F6F5); color:var(--text);}
+  .avatar-menu a svg{width:15px; height:15px; stroke:currentColor; fill:none; stroke-width:2;}
 
   .content{padding:26px 30px 60px;}
 
@@ -296,6 +301,7 @@
   .gate-btn:hover{background:var(--red-dark);}
   .gate-btn:disabled{opacity:.5;}
   .gate-error{background:var(--red-tint); color:var(--red); font-size:12.5px; padding:10px 12px; border-radius:7px; margin-bottom:14px;}
+  .gate-success{background:var(--green-tint); color:var(--green); font-size:12.5px; padding:10px 12px; border-radius:7px; margin-bottom:14px;}
   .gate-hint{font-size:11.5px; color:var(--text-faint); margin-top:12px; line-height:1.5;}
   .org-pick-item{padding:14px; border:1px solid var(--border); border-radius:8px; margin-bottom:8px; cursor:pointer;}
   .org-pick-item:hover{border-color:var(--charcoal); background:var(--grey-tint);}
@@ -568,6 +574,30 @@
     <div class="field"><label>Email</label><input id="auth-email" type="email"></div>
     <div class="field"><label>Password</label><input id="auth-password" type="password"></div>
     <button class="gate-btn" id="signin-btn" onclick="doSignIn()">Sign in</button>
+    <p style="text-align:center; margin-top:14px;"><a onclick="showGate('gate-reset-request')" style="font-size:12.5px; color:var(--text-faint); cursor:pointer; text-decoration:underline;">Forgot your password?</a></p>
+  </div>
+</div>
+
+<div id="gate-reset-request" class="gate">
+  <div class="gate-card">
+    <h2>Reset your password</h2>
+    <p class="sub">Enter the email you sign in with — we'll send you a link to set a new password.</p>
+    <div id="reset-request-error"></div>
+    <div id="reset-request-success"></div>
+    <div class="field"><label>Email</label><input id="reset-email" type="email"></div>
+    <button class="gate-btn" id="reset-request-btn" onclick="doRequestPasswordReset()">Send reset link</button>
+    <p style="text-align:center; margin-top:14px;"><a onclick="showGate('gate-auth')" style="font-size:12.5px; color:var(--text-faint); cursor:pointer; text-decoration:underline;">Back to sign in</a></p>
+  </div>
+</div>
+
+<div id="gate-reset-confirm" class="gate">
+  <div class="gate-card">
+    <h2>Set a new password</h2>
+    <p class="sub">You're signed in via the reset link — choose a new password to finish.</p>
+    <div id="reset-confirm-error"></div>
+    <div class="field"><label>New password</label><input id="new-password" type="password"></div>
+    <div class="field"><label>Confirm new password</label><input id="new-password-confirm" type="password"></div>
+    <button class="gate-btn" id="reset-confirm-btn" onclick="doConfirmPasswordReset()">Set new password</button>
   </div>
 </div>
 
@@ -655,10 +685,6 @@
       <div class="nav-item" data-mod="five_s" onclick="showModule('five_s')"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg> 5S Inspections</div>
       <div class="nav-item" data-mod="processes" onclick="showModule('processes')"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.1-2.8-2.8L7 14"/></svg> Process Performance</div>
       <div class="nav-item" data-mod="management_review" onclick="showModule('management_review')"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg> Management Review</div>
-      <div class="sb-foot">
-        <a class="exit-link" id="switch-org-link" onclick="showOrgPicker()" style="display:none; margin-bottom:8px;"><svg viewBox="0 0 24 24"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg> Switch organisation</a>
-        <a class="exit-link" onclick="doSignOut()"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Sign out</a>
-      </div>
     </aside>
 
     <main class="main">
@@ -670,7 +696,13 @@
           </div>
           <div class="client-logo-slot"></div>
         </div>
-        <div class="avatar" id="user-avatar">–</div>
+        <div class="avatar" id="user-avatar" onclick="toggleAvatarMenu(event)">
+          <span id="user-avatar-initials">–</span>
+          <div class="avatar-menu" id="avatar-menu">
+            <a id="switch-org-link" onclick="showOrgPicker()" style="display:none;"><svg viewBox="0 0 24 24"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg> Switch organisation</a>
+            <a onclick="doSignOut()"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Sign out</a>
+          </div>
+        </div>
       </div>
       <div class="content" id="content-root">
         <div class="loading-state">Loading register…</div>
@@ -784,6 +816,13 @@ const SUPABASE_ANON_KEY = "sb_publishable_8XxT0I-Qdmswhd2I-TT_jg_CuI8a24f";
 
 function initSupabase(url, key){
   STATE.supabase = supabaseLib.createClient(url, key);
+  // Fires when someone lands here via the emailed password reset link —
+  // Supabase signs them into a special "recovery" session automatically;
+  // this catches that moment and shows the set-new-password screen
+  // instead of the normal signed-in app.
+  STATE.supabase.auth.onAuthStateChange((event) => {
+    if(event === 'PASSWORD_RECOVERY') showGate('gate-reset-confirm');
+  });
 }
 
 /* ============ GATES / NAV ============ */
@@ -830,6 +869,59 @@ window.doSignIn = async function(){
   if(error){ errEl.innerHTML = `<div class="gate-error">${error.message}</div>`; return; }
   await afterSignIn(data.user);
 };
+
+window.doRequestPasswordReset = async function(){
+  const email = document.getElementById('reset-email').value.trim();
+  const errEl = document.getElementById('reset-request-error');
+  const successEl = document.getElementById('reset-request-success');
+  const btn = document.getElementById('reset-request-btn');
+  errEl.innerHTML = ''; successEl.innerHTML = '';
+  if(!email){ errEl.innerHTML = '<div class="gate-error">Enter your email first.</div>'; return; }
+
+  btn.disabled = true; btn.textContent = 'Sending…';
+  const { error } = await STATE.supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + window.location.pathname,
+  });
+  btn.disabled = false; btn.textContent = 'Send reset link';
+
+  // Deliberately the same message whether or not the email is actually
+  // registered — confirming which emails have accounts is a real,
+  // avoidable privacy leak, not just a UX nicety.
+  successEl.innerHTML = '<div class="gate-success">If that email has an account, a reset link is on its way — check your inbox.</div>';
+  if(error) console.error('Password reset request error:', error.message);
+};
+
+window.doConfirmPasswordReset = async function(){
+  const pw = document.getElementById('new-password').value;
+  const pwConfirm = document.getElementById('new-password-confirm').value;
+  const errEl = document.getElementById('reset-confirm-error');
+  const btn = document.getElementById('reset-confirm-btn');
+  errEl.innerHTML = '';
+
+  if(pw.length < 8){ errEl.innerHTML = '<div class="gate-error">Password needs to be at least 8 characters.</div>'; return; }
+  if(pw !== pwConfirm){ errEl.innerHTML = '<div class="gate-error">Passwords don\u2019t match.</div>'; return; }
+
+  btn.disabled = true; btn.textContent = 'Setting password…';
+  const { error } = await STATE.supabase.auth.updateUser({ password: pw });
+  btn.disabled = false; btn.textContent = 'Set new password';
+  if(error){ errEl.innerHTML = `<div class="gate-error">${error.message}</div>`; return; }
+
+  toast('Password updated — you\u2019re signed in.', 'success');
+  const { data:{ session } } = await STATE.supabase.auth.getSession();
+  await afterSignIn(session.user);
+};
+
+window.toggleAvatarMenu = function(e){
+  if(e) e.stopPropagation();
+  document.getElementById('avatar-menu').classList.toggle('open');
+};
+document.addEventListener('click', function(e){
+  const menu = document.getElementById('avatar-menu');
+  const avatar = document.getElementById('user-avatar');
+  if(menu && menu.classList.contains('open') && !avatar.contains(e.target)){
+    menu.classList.remove('open');
+  }
+});
 
 window.doSignOut = async function(){
   if(STATE.supabase) await STATE.supabase.auth.signOut();
@@ -929,7 +1021,7 @@ window.selectOrg = async function(orgId){
   document.getElementById('view-dashboard').classList.add('active');
   applyBranding(STATE.org);
   document.getElementById('switch-org-link').style.display = STATE.memberships.length > 1 ? 'flex' : 'none';
-  document.getElementById('user-avatar').textContent = (STATE.profile.name || STATE.user.email).slice(0,2).toUpperCase();
+  document.getElementById('user-avatar-initials').textContent = (STATE.profile.name || STATE.user.email).slice(0,2).toUpperCase();
   applyModuleAccessToNav();
   window.scrollTo({top:0, behavior:'instant'});
   showModule(pendingModule || 'overview');
