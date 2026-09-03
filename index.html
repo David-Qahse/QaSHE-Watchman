@@ -2589,10 +2589,43 @@ async function openNCDetail(id){
       ${n.immediate_action_taken ? `<div style="margin-bottom:16px;"><div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:4px;">Immediate Action Taken</div><p style="font-size:13.5px; color:var(--text-dim); line-height:1.55;">${n.immediate_action_taken}</p></div>` : ''}
       ${n.contact_details ? `<div style="margin-bottom:16px;"><div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:4px;">Contact Details of Involved Parties</div><p style="font-size:13.5px; color:var(--text-dim); line-height:1.55;">${n.contact_details}</p></div>` : ''}
 
+      <div class="form-grid" style="margin-bottom:16px;">
+        <div class="field"><label>Department</label><input id="d-department" value="${n.department||''}" placeholder="e.g. Engineering, Manufacturing"></div>
+        <div class="field"><label>Containment action</label>
+          <select id="d-containment">
+            <option value="">Not set</option>
+            <option value="hold" ${n.containment_action==='hold'?'selected':''}>Hold</option>
+            <option value="rework" ${n.containment_action==='rework'?'selected':''}>Rework</option>
+            <option value="reject" ${n.containment_action==='reject'?'selected':''}>Reject</option>
+            <option value="use_as_is" ${n.containment_action==='use_as_is'?'selected':''}>Use As Is</option>
+          </select>
+        </div>
+      </div>
+
       ${renderRCASection(n, rca, rcaParticipants)}
 
+      <div class="form-grid" style="margin-bottom:10px;">
+        <div class="field span3"><label>Correction / corrective action taken</label><textarea id="d-correction" placeholder="The fix for this specific instance">${n.correction||''}</textarea></div>
+        <div class="field span3"><label>Preventive action</label><textarea id="d-preventive" placeholder="What stops this recurring elsewhere — a genuinely different question from the correction above">${n.preventive_action||''}</textarea></div>
+        <div class="field span3"><label>Effectiveness of preventive action</label><textarea id="d-effectiveness" placeholder="Reviewed later — did the preventive action actually work?">${n.preventive_action_effectiveness||''}</textarea></div>
+      </div>
+
       <div class="form-grid" style="margin-bottom:16px;">
-        <div class="field span3"><label>Correction / corrective action taken</label><textarea id="d-correction" placeholder="Immediate correction and systemic fix">${n.correction||''}</textarea></div>
+        <div class="field"><label>Is this a repeated NC?</label>
+          <select id="d-is-repeated" onchange="toggleRepeatedCountField()">
+            <option value="false" ${!n.is_repeated?'selected':''}>No</option>
+            <option value="true" ${n.is_repeated?'selected':''}>Yes</option>
+          </select>
+        </div>
+        <div class="field" id="d-repeated-count-field" style="display:${n.is_repeated?'block':'none'};"><label>How many times before?</label><input type="number" id="d-repeated-count" value="${n.repeated_count||''}"></div>
+        <div class="field"><label>Could this have been identified earlier?</label>
+          <select id="d-identify-earlier" onchange="toggleEarlierStageField()">
+            <option value="">Not assessed</option>
+            <option value="true" ${n.could_identify_earlier===true?'selected':''}>Yes</option>
+            <option value="false" ${n.could_identify_earlier===false?'selected':''}>No</option>
+          </select>
+        </div>
+        <div class="field" id="d-earlier-stage-field" style="display:${n.could_identify_earlier===true?'block':'none'};"><label>At what stage?</label><input id="d-earlier-stage" value="${n.earlier_stage||''}" placeholder="e.g. Design review, Incoming inspection"></div>
       </div>
 
       <div class="status-row">
@@ -2665,8 +2698,19 @@ window.printNC = async function(id){
   const { files: evidenceFiles } = await loadEvidence('nonconformance', id);
   const supplier = n.supplier_id ? STATE.suppliers.find(s=>s.id===n.supplier_id) : null;
 
+  // Real embedded photos, not just a filename list — signed URLs are
+  // generated for every image-type file so they can actually render
+  // inline in the printed report, matching a proper industry NC format.
+  const imageFiles = (evidenceFiles || []).filter(f => (f.file_type||'').startsWith('image/'));
+  const otherFiles = (evidenceFiles || []).filter(f => !(f.file_type||'').startsWith('image/'));
+  const photoUrls = [];
+  for(const f of imageFiles){
+    const { data } = await STATE.supabase.storage.from('evidence').createSignedUrl(f.storage_path, 3600);
+    if(data && data.signedUrl) photoUrls.push({ url: data.signedUrl, name: f.file_name });
+  }
+
   const meta = [
-    ['Type', n.title], ['Severity', label(n.severity)],
+    ['Type', n.title], ['Department', n.department || '—'], ['Severity', label(n.severity)],
     ['Status', label(n.status)], ['Owner', memberName(n.owner_id)], ['Raised by', memberName(n.raised_by)],
     ['Raised date', fmtDate(n.raised_date)], ['Target close date', fmtDate(n.target_close_date)],
   ];
@@ -2676,18 +2720,40 @@ window.printNC = async function(id){
     meta.push(['Verified by', memberName(n.verified_by)], ['Verified date', fmtDate(n.verified_date)], ['Closure signature', n.closure_signature_name || '—']);
   }
 
-  let body = `<p><b>Description</b><br>${n.description || 'No description recorded.'}</p>`;
+  let body = `<p><b>Description of the Nonconformance</b><br>${n.description || 'No description recorded.'}</p>`;
   if(n.standard_clause) body += `<p style="margin-top:10px;"><b>Standard clause:</b> ${n.standard_clause}</p>`;
-  if(n.immediate_action_taken) body += printSectionTitle('Immediate Action Taken') + `<p>${n.immediate_action_taken}</p>`;
+
+  if(photoUrls.length){
+    body += `<div style="margin-top:14px; display:flex; flex-wrap:wrap; gap:12px;">
+      ${photoUrls.map(p => `<div style="text-align:center;"><img src="${p.url}" style="max-width:260px; max-height:200px; object-fit:contain; border:1px solid #E3E1DF; border-radius:6px;"><div style="font-size:10px; color:#9C9895; margin-top:4px;">${p.name}</div></div>`).join('')}
+    </div>`;
+  }
+
+  if(n.containment_action){
+    body += printSectionTitle('Containment Action');
+    body += `<p><b>${label(n.containment_action)}</b></p>`;
+  }
+  if(n.immediate_action_taken) body += printSectionTitle('Emergency / Immediate Action Taken') + `<p>${n.immediate_action_taken}</p>`;
   if(n.contact_details) body += printSectionTitle('Contact Details of Involved Parties') + `<p>${n.contact_details}</p>`;
-  if(n.correction) body += printSectionTitle('Correction / Corrective Action') + `<p>${n.correction}</p>`;
 
   if(rca){
-    body += printSectionTitle('Root Cause Analysis');
-    for(let i=1;i<=5;i++){ if(rca['why_'+i]) body += `<p><b>Why ${i}:</b> ${rca['why_'+i]}</p>`; }
-    if(rca.concluded_root_cause) body += `<p style="margin-top:6px;"><b>Root cause:</b> ${rca.concluded_root_cause}</p>`;
+    body += printSectionTitle('Cause of Failure — Root Cause Analysis (5 Whys)');
+    body += printTable(['#','Why'], [1,2,3,4,5].filter(i=>rca['why_'+i]).map(i => [i, rca['why_'+i]]));
+    if(rca.concluded_root_cause) body += `<p style="margin-top:8px;"><b>Concluded root cause:</b> ${rca.concluded_root_cause}</p>`;
     if(rcaParticipants.length) body += `<p style="margin-top:6px;"><b>Participants:</b> ${rcaParticipants.map(p=>memberName(p.user_id)).join(', ')}</p>`;
   }
+
+  if(n.could_identify_earlier !== null && n.could_identify_earlier !== undefined){
+    body += printSectionTitle('Could This Have Been Identified at an Earlier Stage?');
+    body += `<p>${n.could_identify_earlier ? 'Yes' : 'No'}${n.could_identify_earlier && n.earlier_stage ? ' — ' + n.earlier_stage : ''}</p>`;
+  }
+
+  if(n.correction) body += printSectionTitle('Corrective Action') + `<p>${n.correction}</p>`;
+  if(n.preventive_action) body += printSectionTitle('Preventive Action') + `<p>${n.preventive_action}</p>`;
+  if(n.preventive_action_effectiveness) body += printSectionTitle('Effectiveness of Preventive Action') + `<p>${n.preventive_action_effectiveness}</p>`;
+
+  body += printSectionTitle('Repeated Nonconformance');
+  body += `<p>${n.is_repeated ? `Yes — repeated ${n.repeated_count || '?'} time${n.repeated_count===1?'':'s'} before` : 'No, not a repeat of a previous nonconformance'}</p>`;
 
   if(riskLinks && riskLinks.length){
     body += printSectionTitle('Linked Risks & Opportunities');
@@ -2699,8 +2765,8 @@ window.printNC = async function(id){
     body += printTable(['Task','Assignee','Due','Status'], linkedTasks.map(t => [t.title, memberName(t.assignee_id), fmtDate(t.due_date), label(t.status)]));
   }
 
-  if(evidenceFiles && evidenceFiles.length){
-    body += printSectionTitle('Evidence Attached') + '<ul>' + evidenceFiles.map(f=>`<li>${f.file_name}</li>`).join('') + '</ul>';
+  if(otherFiles.length){
+    body += printSectionTitle('Other Evidence Attached') + '<ul>' + otherFiles.map(f=>`<li>${f.file_name}</li>`).join('') + '</ul>';
   }
 
   if(history && history.length){
@@ -2710,7 +2776,21 @@ window.printNC = async function(id){
     ]));
   }
 
-  printRecord('Nonconformance Report', n.ref_code, meta, body, null, 'nonconformances');
+  body += `<div style="margin-top:32px; padding-top:16px; border-top:1px solid #E3E1DF; display:flex; gap:40px;">
+    <div style="flex:1;"><div style="font-size:10px; color:#9C9895; text-transform:uppercase; margin-bottom:22px;">Prepared By — Sign &amp; Date</div><div style="border-top:1px solid #545454; width:100%;"></div></div>
+    <div style="flex:1;"><div style="font-size:10px; color:#9C9895; text-transform:uppercase; margin-bottom:22px;">Verified By — Sign &amp; Date</div><div style="border-top:1px solid #545454; width:100%;"></div></div>
+  </div>`;
+
+  printRecord('Nonconformance, Root Cause Analysis & Preventive Action Report', n.ref_code, meta, body, null, 'nonconformances');
+};
+
+window.toggleRepeatedCountField = function(){
+  const isRepeated = document.getElementById('d-is-repeated').value === 'true';
+  document.getElementById('d-repeated-count-field').style.display = isRepeated ? 'block' : 'none';
+};
+window.toggleEarlierStageField = function(){
+  const val = document.getElementById('d-identify-earlier').value;
+  document.getElementById('d-earlier-stage-field').style.display = val === 'true' ? 'block' : 'none';
 };
 
 window.saveNCDetail = async function(id){
@@ -2720,8 +2800,20 @@ window.saveNCDetail = async function(id){
   const verifiedBy = document.getElementById('d-verifiedby').value || null;
   const closureSignature = document.getElementById('d-closure-signature').value.trim();
   const correction = document.getElementById('d-correction').value.trim();
+  const isRepeated = document.getElementById('d-is-repeated').value === 'true';
+  const identifyEarlierVal = document.getElementById('d-identify-earlier').value;
 
-  const patch = { status:newStatus, correction:correction };
+  const patch = {
+    status: newStatus, correction: correction,
+    department: document.getElementById('d-department').value.trim(),
+    containment_action: document.getElementById('d-containment').value || null,
+    preventive_action: document.getElementById('d-preventive').value.trim(),
+    preventive_action_effectiveness: document.getElementById('d-effectiveness').value.trim(),
+    is_repeated: isRepeated,
+    repeated_count: isRepeated ? (parseInt(document.getElementById('d-repeated-count').value, 10) || null) : null,
+    could_identify_earlier: identifyEarlierVal === '' ? null : identifyEarlierVal === 'true',
+    earlier_stage: identifyEarlierVal === 'true' ? document.getElementById('d-earlier-stage').value.trim() : null,
+  };
   if(newStatus === 'closed'){
     patch.verified_by = verifiedBy;
     patch.verified_date = todayISO();
