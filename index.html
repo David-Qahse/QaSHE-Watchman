@@ -362,9 +362,8 @@
   .watchman-chat-input-row textarea{flex:1; border:1px solid var(--border); border-radius:8px; padding:9px 11px; font-family:'Inter',sans-serif; font-size:13px; resize:none; max-height:100px;}
   .watchman-chat-input-row button{padding:9px 16px; font-size:13px;}
   @media print {
-    body *{visibility:hidden;}
-    #print-container, #print-container *{visibility:visible;}
-    #print-container{display:block; position:absolute; top:0; left:0; width:100%; padding:0;}
+    body > *:not(#print-container){display:none !important;}
+    #print-container{display:block; position:static; width:100%; padding:0;}
     .print-header{border-bottom:2.5px solid #B21616; padding-bottom:14px; margin-bottom:18px;}
     .print-brand{font-family:'Poppins',sans-serif; font-weight:700; font-size:15px; color:#B21616;}
     .print-doc-title{font-family:'Poppins',sans-serif; font-weight:700; font-size:21px; color:#1E1C1B; margin-top:4px;}
@@ -1556,7 +1555,6 @@ const RENDERERS = {
         <div class="field span3"><label>Immediate action taken</label><textarea id="f-immediate-action" placeholder="What was done right away, before any investigation"></textarea></div>
         <div class="field span3"><label>Contact details of all involved people or organisations</label><textarea id="f-contact-details" placeholder="Names, roles, phone numbers, email addresses"></textarea></div>
         <div class="field"><label>Severity</label><select id="f-severity"><option value="minor">Minor</option><option value="major">Major</option><option value="critical">Critical</option></select></div>
-        <div class="field"><label>Standard / clause</label><input id="f-clause" placeholder="e.g. ISO 9001:2015 - 8.7"></div>
         <div class="field"><label>Owner</label><select id="f-owner">${memberOptions(STATE.user.id)}</select></div>
         <div class="field"><label>Target close date</label><input type="date" id="f-target" value="${todayISO()}"></div>
         <div class="field"><label>Supplier (if applicable)</label><select id="f-supplier" onchange="toggleSupplierSeverityField()"><option value="">None</option>${STATE.suppliers.map(s=>`<option value="${s.id}">${s.ref_code} — ${s.name}</option>`).join('')}</select></div>
@@ -2436,7 +2434,6 @@ window.submitNC = async function(){
     description: document.getElementById('f-desc').value.trim(),
     immediate_action_taken: document.getElementById('f-immediate-action').value.trim(),
     contact_details: document.getElementById('f-contact-details').value.trim(),
-    standard_clause: document.getElementById('f-clause').value.trim(),
     severity: document.getElementById('f-severity').value,
     raised_by: STATE.user.id,
     owner_id: document.getElementById('f-owner').value,
@@ -2585,7 +2582,6 @@ async function openNCDetail(id){
         <div class="dm-item"><div class="l">Target close</div><div class="v">${fmtDate(n.target_close_date)}</div></div>
       </div>
       <p style="font-size:13.5px; color:var(--text-dim); margin-bottom:16px; line-height:1.55;">${n.description || 'No description recorded.'}</p>
-      ${n.standard_clause ? `<p style="font-size:12px; color:var(--text-faint); margin-bottom:16px;" class="mono">Clause: ${n.standard_clause}</p>` : ''}
       ${n.immediate_action_taken ? `<div style="margin-bottom:16px;"><div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:4px;">Immediate Action Taken</div><p style="font-size:13.5px; color:var(--text-dim); line-height:1.55;">${n.immediate_action_taken}</p></div>` : ''}
       ${n.contact_details ? `<div style="margin-bottom:16px;"><div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:4px;">Contact Details of Involved Parties</div><p style="font-size:13.5px; color:var(--text-dim); line-height:1.55;">${n.contact_details}</p></div>` : ''}
 
@@ -2706,7 +2702,7 @@ window.printNC = async function(id){
   const photoUrls = [];
   for(const f of imageFiles){
     const { data } = await STATE.supabase.storage.from('evidence').createSignedUrl(f.storage_path, 3600);
-    if(data && data.signedUrl) photoUrls.push({ url: data.signedUrl, name: f.file_name });
+    if(data && data.signedUrl) photoUrls.push({ url: data.signedUrl, name: f.description || f.file_name });
   }
 
   const meta = [
@@ -2721,7 +2717,6 @@ window.printNC = async function(id){
   }
 
   let body = `<p><b>Description of the Nonconformance</b><br>${n.description || 'No description recorded.'}</p>`;
-  if(n.standard_clause) body += `<p style="margin-top:10px;"><b>Standard clause:</b> ${n.standard_clause}</p>`;
 
   if(photoUrls.length){
     body += `<div style="margin-top:14px; display:flex; flex-wrap:wrap; gap:12px;">
@@ -3699,32 +3694,54 @@ const EVIDENCE_ALLOWED_EXT = ['pdf','doc','docx','xls','xlsx','jpg','jpeg','png'
 
 function renderEvidenceSection(entityType, entityId, files){
   const rowsHtml = files.length
-    ? files.map(f => `
+    ? files.map(f => {
+        const isImage = (f.file_type||'').startsWith('image/');
+        return `
       <div class="evidence-row">
         <div class="ev-icon">${fileIconSvg(f.file_type)}</div>
-        <div>
-          <div class="ev-name">${f.file_name}</div>
-          <div class="ev-meta">${fmtFileSize(f.file_size)} · ${memberName(f.uploaded_by)} · ${fmtDate(f.uploaded_at ? f.uploaded_at.slice(0,10) : null)}${f.description ? ' · '+f.description : ''}</div>
+        <div style="flex:1;">
+          <div class="ev-name">${f.file_name}${isImage ? ' <span class="mono" style="font-size:9.5px; color:var(--text-faint);">— will appear as a photo in the printed report</span>' : ''}</div>
+          <div class="ev-meta">${fmtFileSize(f.file_size)} · ${memberName(f.uploaded_by)} · ${fmtDate(f.uploaded_at ? f.uploaded_at.slice(0,10) : null)}</div>
+          <div id="ev-label-display-${f.id}">${f.description ? `<span style="font-size:11.5px; color:var(--text-dim);">"${f.description}"</span> ` : ''}<a onclick="toggleEvidenceLabelEdit('${f.id}')" style="font-size:11px; color:var(--red); cursor:pointer; text-decoration:underline;">${f.description ? 'Edit label' : (isImage ? 'Add a caption' : 'Add a label')}</a></div>
+          <div id="ev-label-edit-${f.id}" style="display:none; margin-top:4px;">
+            <input type="text" id="ev-label-input-${f.id}" value="${(f.description||'').replace(/"/g,'&quot;')}" placeholder="${isImage ? 'e.g. Groove diameter before rework' : 'e.g. Supplier certificate'}" style="width:100%; max-width:320px; font-size:12px; padding:5px 8px; border:1px solid var(--border); border-radius:5px;">
+            <button class="btn-small primary" onclick="saveEvidenceLabel('${f.id}','${entityType}','${entityId}')" style="margin-left:4px;">Save</button>
+          </div>
         </div>
         <div class="ev-actions">
           <button class="btn-small" onclick="downloadEvidence('${f.storage_path}','${f.file_name.replace(/'/g,"\\'")}')">Download</button>
           <button class="btn-small" onclick="deleteEvidence('${f.id}','${f.storage_path}','${entityType}','${entityId}')">Delete</button>
         </div>
-      </div>`).join('')
+      </div>`;
+      }).join('')
     : '<p style="font-size:12.5px; color:var(--text-faint);">No evidence attached yet.</p>';
 
   return `
   <div style="margin-bottom:16px;">
-    <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Evidence</div>
+    <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Evidence &amp; Photographs</div>
     ${rowsHtml}
     <div class="evidence-upload">
       <input type="file" id="ev-file-${entityType}-${entityId}" multiple>
-      <input type="text" id="ev-desc-${entityType}-${entityId}" placeholder="Optional caption — applies to all files selected">
+      <input type="text" id="ev-desc-${entityType}-${entityId}" placeholder="Optional caption — applies to all files in this upload; edit any file's label individually afterward">
       <button class="btn-small primary" onclick="uploadEvidence('${entityType}','${entityId}')">Upload</button>
     </div>
-    <p style="font-size:11px; color:var(--text-faint); margin-top:6px;">You can select more than one file at once. Accepted formats: PDF, Word, Excel, JPG, PNG. Maximum size: ${EVIDENCE_MAX_SIZE_MB}MB per file.</p>
+    <p style="font-size:11px; color:var(--text-faint); margin-top:6px;">You can select more than one file at once. Photos (JPG, PNG) appear as real images in the printed report, each with its own label — the rest attach as supporting documents. Maximum size: ${EVIDENCE_MAX_SIZE_MB}MB per file.</p>
   </div>`;
 }
+
+window.toggleEvidenceLabelEdit = function(fileId){
+  const editEl = document.getElementById('ev-label-edit-'+fileId);
+  if(editEl) editEl.style.display = editEl.style.display === 'none' ? 'block' : 'none';
+};
+
+window.saveEvidenceLabel = async function(fileId, entityType, entityId){
+  const label = document.getElementById('ev-label-input-'+fileId).value.trim();
+  const { error } = await STATE.supabase.from('evidence_files').update({ description: label }).eq('id', fileId);
+  if(error){ toast('Could not save the label: ' + error.message, 'error'); return; }
+  if(entityType === 'nonconformance') openNCDetail(entityId);
+  if(entityType === 'audit') openAuditDetail(entityId);
+  toast('Label saved.', 'success');
+};
 
 window.uploadEvidence = async function(entityType, entityId){
   const fileInput = document.getElementById(`ev-file-${entityType}-${entityId}`);
