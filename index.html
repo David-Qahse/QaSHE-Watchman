@@ -648,6 +648,9 @@
   </div>
 </div>
 <div id="print-container"></div>
+<div id="print-options-overlay" class="reminder-overlay">
+  <div class="reminder-modal" id="print-options-modal" style="max-width:480px; width:100%; height:auto; max-height:85vh;"></div>
+</div>
 <div id="boot-loading-overlay" class="boot-loading-overlay">
   <div class="boot-loading-card">
     <div class="ring-mark" style="width:44px; height:44px; margin:0 auto 16px;">
@@ -2721,7 +2724,49 @@ window.openNCDetail = openNCDetail;
 function closeNCDetail(){ document.getElementById('nc-detail-slot').innerHTML = ''; }
 window.closeNCDetail = closeNCDetail;
 
-window.printNC = async function(id){
+const NC_PRINT_SECTIONS = [
+  { key:'containment', label:'Containment Action' },
+  { key:'immediate', label:'Immediate Action Taken' },
+  { key:'contact', label:'Contact Details of Involved Parties' },
+  { key:'rca', label:'Root Cause Analysis (5 Whys)' },
+  { key:'earlier', label:'Could This Have Been Identified Earlier' },
+  { key:'correction', label:'Corrective Action' },
+  { key:'preventive', label:'Preventive Action' },
+  { key:'effectiveness', label:'Effectiveness of Preventive Action' },
+  { key:'repeated', label:'Repeated Nonconformance' },
+  { key:'risks', label:'Linked Risks & Opportunities' },
+  { key:'tasks', label:'Corrective Action Tasks' },
+  { key:'otherEvidence', label:'Other Evidence Attached' },
+  { key:'history', label:'Change History' },
+];
+
+window.printNC = function(id){
+  const overlay = document.getElementById('print-options-overlay');
+  const modal = document.getElementById('print-options-modal');
+  modal.innerHTML = `
+    <button class="close-btn" style="position:absolute; top:20px; right:20px;" onclick="closePrintOptions()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    <h3 style="padding-right:36px;">What should this printout include?</h3>
+    <p class="sub" style="margin-bottom:16px;">The record's core details, description, and photos always print. Everything below is optional — untick anything you don't want in this specific copy.</p>
+    <div style="max-height:320px; overflow-y:auto; margin-bottom:16px;">
+      ${NC_PRINT_SECTIONS.map(s => `<label style="display:flex; align-items:center; gap:8px; padding:6px 0; font-size:13px; cursor:pointer;"><input type="checkbox" id="ps-${s.key}" checked style="width:auto;"> ${s.label}</label>`).join('')}
+    </div>
+    <div class="form-actions">
+      <button class="btn-cancel" onclick="closePrintOptions()">Cancel</button>
+      <button class="btn-primary" onclick="confirmPrintNC('${id}')">Print / PDF</button>
+    </div>
+  `;
+  overlay.classList.add('active');
+};
+window.closePrintOptions = function(){ document.getElementById('print-options-overlay').classList.remove('active'); };
+
+window.confirmPrintNC = async function(id){
+  const sections = {};
+  NC_PRINT_SECTIONS.forEach(s => { sections[s.key] = document.getElementById('ps-'+s.key).checked; });
+  closePrintOptions();
+  await buildAndPrintNC(id, sections);
+};
+
+async function buildAndPrintNC(id, sections){
   const n = ncById(id);
   if(!n) return;
   const linkedTasks = STATE.tasks.filter(t=>t.linked_type==='nonconformance' && t.linked_id===id);
@@ -2771,7 +2816,14 @@ window.printNC = async function(id){
     ['Status', label(n.status)], ['Owner', memberName(n.owner_id)], ['Raised by', memberName(n.raised_by)],
     ['Raised date', fmtDate(n.raised_date)], ['Target close date', fmtDate(n.target_close_date)],
   ];
-  if(supplier) meta.push(['Supplier', `${supplier.ref_code} — ${supplier.name}`]);
+  const SUPPLIER_SEVERITY_LABELS = { 1:'1 — Catastrophic', 2:'2 — Severe', 3:'3 — Major', 4:'4 — Minor', 5:'5 — No negative impact, fully resolved' };
+  if(supplier){
+    meta.push(['Supplier', `${supplier.ref_code} — ${supplier.name}`]);
+    if(n.supplier_impact_severity) meta.push(['Impact on Supplier Performance', SUPPLIER_SEVERITY_LABELS[n.supplier_impact_severity] || n.supplier_impact_severity]);
+  }
+  const linkedProcess = n.process_id ? STATE.processes.find(p=>p.id===n.process_id) : null;
+  if(linkedProcess) meta.push(['Process', `${linkedProcess.ref_code} — ${linkedProcess.name}`]);
+  if(n.estimated_cost) meta.push(['Estimated Cost', `R${Number(n.estimated_cost).toLocaleString('en-ZA', {minimumFractionDigits:2, maximumFractionDigits:2})}`]);
   if(sourceFinding) meta.push(['Raised from audit', `${sourceFinding.audits ? sourceFinding.audits.audit_ref+' — '+sourceFinding.audits.title : 'audit finding'}`]);
   if(n.status === 'closed'){
     meta.push(['Verified by', memberName(n.verified_by)], ['Verified date', fmtDate(n.verified_date)], ['Closure signature', n.closure_signature_name || '—']);
@@ -2781,14 +2833,14 @@ window.printNC = async function(id){
   body += photoBlock('description');
   body += photoBlock('general'); // unassigned photos default to appearing with the description, same as the reference's single main photo
 
-  if(n.containment_action){
+  if(sections.containment && n.containment_action){
     body += printSectionTitle('Containment Action');
     body += `<p><b>${label(n.containment_action)}</b></p>`;
   }
-  if(n.immediate_action_taken) body += printSectionTitle('Emergency / Immediate Action Taken') + `<p>${n.immediate_action_taken}</p>`;
-  if(n.contact_details) body += printSectionTitle('Contact Details of Involved Parties') + `<p>${n.contact_details}</p>`;
+  if(sections.immediate && n.immediate_action_taken) body += printSectionTitle('Emergency / Immediate Action Taken') + `<p>${n.immediate_action_taken}</p>`;
+  if(sections.contact && n.contact_details) body += printSectionTitle('Contact Details of Involved Parties') + `<p>${n.contact_details}</p>`;
 
-  if(rca){
+  if(sections.rca && rca){
     body += printSectionTitle('Cause of Failure — Root Cause Analysis (5 Whys)');
     body += printTable(['#','Why'], [1,2,3,4,5].filter(i=>rca['why_'+i]).map(i => [i, rca['why_'+i]]));
     body += photoBlock('rca');
@@ -2796,36 +2848,38 @@ window.printNC = async function(id){
     if(rcaParticipants.length) body += `<p style="margin-top:6px;"><b>Participants:</b> ${rcaParticipants.map(p=>memberName(p.user_id)).join(', ')}</p>`;
   }
 
-  if(n.could_identify_earlier !== null && n.could_identify_earlier !== undefined){
+  if(sections.earlier && n.could_identify_earlier !== null && n.could_identify_earlier !== undefined){
     body += printSectionTitle('Could This Have Been Identified at an Earlier Stage?');
     body += `<p>${n.could_identify_earlier ? 'Yes' : 'No'}${n.could_identify_earlier && n.earlier_stage ? ' — ' + n.earlier_stage : ''}</p>`;
   }
 
-  if(n.correction){
+  if(sections.correction && n.correction){
     body += printSectionTitle('Corrective Action') + `<p>${n.correction}</p>`;
     body += photoBlock('corrective_action');
   }
-  if(n.preventive_action) body += printSectionTitle('Preventive Action') + `<p>${n.preventive_action}</p>`;
-  if(n.preventive_action_effectiveness) body += printSectionTitle('Effectiveness of Preventive Action') + `<p>${n.preventive_action_effectiveness}</p>`;
+  if(sections.preventive && n.preventive_action) body += printSectionTitle('Preventive Action') + `<p>${n.preventive_action}</p>`;
+  if(sections.effectiveness && n.preventive_action_effectiveness) body += printSectionTitle('Effectiveness of Preventive Action') + `<p>${n.preventive_action_effectiveness}</p>`;
 
-  body += printSectionTitle('Repeated Nonconformance');
-  body += `<p>${n.is_repeated ? `Yes — repeated ${n.repeated_count || '?'} time${n.repeated_count===1?'':'s'} before` : 'No, not a repeat of a previous nonconformance'}</p>`;
+  if(sections.repeated){
+    body += printSectionTitle('Repeated Nonconformance');
+    body += `<p>${n.is_repeated ? `Yes — repeated ${n.repeated_count || '?'} time${n.repeated_count===1?'':'s'} before` : 'No, not a repeat of a previous nonconformance'}</p>`;
+  }
 
-  if(riskLinks && riskLinks.length){
+  if(sections.risks && riskLinks && riskLinks.length){
     body += printSectionTitle('Linked Risks & Opportunities');
     body += '<ul>' + riskLinks.map(l=>`<li>${l.risk_register.ref_code} — ${l.risk_register.title}</li>`).join('') + '</ul>';
   }
 
-  if(linkedTasks.length){
+  if(sections.tasks && linkedTasks.length){
     body += printSectionTitle('Corrective Action Tasks');
     body += printTable(['Task','Assignee','Due','Status'], linkedTasks.map(t => [t.title, memberName(t.assignee_id), fmtDate(t.due_date), label(t.status)]));
   }
 
-  if(otherFiles.length){
+  if(sections.otherEvidence && otherFiles.length){
     body += printSectionTitle('Other Evidence Attached') + '<ul>' + otherFiles.map(f=>`<li>${f.file_name}</li>`).join('') + '</ul>';
   }
 
-  if(history && history.length){
+  if(sections.history && history && history.length){
     body += printSectionTitle('Change History');
     body += printTable(['Date','Field Changed','New Value','Changed By'], history.map(h => [
       new Date(h.changed_at).toLocaleString('en-GB'), label(h.field_changed), h.new_value || '—', memberName(h.changed_by)
@@ -2837,7 +2891,7 @@ window.printNC = async function(id){
     <div style="flex:1;"><div style="font-size:10px; color:#9C9895; text-transform:uppercase; margin-bottom:22px;">Verified By — Sign &amp; Date</div><div style="border-top:1px solid #545454; width:100%;"></div></div>
   </div>`;
 
-  printRecord('Nonconformance, Root Cause Analysis & Preventive Action Report', n.ref_code, meta, body, null, 'nonconformances');
+  await printRecord('Nonconformance, Root Cause Analysis & Preventive Action Report', n.ref_code, meta, body, null, 'nonconformances');
 };
 
 window.toggleRepeatedCountField = function(){
@@ -3209,17 +3263,24 @@ window.printAudit = async function(id){
   const audit = STATE.audits.find(a=>a.id===id);
   if(!audit) return;
   const { data: findings } = await STATE.supabase.from('audit_findings').select('*').eq('audit_id', id).order('created_at', {ascending:true});
+  const { files: evidenceFiles } = await loadEvidence('audit', id);
   const auditorLabel = audit.auditor_id ? memberName(audit.auditor_id) : (audit.external_auditor_name || '—');
   const meta = [
     ['Type', label(audit.audit_type)], ['Standard', audit.standard || '—'], ['Auditor', auditorLabel],
     ['Planned date', fmtDate(audit.planned_date)], ['Actual date', fmtDate(audit.actual_date)], ['Status', label(audit.status)],
   ];
   let body = `<p><b>Scope</b><br>${audit.scope || 'No scope recorded.'}</p>`;
+  body += await buildPrintPhotoGallery(evidenceFiles);
   if(findings && findings.length){
     body += printSectionTitle('Findings');
     body += printTable(['Type','Clause','Description'], findings.map(f => [label(f.finding_type), f.clause_reference||'—', f.description]));
   }
-  printRecord('Audit Report', audit.audit_ref, meta, body, null, 'audits');
+  const otherFiles = nonImageFiles(evidenceFiles);
+  if(otherFiles.length){
+    body += printSectionTitle('Supporting Documents');
+    body += '<ul>' + otherFiles.map(f=>`<li>${f.file_name}${f.description ? ' — '+f.description : ''}</li>`).join('') + '</ul>';
+  }
+  await printRecord('Audit Report', audit.audit_ref, meta, body, null, 'audits');
 };
 
 function renderFindingRow(f){
@@ -3813,6 +3874,7 @@ window.saveEvidenceLabel = async function(fileId, entityType, entityId){
   if(error){ toast('Could not save: ' + error.message, 'error'); return; }
   if(entityType === 'nonconformance') openNCDetail(entityId);
   if(entityType === 'audit') openAuditDetail(entityId);
+  if(entityType === 'five_s_inspection') openFiveSDetail(entityId);
   toast('Saved.', 'success');
 };
 
@@ -3858,6 +3920,7 @@ window.uploadEvidence = async function(entityType, entityId){
   toast(`${successCount} file${successCount===1?'':'s'} uploaded${failCount ? `, ${failCount} failed` : ''}.`, failCount ? 'error' : 'success');
   if(entityType === 'nonconformance') openNCDetail(entityId);
   if(entityType === 'audit') openAuditDetail(entityId);
+  if(entityType === 'five_s_inspection') openFiveSDetail(entityId);
   if(entityType === 'legal_register') openLegalDetail(entityId);
   if(entityType === 'training_record') openTrainingDetail(entityId);
   if(entityType === 'appraisal') openAppraisalDetail(entityId);
@@ -3887,6 +3950,7 @@ window.deleteEvidence = async function(id, storagePath, entityType, entityId){
   toast('Evidence deleted.', 'success');
   if(entityType === 'nonconformance') openNCDetail(entityId);
   if(entityType === 'audit') openAuditDetail(entityId);
+  if(entityType === 'five_s_inspection') openFiveSDetail(entityId);
 };
 
 /* ============ Document Control ============ */
@@ -7566,6 +7630,7 @@ async function openFiveSDetail(id){
   if(!insp) return;
   const { data: items, error } = await STATE.supabase.from('five_s_inspection_items').select('*').eq('inspection_id', id).order('five_s_category', {ascending:true});
   if(error){ toast('Could not load checklist items: ' + error.message, 'error'); return; }
+  const { files: evidenceFiles } = await loadEvidence('five_s_inspection', id);
 
   const isComplete = insp.status === 'completed';
   const byCategory = {};
@@ -7616,6 +7681,8 @@ async function openFiveSDetail(id){
           </div>
         `).join('')}
       `).join('')}
+
+      ${renderEvidenceSection('five_s_inspection', insp.id, evidenceFiles)}
 
       ${!isComplete ? `<div class="form-actions" style="margin-top:16px;"><button class="btn-primary" onclick="completeFiveSInspection('${insp.id}')">Complete inspection</button></div>` : ''}
     </div>
@@ -7681,14 +7748,21 @@ window.printFiveS = async function(id){
   const insp = STATE.fiveSInspections.find(x=>x.id===id);
   if(!insp) return;
   const { data: items } = await STATE.supabase.from('five_s_inspection_items').select('*').eq('inspection_id', id).order('five_s_category', {ascending:true});
+  const { files: evidenceFiles } = await loadEvidence('five_s_inspection', id);
   const meta = [
     ['Area', insp.area], ['Inspector', memberName(insp.inspector_id)], ['Scheduled', fmtDate(insp.scheduled_date)],
     ['Completed', insp.actual_date ? fmtDate(insp.actual_date) : '—'], ['Status', label(insp.status)],
   ];
-  const body = printTable(['Category','Item','Result','Notes'], (items||[]).map(it => [
+  let body = printTable(['Category','Item','Result','Notes'], (items||[]).map(it => [
     FIVE_S_CATEGORY_LABELS[it.five_s_category] || '—', it.item_text_snapshot, it.result ? label(it.result) : 'Not scored', it.notes || '',
   ]));
-  printRecord('5S Inspection', insp.ref_code, meta, body, null, 'five_s');
+  body += await buildPrintPhotoGallery(evidenceFiles);
+  const otherFiles = nonImageFiles(evidenceFiles);
+  if(otherFiles.length){
+    body += printSectionTitle('Supporting Documents');
+    body += '<ul>' + otherFiles.map(f=>`<li>${f.file_name}${f.description ? ' — '+f.description : ''}</li>`).join('') + '</ul>';
+  }
+  await printRecord('5S Inspection', insp.ref_code, meta, body, null, 'five_s');
 };
 
 /* ============ Process KPI & Performance Monitoring ============ */
@@ -8761,7 +8835,52 @@ window.printComplianceDashboard = function(){
 // on-screen editable panel — the editable UI has buttons, dropdowns, and
 // file pickers baked into its structure that have no business appearing
 // on something you're about to email to a supplier.
-function printRecord(docTitle, refLine, metaPairs, bodyHtml, extraHtml, moduleKey){
+// Waits for every image within the print output to genuinely finish
+// loading (or fail trying) before the print dialog is allowed to open.
+// Without this, window.print() fires the instant the HTML is set, while
+// signed-URL images are still mid-download over the network — the print
+// dialog then captures a blank space where the photo should be. A
+// per-image timeout means one broken image link can't hang printing
+// forever for everything else.
+// Shared across every module's print output — the same polished photo
+// card styling built for Nonconformances, reusable anywhere a module
+// needs to embed real photos rather than a filename list. Takes evidence
+// rows directly and handles generating signed URLs itself.
+async function buildPrintPhotoGallery(evidenceFiles){
+  const imageFiles = (evidenceFiles || []).filter(f => (f.file_type||'').startsWith('image/'));
+  if(!imageFiles.length) return '';
+  const photos = [];
+  for(const f of imageFiles){
+    const { data } = await STATE.supabase.storage.from('evidence').createSignedUrl(f.storage_path, 3600);
+    if(data && data.signedUrl) photos.push({ url: data.signedUrl, name: f.description || f.file_name });
+  }
+  if(!photos.length) return '';
+  return `<div style="margin:14px 0; display:flex; flex-wrap:wrap; gap:16px;">
+    ${photos.map(p => `<div style="text-align:center; background:#FAFAF9; border:1px solid #E3E1DF; border-radius:8px; padding:10px;">
+      <img src="${p.url}" style="max-width:280px; max-height:220px; object-fit:contain; border-radius:4px; display:block;">
+      <div style="font-size:10.5px; color:#615C59; margin-top:8px; font-weight:600; max-width:280px;">${p.name}</div>
+    </div>`).join('')}
+  </div>`;
+}
+function nonImageFiles(evidenceFiles){
+  return (evidenceFiles || []).filter(f => !(f.file_type||'').startsWith('image/'));
+}
+
+function waitForPrintImages(container){
+  const imgs = Array.from(container.querySelectorAll('img'));
+  if(!imgs.length) return Promise.resolve();
+  return Promise.all(imgs.map(img => {
+    if(img.complete) return Promise.resolve();
+    return new Promise(resolve => {
+      img.addEventListener('load', resolve, { once:true });
+      img.addEventListener('error', resolve, { once:true });
+      setTimeout(resolve, 8000);
+    });
+  }));
+}
+
+// on something you're about to email to a supplier.
+async function printRecord(docTitle, refLine, metaPairs, bodyHtml, extraHtml, moduleKey){
   const container = document.getElementById('print-container');
   const formId = moduleKey ? formIdWithDate(moduleKey) : null;
   container.innerHTML = `
@@ -8782,6 +8901,7 @@ function printRecord(docTitle, refLine, metaPairs, bodyHtml, extraHtml, moduleKe
       <span>${STATE.org.name}</span>
     </div>
   `;
+  await waitForPrintImages(container);
   window.print();
 }
 window.printRecord = printRecord;
