@@ -3878,11 +3878,80 @@ window.saveEvidenceLabel = async function(fileId, entityType, entityId){
   toast('Saved.', 'success');
 };
 
+// Resizes and compresses an image client-side before it's ever uploaded —
+// this is what actually keeps a modern phone photo (often 5-15MB) well
+// under the upload limit, and keeps the printed PDF small enough to
+// email or send over WhatsApp.
+//
+// Also the point where a genuinely undecodable image gets caught. HEIC —
+// the default photo format on every iPhone — cannot be decoded by any
+// browser at all, not for resizing, not for display. A HEIC file that
+// fails here will still fail exactly the same way when printed later,
+// silently, with no photo where one should be. Returns null in that
+// case specifically, rather than falling back to a file that would only
+// fail again downstream with no explanation.
+function resizeImageFile(file, maxDimension = 1600, quality = 0.82){
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if(width > maxDimension || height > maxDimension){
+          if(width > height){ height = Math.round(height * maxDimension / width); width = maxDimension; }
+          else { width = Math.round(width * maxDimension / height); height = maxDimension; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob((blob) => {
+          if(!blob){ resolve({ ok:false, file }); return; }
+          resolve({ ok:true, file: new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }) });
+        }, 'image/jpeg', quality);
+      };
+      img.onerror = () => resolve({ ok:false, file }); // browser genuinely could not decode this image — most commonly HEIC
+      img.src = e.target.result;
+    };
+    reader.onerror = () => resolve({ ok:false, file });
+    reader.readAsDataURL(file);
+  });
+}
+
 window.uploadEvidence = async function(entityType, entityId){
   const fileInput = document.getElementById(`ev-file-${entityType}-${entityId}`);
   const descInput = document.getElementById(`ev-desc-${entityType}-${entityId}`);
-  const files = Array.from(fileInput.files);
+  const uploadBtn = fileInput.closest('.evidence-upload')?.querySelector('button');
+  let files = Array.from(fileInput.files);
   if(!files.length){ alert('Choose at least one file first.'); return; }
+
+  // Resize every image before anything else happens — this runs before
+  // the size check specifically so a large original that would have
+  // failed it never gets the chance to. Anything that can't be decoded
+  // at all (HEIC, most commonly) is pulled out here and the person is
+  // told plainly, rather than uploading something that will just fail
+  // silently again the moment it's printed.
+  const imageFiles = files.filter(f => f.type.startsWith('image/') || /\.heic$/i.test(f.name));
+  if(imageFiles.length && uploadBtn){ uploadBtn.disabled = true; uploadBtn.textContent = `Compressing ${imageFiles.length} photo${imageFiles.length===1?'':'s'}…`; }
+  const undecodable = [];
+  const resizedFiles = [];
+  for(const f of files){
+    const isImage = f.type.startsWith('image/') || /\.heic$/i.test(f.name);
+    if(!isImage){ resizedFiles.push(f); continue; }
+    const result = await resizeImageFile(f);
+    if(result.ok){ resizedFiles.push(result.file); }
+    else { undecodable.push(f); }
+  }
+  files = resizedFiles;
+  if(uploadBtn){ uploadBtn.disabled = false; uploadBtn.textContent = 'Upload'; }
+
+  if(undecodable.length){
+    alert(
+      `${undecodable.length} photo${undecodable.length===1?'':'s'} couldn't be processed and ${undecodable.length===1?'was':'were'} not uploaded:\n` +
+      undecodable.map(f=>f.name).join('\n') +
+      `\n\nThis usually means an iPhone HEIC photo. Browsers genuinely cannot display HEIC images — even if uploaded, it would never actually appear in the printed report. On an iPhone: Settings → Camera → Formats → set to "Most Compatible" to save future photos as JPG instead, or use "Options" when picking a photo to upload as JPG.`
+    );
+  }
 
   const tooLarge = files.filter(f => f.size > EVIDENCE_MAX_SIZE_MB * 1024 * 1024);
   if(tooLarge.length){
@@ -8874,7 +8943,7 @@ function waitForPrintImages(container){
     return new Promise(resolve => {
       img.addEventListener('load', resolve, { once:true });
       img.addEventListener('error', resolve, { once:true });
-      setTimeout(resolve, 8000);
+      setTimeout(resolve, 15000);
     });
   }));
 }
