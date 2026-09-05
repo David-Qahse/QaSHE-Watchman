@@ -707,6 +707,7 @@
       <div class="nav-item" data-mod="five_s" onclick="showModule('five_s')"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg> 5S Inspections</div>
       <div class="nav-item" data-mod="processes" onclick="showModule('processes')"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.1-2.8-2.8L7 14"/></svg> Process Performance</div>
       <div class="nav-item" data-mod="management_review" onclick="showModule('management_review')"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg> Management Review</div>
+      <div class="nav-item" data-mod="administration" onclick="showModule('administration')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg> Administration</div>
     </aside>
 
     <main class="main">
@@ -794,7 +795,7 @@ const STATE = {
   checklistTemplates:[],
   docDepartments:[], docTypes:[], formIdentifications:[], ncTypes:[],
   assessmentTemplates:[], assessmentItems:[], assessmentRecords:[], customerSurveys:[], bulkDocuments:[], fiveSInspections:[],
-  processes:[], processKpis:[], processReviews:[], managementReviews:[], managementReviewActions:[],
+  processes:[], processKpis:[], processReviews:[], managementReviews:[], managementReviewActions:[], invites:[],
 };
 let personnelView = 'register';
 let pendingModule = 'overview';
@@ -981,7 +982,7 @@ async function afterSignIn(user){
 
   const { data: memberships, error: memErr } = await STATE.supabase
     .from('organisation_members')
-    .select('organisation_id, role, module_access, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color, all_documents_enabled, document_control_enabled, ebitda)')
+    .select('organisation_id, role, module_access, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color, all_documents_enabled, document_control_enabled, administration_enabled, ebitda)')
     .eq('user_id', user.id).eq('status','active');
 
   if(memErr){ toast('Could not load your organisations: ' + memErr.message, 'error'); return; }
@@ -1016,7 +1017,7 @@ window.selectOrg = async function(orgId){
 
   const { data: members, error: memErr } = await STATE.supabase
     .from('organisation_members')
-    .select('user_id, role, is_approver, profiles!organisation_members_user_id_fkey(name)')
+    .select('user_id, role, is_approver, module_access, profiles!organisation_members_user_id_fkey(name)')
     .eq('organisation_id', orgId).eq('status','active');
   if(memErr){ toast('Could not load organisation members: ' + memErr.message, 'error'); return; }
   STATE.members = members || [];
@@ -1034,6 +1035,7 @@ window.selectOrg = async function(orgId){
   await loadProcessKpis();
   await loadManagementReviews();
   await loadManagementReviewActions();
+  await loadInvites();
   await loadProcessReviews();
   await loadTasks();
   await loadAudits();
@@ -1129,6 +1131,11 @@ async function loadManagementReviewActions(){
   const { data, error } = await STATE.supabase.from('management_review_actions').select('*').eq('organisation_id', STATE.org.id);
   if(error){ toast('Could not load management review actions: ' + error.message, 'error'); return; }
   STATE.managementReviewActions = data || [];
+}
+async function loadInvites(){
+  const { data, error } = await STATE.supabase.from('invites').select('*').eq('organisation_id', STATE.org.id).order('created_at', {ascending:false});
+  if(error){ return; } // administration module may not be enabled for this org — quietly skip rather than surface an error nobody asked for
+  STATE.invites = data || [];
 }
 async function loadProcessReviews(){
   const { data, error } = await STATE.supabase.from('process_reviews').select('*').eq('organisation_id', STATE.org.id).order('review_date', {ascending:false});
@@ -1273,14 +1280,16 @@ const MODULE_META = {
   five_s:{title:'5S Inspections', sub:() => 'Open participation inspections across Health, Safety, Environment, Quality, Info Security, Risk, Opportunity, Legal Compliance & Governance'},
   processes:{title:'Process Performance', sub:() => 'A process register with weighted KPIs, monitored and measured over time — linked to objectives and nonconformances'},
   management_review:{title:'Management Review', sub:() => 'ISO 9.3.2 aligned — quarterly, per Section 19 of the OHS Act — linking data from every module into one agenda'},
+  administration:{title:'Administration', sub:() => 'Departments, people, and team access — one control centre, enabled by Group QaSHE CG per client'},
 };
 
-const GATED_MODULES = ['nonconformances','tasks','documents','audits','risks','suppliers','customers','objectives','legal','personnel','training','appraisals','assets','bulletins','all_documents','five_s','processes','management_review'];
+const GATED_MODULES = ['nonconformances','tasks','documents','audits','risks','suppliers','customers','objectives','legal','personnel','training','appraisals','assets','bulletins','all_documents','five_s','processes','management_review','administration'];
 
 function canAccessModule(mod){
   if(!GATED_MODULES.includes(mod)) return true; // overview, compliance — always visible
   if(mod === 'all_documents') return !!STATE.org.all_documents_enabled; // org-level switch only — everyone sees it when on, nobody when off
   if(mod === 'documents') return !!STATE.org.document_control_enabled; // same mechanism — org-level switch only
+  if(mod === 'administration') return !!STATE.org.administration_enabled; // same mechanism — org-level switch only
   if(STATE.myRole === 'admin') return true;
   return (STATE.myModuleAccess || []).includes(mod);
 }
@@ -1324,6 +1333,7 @@ function showModule(mod){
   if(mod === 'five_s') renderFiveSTable();
   if(mod === 'processes') renderProcessesTable();
   if(mod === 'management_review') renderMRTable();
+  if(mod === 'administration') switchAdminSubtab(STATE._adminSubtab || 'departments');
 }
 window.showModule = showModule;
 
@@ -2456,6 +2466,17 @@ const RENDERERS = {
     <div class="panel" style="padding:0; overflow:hidden;">
       <div id="mr-table-wrap"></div>
     </div>
+  `,
+
+  administration: () => `
+    <div class="toolbar">
+      <div class="filters">
+        <button class="btn-small ${STATE._adminSubtab==='departments'||!STATE._adminSubtab?'primary':''}" onclick="switchAdminSubtab('departments')">Departments</button>
+        <button class="btn-small ${STATE._adminSubtab==='people'?'primary':''}" onclick="switchAdminSubtab('people')">People</button>
+        <button class="btn-small ${STATE._adminSubtab==='team'?'primary':''}" onclick="switchAdminSubtab('team')">Team &amp; Access</button>
+      </div>
+    </div>
+    <div id="admin-subtab-content"></div>
   `,
 };
 
@@ -8421,6 +8442,258 @@ window.printMR = async function(id){
     }
   });
   printRecord('Management Review Minutes', review.ref_code, meta, body, null, 'management_review');
+};
+
+/* ============ Administration — one control centre ============ */
+
+const ADMIN_INVITE_MODULES = GATED_MODULES.filter(m => !['all_documents','administration'].includes(m))
+  .map(key => ({ key, label: MODULE_META[key] ? MODULE_META[key].title : key }));
+
+window.switchAdminSubtab = function(tab){
+  STATE._adminSubtab = tab;
+  document.querySelectorAll('#content-root .toolbar .btn-small').forEach(b => b.classList.remove('primary'));
+  const activeBtn = document.querySelector(`#content-root .toolbar .btn-small[onclick="switchAdminSubtab('${tab}')"]`);
+  if(activeBtn) activeBtn.classList.add('primary');
+  renderAdminSubtabContent(tab);
+};
+
+function renderAdminSubtabContent(tab){
+  if(tab === 'departments') renderAdminDepartments();
+  if(tab === 'people') renderAdminPeople();
+  if(tab === 'team') renderAdminTeam();
+}
+
+function renderAdminDepartments(){
+  const wrap = document.getElementById('admin-subtab-content');
+  if(!wrap) return;
+  wrap.innerHTML = `
+    <div class="detail-card">
+      <div class="panel-head"><h3>Departments</h3></div>
+      <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:14px;">The same list used by Document Control's numbering scheme, and now by Nonconformances, Objectives, and Personnel — one list, everywhere, instead of a different spelling in every module.</p>
+      <div id="doc-departments-list" style="margin-bottom:14px;"></div>
+      <div class="form-grid">
+        <div class="field"><label>Code</label><input id="dept-new-code" placeholder="e.g. HSE" style="text-transform:uppercase;" maxlength="8"></div>
+        <div class="field"><label>Name</label><input id="dept-new-name" placeholder="e.g. Health Safety & Environment"></div>
+      </div>
+      <button class="btn-small primary" onclick="addDocDepartment()">Add department</button>
+    </div>
+  `;
+  renderDocDepartmentsList();
+}
+
+function renderAdminPeople(){
+  const wrap = document.getElementById('admin-subtab-content');
+  if(!wrap) return;
+  wrap.innerHTML = `
+    <div class="detail-card">
+      <div class="panel-head"><h3>People</h3></div>
+      <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:14px;">Name, job title, department, and contact details for everyone in the organisation — the same personnel records used throughout Watchman, editable from one place. Competence and appraisal history stay in the Personnel &amp; Competence module itself.</p>
+      <div id="admin-people-list"></div>
+    </div>
+  `;
+  renderAdminPeopleList();
+}
+
+function renderAdminPeopleList(){
+  const wrap = document.getElementById('admin-people-list');
+  if(!wrap) return;
+  if(!STATE.personnel.length){ wrap.innerHTML = '<p style="font-size:12.5px; color:var(--text-faint);">No personnel records yet — add people in the Personnel &amp; Competence module first.</p>'; return; }
+  wrap.innerHTML = `<table>
+    <tr><th>Name</th><th>Position</th><th>Department</th><th>Email</th><th>Mobile</th><th></th></tr>
+    ${STATE.personnel.map(p => {
+      const pos = STATE.positions.find(x=>x.id===p.position_id);
+      const dept = STATE.docDepartments.find(x=>x.id===p.department_id);
+      return `<tr>
+        <td class="strong">${p.full_name}</td>
+        <td>${pos ? pos.title : '—'}</td>
+        <td>${dept ? dept.name : '—'}</td>
+        <td>${p.email || '—'}</td>
+        <td>${p.mobile_number || '—'}</td>
+        <td style="text-align:right;"><button class="btn-small" onclick="toggleAdminPersonEdit('${p.id}')">Edit</button></td>
+      </tr>
+      <tr id="admin-person-edit-${p.id}" style="display:none;"><td colspan="6" style="padding:14px; background:var(--grey-tint);">
+        <div class="form-grid">
+          <div class="field"><label>Full name</label><input id="ap-name-${p.id}" value="${p.full_name.replace(/"/g,'&quot;')}"></div>
+          <div class="field"><label>Position</label><select id="ap-position-${p.id}"><option value="">None</option>${STATE.positions.map(x=>`<option value="${x.id}" ${p.position_id===x.id?'selected':''}>${x.title}</option>`).join('')}</select></div>
+          <div class="field"><label>Department</label><select id="ap-department-${p.id}"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}" ${p.department_id===x.id?'selected':''}>${x.name}</option>`).join('')}</select></div>
+          <div class="field"><label>Email</label><input type="email" id="ap-email-${p.id}" value="${(p.email||'').replace(/"/g,'&quot;')}"></div>
+          <div class="field"><label>Mobile number</label><input id="ap-mobile-${p.id}" value="${(p.mobile_number||'').replace(/"/g,'&quot;')}"></div>
+        </div>
+        <button class="btn-small primary" onclick="saveAdminPerson('${p.id}')">Save</button>
+        <button class="btn-small" onclick="toggleAdminPersonEdit('${p.id}')">Cancel</button>
+      </td></tr>`;
+    }).join('')}
+  </table>`;
+}
+
+window.toggleAdminPersonEdit = function(id){
+  const row = document.getElementById('admin-person-edit-'+id);
+  if(row) row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+};
+
+window.saveAdminPerson = async function(id){
+  const patch = {
+    full_name: document.getElementById('ap-name-'+id).value.trim(),
+    position_id: document.getElementById('ap-position-'+id).value || null,
+    department_id: document.getElementById('ap-department-'+id).value || null,
+    email: document.getElementById('ap-email-'+id).value.trim(),
+    mobile_number: document.getElementById('ap-mobile-'+id).value.trim(),
+  };
+  const { error } = await STATE.supabase.from('personnel').update(patch).eq('id', id);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  await loadPersonnel();
+  renderAdminPeopleList();
+  toast('Saved.', 'success');
+};
+
+function renderAdminTeam(){
+  const wrap = document.getElementById('admin-subtab-content');
+  if(!wrap) return;
+  const isAdmin = STATE.myRole === 'admin';
+  wrap.innerHTML = `
+    ${isAdmin ? `
+    <div class="detail-card">
+      <div class="panel-head"><h3>Invite someone</h3></div>
+      <div class="field"><label>Email</label><input id="admin-inv-email" type="email" placeholder="name@company.com"></div>
+      <div class="field"><label>Role</label>
+        <select id="admin-inv-role">
+          <option value="admin">Admin</option>
+          <option value="manager">Manager</option>
+          <option value="contributor" selected>Contributor</option>
+          <option value="viewer">Viewer</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Module access <span style="text-transform:none; font-weight:400; color:var(--text-faint);">(Admins see every module regardless of what's ticked here)</span></label>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 16px; margin-top:6px;">
+          ${ADMIN_INVITE_MODULES.map(m => `
+            <div style="display:flex; align-items:center; gap:8px;">
+              <input type="checkbox" class="admin-inv-module-cb" value="${m.key}" id="admin-inv-mod-${m.key}" style="width:auto;">
+              <label for="admin-inv-mod-${m.key}" style="text-transform:none; font-family:'Inter'; font-size:12.5px; color:var(--text-dim);">${m.label}</label>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      <button class="btn-small primary" onclick="sendAdminInvite()">Send invite</button>
+      <div id="admin-invite-result"></div>
+    </div>
+
+    <div class="detail-card">
+      <div class="panel-head"><h3>Pending Invites</h3></div>
+      ${STATE.invites.filter(i=>i.status==='pending').length ? `<table>
+        <tr><th>Email</th><th>Role</th><th>Sent</th><th></th></tr>
+        ${STATE.invites.filter(i=>i.status==='pending').map(i=>`<tr>
+          <td class="strong">${i.email}</td>
+          <td style="text-transform:capitalize">${i.role}</td>
+          <td>${fmtDate(i.created_at ? i.created_at.slice(0,10) : null)}</td>
+          <td style="text-align:right;"><button class="btn-small" onclick="deleteAdminInvite('${i.id}')">Cancel</button></td>
+        </tr>`).join('')}
+      </table>` : '<p style="font-size:12.5px; color:var(--text-faint);">No invites currently pending.</p>'}
+    </div>
+    ` : ''}
+
+    <div class="detail-card">
+      <div class="panel-head"><h3>Team Members</h3></div>
+      ${!isAdmin ? '<p style="font-size:11.5px; color:var(--text-faint); margin-bottom:10px;">Viewing only — inviting and editing access requires the Admin role.</p>' : ''}
+      ${STATE.members.length ? `<table>
+        <tr><th>Name</th><th>Role</th><th>Modules</th>${isAdmin ? '<th></th>' : ''}</tr>
+        ${STATE.members.map(m => `<tr>
+          <td class="strong">${(m.profiles && m.profiles.name) || 'Unknown'}</td>
+          <td style="text-transform:capitalize">${m.role}</td>
+          <td style="font-size:12px; color:var(--text-dim);">${m.role==='admin' ? 'All (Admin)' : ((m.module_access||[]).length + ' module' + ((m.module_access||[]).length===1?'':'s'))}</td>
+          ${isAdmin ? `<td style="text-align:right;"><button class="btn-small" onclick="toggleAdminMemberEdit('${m.user_id}')">Edit Access</button></td>` : ''}
+        </tr>
+        ${isAdmin ? `<tr id="admin-member-edit-${m.user_id}" style="display:none;"><td colspan="4" style="padding:0;"></td></tr>` : ''}
+        `).join('')}
+      </table>` : '<p style="font-size:12.5px; color:var(--text-faint);">No members yet.</p>'}
+    </div>
+  `;
+}
+
+window.sendAdminInvite = async function(){
+  const email = document.getElementById('admin-inv-email').value.trim();
+  const role = document.getElementById('admin-inv-role').value;
+  const moduleAccess = Array.from(document.querySelectorAll('.admin-inv-module-cb:checked')).map(el => el.value);
+  const resultEl = document.getElementById('admin-invite-result');
+  resultEl.innerHTML = '';
+  if(!email){ toast('Email is required.', 'error'); return; }
+  if(role !== 'admin' && !moduleAccess.length){
+    toast('Tick at least one module — otherwise this person will have no modules to work in at all.', 'error');
+    return;
+  }
+  const { data: newInvite, error } = await STATE.supabase.from('invites').insert({
+    organisation_id: STATE.org.id, email: email.toLowerCase(), role, module_access: moduleAccess, invited_by: STATE.user.id,
+  }).select().single();
+  if(error){ toast('Invite failed: ' + error.message, 'error'); return; }
+
+  const link = `${window.location.origin}${window.location.pathname.replace(/index\.html$/,'')}accept-invite.html?token=${newInvite.token}`;
+  resultEl.innerHTML = `
+    <div style="background:var(--grey-tint); border-radius:8px; padding:12px; margin-top:10px;">
+      <div style="font-size:11.5px; color:var(--text-faint); margin-bottom:6px;">Copy this link and send it to ${email} yourself</div>
+      <div style="display:flex; gap:6px;">
+        <input type="text" readonly id="admin-invite-link" value="${link}" style="flex:1; font-size:12px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+        <button class="btn-small primary" onclick="navigator.clipboard.writeText(document.getElementById('admin-invite-link').value); toast('Copied.','success');">Copy</button>
+      </div>
+      <div style="font-size:10.5px; color:var(--text-faint); margin-top:6px;">Expires in 30 days and works once — send a fresh invite rather than reuse an old link.</div>
+    </div>
+  `;
+  document.getElementById('admin-inv-email').value = '';
+  await loadInvites();
+};
+
+window.deleteAdminInvite = async function(id){
+  if(!confirm('Cancel this invite? The link will stop working.')) return;
+  const { error } = await STATE.supabase.from('invites').delete().eq('id', id);
+  if(error){ toast('Could not cancel: ' + error.message, 'error'); return; }
+  await loadInvites();
+  renderAdminTeam();
+  toast('Invite cancelled.', 'success');
+};
+
+window.toggleAdminMemberEdit = function(userId){
+  const cell = document.querySelector(`#admin-member-edit-${userId} td`);
+  if(!cell) return;
+  if(cell.innerHTML.trim()){ cell.innerHTML = ''; return; }
+  const m = STATE.members.find(x=>x.user_id===userId);
+  if(!m) return;
+  const currentModules = m.module_access || [];
+  cell.innerHTML = `
+    <div style="background:var(--grey-tint); padding:16px 20px; margin:4px 0 10px;">
+      <div class="field"><label>Role</label>
+        <select id="admin-edit-role-${userId}">
+          ${['admin','manager','contributor','viewer'].map(r=>`<option value="${r}" ${m.role===r?'selected':''}>${r.charAt(0).toUpperCase()+r.slice(1)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label>Module access <span style="text-transform:none; font-weight:400; color:var(--text-faint);">(ignored if role is Admin)</span></label>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 16px; margin-top:6px;">
+          ${ADMIN_INVITE_MODULES.map(mod => `
+            <div style="display:flex; align-items:center; gap:8px;">
+              <input type="checkbox" class="admin-edit-module-cb-${userId}" value="${mod.key}" id="admin-edit-mod-${userId}-${mod.key}" style="width:auto;" ${currentModules.includes(mod.key)?'checked':''}>
+              <label for="admin-edit-mod-${userId}-${mod.key}" style="text-transform:none; font-family:'Inter'; font-size:12.5px; color:var(--text-dim);">${mod.label}</label>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      <button class="btn-small primary" onclick="saveAdminMemberAccess('${userId}')">Save</button>
+      <button class="btn-small" onclick="toggleAdminMemberEdit('${userId}')">Cancel</button>
+    </div>
+  `;
+};
+
+window.saveAdminMemberAccess = async function(userId){
+  const role = document.getElementById('admin-edit-role-'+userId).value;
+  const moduleAccess = Array.from(document.querySelectorAll('.admin-edit-module-cb-'+userId+':checked')).map(el => el.value);
+  if(role !== 'admin' && !moduleAccess.length){
+    toast('Tick at least one module — otherwise this person will have no modules to work in at all.', 'error');
+    return;
+  }
+  const { error } = await STATE.supabase.from('organisation_members').update({ role, module_access: moduleAccess }).eq('user_id', userId).eq('organisation_id', STATE.org.id);
+  if(error){ toast('Could not update access: ' + error.message, 'error'); return; }
+  toast('Access updated.', 'success');
+  const { data: members } = await STATE.supabase.from('organisation_members').select('user_id, role, is_approver, module_access, profiles!organisation_members_user_id_fkey(name)').eq('organisation_id', STATE.org.id).eq('status','active');
+  STATE.members = members || [];
+  renderAdminTeam();
 };
 
 async function renderBulkDocumentsRegister(){
