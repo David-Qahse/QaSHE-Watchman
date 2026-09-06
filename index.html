@@ -795,7 +795,7 @@ const STATE = {
   checklistTemplates:[],
   docDepartments:[], docTypes:[], formIdentifications:[], ncTypes:[],
   assessmentTemplates:[], assessmentItems:[], assessmentRecords:[], customerSurveys:[], bulkDocuments:[], fiveSInspections:[],
-  processes:[], processKpis:[], processReviews:[], managementReviews:[], managementReviewActions:[], invites:[],
+  processes:[], processKpis:[], processReviews:[], managementReviews:[], managementReviewActions:[], invites:[], moduleDescriptions:[],
 };
 let personnelView = 'register';
 let pendingModule = 'overview';
@@ -1036,6 +1036,7 @@ window.selectOrg = async function(orgId){
   await loadManagementReviews();
   await loadManagementReviewActions();
   await loadInvites();
+  await loadModuleDescriptions();
   await loadProcessReviews();
   await loadTasks();
   await loadAudits();
@@ -1136,6 +1137,11 @@ async function loadInvites(){
   const { data, error } = await STATE.supabase.from('invites').select('*').eq('organisation_id', STATE.org.id).order('created_at', {ascending:false});
   if(error){ return; } // administration module may not be enabled for this org — quietly skip rather than surface an error nobody asked for
   STATE.invites = data || [];
+}
+async function loadModuleDescriptions(){
+  const { data, error } = await STATE.supabase.from('module_descriptions').select('*').eq('organisation_id', STATE.org.id);
+  if(error){ return; }
+  STATE.moduleDescriptions = data || [];
 }
 async function loadProcessReviews(){
   const { data, error } = await STATE.supabase.from('process_reviews').select('*').eq('organisation_id', STATE.org.id).order('review_date', {ascending:false});
@@ -1302,6 +1308,14 @@ function applyModuleAccessToNav(){
 }
 window.applyModuleAccessToNav = applyModuleAccessToNav;
 
+function renderModuleInfoCard(mod){
+  const rec = STATE.moduleDescriptions.find(d => d.module_key === mod);
+  if(!rec || !rec.description || !rec.description.trim()) return '';
+  return `<div class="detail-card" style="padding:16px 20px; margin-bottom:18px; background:var(--grey-tint); border:none;">
+    <p style="font-size:12.5px; color:var(--text-dim); line-height:1.55; white-space:pre-wrap;">${rec.description}</p>
+  </div>`;
+}
+
 function showModule(mod){
   if(!canAccessModule(mod)){
     toast("You don't have access to that module — contact your organisation's admin if you need it.", 'error');
@@ -1312,7 +1326,7 @@ function showModule(mod){
   if(navEl) navEl.classList.add('active');
   document.getElementById('mod-title').textContent = MODULE_META[mod].title;
   document.getElementById('mod-sub').textContent = MODULE_META[mod].sub();
-  document.getElementById('content-root').innerHTML = RENDERERS[mod]();
+  document.getElementById('content-root').innerHTML = renderModuleInfoCard(mod) + RENDERERS[mod]();
   updateNavBadges();
   if(mod === 'nonconformances') renderNCTable();
   if(mod === 'tasks') renderTaskTable();
@@ -2343,6 +2357,7 @@ const RENDERERS = {
     <div class="form-panel" id="bulkdoc-upload-panel">
       <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:10px;">Bulk upload</h3>
       <input type="file" id="bulkdoc-files" multiple>
+      <div class="field" style="max-width:320px; margin:10px 0;"><label>Department (optional, applies to this whole upload)</label><select id="bulkdoc-department"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}</select></div>
       <p style="font-size:11px; color:var(--text-faint); margin:8px 0 12px;">Select as many files as you need at once — accepted formats: PDF, Word, Excel, JPG, PNG. Maximum ${EVIDENCE_MAX_SIZE_MB}MB per file. Name files as <b>DocNumber_Description.ext</b> to have the document number read automatically.</p>
       <button class="btn-primary" onclick="uploadBulkDocuments()" id="bulkdoc-upload-btn">Upload</button>
       <div id="bulkdoc-progress" style="margin-top:12px;"></div>
@@ -2471,9 +2486,10 @@ const RENDERERS = {
   administration: () => `
     <div class="toolbar">
       <div class="filters">
-        <button class="btn-small ${STATE._adminSubtab==='departments'||!STATE._adminSubtab?'primary':''}" onclick="switchAdminSubtab('departments')">Departments</button>
+        <button class="btn-small ${STATE._adminSubtab==='departments'||!STATE._adminSubtab?'primary':''}" onclick="switchAdminSubtab('departments')">Document Architecture</button>
         <button class="btn-small ${STATE._adminSubtab==='people'?'primary':''}" onclick="switchAdminSubtab('people')">People</button>
         <button class="btn-small ${STATE._adminSubtab==='team'?'primary':''}" onclick="switchAdminSubtab('team')">Team &amp; Access</button>
+        <button class="btn-small ${STATE._adminSubtab==='moduleinfo'?'primary':''}" onclick="switchAdminSubtab('moduleinfo')">Module Info</button>
       </div>
     </div>
     <div id="admin-subtab-content"></div>
@@ -4239,14 +4255,12 @@ window.toggleDeptActive = async function(id, newVal){
   if(error){ toast('Could not update: ' + error.message, 'error'); return; }
   await loadDocDepartments();
   renderDocDepartmentsList();
-  showModule('documents');
 };
 window.toggleTypeActive = async function(id, newVal){
   const { error } = await STATE.supabase.from('document_types').update({ is_active:newVal }).eq('id', id);
   if(error){ toast('Could not update: ' + error.message, 'error'); return; }
   await loadDocTypes();
   renderDocTypesList();
-  showModule('documents');
 };
 
 window.addDocDepartment = async function(){
@@ -4256,8 +4270,12 @@ window.addDocDepartment = async function(){
   const { error } = await STATE.supabase.from('document_departments').insert({ organisation_id: STATE.org.id, code, name, created_by: STATE.user.id });
   if(error){ toast('Could not add department: ' + error.message, 'error'); return; }
   await loadDocDepartments();
-  showModule('documents');
-  toggleDocListsPanel();
+  if(document.getElementById('admin-subtab-content')){
+    renderAdminDepartments(); // called from Administration — stay put and refresh in place
+  } else {
+    showModule('documents');
+    toggleDocListsPanel();
+  }
   toast('Department added.', 'success');
 };
 
@@ -4268,8 +4286,12 @@ window.addDocType = async function(){
   const { error } = await STATE.supabase.from('document_types').insert({ organisation_id: STATE.org.id, code, name, created_by: STATE.user.id });
   if(error){ toast('Could not add document type: ' + error.message, 'error'); return; }
   await loadDocTypes();
-  showModule('documents');
-  toggleDocListsPanel();
+  if(document.getElementById('admin-subtab-content')){
+    renderAdminDepartments(); // called from Administration — stay put and refresh in place
+  } else {
+    showModule('documents');
+    toggleDocListsPanel();
+  }
   toast('Document type added.', 'success');
 };
 
@@ -8461,7 +8483,40 @@ function renderAdminSubtabContent(tab){
   if(tab === 'departments') renderAdminDepartments();
   if(tab === 'people') renderAdminPeople();
   if(tab === 'team') renderAdminTeam();
+  if(tab === 'moduleinfo') renderAdminModuleInfo();
 }
+
+function renderAdminModuleInfo(){
+  const wrap = document.getElementById('admin-subtab-content');
+  if(!wrap) return;
+  const infoModules = GATED_MODULES.filter(m => m !== 'all_documents' && m !== 'administration');
+  wrap.innerHTML = `
+    <div class="detail-card">
+      <div class="panel-head"><h3>Module Info</h3></div>
+      <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:14px;">A short purpose-and-scope statement shown above each module's register — the same kind of guidance already shown for KPI ratings, extended to any module. Leave blank to show nothing.</p>
+      ${infoModules.map(mod => {
+        const rec = STATE.moduleDescriptions.find(d => d.module_key === mod);
+        return `
+        <div style="margin-bottom:16px; padding-bottom:14px; border-bottom:1px solid var(--border-soft);">
+          <label style="font-size:12.5px; font-weight:600; color:var(--text); display:block; margin-bottom:6px;">${MODULE_META[mod].title}</label>
+          <textarea id="modinfo-${mod}" placeholder="e.g. What a nonconformance is, when to raise one, and what happens once it's closed.">${rec ? (rec.description||'') : ''}</textarea>
+          <button class="btn-small primary" onclick="saveModuleDescription('${mod}')" style="margin-top:6px;">Save</button>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+window.saveModuleDescription = async function(mod){
+  const description = document.getElementById('modinfo-'+mod).value.trim();
+  const { error } = await STATE.supabase.from('module_descriptions').upsert(
+    { organisation_id: STATE.org.id, module_key: mod, description, updated_at: new Date().toISOString() },
+    { onConflict: 'organisation_id,module_key' }
+  );
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  await loadModuleDescriptions();
+  toast('Saved.', 'success');
+};
 
 function renderAdminDepartments(){
   const wrap = document.getElementById('admin-subtab-content');
@@ -8469,7 +8524,7 @@ function renderAdminDepartments(){
   wrap.innerHTML = `
     <div class="detail-card">
       <div class="panel-head"><h3>Departments</h3></div>
-      <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:14px;">The same list used by Document Control's numbering scheme, and now by Nonconformances, Objectives, and Personnel — one list, everywhere, instead of a different spelling in every module.</p>
+      <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:14px;">The same list used by Document Control's numbering scheme, and now by Nonconformances, Objectives, Personnel, and All Documents — one list, everywhere, instead of a different spelling in every module.</p>
       <div id="doc-departments-list" style="margin-bottom:14px;"></div>
       <div class="form-grid">
         <div class="field"><label>Code</label><input id="dept-new-code" placeholder="e.g. HSE" style="text-transform:uppercase;" maxlength="8"></div>
@@ -8477,8 +8532,20 @@ function renderAdminDepartments(){
       </div>
       <button class="btn-small primary" onclick="addDocDepartment()">Add department</button>
     </div>
+
+    <div class="detail-card">
+      <div class="panel-head"><h3>Document Types</h3></div>
+      <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:14px;">The other half of Document Control's identification scheme — combined with a Department, this is what actually forms a document's number, e.g. GOV-POL-001.</p>
+      <div id="doc-types-list" style="margin-bottom:14px;"></div>
+      <div class="form-grid">
+        <div class="field"><label>Code</label><input id="type-new-code" placeholder="e.g. POL" style="text-transform:uppercase;" maxlength="8"></div>
+        <div class="field"><label>Name</label><input id="type-new-name" placeholder="e.g. Policy"></div>
+      </div>
+      <button class="btn-small primary" onclick="addDocType()">Add document type</button>
+    </div>
   `;
   renderDocDepartmentsList();
+  renderDocTypesList();
 }
 
 function renderAdminPeople(){
@@ -8734,9 +8801,10 @@ function renderBulkDocumentsTable(searchTerm){
     return;
   }
   wrap.innerHTML = `<table>
-    <tr><th>Document Number</th><th>Current</th><th>Approved</th><th></th></tr>
-    ${data.map(d=>`<tr>
+    <tr><th>Document Number</th><th>Department</th><th>Current</th><th>Approved</th><th></th></tr>
+    ${data.map(d=>{ const dept = STATE.docDepartments.find(x=>x.id===d.department_id); return `<tr>
       <td class="mono-cell strong" id="bulkdoc-num-${d.id}">${d.doc_number || '—'}</td>
+      <td>${dept ? dept.name : '—'}</td>
       <td>${d.current_status ? pill('yes') : pill('no')}</td>
       <td>${d.approved_status ? pill('yes') : pill('no')}</td>
       <td style="text-align:right; white-space:nowrap;">
@@ -8745,15 +8813,16 @@ function renderBulkDocumentsTable(searchTerm){
         <button class="btn-small" onclick="deleteBulkDocument('${d.id}','${d.storage_path}')">Delete</button>
       </td>
     </tr>
-    <tr id="bulkdoc-edit-row-${d.id}" style="display:none;"><td colspan="4" style="padding:12px 16px; background:var(--grey-tint);">
+    <tr id="bulkdoc-edit-row-${d.id}" style="display:none;"><td colspan="5" style="padding:12px 16px; background:var(--grey-tint);">
       <div class="form-grid" style="margin-bottom:8px;">
-        <div class="field span3"><label>Document Number</label><input id="bulkdoc-edit-num-${d.id}" value="${(d.doc_number||'').replace(/"/g,'&quot;')}"></div>
+        <div class="field span2"><label>Document Number</label><input id="bulkdoc-edit-num-${d.id}" value="${(d.doc_number||'').replace(/"/g,'&quot;')}"></div>
+        <div class="field"><label>Department</label><select id="bulkdoc-edit-dept-${d.id}"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}" ${d.department_id===x.id?'selected':''}>${x.name}</option>`).join('')}</select></div>
       </div>
       <label style="font-size:12px; margin-right:16px;"><input type="checkbox" id="bulkdoc-edit-current-${d.id}" ${d.current_status?'checked':''} style="width:auto; margin-right:6px;">Current</label>
       <label style="font-size:12px; margin-right:16px;"><input type="checkbox" id="bulkdoc-edit-approved-${d.id}" ${d.approved_status?'checked':''} style="width:auto; margin-right:6px;">Approved</label>
       <button class="btn-small primary" onclick="saveBulkDocEdit('${d.id}')">Save</button>
       <button class="btn-small" onclick="toggleEditBulkDoc('${d.id}')">Cancel</button>
-    </td></tr>`).join('')}
+    </td></tr>`;}).join('')}
   </table>`;
 }
 
@@ -8765,6 +8834,7 @@ window.toggleEditBulkDoc = function(id){
 window.saveBulkDocEdit = async function(id){
   const patch = {
     doc_number: document.getElementById('bulkdoc-edit-num-'+id).value.trim(),
+    department_id: document.getElementById('bulkdoc-edit-dept-'+id).value || null,
     current_status: document.getElementById('bulkdoc-edit-current-'+id).checked,
     approved_status: document.getElementById('bulkdoc-edit-approved-'+id).checked,
   };
@@ -8788,6 +8858,7 @@ window.uploadBulkDocuments = async function(){
 
   const btn = document.getElementById('bulkdoc-upload-btn');
   const progressEl = document.getElementById('bulkdoc-progress');
+  const departmentId = document.getElementById('bulkdoc-department').value || null;
   btn.disabled = true;
   let successCount = 0, failCount = 0;
 
@@ -8801,7 +8872,7 @@ window.uploadBulkDocuments = async function(){
     const { error: rowErr } = await STATE.supabase.from('bulk_documents').insert({
       organisation_id: STATE.org.id, file_name: file.name, storage_path: path,
       file_type: file.type, file_size: file.size, uploaded_by: STATE.user.id,
-      doc_number: docNumber, doc_description: description,
+      doc_number: docNumber, doc_description: description, department_id: departmentId,
     });
     if(rowErr){ failCount++; } else { successCount++; }
   }
@@ -9376,6 +9447,7 @@ function getModuleExportConfig(moduleKey){
     ]},
     all_documents: { rows: STATE.bulkDocuments, filename: `all-documents-${orgSlug}.xlsx`, columns: [
       {header:'Document Number', get:r=>r.doc_number},
+      {header:'Department', get:r=>{ const d = STATE.docDepartments.find(x=>x.id===r.department_id); return d ? d.name : ''; }},
       {header:'Current', get:r=>r.current_status ? 'Yes' : 'No'}, {header:'Approved', get:r=>r.approved_status ? 'Yes' : 'No'},
     ]},
     five_s: { rows: STATE.fiveSInspections, filename: `5s-inspections-${orgSlug}.xlsx`, columns: [
