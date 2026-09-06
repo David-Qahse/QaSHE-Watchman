@@ -1991,7 +1991,7 @@ const RENDERERS = {
 
       <div class="form-grid" style="margin-bottom:6px;">
         <div class="field"><label>Category</label><select id="of-category">${optionList(OBJECTIVE_CATEGORIES)}</select></div>
-        <div class="field"><label>Department (optional)</label><input id="of-department" placeholder="e.g. Procurement"></div>
+        <div class="field"><label>Department (optional)</label><select id="of-department"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}</select></div>
         <div class="field"><label>Owner</label><select id="of-owner">${memberOptions(STATE.user.id)}</select></div>
         <div class="field"><label>Process (optional)</label><select id="of-process"><option value="">None</option>${STATE.processes.map(p=>`<option value="${p.id}">${p.ref_code} — ${p.name}</option>`).join('')}</select></div>
       </div>
@@ -2489,6 +2489,7 @@ const RENDERERS = {
         <button class="btn-small ${STATE._adminSubtab==='departments'||!STATE._adminSubtab?'primary':''}" onclick="switchAdminSubtab('departments')">Document Architecture</button>
         <button class="btn-small ${STATE._adminSubtab==='people'?'primary':''}" onclick="switchAdminSubtab('people')">People</button>
         <button class="btn-small ${STATE._adminSubtab==='team'?'primary':''}" onclick="switchAdminSubtab('team')">Team &amp; Access</button>
+        <button class="btn-small ${STATE._adminSubtab==='processes'?'primary':''}" onclick="switchAdminSubtab('processes')">Processes</button>
         <button class="btn-small ${STATE._adminSubtab==='moduleinfo'?'primary':''}" onclick="switchAdminSubtab('moduleinfo')">Module Info</button>
       </div>
     </div>
@@ -2671,7 +2672,7 @@ async function openNCDetail(id){
       ${n.contact_details ? `<div style="margin-bottom:16px;"><div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:4px;">Contact Details of Involved Parties</div><p style="font-size:13.5px; color:var(--text-dim); line-height:1.55;">${n.contact_details}</p></div>` : ''}
 
       <div class="form-grid" style="margin-bottom:16px;">
-        <div class="field"><label>Department</label><input id="d-department" value="${n.department||''}" placeholder="e.g. Engineering, Manufacturing"></div>
+        <div class="field"><label>Department</label><select id="d-department"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}" ${n.department_id===x.id?'selected':''}>${x.name}</option>`).join('')}</select></div>
         <div class="field"><label>Containment action</label>
           <select id="d-containment">
             <option value="">Not set</option>
@@ -2848,8 +2849,9 @@ async function buildAndPrintNC(id, sections){
     </div>`;
   }
 
+  const ncDept = n.department_id ? STATE.docDepartments.find(x=>x.id===n.department_id) : null;
   const meta = [
-    ['Type', n.title], ['Department', n.department || '—'], ['Severity', label(n.severity)],
+    ['Type', n.title], ['Department', (ncDept ? ncDept.name : n.department) || '—'], ['Severity', label(n.severity)],
     ['Status', label(n.status)], ['Owner', memberName(n.owner_id)], ['Raised by', memberName(n.raised_by)],
     ['Raised date', fmtDate(n.raised_date)], ['Target close date', fmtDate(n.target_close_date)],
   ];
@@ -2952,7 +2954,7 @@ window.saveNCDetail = async function(id){
 
   const patch = {
     status: newStatus, correction: correction,
-    department: document.getElementById('d-department').value.trim(),
+    department_id: document.getElementById('d-department').value || null,
     containment_action: document.getElementById('d-containment').value || null,
     preventive_action: document.getElementById('d-preventive').value.trim(),
     preventive_action_effectiveness: document.getElementById('d-effectiveness').value.trim(),
@@ -5406,7 +5408,7 @@ window.submitObjective = async function(){
   const payload = {
     organisation_id: STATE.org.id,
     category: document.getElementById('of-category').value,
-    department: document.getElementById('of-department').value.trim(),
+    department_id: document.getElementById('of-department').value || null,
     specific_statement: specific,
     measurable_metric: metric,
     baseline_value: document.getElementById('of-baseline').value.trim(),
@@ -7895,10 +7897,14 @@ window.submitProcess = async function(){
     created_by: STATE.user.id,
   });
   if(error){ toast('Could not add the process: ' + error.message, 'error'); return; }
-  toggleProcessForm();
-  document.querySelectorAll('#process-form input, #process-form textarea').forEach(el=>el.value='');
   await loadProcesses();
-  renderProcessesTable();
+  if(document.getElementById('admin-subtab-content')){
+    renderAdminProcesses(); // called from Administration — stay put and refresh in place
+  } else {
+    toggleProcessForm();
+    document.querySelectorAll('#process-form input, #process-form textarea').forEach(el=>el.value='');
+    renderProcessesTable();
+  }
   toast('Process added.', 'success');
 };
 
@@ -8483,6 +8489,7 @@ function renderAdminSubtabContent(tab){
   if(tab === 'departments') renderAdminDepartments();
   if(tab === 'people') renderAdminPeople();
   if(tab === 'team') renderAdminTeam();
+  if(tab === 'processes') renderAdminProcesses();
   if(tab === 'moduleinfo') renderAdminModuleInfo();
 }
 
@@ -8517,6 +8524,41 @@ window.saveModuleDescription = async function(mod){
   await loadModuleDescriptions();
   toast('Saved.', 'success');
 };
+
+function renderAdminProcesses(){
+  const wrap = document.getElementById('admin-subtab-content');
+  if(!wrap) return;
+  wrap.innerHTML = `
+    <div class="detail-card">
+      <div class="panel-head"><h3>Processes</h3></div>
+      <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:14px;">The processes tracked in Process Performance — set up here, or add one directly from that module; either way it's the same list.</p>
+      <table>
+        <tr><th>Process</th><th>Owner</th><th>Review Frequency</th><th></th></tr>
+        ${STATE.processes.map(p => `<tr>
+          <td class="strong">${p.name}</td>
+          <td>${memberName(p.owner_id)}</td>
+          <td style="text-transform:capitalize">${p.review_frequency || '—'}</td>
+          <td style="text-align:right;"><button class="btn-small" onclick="switchModuleFromAdmin('processes')">Open in Process Performance →</button></td>
+        </tr>`).join('') || '<tr><td colspan="4" style="color:var(--text-faint);">No processes set up yet.</td></tr>'}
+      </table>
+    </div>
+
+    <div class="detail-card">
+      <div class="panel-head"><h3>Add a Process</h3></div>
+      <div class="form-grid">
+        <div class="field span2"><label>Process name</label><input id="pf-name" placeholder="e.g. Sales & Order Processing, Procurement, Production"></div>
+        <div class="field"><label>Owner</label><select id="pf-owner"><option value="">Unassigned</option>${STATE.members.map(m=>`<option value="${m.user_id}">${(m.profiles&&m.profiles.name)||'Unknown'}</option>`).join('')}</select></div>
+        <div class="field"><label>Review frequency</label><select id="pf-frequency"><option value="monthly">Monthly</option><option value="quarterly" selected>Quarterly</option><option value="biannually">Every 6 months</option><option value="annually">Annually</option></select></div>
+        <div class="field span2"><label>Purpose</label><textarea id="pf-purpose" placeholder="What this process is for"></textarea></div>
+        <div class="field"><label>Inputs</label><textarea id="pf-inputs" placeholder="What feeds into it"></textarea></div>
+        <div class="field"><label>Outputs</label><textarea id="pf-outputs" placeholder="What it produces"></textarea></div>
+        <div class="field span2"><label>Departments involved</label><input id="pf-departments" placeholder="e.g. Sales, Warehouse, Finance"></div>
+      </div>
+      <button class="btn-small primary" onclick="submitProcess()">Add process</button>
+    </div>
+  `;
+}
+window.switchModuleFromAdmin = function(mod){ showModule(mod); };
 
 function renderAdminDepartments(){
   const wrap = document.getElementById('admin-subtab-content');
