@@ -112,7 +112,7 @@
 
   /* ============ DASHBOARD SHELL ============ */
   #dashboard{min-height:100vh; display:flex;}
-  .sidebar{width:230px; flex-shrink:0; background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; padding:18px 0; position:sticky; top:0; height:100vh;}
+  .sidebar{width:230px; flex-shrink:0; background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; padding:18px 0; position:sticky; top:0; height:100vh; overflow-y:auto;}
   .sb-brand{display:flex; align-items:center; gap:12px; padding:6px 18px 18px; border-bottom:1px solid var(--border-soft); margin-bottom:12px;}
   .sb-brand .ring-mark{width:36px; height:36px;}
   .sb-brand span{font-family:'Poppins'; font-weight:700; font-size:18.5px;}
@@ -135,7 +135,11 @@
   .topbar{display:flex; align-items:center; justify-content:space-between; padding:16px 30px; border-bottom:1px solid var(--border); background:rgba(255,255,255,.85); backdrop-filter:blur(6px); position:sticky; top:0; z-index:5;}
   .topbar-left h2{font-family:'Poppins'; font-size:19px; font-weight:700;}
   .topbar-left p{font-size:12px; color:var(--text-faint); margin-top:2px;}
-  .avatar{width:30px; height:30px; border-radius:50%; background:var(--charcoal); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; font-family:'Poppins'; font-weight:600; cursor:pointer; position:relative;}
+  .avatar-wrap{display:flex; align-items:center; gap:5px; cursor:pointer; position:relative; padding:4px 6px; border-radius:20px; transition:background .15s;}
+  .avatar-wrap:hover{background:var(--panel-alt, #F7F6F5);}
+  .avatar{width:30px; height:30px; border-radius:50%; background:var(--charcoal); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; font-family:'Poppins'; font-weight:600;}
+  .avatar-chevron{width:14px; height:14px; stroke:var(--text-faint); stroke-width:2.4; fill:none; transition:transform .15s;}
+  .avatar-wrap.open .avatar-chevron{transform:rotate(180deg);}
   .avatar-menu{position:absolute; top:40px; right:0; background:#fff; border:1px solid var(--border); border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.1); padding:6px; min-width:190px; display:none; z-index:50;}
   .avatar-menu.open{display:block;}
   .avatar-menu a{font-size:12.5px; color:var(--text-dim); display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:6px; cursor:pointer;}
@@ -719,8 +723,9 @@
           </div>
           <div class="client-logo-slot"></div>
         </div>
-        <div class="avatar" id="user-avatar" onclick="toggleAvatarMenu(event)">
-          <span id="user-avatar-initials">–</span>
+        <div class="avatar-wrap" id="user-avatar" onclick="toggleAvatarMenu(event)">
+          <div class="avatar"><span id="user-avatar-initials">–</span></div>
+          <svg class="avatar-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
           <div class="avatar-menu" id="avatar-menu">
             <a id="switch-org-link" onclick="showOrgPicker()" style="display:none;"><svg viewBox="0 0 24 24"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg> Switch organisation</a>
             <a onclick="doSignOut()"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Sign out</a>
@@ -955,12 +960,14 @@ window.doConfirmPasswordReset = async function(){
 window.toggleAvatarMenu = function(e){
   if(e) e.stopPropagation();
   document.getElementById('avatar-menu').classList.toggle('open');
+  document.getElementById('user-avatar').classList.toggle('open');
 };
 document.addEventListener('click', function(e){
   const menu = document.getElementById('avatar-menu');
   const avatar = document.getElementById('user-avatar');
   if(menu && menu.classList.contains('open') && !avatar.contains(e.target)){
     menu.classList.remove('open');
+    avatar.classList.remove('open');
   }
 });
 
@@ -1599,7 +1606,7 @@ const RENDERERS = {
         </select>
       </div>
       <button class="btn-small" onclick="toggleNCTypesPanel()">Manage Types</button>
-      <button class="btn-small" onclick="openImportModal('nonconformances')">Import CSV</button>
+      <button class="btn-small" onclick="openImportModal('nonconformances')">Import Excel</button>
       <button class="btn-small" onclick="exportModuleExcel('nonconformances')">Export Excel</button>
       <button class="btn-small" onclick="printCurrentRegister('nonconformances','Nonconformances Register')">Print Register</button>
       <button class="btn-primary btn-add" onclick="toggleNCForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Raise Nonconformance</button>
@@ -1760,7 +1767,7 @@ const RENDERERS = {
           ${RISK_CATEGORIES.map(c=>`<option value="${c}">${riskCategoryLabel(c)}</option>`).join('')}
         </select>
       </div>
-      <button class="btn-small" onclick="openImportModal('risks')">Import CSV</button>
+      <button class="btn-small" onclick="openImportModal('risks')">Import Excel</button>
       <button class="btn-small" onclick="exportModuleExcel('risks')">Export Excel</button>
       <button class="btn-small" onclick="printCurrentRegister('risks','Risk & Opportunity Register')">Print Register</button>
       <button class="btn-primary btn-add" onclick="toggleRiskForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Entry</button>
@@ -1884,7 +1891,7 @@ const RENDERERS = {
           ${optionList(SUPPLIER_STATUSES)}
         </select>
       </div>
-      <button class="btn-small" onclick="openImportModal('suppliers')">Import CSV</button>
+      <button class="btn-small" onclick="openImportModal('suppliers')">Import Excel</button>
       <button class="btn-small" onclick="exportModuleExcel('suppliers')">Export Excel</button>
       <button class="btn-small" onclick="printCurrentRegister('suppliers','Suppliers Register')">Print Register</button>
       <button class="btn-primary btn-add" onclick="toggleSupplierForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Supplier</button>
@@ -1928,7 +1935,7 @@ const RENDERERS = {
       </div>
       <div style="display:flex; gap:8px;">
         <button class="btn-small" onclick="toggleQuestionnairePanel()">Manage Questionnaire</button>
-        <button class="btn-small" onclick="openImportModal('customers')">Import CSV</button>
+        <button class="btn-small" onclick="openImportModal('customers')">Import Excel</button>
       <button class="btn-small" onclick="exportModuleExcel('customers')">Export Excel</button>
       <button class="btn-small" onclick="printCurrentRegister('customers','Customers Register')">Print Register</button>
         <button class="btn-primary btn-add" onclick="toggleCustomerForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Customer</button>
@@ -1979,7 +1986,7 @@ const RENDERERS = {
           ${optionList(OBJECTIVE_STATUSES)}
         </select>
       </div>
-      <button class="btn-small" onclick="openImportModal('objectives')">Import CSV</button>
+      <button class="btn-small" onclick="openImportModal('objectives')">Import Excel</button>
       <button class="btn-small" onclick="exportModuleExcel('objectives')">Export Excel</button>
       <button class="btn-small" onclick="printCurrentRegister('objectives','Objectives & Targets Register')">Print Register</button>
       <button class="btn-primary btn-add" onclick="toggleObjectiveForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Objective</button>
@@ -2056,7 +2063,7 @@ const RENDERERS = {
         </select>
       </div>
       <div style="display:flex; gap:8px;">
-        <button class="btn-small" onclick="openImportModal('legal')">Import CSV</button>
+        <button class="btn-small" onclick="openImportModal('legal')">Import Excel</button>
       <button class="btn-small" onclick="exportModuleExcel('legal')">Export Excel</button>
       <button class="btn-small" onclick="printCurrentRegister('legal','Legal Compliance Register')">Print Register</button>
         <button class="btn-primary btn-add" onclick="toggleLegalForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Legal Item</button>
@@ -2096,7 +2103,7 @@ const RENDERERS = {
       </div>
       <div style="display:flex; gap:8px;">
         <button class="btn-small" onclick="togglePositionsPanel()">Manage Positions</button>
-        <button class="btn-small" onclick="openImportModal('personnel')">Import CSV</button>
+        <button class="btn-small" onclick="openImportModal('personnel')">Import Excel</button>
       <button class="btn-small" onclick="exportModuleExcel('personnel')">Export Excel</button>
       <button class="btn-small" onclick="printCurrentRegister('personnel','Personnel Register')">Print Register</button>
         <button class="btn-primary btn-add" onclick="togglePersonForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Person</button>
@@ -2168,7 +2175,7 @@ const RENDERERS = {
         </select>
       </div>
       <div style="display:flex; gap:8px;">
-        <button class="btn-small" onclick="openImportModal('training')">Import CSV</button>
+        <button class="btn-small" onclick="openImportModal('training')">Import Excel</button>
       <button class="btn-small" onclick="exportModuleExcel('training')">Export Excel</button>
       <button class="btn-small" onclick="printCurrentRegister('training','Training Register')">Print Register</button>
         <button class="btn-primary btn-add" onclick="toggleTrainingForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Training</button>
@@ -5597,12 +5604,7 @@ window.prefillTaskFromObjective = function(objId){
   },0);
 };
 
-/* ============ Bulk CSV Import (shared across all registers) ============ */
-let papaLib = null;
-async function ensurePapaParse(){
-  if(!papaLib){ papaLib = await import('https://esm.sh/papaparse'); }
-  return papaLib;
-}
+/* ============ Bulk Excel Import (shared across all registers) ============ */
 
 function resolveMemberByName(name){
   if(!name) return null;
@@ -5839,11 +5841,11 @@ window.openImportModal = function(moduleKey){
     <p class="sub">Download the template, fill it in (one row per record), then upload it here. Nothing is saved until you review the preview and click Import.</p>
     <div class="import-step">
       <div class="import-step-label">Step 1 — template</div>
-      <button class="btn-small" onclick="downloadImportTemplate('${moduleKey}')">Download CSV template</button>
+      <button class="btn-small" onclick="downloadImportTemplate('${moduleKey}')">Download Excel template</button>
     </div>
     <div class="import-step">
       <div class="import-step-label">Step 2 — upload your completed file</div>
-      <input type="file" id="import-file-input" accept=".csv">
+      <input type="file" id="import-file-input" accept=".xlsx,.xls">
       <button class="btn-small primary" style="margin-left:8px;" onclick="previewImport()">Preview</button>
     </div>
     <div id="import-preview-area"></div>
@@ -5859,17 +5861,16 @@ window.closeImportModal = function(){
   currentImportModule = null; currentImportValidated = [];
 };
 
-window.downloadImportTemplate = function(moduleKey){
+window.downloadImportTemplate = async function(moduleKey){
   const spec = IMPORT_SPECS[moduleKey];
+  const XLSX = await ensureXLSX();
   const headerRow = spec.columns.map(c=>c.key);
   const exampleRow = spec.columns.map(c=>c.example || '');
-  const csv = [headerRow.join(','), exampleRow.map(v => `"${(v||'').replace(/"/g,'""')}"`).join(',')].join('\n');
-  const blob = new Blob([csv], {type:'text/csv'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = `${moduleKey}-import-template.csv`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  const ws = XLSX.utils.aoa_to_sheet([headerRow, exampleRow]);
+  ws['!cols'] = headerRow.map(h => ({ wch: Math.max(h.length + 4, 16) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Import');
+  XLSX.writeFile(wb, `${moduleKey}-import-template.xlsx`);
 };
 
 function validateImportValue(col, rawValue){
@@ -5925,40 +5926,39 @@ function validateImportValue(col, rawValue){
 window.previewImport = async function(){
   const fileInput = document.getElementById('import-file-input');
   const file = fileInput.files[0];
-  if(!file){ alert('Choose a CSV file first.'); return; }
+  if(!file){ alert('Choose an Excel file first.'); return; }
   const spec = IMPORT_SPECS[currentImportModule];
-  const Papa = await ensurePapaParse();
 
-  Papa.default.parse(file, {
-    header: true,
-    skipEmptyLines: true,
-    complete: (results) => {
-      const rows = results.data;
-      if(!rows.length){
-        document.getElementById('import-preview-area').innerHTML = '<p style="font-size:12.5px; color:var(--text-faint);">No rows found in that file.</p>';
-        return;
-      }
-      const validated = rows.map((raw, idx) => {
-        const errors = [];
-        const cleanRow = {};
-        const resolved = {};
-        spec.columns.forEach(col => {
-          const r = validateImportValue(col, raw[col.key]);
-          if(!r.ok){ errors.push(r.error); }
-          else {
-            cleanRow[col.key] = r.value;
-            if(r.resolved !== undefined) resolved[col.key] = r.resolved;
-          }
-        });
-        return { idx, raw, cleanRow, resolved, errors };
-      });
-      currentImportValidated = validated;
-      renderImportPreview(validated, spec);
-    },
-    error: (err) => {
-      document.getElementById('import-preview-area').innerHTML = `<p style="font-size:12.5px; color:var(--red);">Could not read that file: ${err.message}</p>`;
+  try {
+    const XLSX = await ensureXLSX();
+    const buffer = await file.arrayBuffer();
+    const wb = XLSX.read(buffer, { type: 'array' });
+    const firstSheet = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' }); // defval keeps genuinely blank cells as '' rather than dropping the key entirely, matching how the CSV parser always behaved
+
+    if(!rows.length){
+      document.getElementById('import-preview-area').innerHTML = '<p style="font-size:12.5px; color:var(--text-faint);">No rows found in that file.</p>';
+      return;
     }
-  });
+    const validated = rows.map((raw, idx) => {
+      const errors = [];
+      const cleanRow = {};
+      const resolved = {};
+      spec.columns.forEach(col => {
+        const r = validateImportValue(col, raw[col.key]);
+        if(!r.ok){ errors.push(r.error); }
+        else {
+          cleanRow[col.key] = r.value;
+          if(r.resolved !== undefined) resolved[col.key] = r.resolved;
+        }
+      });
+      return { idx, raw, cleanRow, resolved, errors };
+    });
+    currentImportValidated = validated;
+    renderImportPreview(validated, spec);
+  } catch(err) {
+    document.getElementById('import-preview-area').innerHTML = `<p style="font-size:12.5px; color:var(--red);">Could not read that file: ${err.message}</p>`;
+  }
 };
 
 function renderImportPreview(validated, spec){
