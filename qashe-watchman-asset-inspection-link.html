@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Complete Inspection</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --red:#B21616; --red-dark:#7E0F0F; --red-tint:#FCEAEA;
+    --bg:#F7F6F5; --panel:#FFFFFF; --border:#E3E1DF;
+    --text:#1E1C1B; --text-dim:#615C59; --text-faint:#9C9895;
+    --green:#2E7D4F; --green-tint:#E9F5EE;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--text); font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased; min-height:100vh; display:flex; align-items:flex-start; justify-content:center; padding:40px 20px;}
+  button{font-family:inherit; cursor:pointer;}
+  textarea, input, select{font-family:'Inter',sans-serif;}
+
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:36px; width:100%; max-width:640px;}
+  .brand-row{display:flex; align-items:center; gap:12px; margin-bottom:20px;}
+  .brand-row img{max-height:34px; max-width:150px; object-fit:contain;}
+  .brand-row .fallback{font-family:'Poppins'; font-weight:700; font-size:17px;}
+
+  h1{font-family:'Poppins'; font-weight:700; font-size:22px; margin-bottom:8px;}
+  p.sub{font-size:13.5px; color:var(--text-dim); line-height:1.55; margin-bottom:28px;}
+
+  .item{margin-bottom:26px; padding-bottom:26px; border-bottom:1px solid var(--border);}
+  .item:last-of-type{border-bottom:none;}
+  .item .i-title{font-size:14px; font-weight:600; margin-bottom:12px;}
+  .rating-row{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;}
+  .rating-btn{flex:1; min-width:60px; border:1.5px solid var(--border); border-radius:8px; background:#fff; padding:9px 4px; text-align:center; transition:all .15s ease;}
+  .rating-btn .num{font-family:'Poppins'; font-weight:700; font-size:15px; display:block;}
+  .rating-btn .label{font-size:8.5px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.02em; margin-top:2px; display:block; line-height:1.2;}
+  .rating-btn:hover{border-color:var(--red);}
+  .rating-btn.selected{border-color:var(--red); background:var(--red-tint);}
+  .rating-btn.selected .num{color:var(--red);}
+  .item textarea{width:100%; border:1.5px solid var(--border); border-radius:8px; padding:10px; font-size:13px; min-height:50px; resize:vertical;}
+  .item textarea:focus{outline:none; border-color:var(--red);}
+
+  .field{margin-bottom:22px;}
+  .field label{font-size:13.5px; font-weight:600; display:block; margin-bottom:8px;}
+  .field input, .field select, .field textarea{width:100%; border:1.5px solid var(--border); border-radius:8px; padding:11px 12px; font-size:13.5px;}
+  .field input:focus, .field select:focus, .field textarea:focus{outline:none; border-color:var(--red);}
+  .field textarea{min-height:80px; resize:vertical;}
+
+  .photo-section{background:var(--bg); border-radius:10px; padding:16px; margin-bottom:22px;}
+  .photo-section label{font-size:13.5px; font-weight:600; display:block; margin-bottom:8px;}
+  .photo-section .hint{font-size:12px; color:var(--text-faint); margin-bottom:10px; line-height:1.5;}
+  .photo-thumbs{display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;}
+  .photo-thumb{width:64px; height:64px; border-radius:6px; object-fit:cover; border:1px solid var(--border);}
+
+  .btn-submit{width:100%; background:var(--red); color:#fff; font-weight:700; font-size:15px; padding:13px; border-radius:8px; border:none; margin-top:6px;}
+  .btn-submit:hover{background:var(--red-dark);}
+  .btn-submit:disabled{opacity:.5;}
+
+  .stage{display:none;}
+  .stage.active{display:block;}
+  .loading{text-align:center; padding:40px 0; color:var(--text-faint); font-size:13.5px;}
+  .error-box{background:var(--red-tint); color:var(--red); padding:16px; border-radius:8px; font-size:13.5px; line-height:1.5;}
+  .success-icon{width:48px; height:48px; border-radius:50%; background:var(--green-tint); color:var(--green); display:flex; align-items:center; justify-content:center; margin-bottom:16px;}
+  .success-icon svg{width:24px; height:24px; stroke:currentColor; fill:none; stroke-width:2;}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div id="stage-loading" class="stage active"><div class="loading">Loading inspection…</div></div>
+
+  <div id="stage-error" class="stage">
+    <div class="brand-row"><span class="fallback">QaSHE Watchman</span></div>
+    <div class="error-box" id="error-message"></div>
+  </div>
+
+  <div id="stage-form" class="stage">
+    <div class="brand-row" id="brand-row"><span class="fallback">QaSHE Watchman</span></div>
+    <h1 id="asset-title">Inspection</h1>
+    <p class="sub" id="asset-sub"></p>
+
+    <div id="items-list"></div>
+
+    <div class="photo-section">
+      <label>Photos (optional)</label>
+      <p class="hint">Add photos of anything worth showing — damage, wear, a certificate plate, whatever's relevant. You can select more than one at a time.</p>
+      <input type="file" id="photo-input" accept="image/*" multiple>
+      <div class="photo-thumbs" id="photo-thumbs"></div>
+    </div>
+
+    <div class="field"><label>Your name</label><input type="text" id="inspected-by" placeholder="Full name"></div>
+    <div class="field"><label>Overall result</label>
+      <select id="overall-status">
+        <option value="compliant">Compliant</option>
+        <option value="quarantine">Quarantine</option>
+      </select>
+    </div>
+    <div class="field"><label>Overall notes (optional)</label><textarea id="overall-notes"></textarea></div>
+    <div class="field"><label>Next inspection due (optional)</label><input type="date" id="next-date"></div>
+
+    <div id="submit-error"></div>
+    <button class="btn-submit" id="submit-btn">Submit inspection</button>
+  </div>
+
+  <div id="stage-success" class="stage">
+    <div class="success-icon"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+    <h1>Thank you</h1>
+    <p class="sub">Your inspection has been submitted and recorded.</p>
+  </div>
+</div>
+
+<script type="module">
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const SUPABASE_URL = "https://uzywxhptwavnvpfzbhkb.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_8XxT0I-Qdmswhd2I-TT_jg_CuI8a24f";
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const CONDITION_SCALE = [
+  { v: '1', label: 'Perfect' },
+  { v: '2', label: 'Good' },
+  { v: '3', label: 'Fair' },
+  { v: '4', label: 'Poor' },
+  { v: '5', label: 'Write off' },
+];
+
+function showStage(id){
+  document.querySelectorAll('.stage').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function getToken(){ return new URLSearchParams(window.location.search).get('token'); }
+
+let inspectionData = null;
+let selectedFiles = [];
+
+async function init(){
+  const token = getToken();
+  if(!token){
+    document.getElementById('error-message').textContent = 'No inspection link found. Check the link you were sent and try again.';
+    showStage('stage-error');
+    return;
+  }
+
+  const { data, error } = await supabase.rpc('get_asset_inspection_by_token', { p_token: token });
+  if(error || !data || data.error){
+    document.getElementById('error-message').textContent = 'We couldn\u2019t find that inspection. The link may be incorrect — check with whoever sent it.';
+    showStage('stage-error');
+    return;
+  }
+  if(data.expired){
+    document.getElementById('error-message').textContent = 'This link has expired. Ask whoever sent it to send you a new one.';
+    showStage('stage-error');
+    return;
+  }
+  if(data.status !== null){
+    document.getElementById('error-message').textContent = 'This inspection has already been completed — thank you, nothing further is needed here.';
+    showStage('stage-error');
+    return;
+  }
+
+  inspectionData = data;
+  renderForm(data);
+  showStage('stage-form');
+}
+
+function renderForm(data){
+  document.getElementById('brand-row').innerHTML = data.org_logo_url
+    ? `<img src="${data.org_logo_url}" alt="${data.org_name}">`
+    : `<span class="fallback">${data.org_name || 'QaSHE Watchman'}</span>`;
+  document.getElementById('asset-title').textContent = `Inspection — ${data.asset_description}`;
+  document.getElementById('asset-sub').textContent = `${data.asset_ref_code}${data.asset_location ? ' · ' + data.asset_location : ''} — work through each item below, then submit.`;
+
+  const list = document.getElementById('items-list');
+  if(!data.items.length){
+    list.innerHTML = '<p class="sub">No checklist criteria on this inspection — just fill in the overall result below.</p>';
+    return;
+  }
+  list.innerHTML = data.items.map(item => `
+    <div class="item">
+      <div class="i-title">${item.item_text}</div>
+      <div class="rating-row" id="rating-${item.id}">
+        ${CONDITION_SCALE.map(c => `<button type="button" class="rating-btn" data-item="${item.id}" data-val="${c.v}" onclick="selectRating('${item.id}','${c.v}')"><span class="num">${c.v}</span><span class="label">${c.label}</span></button>`).join('')}
+      </div>
+      <textarea id="notes-${item.id}" placeholder="Notes (optional)"></textarea>
+    </div>
+  `).join('');
+}
+
+window.selectRating = function(itemId, val){
+  document.querySelectorAll(`#rating-${itemId} .rating-btn`).forEach(b => {
+    b.classList.toggle('selected', b.dataset.val === val);
+  });
+};
+
+document.getElementById('photo-input').addEventListener('change', (e) => {
+  selectedFiles = Array.from(e.target.files);
+  const thumbs = document.getElementById('photo-thumbs');
+  thumbs.innerHTML = '';
+  selectedFiles.forEach(f => {
+    const img = document.createElement('img');
+    img.className = 'photo-thumb';
+    img.src = URL.createObjectURL(f);
+    thumbs.appendChild(img);
+  });
+});
+
+// Resizes a photo before upload the same way the main app does — keeps
+// a submission from a phone camera small enough to upload quickly over
+// a mobile connection, and small enough to actually display well later.
+function resizeImageFile(file, maxDimension = 1600, quality = 0.82){
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if(width > maxDimension || height > maxDimension){
+          if(width > height){ height = Math.round(height * maxDimension / width); width = maxDimension; }
+          else { width = Math.round(width * maxDimension / height); height = maxDimension; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        canvas.toBlob((blob) => {
+          if(!blob){ resolve(file); return; }
+          resolve(new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }));
+        }, 'image/jpeg', quality);
+      };
+      img.onerror = () => resolve(file);
+      img.src = e.target.result;
+    };
+    reader.onerror = () => resolve(file);
+    reader.readAsDataURL(file);
+  });
+}
+
+document.getElementById('submit-btn').addEventListener('click', async () => {
+  const token = getToken();
+  const errEl = document.getElementById('submit-error');
+  const btn = document.getElementById('submit-btn');
+  errEl.innerHTML = '';
+
+  const inspectedBy = document.getElementById('inspected-by').value.trim();
+  if(!inspectedBy){
+    errEl.innerHTML = '<div class="error-box" style="margin-bottom:14px;">Your name is required.</div>';
+    return;
+  }
+
+  const responses = inspectionData.items.map(item => {
+    const selectedBtn = document.querySelector(`#rating-${item.id} .rating-btn.selected`);
+    return {
+      id: item.id,
+      result: selectedBtn ? selectedBtn.dataset.val : '',
+      notes: document.getElementById(`notes-${item.id}`).value.trim(),
+    };
+  });
+
+  btn.disabled = true; btn.textContent = 'Submitting…';
+
+  try {
+    // Photos upload first — if any fail, the inspection itself still
+    // submits; a failed photo is a smaller problem than losing the
+    // whole inspection someone just spent time filling in.
+    for(const originalFile of selectedFiles){
+      try {
+        const resized = await resizeImageFile(originalFile);
+        const path = `asset-inspection-public/${token}/${Date.now()}-${resized.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+        const { error: upErr } = await supabase.storage.from('evidence').upload(path, resized);
+        if(upErr){ console.error('Photo upload failed:', upErr.message); continue; }
+        await supabase.rpc('submit_asset_inspection_evidence_by_token', {
+          p_token: token, p_file_name: resized.name, p_storage_path: path,
+          p_file_type: resized.type, p_file_size: resized.size,
+        });
+      } catch(photoErr) {
+        console.error('Photo processing failed:', photoErr);
+      }
+    }
+
+    const { data, error } = await supabase.rpc('submit_asset_inspection_by_token', {
+      p_token: token,
+      p_inspected_by: inspectedBy,
+      p_responses: responses,
+      p_overall_status: document.getElementById('overall-status').value,
+      p_overall_notes: document.getElementById('overall-notes').value.trim(),
+      p_next_inspection_date: document.getElementById('next-date').value || null,
+    });
+
+    if(error || !data || data.error){
+      errEl.innerHTML = `<div class="error-box" style="margin-bottom:14px;">${(data && data.error) || error?.message || 'Something went wrong. Please try again.'}</div>`;
+      btn.disabled = false; btn.textContent = 'Submit inspection';
+      return;
+    }
+
+    showStage('stage-success');
+  } catch(e) {
+    errEl.innerHTML = `<div class="error-box" style="margin-bottom:14px;">Something went wrong: ${e.message || 'please try again.'}</div>`;
+    btn.disabled = false; btn.textContent = 'Submit inspection';
+  }
+});
+
+init();
+</script>
+</body>
+</html>
