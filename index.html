@@ -814,7 +814,7 @@ const STATE = {
   checklistTemplates:[],
   docDepartments:[], docTypes:[], formIdentifications:[], ncTypes:[],
   assessmentTemplates:[], assessmentItems:[], assessmentRecords:[], customerSurveys:[], bulkDocuments:[], fiveSInspections:[],
-  processes:[], processKpis:[], processReviews:[], managementReviews:[], managementReviewActions:[], invites:[], moduleDescriptions:[],
+  processes:[], processKpis:[], processReviews:[], managementReviews:[], managementReviewActions:[], invites:[], moduleDescriptions:[], assetInspectionsSummary:[],
 };
 let personnelView = 'register';
 let pendingModule = 'overview';
@@ -1081,6 +1081,7 @@ window.selectOrg = async function(orgId){
   await loadAssetChecklistTemplates();
   await loadAssetChecklistItems();
   await loadAssets();
+  await loadAssetInspectionsSummary();
   await loadBulletins();
 
   hideAllGates();
@@ -1275,10 +1276,41 @@ async function loadAssetChecklistItems(){
   if(error){ toast('Could not load checklist items: ' + error.message, 'error'); return; }
   STATE.assetChecklistItems = data || [];
 }
+// Converts the 1-5 condition scale to a percentage — inverted from the
+// usual KPI direction, since 1 is the best score here (perfect
+// condition) and 5 is the worst (write-off), not the other way round.
+function conditionScoreToPct(result){
+  const n = parseInt(result, 10);
+  if(isNaN(n) || n < 1 || n > 5) return null; // covers blank/unscored items and legacy pass/fail/na values
+  return (6 - n) * 20;
+}
+
+function assetComplianceScore(assetId){
+  const inspections = STATE.assetInspectionsSummary.filter(i => i.asset_id === assetId);
+  if(!inspections.length) return null;
+  const latest = inspections[0]; // already ordered most-recent-first from the loader
+  const scores = (latest.asset_inspection_responses || []).map(r => conditionScoreToPct(r.result)).filter(s => s !== null);
+  if(!scores.length) return null;
+  return Math.round(scores.reduce((a,b) => a+b, 0) / scores.length);
+}
+
 async function loadAssets(){
   const { data, error } = await STATE.supabase.from('assets').select('*').eq('organisation_id', STATE.org.id).order('ref_code', {ascending:true});
   if(error){ toast('Could not load assets: ' + error.message, 'error'); return; }
   STATE.assets = data || [];
+}
+async function loadAssetInspectionsSummary(){
+  // Only completed inspections, with their item results — enough to
+  // compute a compliance percentage per asset without a separate query
+  // for every row in the register.
+  const { data, error } = await STATE.supabase
+    .from('asset_inspections')
+    .select('id, asset_id, inspection_date, status, asset_inspection_responses(result)')
+    .eq('organisation_id', STATE.org.id)
+    .not('status', 'is', null)
+    .order('inspection_date', {ascending:false});
+  if(error){ return; } // non-critical — the register just shows "—" for compliance if this fails to load
+  STATE.assetInspectionsSummary = data || [];
 }
 async function loadBulletins(){
   const { data, error } = await STATE.supabase.from('bulletins').select('*').eq('organisation_id', STATE.org.id).order('published_date', {ascending:false});
@@ -2285,7 +2317,7 @@ const RENDERERS = {
         </select>
       </div>
       <div style="display:flex; gap:8px;">
-        <button class="btn-small" onclick="toggleAssetChecklistsPanel()">Manage Checklists</button>
+        <button class="btn-small" onclick="toggleAssetChecklistsPanel()">Inspection Checklists</button>
         <button class="btn-small" onclick="exportModuleExcel('assets')">Export Excel</button>
       <button class="btn-small" onclick="printCurrentRegister('assets','Assets Register')">Print Register</button>
       <button class="btn-primary btn-add" onclick="toggleAssetForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Asset</button>
@@ -7322,6 +7354,7 @@ function renderAssetChecklistItemsList(){
       <div class="ev-actions">
         <button class="btn-small" onclick="toggleEditAssetChecklistItem('${i.id}')">Edit</button>
         <button class="btn-small" onclick="toggleAssetChecklistItemActive('${i.id}', ${!i.is_active})">${i.is_active ? 'Deactivate' : 'Activate'}</button>
+        <button class="btn-small" onclick="deleteAssetChecklistItem('${i.id}')">Delete</button>
       </div>
     </div>`).join('');
 }
@@ -7364,6 +7397,19 @@ window.toggleAssetChecklistItemActive = async function(itemId, newVal){
   renderAssetChecklistItemsList();
 };
 
+window.deleteAssetChecklistItem = async function(itemId){
+  // Safe to delete outright — past inspections already hold their own
+  // copy of the criterion's wording at the time they were carried out,
+  // not a live reference to this row, so removing it here has no effect
+  // on historical inspection records.
+  if(!confirm('Delete this criterion? It will no longer appear on new inspections. Past inspections that already used it keep their own record unaffected.')) return;
+  const { error } = await STATE.supabase.from('asset_checklist_items').delete().eq('id', itemId);
+  if(error){ toast('Could not delete: ' + error.message, 'error'); return; }
+  await loadAssetChecklistItems();
+  renderAssetChecklistItemsList();
+  toast('Criterion deleted.', 'success');
+};
+
 /* ---- New asset ---- */
 function toggleAssetForm(){ document.getElementById('asset-form').classList.toggle('open'); }
 window.toggleAssetForm = toggleAssetForm;
@@ -7401,14 +7447,17 @@ function renderAssetsTable(){
     return;
   }
   wrap.innerHTML = `<table>
-    <tr><th>Ref</th><th>Description</th><th>Location</th><th>Responsible</th><th>Next inspection</th><th>Certificate</th><th>Status</th></tr>
+    <tr><th>Ref</th><th>Description</th><th>Location</th><th>Responsible</th><th>Compliance</th><th>Next inspection</th><th>Certificate</th><th>Status</th></tr>
     ${rows.map(a=>{
       const person = a.responsible_person_id ? personById(a.responsible_person_id) : null;
+      const compliance = assetComplianceScore(a.id);
+      const complianceColor = compliance === null ? 'var(--text-faint)' : compliance >= 80 ? 'var(--green)' : compliance >= 60 ? 'var(--amber)' : 'var(--red)';
       return `<tr class="clickable" onclick="openAssetDetail('${a.id}')">
         <td class="mono-cell">${a.ref_code}</td>
         <td class="strong">${a.description}</td>
         <td>${a.location || '—'}</td>
         <td>${person ? person.full_name : '—'}</td>
+        <td><b style="color:${complianceColor};">${compliance === null ? '—' : compliance+'%'}</b></td>
         <td>${dateStatusBadge(a.next_inspection_date, false)}</td>
         <td>${a.certificate_expiry_date ? dateStatusBadge(a.certificate_expiry_date, false) : '—'}</td>
         <td>${a.current_status ? `<span class="sev-badge ${a.current_status==='quarantine'?'critical':'minor'}" style="text-transform:capitalize;">${a.current_status}</span>` : '<span class="mono" style="font-size:11px; color:var(--text-faint);">Not yet inspected</span>'}</td>
@@ -7481,7 +7530,7 @@ window.toggleNewInspectionForm = function(assetId){
         <div class="field"><label>Checklist</label>
           <select id="ni-template-${assetId}">
             <option value="">No checklist — free-form inspection</option>
-            ${STATE.assetChecklistTemplates.filter(t=>t.is_active).map(t=>`<option value="${t.id}" ${a && a.checklist_template_id===t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+            ${STATE.assetChecklistTemplates.map(t=>`<option value="${t.id}" ${a && a.checklist_template_id===t.id ? 'selected' : ''}>${t.title}</option>`).join('')}
           </select>
         </div>
       </div>
@@ -7550,7 +7599,10 @@ async function openInspectionDetail(inspectionId, assetId){
     <div class="detail-panel">
       <div class="detail-head">
         <div><span class="ref">Inspection · ${fmtDate(insp.inspection_date)}</span><h3>${insp.inspected_by_name || 'Inspection'}</h3></div>
-        <button class="close-btn" onclick="openAssetDetail('${assetId}')"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-small" onclick="deleteAssetInspection('${inspectionId}','${assetId}')">Delete</button>
+          <button class="close-btn" onclick="openAssetDetail('${assetId}')"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
       </div>
 
       <div id="inspection-items-list">
@@ -7662,6 +7714,25 @@ window.promoteAssetDeviation = async function(responseId, assetId){
   openInspectionDetail(r.inspection_id, assetId);
   updateNavBadges();
   toast(`Raised as ${newNc.ref_code}.`, 'success');
+};
+
+window.deleteAssetInspection = async function(inspectionId, assetId){
+  if(!confirm('Delete this inspection permanently? Its checklist results and any attached photos will be removed. If it was promoted to a nonconformance, that record stays — this only removes the inspection itself.')) return;
+
+  // Evidence isn't cascaded automatically at the database level — the
+  // way this app links evidence to any entity type doesn't use a real
+  // foreign key, so it has to be cleaned up explicitly here, storage
+  // files included, or they'd be left orphaned.
+  const { data: files } = await STATE.supabase.from('evidence_files').select('id, storage_path').eq('entity_type', 'asset_inspection').eq('entity_id', inspectionId);
+  if(files && files.length){
+    await STATE.supabase.storage.from('evidence').remove(files.map(f=>f.storage_path));
+    await STATE.supabase.from('evidence_files').delete().eq('entity_type', 'asset_inspection').eq('entity_id', inspectionId);
+  }
+
+  const { error } = await STATE.supabase.from('asset_inspections').delete().eq('id', inspectionId);
+  if(error){ toast('Could not delete: ' + error.message, 'error'); return; }
+  toast('Inspection deleted.', 'success');
+  openAssetDetail(assetId);
 };
 
 window.generateInspectionLink = async function(inspectionId){
@@ -9595,6 +9666,7 @@ function getModuleExportConfig(moduleKey){
     ]},
     assets: { rows: STATE.assets, filename: `assets-${orgSlug}.xlsx`, columns: [
       {header:'Ref', get:r=>r.ref_code}, {header:'Description', get:r=>r.description}, {header:'Location', get:r=>r.location},
+      {header:'Compliance %', get:r=>{ const c = assetComplianceScore(r.id); return c === null ? '' : c; }},
       {header:'Status', get:r=>r.current_status}, {header:'Next Inspection', get:r=>r.next_inspection_date},
       {header:'Certificate Expiry', get:r=>r.certificate_expiry_date},
     ]},
