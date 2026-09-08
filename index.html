@@ -3618,10 +3618,13 @@ window.toggleRiskLinkForm = function(ncId, alreadyLinkedIds){
       <div id="rl-new-fields-${ncId}" style="display:none;">
         <div class="form-grid">
           <div class="field span2"><label>Title</label><input id="rl-new-title-${ncId}"></div>
-          <div class="field"><label>Type</label><select id="rl-new-type-${ncId}"><option value="risk">Risk</option><option value="opportunity">Opportunity</option></select></div>
+          <div class="field"><label>Type</label><select id="rl-new-type-${ncId}" onchange="updateInlineRiskFormLabels('${ncId}')"><option value="risk">Risk</option><option value="opportunity">Opportunity</option></select></div>
+          <div class="field span3"><label>Description</label><textarea id="rl-new-desc-${ncId}" placeholder="What this is and why it matters"></textarea></div>
           <div class="field"><label>Category</label><select id="rl-new-category-${ncId}">${RISK_CATEGORIES.map(c=>`<option value="${c}">${riskCategoryLabel(c)}</option>`).join('')}</select></div>
-          <div class="field"><label>Likelihood</label><select id="rl-new-likelihood-${ncId}">${SCALE_1_5.map(v=>`<option value="${v}" ${v==='3'?'selected':''}>${v}</option>`).join('')}</select></div>
-          <div class="field"><label>Impact</label><select id="rl-new-impact-${ncId}">${SCALE_1_5.map(v=>`<option value="${v}" ${v==='3'?'selected':''}>${v}</option>`).join('')}</select></div>
+          <div class="field"><label id="rl-new-likelihood-label-${ncId}">Likelihood</label><select id="rl-new-likelihood-${ncId}">${SCALE_1_5.map(v=>`<option value="${v}" ${v==='3'?'selected':''}>${v}</option>`).join('')}</select></div>
+          <div class="field"><label id="rl-new-impact-label-${ncId}">Impact</label><select id="rl-new-impact-${ncId}">${SCALE_1_5.map(v=>`<option value="${v}" ${v==='3'?'selected':''}>${v}</option>`).join('')}</select></div>
+          <div class="field"><label>Owner</label><select id="rl-new-owner-${ncId}">${memberOptions(STATE.user.id)}</select></div>
+          <div class="field"><label>Review date</label><input type="date" id="rl-new-review-${ncId}" value="${todayISO()}"></div>
         </div>
       </div>
       <div class="form-actions">
@@ -3637,6 +3640,12 @@ window.toggleNewRiskFields = function(ncId){
   document.getElementById('rl-new-fields-'+ncId).style.display = (picked === '__new__') ? 'block' : 'none';
 };
 
+window.updateInlineRiskFormLabels = function(ncId){
+  const isOpp = document.getElementById('rl-new-type-'+ncId).value === 'opportunity';
+  document.getElementById('rl-new-likelihood-label-'+ncId).textContent = isOpp ? 'Probability' : 'Likelihood';
+  document.getElementById('rl-new-impact-label-'+ncId).textContent = isOpp ? 'Benefit' : 'Impact';
+};
+
 window.confirmRiskLink = async function(ncId){
   const picked = document.getElementById('rl-pick-'+ncId).value;
   if(!picked){ toast('Choose an entry to link, or create a new one.', 'error'); return; }
@@ -3649,10 +3658,12 @@ window.confirmRiskLink = async function(ncId){
       organisation_id: STATE.org.id,
       entry_type: document.getElementById('rl-new-type-'+ncId).value,
       title,
+      description: document.getElementById('rl-new-desc-'+ncId).value.trim(),
       category: document.getElementById('rl-new-category-'+ncId).value,
       likelihood: parseInt(document.getElementById('rl-new-likelihood-'+ncId).value, 10),
       impact: parseInt(document.getElementById('rl-new-impact-'+ncId).value, 10),
-      owner_id: STATE.user.id,
+      owner_id: document.getElementById('rl-new-owner-'+ncId).value,
+      review_date: document.getElementById('rl-new-review-'+ncId).value || null,
       created_by: STATE.user.id,
     };
     const { data: newRisk, error: riskErr } = await STATE.supabase.from('risk_register').insert(payload).select().single();
