@@ -786,7 +786,21 @@ const KPI_RATING_LEGEND = [
 ];
 function kpiRatingToPct(rating){ return rating ? Number(rating) * 20 : null; }
 const ASSET_STATUSES = ["compliant","quarantine"];
-const INSPECTION_RESULTS = ["pass","fail","na"];
+const INSPECTION_RESULTS = ["1","2","3","4","5"];
+const ASSET_CONDITION_LABELS = {
+  "1": "1 — Perfect condition",
+  "2": "2 — Good condition, minor wear",
+  "3": "3 — Fair, usable, monitor",
+  "4": "4 — Poor condition, needs attention",
+  "5": "5 — Write off / discard",
+  // Older inspections recorded before this scale existed used these
+  // values instead — kept here so those historical records still
+  // display something meaningful rather than a raw, unlabeled code.
+  "pass": "Pass (recorded before the 1–5 scale)",
+  "fail": "Fail (recorded before the 1–5 scale)",
+  "na": "N/A (recorded before the 1–5 scale)",
+};
+function assetConditionLabel(val){ return ASSET_CONDITION_LABELS[val] || val || '—'; }
 const BULLETIN_TYPES = ["bulletin","toolbox_talk"];
 const BULLETIN_TYPE_LABELS = { bulletin: 'Bulletin', toolbox_talk: 'Toolbox Talk' };
 
@@ -7298,11 +7312,35 @@ function renderAssetChecklistItemsList(){
   }
   wrap.innerHTML = items.map(i => `
     <div class="evidence-row">
-      <div style="flex:1;">${i.item_text}${!i.is_active ? ' <span class="mono" style="color:var(--text-faint); font-size:11px;">(inactive)</span>' : ''}</div>
-      <div class="ev-actions"><button class="btn-small" onclick="toggleAssetChecklistItemActive('${i.id}', ${!i.is_active})">${i.is_active ? 'Deactivate' : 'Activate'}</button></div>
+      <div style="flex:1;">
+        <span id="acl-item-text-${i.id}">${i.item_text}</span>${!i.is_active ? ' <span class="mono" style="color:var(--text-faint); font-size:11px;">(inactive)</span>' : ''}
+        <div id="acl-item-edit-${i.id}" style="display:none; margin-top:6px;">
+          <input type="text" id="acl-item-edit-input-${i.id}" value="${i.item_text.replace(/"/g,'&quot;')}" style="width:100%; max-width:400px; font-size:12.5px; padding:6px 8px; border:1px solid var(--border); border-radius:5px;">
+          <button class="btn-small primary" onclick="saveAssetChecklistItemText('${i.id}')" style="margin-left:4px;">Save</button>
+        </div>
+      </div>
+      <div class="ev-actions">
+        <button class="btn-small" onclick="toggleEditAssetChecklistItem('${i.id}')">Edit</button>
+        <button class="btn-small" onclick="toggleAssetChecklistItemActive('${i.id}', ${!i.is_active})">${i.is_active ? 'Deactivate' : 'Activate'}</button>
+      </div>
     </div>`).join('');
 }
 window.renderAssetChecklistItemsList = renderAssetChecklistItemsList;
+
+window.toggleEditAssetChecklistItem = function(itemId){
+  const editEl = document.getElementById('acl-item-edit-'+itemId);
+  if(editEl) editEl.style.display = editEl.style.display === 'none' ? 'block' : 'none';
+};
+
+window.saveAssetChecklistItemText = async function(itemId){
+  const newText = document.getElementById('acl-item-edit-input-'+itemId).value.trim();
+  if(!newText){ alert('The criterion can\'t be blank.'); return; }
+  const { error } = await STATE.supabase.from('asset_checklist_items').update({ item_text: newText }).eq('id', itemId);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  await loadAssetChecklistItems();
+  renderAssetChecklistItemsList();
+  toast('Criterion updated.', 'success');
+};
 
 window.addAssetChecklistItem = async function(){
   const templateId = document.getElementById('acl-panel-template').value;
@@ -7385,7 +7423,6 @@ async function openAssetDetail(id){
   const a = assetById(id);
   if(!a) return;
   const person = a.responsible_person_id ? personById(a.responsible_person_id) : null;
-  const template = a.checklist_template_id ? assetChecklistTemplateById(a.checklist_template_id) : null;
   const { data: inspections, error: iErr } = await STATE.supabase.from('asset_inspections').select('*').eq('asset_id', id).order('inspection_date', {ascending:false});
   const { files: evidenceFiles } = await loadEvidence('asset', id);
 
@@ -7410,9 +7447,9 @@ async function openAssetDetail(id){
       ${a.notes ? `<p style="font-size:12.5px; color:var(--text-faint); margin-bottom:16px;">${a.notes}</p>` : ''}
 
       <div class="panel-head"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Inspections</h3>
-        <button class="btn-small primary" onclick="startAssetInspection('${a.id}')">+ New inspection</button>
+        <button class="btn-small primary" onclick="toggleNewInspectionForm('${a.id}')">+ New inspection</button>
       </div>
-      ${!template ? '<p style="font-size:11.5px; color:var(--text-faint); margin-bottom:10px;">No checklist linked to this asset — starting an inspection will create one with no criteria to check. Link a checklist above (edit not yet available — recreate the asset with a checklist chosen, or attach criteria manually per inspection).</p>' : ''}
+      <div id="new-inspection-form-${a.id}"></div>
       <div id="asset-inspections-list">
         ${iErr ? '<p style="font-size:12.5px; color:var(--text-faint);">Could not load inspections.</p>' :
           (!inspections || !inspections.length) ? '<p style="font-size:12.5px; color:var(--text-faint);">No inspections logged yet.</p>' :
@@ -7431,6 +7468,30 @@ async function openAssetDetail(id){
 window.openAssetDetail = openAssetDetail;
 function closeAssetDetail(){ document.getElementById('asset-detail-slot').innerHTML = ''; }
 window.closeAssetDetail = closeAssetDetail;
+
+window.toggleNewInspectionForm = function(assetId){
+  const slot = document.getElementById('new-inspection-form-'+assetId);
+  if(!slot) return;
+  if(slot.innerHTML.trim()){ slot.innerHTML = ''; return; }
+  const a = assetById(assetId);
+  slot.innerHTML = `
+    <div class="form-panel open" style="margin-bottom:14px;">
+      <div class="form-grid">
+        <div class="field"><label>Inspected by</label><input id="ni-inspector-${assetId}" placeholder="Full name"></div>
+        <div class="field"><label>Checklist</label>
+          <select id="ni-template-${assetId}">
+            <option value="">No checklist — free-form inspection</option>
+            ${STATE.assetChecklistTemplates.filter(t=>t.is_active).map(t=>`<option value="${t.id}" ${a && a.checklist_template_id===t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-cancel" onclick="toggleNewInspectionForm('${assetId}')">Cancel</button>
+        <button class="btn-primary" onclick="startAssetInspection('${assetId}')">Start inspection</button>
+      </div>
+    </div>
+  `;
+};
 
 window.printAsset = async function(id){
   const a = assetById(id);
@@ -7454,16 +7515,18 @@ window.printAsset = async function(id){
 
 window.startAssetInspection = async function(assetId){
   const a = assetById(assetId);
-  const inspectedBy = prompt('Who is carrying out this inspection? (full name)');
-  if(inspectedBy === null) return;
+  const inspectedBy = document.getElementById('ni-inspector-'+assetId).value.trim();
+  if(!inspectedBy){ alert('Enter who is carrying out this inspection.'); return; }
+  const templateId = document.getElementById('ni-template-'+assetId).value || null;
 
   const { data: newInspection, error: iErr } = await STATE.supabase.from('asset_inspections').insert({
-    organisation_id: STATE.org.id, asset_id: assetId, inspected_by_name: inspectedBy.trim(), recorded_by: STATE.user.id,
+    organisation_id: STATE.org.id, asset_id: assetId, inspected_by_name: inspectedBy,
+    recorded_by: STATE.user.id, checklist_template_id: templateId,
   }).select().single();
   if(iErr){ toast('Could not start inspection: ' + iErr.message, 'error'); return; }
 
-  if(a.checklist_template_id){
-    const items = STATE.assetChecklistItems.filter(i=>i.template_id===a.checklist_template_id && i.is_active);
+  if(templateId){
+    const items = STATE.assetChecklistItems.filter(i=>i.template_id===templateId && i.is_active);
     if(items.length){
       const rows = items.map(i => ({
         organisation_id: STATE.org.id, inspection_id: newInspection.id, item_text: i.item_text, sort_order: i.sort_order
@@ -7497,6 +7560,12 @@ async function openInspectionDetail(inspectionId, assetId){
       </div>
 
       ${!isComplete ? `
+      <div class="detail-card" style="padding:16px; margin-top:16px; background:var(--grey-tint);">
+        <div style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Send for completion</div>
+        <p style="font-size:12px; color:var(--text-dim); margin-bottom:10px;">Generate a link anyone can open on their phone or tablet to fill in this inspection themselves — no Watchman login needed. Copy it and send it however suits you (email, WhatsApp, text).</p>
+        <button class="btn-small" onclick="generateInspectionLink('${inspectionId}')">Generate link</button>
+        <div id="inspection-link-result-${inspectionId}"></div>
+      </div>
       <div class="detail-card" style="padding:16px; margin-top:16px;">
         <div class="form-grid" style="margin-bottom:10px;">
           <div class="field"><label>Overall result</label><select id="insp-status">${ASSET_STATUSES.map(s=>`<option value="${s}">${label(s)}</option>`).join('')}</select></div>
@@ -7519,23 +7588,44 @@ async function openInspectionDetail(inspectionId, assetId){
 window.openInspectionDetail = openInspectionDetail;
 
 function renderInspectionItemRow(r, inspectionId, assetId, isComplete){
-  const resultColor = r.result==='fail' ? 'critical' : (r.result==='pass' ? 'minor' : '');
+  const isPoor = r.result === '4' || r.result === '5' || r.result === 'fail';
+  const resultColor = isPoor ? 'critical' : (r.result ? 'minor' : '');
   return `<div class="detail-card" style="margin-bottom:8px; padding:12px 16px;">
     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
       <div style="flex:1;">${r.item_text}</div>
       ${isComplete
-        ? `<span class="sev-badge ${resultColor}" style="text-transform:capitalize;">${r.result}</span>`
+        ? `<span class="sev-badge ${resultColor}">${assetConditionLabel(r.result)}</span>`
         : `<select id="insp-result-${r.id}" onchange="saveInspectionItemResult('${r.id}','${inspectionId}','${assetId}')" style="border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12px; flex-shrink:0;">
-            ${INSPECTION_RESULTS.map(res=>`<option value="${res}" ${r.result===res?'selected':''}>${label(res)}</option>`).join('')}
+            <option value="">Not yet assessed</option>
+            ${INSPECTION_RESULTS.map(res=>`<option value="${res}" ${r.result===res?'selected':''}>${assetConditionLabel(res)}</option>`).join('')}
           </select>`}
     </div>
     ${isComplete
       ? (r.notes ? `<p style="font-size:12px; color:var(--text-dim); margin-top:6px;">${r.notes}</p>` : '')
       : `<input type="text" id="insp-notes-${r.id}" value="${(r.notes||'').replace(/"/g,'&quot;')}" onblur="saveInspectionItemNotes('${r.id}')" placeholder="Notes (optional)" style="width:100%; margin-top:8px; border:1px solid var(--border); border-radius:6px; padding:7px 10px; font-size:12.5px;">`}
-    ${r.nonconformance_id ? `<div style="margin-top:8px;"><span class="linked-task-chip">Raised as nonconformance</span></div>`
-      : (r.result==='fail' && !isComplete ? `<div style="margin-top:8px;"><button class="btn-small primary" onclick="promoteAssetDeviation('${r.id}','${assetId}')">Raise as nonconformance</button></div>` : '')}
+    ${r.nonconformance_id ? `<div style="margin-top:8px;"><span class="linked-task-chip">Raised as nonconformance</span></div>` : ''}
+    ${!r.nonconformance_id && isPoor && !isComplete ? `<div style="margin-top:8px; display:flex; gap:8px;">
+        <button class="btn-small primary" onclick="promoteAssetDeviation('${r.id}','${assetId}')">Raise as nonconformance</button>
+        <button class="btn-small" onclick="quickTaskFromInspectionItem('${r.id}','${inspectionId}','${assetId}')">Create task</button>
+      </div>` : ''}
   </div>`;
 }
+
+window.quickTaskFromInspectionItem = async function(responseId, inspectionId, assetId){
+  const { data: r, error: rErr } = await STATE.supabase.from('asset_inspection_responses').select('*').eq('id', responseId).single();
+  if(rErr || !r){ toast('Could not load the item.', 'error'); return; }
+  const a = assetById(assetId);
+  const { error } = await STATE.supabase.from('tasks').insert({
+    organisation_id: STATE.org.id, title: `Asset follow-up — ${r.item_text}`.slice(0,120),
+    description: `Follow-up from inspection of ${a ? a.ref_code+' — '+a.description : 'asset'}.${r.notes ? '\n\nNotes: '+r.notes : ''}\n\nCondition recorded: ${assetConditionLabel(r.result)}`,
+    linked_type: 'asset_inspection', linked_id: inspectionId,
+    assignee_id: a && a.responsible_person_id ? null : STATE.user.id, // personnel isn't a Watchman login, so this can't always be pre-filled — left for manual assignment when the asset's responsible person isn't a system user
+    due_date: new Date(Date.now() + 7*24*60*60*1000).toISOString().slice(0,10),
+    created_by: STATE.user.id,
+  });
+  if(error){ toast('Could not create the task: ' + error.message, 'error'); return; }
+  toast('Task created.', 'success');
+};
 
 window.saveInspectionItemResult = async function(responseId, inspectionId, assetId){
   const val = document.getElementById('insp-result-'+responseId).value;
@@ -7572,6 +7662,20 @@ window.promoteAssetDeviation = async function(responseId, assetId){
   openInspectionDetail(r.inspection_id, assetId);
   updateNavBadges();
   toast(`Raised as ${newNc.ref_code}.`, 'success');
+};
+
+window.generateInspectionLink = async function(inspectionId){
+  const { data: insp, error } = await STATE.supabase.from('asset_inspections').select('token').eq('id', inspectionId).single();
+  if(error || !insp || !insp.token){ toast('Could not generate a link for this inspection.', 'error'); return; }
+  const link = `${window.location.origin}${window.location.pathname.replace(/index\.html$/,'')}qashe-watchman-asset-inspection-link.html?token=${insp.token}`;
+  const resultEl = document.getElementById('inspection-link-result-'+inspectionId);
+  resultEl.innerHTML = `
+    <div style="display:flex; gap:6px; margin-top:8px;">
+      <input type="text" readonly id="insp-link-${inspectionId}" value="${link}" style="flex:1; font-size:12px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+      <button class="btn-small primary" onclick="navigator.clipboard.writeText(document.getElementById('insp-link-${inspectionId}').value); toast('Copied.','success');">Copy</button>
+    </div>
+    <div style="font-size:10.5px; color:var(--text-faint); margin-top:6px;">Valid for 30 days, and only until the inspection is completed — either from this link or from here.</div>
+  `;
 };
 
 window.completeInspection = async function(inspectionId, assetId){
