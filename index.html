@@ -815,6 +815,7 @@ const STATE = {
   docDepartments:[], docTypes:[], formIdentifications:[], ncTypes:[],
   assessmentTemplates:[], assessmentItems:[], assessmentRecords:[], customerSurveys:[], bulkDocuments:[], fiveSInspections:[],
   processes:[], processKpis:[], processReviews:[], managementReviews:[], managementReviewActions:[], invites:[], moduleDescriptions:[], assetInspectionsSummary:[],
+  auditChecklistTemplates:[], auditChecklistItems:[], auditTeamMembers:[],
 };
 let personnelView = 'register';
 let pendingModule = 'overview';
@@ -1061,6 +1062,9 @@ window.selectOrg = async function(orgId){
   await loadProcessReviews();
   await loadTasks();
   await loadAudits();
+  await loadAuditChecklistTemplates();
+  await loadAuditChecklistItems();
+  await loadAuditTeamMembers();
   await loadRisks();
   await loadDocuments();
   await loadDocDepartments();
@@ -1299,6 +1303,21 @@ async function loadAssets(){
   if(error){ toast('Could not load assets: ' + error.message, 'error'); return; }
   STATE.assets = data || [];
 }
+async function loadAuditChecklistTemplates(){
+  const { data, error } = await STATE.supabase.from('audit_checklist_templates').select('*').eq('organisation_id', STATE.org.id).order('title', {ascending:true});
+  if(error){ toast('Could not load audit checklists: ' + error.message, 'error'); return; }
+  STATE.auditChecklistTemplates = data || [];
+}
+async function loadAuditChecklistItems(){
+  const { data, error } = await STATE.supabase.from('audit_checklist_items').select('*').eq('organisation_id', STATE.org.id).order('sort_order', {ascending:true});
+  if(error){ toast('Could not load audit checklist criteria: ' + error.message, 'error'); return; }
+  STATE.auditChecklistItems = data || [];
+}
+async function loadAuditTeamMembers(){
+  const { data, error } = await STATE.supabase.from('audit_team_members').select('*').eq('organisation_id', STATE.org.id);
+  if(error){ return; }
+  STATE.auditTeamMembers = data || [];
+}
 async function loadAssetInspectionsSummary(){
   // Only completed inspections, with their item results — enough to
   // compute a compliance percentage per asset without a separate query
@@ -1383,7 +1402,7 @@ function showModule(mod){
   updateNavBadges();
   if(mod === 'nonconformances') renderNCTable();
   if(mod === 'tasks') renderTaskTable();
-  if(mod === 'audits') renderAuditsList();
+  if(mod === 'audits') switchAuditSubtab(STATE._auditSubtab || 'plan');
   if(mod === 'risks') renderRisksTable();
   if(mod === 'documents') renderDocumentsTable();
   if(mod === 'suppliers') renderSuppliersTable();
@@ -1573,6 +1592,24 @@ function applyBranding(org){
 function kpi(l,val,cls,unit){ return `<div class="kpi-card"><div class="k-label">${l}</div><div class="k-val ${cls||''}">${val}${unit?'<small> '+unit+'</small>':''}</div></div>`; }
 function optionList(arr, selected){ return arr.map(v=>`<option value="${v}" ${v===selected?'selected':''}>${label(v)}</option>`).join(''); }
 function memberOptions(selected){ return STATE.members.map(m=>`<option value="${m.user_id}" ${m.user_id===selected?'selected':''}>${(m.profiles&&m.profiles.name)||'Unknown'}</option>`).join(''); }
+
+// A scrollable checkbox list — used for the audit plan's Departments,
+// Processes, Suppliers, and Audit Team fields, all genuine multi-select
+// choices where a native <select multiple> would be clumsy, especially
+// on a phone.
+function checkboxMultiSelect(idPrefix, options, selectedIds){
+  const selected = new Set(selectedIds || []);
+  return `<div style="max-height:150px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; padding:8px 10px;">
+    ${options.length ? options.map(o => `
+      <label style="display:flex; align-items:center; gap:8px; padding:4px 0; font-size:12.5px; cursor:pointer;">
+        <input type="checkbox" class="${idPrefix}-cb" value="${o.id}" ${selected.has(o.id)?'checked':''} style="width:auto;"> ${o.label}
+      </label>
+    `).join('') : '<p style="font-size:11.5px; color:var(--text-faint);">None set up yet.</p>'}
+  </div>`;
+}
+function getCheckedValues(idPrefix){
+  return Array.from(document.querySelectorAll(`.${idPrefix}-cb:checked`)).map(el => el.value);
+}
 function approverOptions(selected){
   const approvers = STATE.members.filter(m=>m.is_approver);
   if(!approvers.length) return '<option value="">No designated approvers set up for this organisation yet</option>';
@@ -1760,40 +1797,21 @@ const RENDERERS = {
   audits: () => `
     <div class="toolbar">
       <div class="filters">
-        <select id="audit-filter-status" onchange="renderAuditsList()">
-          <option value="">All statuses</option>
-          ${optionList(AUDIT_STATUSES)}
-        </select>
+        <button class="btn-small ${STATE._auditSubtab==='plan'||!STATE._auditSubtab?'primary':''}" onclick="switchAuditSubtab('plan')">Annual Audit Plan</button>
+        <button class="btn-small ${STATE._auditSubtab==='board'?'primary':''}" onclick="switchAuditSubtab('board')">Internal Audits</button>
+        <button class="btn-small ${STATE._auditSubtab==='checklists'?'primary':''}" onclick="switchAuditSubtab('checklists')">Checklists</button>
       </div>
-      <button class="btn-small" onclick="exportModuleExcel('audits')">Export Excel</button>
-      <button class="btn-small" onclick="printCurrentRegister('audits','Audits Register')">Print Register</button>
-      <button class="btn-primary btn-add" onclick="toggleAuditForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Audit</button>
+      ${STATE._auditSubtab==='board'||!STATE._auditSubtab ? `
+      <div class="filters" id="audit-board-toolbar-extra">
+        <button class="btn-small" onclick="exportModuleExcel('audits')">Export Excel</button>
+        <button class="btn-small" onclick="printCurrentRegister('audits','Audits Register')">Print Register</button>
+      </div>` : `<div class="filters" id="audit-board-toolbar-extra" style="display:none;">
+        <button class="btn-small" onclick="exportModuleExcel('audits')">Export Excel</button>
+        <button class="btn-small" onclick="printCurrentRegister('audits','Audits Register')">Print Register</button>
+      </div>`}
     </div>
-
-    <div class="form-panel" id="audit-form">
-      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:14px;">Schedule an audit</h3>
-      <div class="form-grid">
-        <div class="field span3"><label>Title</label><input id="af-title" placeholder="e.g. Q3 internal quality audit — welding line"></div>
-        <div class="field span3"><label>Scope</label><textarea id="af-scope" placeholder="What this audit covers"></textarea></div>
-        <div class="field"><label>Standard</label><input id="af-standard" placeholder="e.g. ISO 9001:2015"></div>
-        <div class="field"><label>Audit type</label><select id="af-type" onchange="toggleAuditorField()">${optionList(AUDIT_TYPES,'internal')}</select></div>
-        <div class="field" id="af-auditor-internal-wrap"><label>Auditor</label><select id="af-auditor">${memberOptions(STATE.user.id)}</select></div>
-        <div class="field" id="af-auditor-external-wrap" style="display:none;"><label>External auditor / body</label><input id="af-auditor-external" placeholder="e.g. LRQA lead auditor name"></div>
-        <div class="field"><label>Planned date</label><input type="date" id="af-planned" value="${todayISO()}"></div>
-        <div class="field"><label>ISO checklist (optional)</label><select id="af-checklist"><option value="">None</option>${STATE.checklistTemplates.map(t=>`<option value="${t.id}">${t.standard_code}</option>`).join('')}</select></div>
-        <div class="field"><label>Checklist document (optional)</label><select id="af-linkeddoc"><option value="">None</option>${STATE.documents.map(d=>`<option value="${d.id}">${d.doc_number} — ${d.title}</option>`).join('')}</select></div>
-      </div>
-      <div class="form-actions">
-        <button class="btn-cancel" onclick="toggleAuditForm()">Cancel</button>
-        <button class="btn-primary" onclick="submitAudit()">Schedule audit</button>
-      </div>
-    </div>
-
+    <div id="audit-subtab-content"></div>
     <div id="audit-detail-slot"></div>
-
-    <div class="panel" style="padding:0; overflow:hidden;">
-      <div id="audit-list-wrap"></div>
-    </div>
   `,
 
   risks: () => `
@@ -3199,14 +3217,13 @@ window.addTaskComment = async function(id){
   openTaskDetail(id);
 };
 
-/* ============ Audits: form + list + detail + findings ============ */
+/* ============ Audits: Annual Plan + Board + Checklists + detail + findings ============ */
 function findingBadge(type){
   const cls = (type==='major_nc') ? 'critical' : (type==='minor_nc') ? 'major' : 'minor';
   return `<span class="sev-badge ${cls}">${label(type)}</span>`;
 }
 
-function toggleAuditForm(){ document.getElementById('audit-form').classList.toggle('open'); }
-window.toggleAuditForm = toggleAuditForm;
+const AUDIT_STANDARDS_LIST = ['ISO 9001','ISO 45001','ISO 14001','ISO 27001','ISO 37000','ISO 37001','ISO 31000'];
 
 window.toggleAuditorField = function(){
   const isExternal = ['external','certification','surveillance'].includes(document.getElementById('af-type').value);
@@ -3214,68 +3231,330 @@ window.toggleAuditorField = function(){
   document.getElementById('af-auditor-external-wrap').style.display = isExternal ? 'flex' : 'none';
 };
 
-window.submitAudit = async function(){
+function renderAuditPlan(){
+  const wrap = document.getElementById('audit-subtab-content');
+  if(!wrap) return;
+  const planned = STATE.audits.filter(a => a.status === 'planned').sort((a,b) => new Date(a.planned_date) - new Date(b.planned_date));
+
+  wrap.innerHTML = `
+    <div class="detail-card">
+      <div class="panel-head"><h3>Schedule an Audit</h3></div>
+      <div class="form-grid">
+        <div class="field span3"><label>Title</label><input id="af-title" placeholder="e.g. Q3 internal quality audit — welding line"></div>
+        <div class="field span3"><label>Scope</label><textarea id="af-scope" placeholder="What this audit covers"></textarea></div>
+        <div class="field span3"><label>Criteria</label><textarea id="af-criteria" placeholder="What the audit is being measured against — specific clauses, procedures, requirements"></textarea></div>
+        <div class="field"><label>Departments</label>${checkboxMultiSelect('af-dept', STATE.docDepartments.filter(d=>d.is_active).map(d=>({id:d.id, label:d.name})), [])}</div>
+        <div class="field"><label>Processes</label>${checkboxMultiSelect('af-proc', STATE.processes.map(p=>({id:p.id, label:p.name})), [])}</div>
+        <div class="field"><label>Suppliers</label>${checkboxMultiSelect('af-supp', STATE.suppliers.map(s=>({id:s.id, label:s.name})), [])}</div>
+        <div class="field span3"><label>Other (anything not covered above)</label><input id="af-other" placeholder="e.g. a specific shift, a specific customer complaint"></div>
+        <div class="field"><label>Audit type</label><select id="af-type" onchange="toggleAuditorField()">${optionList(AUDIT_TYPES,'internal')}</select></div>
+        <div class="field" id="af-auditor-internal-wrap"><label>Lead auditor</label><select id="af-auditor">${memberOptions(STATE.user.id)}</select></div>
+        <div class="field" id="af-auditor-external-wrap" style="display:none;"><label>External auditor / body</label><input id="af-auditor-external" placeholder="e.g. LRQA lead auditor name"></div>
+        <div class="field"><label>Audit team (in addition to the lead auditor)</label>${checkboxMultiSelect('af-team', STATE.members.map(m=>({id:m.user_id, label:(m.profiles&&m.profiles.name)||'Unknown'})), [])}</div>
+        <div class="field"><label>Standards <span style="text-transform:none; font-weight:400; color:var(--text-faint);">(tick more than one for an integrated audit)</span></label>${checkboxMultiSelect('af-std', AUDIT_STANDARDS_LIST.map(s=>({id:s, label:s})), [])}</div>
+        <div class="field"><label>Checklist (optional)</label><select id="af-checklist"><option value="">None</option>${STATE.auditChecklistTemplates.map(t=>`<option value="${t.id}">${t.title}</option>`).join('')}</select></div>
+        <div class="field"><label>Scheduled date</label><input type="date" id="af-planned" value="${todayISO()}"></div>
+      </div>
+      <button class="btn-primary" onclick="submitAuditPlan()">Schedule audit</button>
+    </div>
+
+    <div class="detail-card">
+      <div class="panel-head"><h3>Planned Audits (${planned.length})</h3></div>
+      ${planned.length ? `<table>
+        <tr><th>Title</th><th>Type</th><th>Scheduled</th><th>Lead Auditor</th></tr>
+        ${planned.map(a => `<tr class="clickable" onclick="openAuditDetail('${a.id}')">
+          <td class="strong">${a.title}</td>
+          <td style="text-transform:capitalize">${a.audit_type}</td>
+          <td>${dateStatusBadge(a.planned_date, false)}</td>
+          <td>${a.auditor_id ? memberName(a.auditor_id) : (a.external_auditor_name || '—')}</td>
+        </tr>`).join('')}
+      </table>` : '<p style="font-size:12.5px; color:var(--text-faint);">Nothing scheduled yet.</p>'}
+    </div>
+  `;
+  toggleAuditorField();
+}
+
+window.submitAuditPlan = async function(){
   const title = document.getElementById('af-title').value.trim();
   const planned_date = document.getElementById('af-planned').value;
-  if(!title || !planned_date){ alert('Title and planned date are required.'); return; }
+  if(!title || !planned_date){ alert('Title and scheduled date are required.'); return; }
   const audit_type = document.getElementById('af-type').value;
   const isExternal = ['external','certification','surveillance'].includes(audit_type);
   const checklistTemplateId = document.getElementById('af-checklist').value || null;
+  const standards = getCheckedValues('af-std');
+
   const payload = {
     organisation_id: STATE.org.id,
     title,
     scope: document.getElementById('af-scope').value.trim(),
-    standard: document.getElementById('af-standard').value.trim(),
+    criteria: document.getElementById('af-criteria').value.trim(),
+    standard: standards[0] || null,   // kept in sync with the original single-value field, for anything still reading it
+    standards,
+    department_ids: getCheckedValues('af-dept'),
+    process_ids: getCheckedValues('af-proc'),
+    supplier_ids: getCheckedValues('af-supp'),
+    other_scope: document.getElementById('af-other').value.trim(),
     audit_type,
     auditor_id: isExternal ? null : document.getElementById('af-auditor').value,
     external_auditor_name: isExternal ? document.getElementById('af-auditor-external').value.trim() : null,
     planned_date,
-    linked_document_id: document.getElementById('af-linkeddoc').value || null,
-    checklist_template_id: checklistTemplateId,
+    audit_checklist_template_id: checklistTemplateId,
     created_by: STATE.user.id,
   };
   const { data: newAudit, error } = await STATE.supabase.from('audits').insert(payload).select().single();
   if(error){ toast('Could not schedule audit: ' + error.message, 'error'); return; }
 
-  if(checklistTemplateId){
-    const { data: items, error: itemsErr } = await STATE.supabase.from('checklist_template_items').select('id').eq('template_id', checklistTemplateId);
-    if(!itemsErr && items && items.length){
-      const rows = items.map(it => ({ organisation_id: STATE.org.id, audit_id: newAudit.id, template_item_id: it.id }));
-      const { error: bulkErr } = await STATE.supabase.from('audit_checklist_responses').insert(rows);
-      if(bulkErr){ toast('Audit created, but the checklist could not be attached: ' + bulkErr.message, 'error'); }
-    }
+  const team = getCheckedValues('af-team');
+  if(team.length){
+    const teamRows = team.map(userId => ({ organisation_id: STATE.org.id, audit_id: newAudit.id, user_id: userId }));
+    await STATE.supabase.from('audit_team_members').insert(teamRows);
   }
 
-  toggleAuditForm();
-  document.querySelectorAll('#audit-form input, #audit-form textarea').forEach(el=>el.value='');
+  // A task tied to the plan, so it shows up in reminders and can be
+  // used to start the audit when its date comes round — exactly the
+  // link between the plan and the actual audit that was asked for.
+  await STATE.supabase.from('tasks').insert({
+    organisation_id: STATE.org.id, title: `Conduct audit — ${title}`,
+    description: `Scheduled internal audit. Open this task, then start the audit from the Audits module.`,
+    linked_type: 'audit', linked_id: newAudit.id,
+    assignee_id: payload.auditor_id || STATE.user.id, due_date: planned_date, created_by: STATE.user.id,
+  });
+
   await loadAudits();
-  renderAuditsList();
+  await loadAuditTeamMembers();
+  await loadTasks();
+  renderAuditPlan();
   updateNavBadges();
-  toast('Audit scheduled.', 'success');
+  toast(`${newAudit.audit_ref} scheduled, with a task to start it on the day.`, 'success');
 };
+
+function renderAuditsBoard(){
+  const wrap = document.getElementById('audit-subtab-content');
+  if(!wrap) return;
+  wrap.innerHTML = `<div class="panel" style="padding:0; overflow:hidden;"><div id="audit-list-wrap"></div></div>`;
+  renderAuditsList();
+}
 
 function renderAuditsList(){
   const wrap = document.getElementById('audit-list-wrap');
   if(!wrap) return;
-  const fStatus = document.getElementById('audit-filter-status').value;
-  const rows = STATE.audits.filter(a => !fStatus || a.status === fStatus);
+  const rows = [...STATE.audits].sort((a,b) => new Date(b.planned_date || 0) - new Date(a.planned_date || 0));
   if(!rows.length){
-    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg><p>No audits match this filter.</p></div>`;
+    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg><p>No audits yet — schedule one from the Annual Audit Plan tab.</p></div>`;
     return;
   }
   wrap.innerHTML = `<table>
-    <tr><th>Ref</th><th>Title</th><th>Type</th><th>Standard</th><th>Planned</th><th>Status</th></tr>
-    ${rows.map(a=>`<tr class="clickable" onclick="openAuditDetail('${a.id}')">
-      <td class="mono-cell">${a.audit_ref}</td>
-      <td class="strong">${a.title}</td>
-      <td style="text-transform:capitalize">${a.audit_type}</td>
-      <td>${a.standard || '—'}</td>
-      <td>${fmtDate(a.planned_date)}</td>
-      <td>${pill(a.status)}</td>
-    </tr>`).join('')}
+    <tr><th>Audit Type</th><th>Date</th><th>Audit Team</th><th>Standard(s)</th><th>Checklist</th><th></th></tr>
+    ${rows.map(a=>{
+      const team = STATE.auditTeamMembers.filter(t=>t.audit_id===a.id).map(t=>memberName(t.user_id));
+      const leadName = a.auditor_id ? memberName(a.auditor_id) : (a.external_auditor_name || null);
+      const allTeam = [leadName, ...team].filter(Boolean);
+      const checklistTemplate = a.audit_checklist_template_id ? STATE.auditChecklistTemplates.find(t=>t.id===a.audit_checklist_template_id) : null;
+      return `<tr class="clickable" onclick="openAuditDetail('${a.id}')">
+        <td style="text-transform:capitalize">${a.title}<br><span class="mono" style="font-size:10.5px; color:var(--text-faint);">${label(a.audit_type)} · ${a.audit_ref}</span></td>
+        <td>${fmtDate(a.planned_date)}</td>
+        <td>${allTeam.length ? allTeam.join(', ') : '—'}</td>
+        <td>${(a.standards && a.standards.length) ? a.standards.join(', ') : (a.standard || '—')}</td>
+        <td>${checklistTemplate ? checklistTemplate.title : '—'}</td>
+        <td style="text-align:right;" onclick="event.stopPropagation();">
+          ${a.status === 'planned'
+            ? `<button class="btn-small primary" onclick="startAudit('${a.id}')">Start audit</button>`
+            : pill(a.status)}
+        </td>
+      </tr>`;
+    }).join('')}
   </table>`;
 }
 window.renderAuditsList = renderAuditsList;
+
+window.startAudit = async function(auditId){
+  const audit = STATE.audits.find(a=>a.id===auditId);
+  if(!audit) return;
+  const { error } = await STATE.supabase.from('audits').update({ status: 'in_progress', actual_date: todayISO() }).eq('id', auditId);
+  if(error){ toast('Could not start the audit: ' + error.message, 'error'); return; }
+
+  if(audit.audit_checklist_template_id){
+    const items = STATE.auditChecklistItems.filter(i=>i.template_id===audit.audit_checklist_template_id && i.is_active);
+    if(items.length){
+      const rows = items.map(i => ({
+        organisation_id: STATE.org.id, audit_id: auditId, item_text: i.item_text, sort_order: i.sort_order
+      }));
+      const { error: rErr } = await STATE.supabase.from('audit_checklist_item_responses').insert(rows);
+      if(rErr){ toast('Audit started, but the checklist could not be attached: ' + rErr.message, 'error'); }
+    }
+  }
+  await loadAudits();
+  openAuditDetail(auditId);
+  updateNavBadges();
+  toast('Audit started.', 'success');
+};
+
+/* ---- Audit checklist management (organisation's own, editable) ---- */
+function renderAuditChecklists(){
+  const wrap = document.getElementById('audit-subtab-content');
+  if(!wrap) return;
+  wrap.innerHTML = `
+    <div class="detail-card">
+      <div class="panel-head"><h3>Checklists</h3></div>
+      <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:14px;">Your own checklists, fully editable — separate from any standard reference material. Create one, add criteria, and it's ready to attach the next time you schedule an audit.</p>
+      <div class="form-grid" style="margin-bottom:10px;">
+        <div class="field span2"><label>New checklist name</label><input id="ac-new-title" placeholder="e.g. ISO 9001 Internal Audit Checklist"></div>
+      </div>
+      <button class="btn-small primary" onclick="addAuditChecklistTemplate()">Add checklist</button>
+    </div>
+    <div class="detail-card">
+      <div class="panel-head"><h3>Review &amp; Edit</h3></div>
+      <div class="field"><label>Checklist</label><select id="ac-panel-template" onchange="renderAuditChecklistItemsList()">${STATE.auditChecklistTemplates.map(t=>`<option value="${t.id}">${t.title}</option>`).join('')}</select></div>
+      <div id="audit-checklist-items-list" style="margin:12px 0;"></div>
+      <div class="form-grid">
+        <div class="field span2"><label>New criterion</label><input id="ac-item-new-text" placeholder="e.g. Are calibration records up to date?"></div>
+      </div>
+      <button class="btn-small primary" onclick="addAuditChecklistItem()">Add criterion</button>
+    </div>
+  `;
+  renderAuditChecklistItemsList();
+}
+window.renderAuditChecklists = renderAuditChecklists;
+
+window.addAuditChecklistTemplate = async function(){
+  const title = document.getElementById('ac-new-title').value.trim();
+  if(!title){ alert('Give the checklist a name.'); return; }
+  const { error } = await STATE.supabase.from('audit_checklist_templates').insert({ organisation_id: STATE.org.id, title, created_by: STATE.user.id });
+  if(error){ toast('Could not add checklist: ' + error.message, 'error'); return; }
+  document.getElementById('ac-new-title').value = '';
+  await loadAuditChecklistTemplates();
+  renderAuditChecklists();
+  toast('Checklist added.', 'success');
+};
+
+function renderAuditChecklistItemsList(){
+  const wrap = document.getElementById('audit-checklist-items-list');
+  const templateId = document.getElementById('ac-panel-template')?.value;
+  if(!wrap || !templateId) return;
+  const items = STATE.auditChecklistItems.filter(i=>i.template_id===templateId);
+  wrap.innerHTML = items.length ? items.map(i => `
+    <div class="evidence-row">
+      <div style="flex:1;">
+        <span id="ac-item-text-${i.id}">${i.item_text}</span>${!i.is_active ? ' <span class="mono" style="color:var(--text-faint); font-size:11px;">(inactive)</span>' : ''}
+        <div id="ac-item-edit-${i.id}" style="display:none; margin-top:6px;">
+          <input type="text" id="ac-item-edit-input-${i.id}" value="${i.item_text.replace(/"/g,'&quot;')}" style="width:100%; max-width:400px; font-size:12.5px; padding:6px 8px; border:1px solid var(--border); border-radius:5px;">
+          <button class="btn-small primary" onclick="saveAuditChecklistItemText('${i.id}')" style="margin-left:4px;">Save</button>
+        </div>
+      </div>
+      <div class="ev-actions">
+        <button class="btn-small" onclick="toggleEditAuditChecklistItem('${i.id}')">Edit</button>
+        <button class="btn-small" onclick="toggleAuditChecklistItemActive('${i.id}', ${!i.is_active})">${i.is_active ? 'Deactivate' : 'Activate'}</button>
+        <button class="btn-small" onclick="deleteAuditChecklistItem('${i.id}')">Delete</button>
+      </div>
+    </div>`).join('') : '<p style="font-size:12.5px; color:var(--text-faint);">No criteria in this checklist yet.</p>';
+}
+window.renderAuditChecklistItemsList = renderAuditChecklistItemsList;
+
+window.addAuditChecklistItem = async function(){
+  const templateId = document.getElementById('ac-panel-template').value;
+  const text = document.getElementById('ac-item-new-text').value.trim();
+  if(!templateId || !text){ alert('Choose a checklist and enter a criterion.'); return; }
+  const nextSort = STATE.auditChecklistItems.filter(i=>i.template_id===templateId).length * 10 + 10;
+  const { error } = await STATE.supabase.from('audit_checklist_items').insert({
+    organisation_id: STATE.org.id, template_id: templateId, item_text: text, sort_order: nextSort
+  });
+  if(error){ toast('Could not add criterion: ' + error.message, 'error'); return; }
+  document.getElementById('ac-item-new-text').value = '';
+  await loadAuditChecklistItems();
+  renderAuditChecklistItemsList();
+  toast('Criterion added.', 'success');
+};
+
+window.toggleEditAuditChecklistItem = function(itemId){
+  const editEl = document.getElementById('ac-item-edit-'+itemId);
+  if(editEl) editEl.style.display = editEl.style.display === 'none' ? 'block' : 'none';
+};
+
+window.saveAuditChecklistItemText = async function(itemId){
+  const newText = document.getElementById('ac-item-edit-input-'+itemId).value.trim();
+  if(!newText){ alert('The criterion can\'t be blank.'); return; }
+  const { error } = await STATE.supabase.from('audit_checklist_items').update({ item_text: newText }).eq('id', itemId);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  await loadAuditChecklistItems();
+  renderAuditChecklistItemsList();
+  toast('Criterion updated.', 'success');
+};
+
+window.toggleAuditChecklistItemActive = async function(itemId, newVal){
+  const { error } = await STATE.supabase.from('audit_checklist_items').update({ is_active:newVal }).eq('id', itemId);
+  if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+  await loadAuditChecklistItems();
+  renderAuditChecklistItemsList();
+};
+
+window.deleteAuditChecklistItem = async function(itemId){
+  if(!confirm('Delete this criterion? Audits that already used it keep their own record unaffected.')) return;
+  const { error } = await STATE.supabase.from('audit_checklist_items').delete().eq('id', itemId);
+  if(error){ toast('Could not delete: ' + error.message, 'error'); return; }
+  await loadAuditChecklistItems();
+  renderAuditChecklistItemsList();
+  toast('Criterion deleted.', 'success');
+};
+
+function renderNewAuditChecklistSection(audit, responses){
+  if(!responses.length) return '';
+  const isComplete = ['completed','report_issued'].includes(audit.status);
+  return `
+    <div class="panel-head" style="margin-top:18px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Checklist</h3></div>
+    ${responses.map(r => `
+      <div class="detail-card" style="margin-bottom:8px; padding:12px 16px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+          <div style="flex:1;">${r.item_text}</div>
+          ${isComplete
+            ? `<span class="sev-badge ${r.result==='nonconformance'?'critical':r.result==='observation'?'major':'minor'}" style="text-transform:capitalize;">${r.result||'Not assessed'}</span>`
+            : `<select id="acr-result-${r.id}" onchange="saveAuditChecklistResult('${r.id}','${audit.id}')" style="border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12px; flex-shrink:0;">
+                <option value="">Not yet assessed</option>
+                <option value="conforms" ${r.result==='conforms'?'selected':''}>Conforms</option>
+                <option value="observation" ${r.result==='observation'?'selected':''}>Observation</option>
+                <option value="nonconformance" ${r.result==='nonconformance'?'selected':''}>Nonconformance</option>
+              </select>`}
+        </div>
+        ${isComplete
+          ? (r.notes ? `<p style="font-size:12px; color:var(--text-dim); margin-top:6px;">${r.notes}</p>` : '')
+          : `<input type="text" id="acr-notes-${r.id}" value="${(r.notes||'').replace(/"/g,'&quot;')}" onblur="saveAuditChecklistNotes('${r.id}')" placeholder="Notes (optional)" style="width:100%; margin-top:8px; border:1px solid var(--border); border-radius:6px; padding:7px 10px; font-size:12.5px;">`}
+        ${r.nonconformance_id ? `<div style="margin-top:8px;"><span class="linked-task-chip">Raised as nonconformance</span></div>`
+          : (r.result==='nonconformance' && !isComplete ? `<div style="margin-top:8px;"><button class="btn-small primary" onclick="promoteAuditChecklistItem('${r.id}','${audit.id}')">Raise as nonconformance</button></div>` : '')}
+      </div>`).join('')}
+  `;
+}
+
+window.saveAuditChecklistResult = async function(responseId, auditId){
+  const val = document.getElementById('acr-result-'+responseId).value;
+  const { error } = await STATE.supabase.from('audit_checklist_item_responses').update({ result: val }).eq('id', responseId);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  openAuditDetail(auditId);
+};
+
+window.saveAuditChecklistNotes = async function(responseId){
+  const val = document.getElementById('acr-notes-'+responseId).value.trim();
+  await STATE.supabase.from('audit_checklist_item_responses').update({ notes: val }).eq('id', responseId);
+};
+
+window.promoteAuditChecklistItem = async function(responseId, auditId){
+  const { data: r, error: rErr } = await STATE.supabase.from('audit_checklist_item_responses').select('*').eq('id', responseId).single();
+  if(rErr || !r) return;
+  const audit = STATE.audits.find(a=>a.id===auditId);
+  const { data: newNc, error: ncErr } = await STATE.supabase.from('nonconformances').insert({
+    organisation_id: STATE.org.id,
+    title: `Audit finding — ${audit ? audit.title : 'checklist'}`.slice(0,120),
+    description: `${r.item_text}${r.notes ? ' — '+r.notes : ''}`,
+    severity: 'major',
+    raised_by: STATE.user.id,
+    owner_id: STATE.user.id,
+    target_close_date: (() => { const d = new Date(); d.setDate(d.getDate()+14); return d.toISOString().slice(0,10); })(),
+  }).select().single();
+  if(ncErr){ toast('Could not raise nonconformance: ' + ncErr.message, 'error'); return; }
+  await STATE.supabase.from('audit_checklist_item_responses').update({ nonconformance_id: newNc.id }).eq('id', responseId);
+  await loadNCs();
+  openAuditDetail(auditId);
+  updateNavBadges();
+  toast(`Raised as ${newNc.ref_code}.`, 'success');
+};
 
 async function openAuditDetail(id){
   const audit = STATE.audits.find(a=>a.id===id);
@@ -3288,6 +3567,7 @@ async function openAuditDetail(id){
       .select('*, checklist_template_items(clause_reference, item_prompt, sort_order)').eq('audit_id', id);
     checklistResponses = responses || [];
   }
+  const { data: newChecklistResponses } = await STATE.supabase.from('audit_checklist_item_responses').select('*').eq('audit_id', id).order('sort_order', {ascending:true});
 
   const auditorLabel = audit.auditor_id ? memberName(audit.auditor_id) : (audit.external_auditor_name || '—');
 
@@ -3318,6 +3598,7 @@ async function openAuditDetail(id){
       </div>
 
       ${renderChecklistSection(audit, checklistResponses)}
+      ${renderNewAuditChecklistSection(audit, newChecklistResponses || [])}
 
       <div class="panel-head" style="margin-top:6px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Findings</h3>
         <button class="btn-small" onclick="toggleFindingForm()">+ Add finding</button>
@@ -3356,13 +3637,39 @@ window.printAudit = async function(id){
   if(!audit) return;
   const { data: findings } = await STATE.supabase.from('audit_findings').select('*').eq('audit_id', id).order('created_at', {ascending:true});
   const { files: evidenceFiles } = await loadEvidence('audit', id);
-  const auditorLabel = audit.auditor_id ? memberName(audit.auditor_id) : (audit.external_auditor_name || '—');
+  const { data: checklistResponses } = await STATE.supabase.from('audit_checklist_item_responses').select('*').eq('audit_id', id).order('sort_order', {ascending:true});
+
+  const leadLabel = audit.auditor_id ? memberName(audit.auditor_id) : (audit.external_auditor_name || null);
+  const teamMembers = STATE.auditTeamMembers.filter(t=>t.audit_id===id).map(t=>memberName(t.user_id));
+  const fullTeam = [leadLabel, ...teamMembers].filter(Boolean);
+  const standardsLabel = (audit.standards && audit.standards.length) ? audit.standards.join(', ') : (audit.standard || '—');
+
   const meta = [
-    ['Type', label(audit.audit_type)], ['Standard', audit.standard || '—'], ['Auditor', auditorLabel],
+    ['Type', label(audit.audit_type)], ['Standard(s)', standardsLabel], ['Audit Team', fullTeam.length ? fullTeam.join(', ') : '—'],
     ['Planned date', fmtDate(audit.planned_date)], ['Actual date', fmtDate(audit.actual_date)], ['Status', label(audit.status)],
   ];
+
   let body = `<p><b>Scope</b><br>${audit.scope || 'No scope recorded.'}</p>`;
+  if(audit.criteria) body += `<p style="margin-top:10px;"><b>Criteria</b><br>${audit.criteria}</p>`;
+
+  const scopedDepts = (audit.department_ids||[]).map(id=>{ const d = STATE.docDepartments.find(x=>x.id===id); return d ? d.name : null; }).filter(Boolean);
+  const scopedProcs = (audit.process_ids||[]).map(id=>{ const p = STATE.processes.find(x=>x.id===id); return p ? p.name : null; }).filter(Boolean);
+  const scopedSupps = (audit.supplier_ids||[]).map(id=>{ const s = STATE.suppliers.find(x=>x.id===id); return s ? s.name : null; }).filter(Boolean);
+  if(scopedDepts.length || scopedProcs.length || scopedSupps.length || audit.other_scope){
+    body += printSectionTitle('Audit Scope Detail');
+    if(scopedDepts.length) body += `<p><b>Departments:</b> ${scopedDepts.join(', ')}</p>`;
+    if(scopedProcs.length) body += `<p><b>Processes:</b> ${scopedProcs.join(', ')}</p>`;
+    if(scopedSupps.length) body += `<p><b>Suppliers:</b> ${scopedSupps.join(', ')}</p>`;
+    if(audit.other_scope) body += `<p><b>Other:</b> ${audit.other_scope}</p>`;
+  }
+
   body += await buildPrintPhotoGallery(evidenceFiles);
+
+  if(checklistResponses && checklistResponses.length){
+    body += printSectionTitle('Checklist');
+    body += printTable(['Criterion','Result','Notes'], checklistResponses.map(r => [r.item_text, r.result ? label(r.result) : 'Not assessed', r.notes || '—']));
+  }
+
   if(findings && findings.length){
     body += printSectionTitle('Findings');
     body += printTable(['Type','Clause','Description'], findings.map(f => [label(f.finding_type), f.clause_reference||'—', f.description]));
@@ -8671,6 +8978,24 @@ window.switchAdminSubtab = function(tab){
   renderAdminSubtabContent(tab);
 };
 
+window.switchAuditSubtab = function(tab){
+  STATE._auditSubtab = tab;
+  document.querySelectorAll('#content-root .toolbar .btn-small').forEach(b => {
+    if(!b.closest('#audit-board-toolbar-extra')) b.classList.remove('primary');
+  });
+  const activeBtn = document.querySelector(`#content-root .toolbar .btn-small[onclick="switchAuditSubtab('${tab}')"]`);
+  if(activeBtn) activeBtn.classList.add('primary');
+  const extraToolbar = document.getElementById('audit-board-toolbar-extra');
+  if(extraToolbar) extraToolbar.style.display = (tab === 'board') ? 'flex' : 'none';
+  renderAuditSubtabContent(tab);
+};
+
+function renderAuditSubtabContent(tab){
+  if(tab === 'plan') renderAuditPlan();
+  if(tab === 'board') renderAuditsBoard();
+  if(tab === 'checklists') renderAuditChecklists();
+}
+
 function renderAdminSubtabContent(tab){
   if(tab === 'departments') renderAdminDepartments();
   if(tab === 'people') renderAdminPeople();
@@ -9623,8 +9948,13 @@ function getModuleExportConfig(moduleKey){
     ]},
     audits: { rows: STATE.audits, filename: `audits-${orgSlug}.xlsx`, columns: [
       {header:'Ref', get:r=>r.audit_ref}, {header:'Title', get:r=>r.title}, {header:'Type', get:r=>r.audit_type},
-      {header:'Standard', get:r=>r.standard}, {header:'Status', get:r=>r.status}, {header:'Planned Date', get:r=>r.planned_date},
-      {header:'Actual Date', get:r=>r.actual_date}, {header:'Auditor', get:r=>r.auditor_id ? memberName(r.auditor_id) : (r.external_auditor_name||'')},
+      {header:'Standard(s)', get:r=>(r.standards&&r.standards.length)?r.standards.join(', '):r.standard}, {header:'Status', get:r=>r.status}, {header:'Planned Date', get:r=>r.planned_date},
+      {header:'Actual Date', get:r=>r.actual_date},
+      {header:'Audit Team', get:r=>{
+        const lead = r.auditor_id ? memberName(r.auditor_id) : (r.external_auditor_name||'');
+        const team = STATE.auditTeamMembers.filter(t=>t.audit_id===r.id).map(t=>memberName(t.user_id));
+        return [lead, ...team].filter(Boolean).join(', ');
+      }},
     ]},
     risks: { rows: STATE.risks, filename: `risk-register-${orgSlug}.xlsx`, columns: [
       {header:'Ref', get:r=>r.ref_code}, {header:'Title', get:r=>r.title}, {header:'Type', get:r=>r.entry_type},
