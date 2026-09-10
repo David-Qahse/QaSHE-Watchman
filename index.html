@@ -285,6 +285,8 @@
   .btn-small.primary:hover{background:var(--red-dark);}
 
   .empty-state{text-align:center; padding:50px 20px; color:var(--text-faint);}
+  .person-photo-lg{width:52px; height:52px; border-radius:50%; object-fit:cover; flex-shrink:0;}
+  .person-photo-fallback{background:var(--charcoal); color:#fff; display:flex; align-items:center; justify-content:center; font-family:'Poppins'; font-weight:600; font-size:16px;}
 
   /* Organisation Chart — classic connector-line tree, built from nested
      lists. Each node centers its own children beneath it; the
@@ -304,9 +306,10 @@
   .oc-tree li:first-child::after{border-radius:6px 0 0 0;}
   .oc-tree ul::before{content:''; position:absolute; top:0; left:50%; border-left:2px solid var(--border); width:0; height:30px;}
   .oc-tree > li{padding-top:0;}
-  .oc-card{background:var(--panel); border:1.5px solid var(--border); border-radius:12px; padding:14px 18px; min-width:150px; box-shadow:0 2px 8px rgba(0,0,0,.04); transition:box-shadow .15s, border-color .15s;}
+  .oc-card{background:var(--panel); border:1.5px solid var(--border); border-radius:12px; padding:14px 18px; min-width:150px; box-shadow:0 2px 8px rgba(0,0,0,.04); transition:box-shadow .15s, border-color .15s; cursor:pointer;}
   .oc-card:hover{box-shadow:0 6px 18px rgba(0,0,0,.08); border-color:var(--red);}
   .oc-avatar{width:38px; height:38px; border-radius:50%; background:var(--charcoal); color:#fff; display:flex; align-items:center; justify-content:center; font-family:'Poppins'; font-weight:600; font-size:13px; margin:0 auto 8px;}
+  .oc-avatar-photo{width:38px; height:38px; border-radius:50%; object-fit:cover; display:block; margin:0 auto 8px;}
   .oc-name{font-family:'Poppins'; font-weight:600; font-size:12.5px; text-align:center; color:var(--text-main, #1E1C1B);}
   .oc-title{font-size:11px; color:var(--text-faint); text-align:center; margin-top:2px;}
   @media print{.oc-scroll{overflow:visible;}}
@@ -661,7 +664,7 @@
 
 <div id="toast-root"></div>
 
-<div class="watchman-chat-hint" onclick="toggleWatchmanChat()">Ask Watchman a question</div>
+<div class="watchman-chat-hint" onclick="toggleWatchmanChat()">Help</div>
 <button class="watchman-chat-fab" id="watchman-chat-fab" onclick="toggleWatchmanChat()">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
 </button>
@@ -1413,9 +1416,10 @@ function initialsFor(name){
 
 function orgChartNodeHTML(person){
   const title = personTitleFor(person.id);
+  const photo = personPhotoUrl(person);
   return `
-    <div class="oc-card">
-      <div class="oc-avatar">${initialsFor(person.full_name)}</div>
+    <div class="oc-card" onclick="showModule('personnel'); setTimeout(()=>openPersonDetail('${person.id}'),0);">
+      ${photo ? `<img src="${photo}" class="oc-avatar-photo">` : `<div class="oc-avatar">${initialsFor(person.full_name)}</div>`}
       <div class="oc-name">${person.full_name}</div>
       ${title ? `<div class="oc-title">${title}</div>` : ''}
     </div>
@@ -2250,7 +2254,7 @@ const RENDERERS = {
 
   orgchart: () => `
     <div class="toolbar">
-      <p style="font-size:12.5px; color:var(--text-faint); max-width:600px;">Built automatically from each person's recorded line manager and position — set those on Personnel &amp; Competence, and this updates on its own.</p>
+      <div></div>
       <button class="btn-small" onclick="window.print()">Print / PDF</button>
     </div>
     <div id="orgchart-root"></div>
@@ -6873,6 +6877,48 @@ function renderPersonnelMatrix(){
 }
 
 /* ---- Person detail ---- */
+function personPhotoUrl(person){
+  if(!person || !person.photo_path) return null;
+  const { data } = STATE.supabase.storage.from('evidence').getPublicUrl(person.photo_path);
+  return data ? data.publicUrl : null;
+}
+
+window.uploadPersonPhoto = async function(personId){
+  const input = document.getElementById('pd-photo-input');
+  const file = input.files[0];
+  if(!file){ alert('Choose a photo first.'); return; }
+  if(!file.type.startsWith('image/')){ alert('Please choose an image file.'); return; }
+
+  const resized = await resizeImageFile(file, 500, 0.85); // headshots don't need to be large — keeps this light to load everywhere it's shown
+  const path = `personnel-photos/${STATE.org.id}/${personId}/${Date.now()}-${sanitizeFileName(resized.name)}`;
+  const { error: uploadErr } = await STATE.supabase.storage.from('evidence').upload(path, resized);
+  if(uploadErr){ toast('Could not upload the photo: ' + uploadErr.message, 'error'); return; }
+
+  const person = personById(personId);
+  const oldPath = person ? person.photo_path : null;
+
+  const { error } = await STATE.supabase.from('personnel').update({ photo_path: path }).eq('id', personId);
+  if(error){ toast('Photo uploaded, but could not be saved to this record: ' + error.message, 'error'); return; }
+
+  if(oldPath) await STATE.supabase.storage.from('evidence').remove([oldPath]); // replacing a photo shouldn't leave the old one behind, taking up space with nothing pointing to it
+
+  await loadPersonnel();
+  openPersonDetail(personId);
+  toast('Photo uploaded.', 'success');
+};
+
+window.removePersonPhoto = async function(personId){
+  const person = personById(personId);
+  if(!person || !person.photo_path) return;
+  if(!confirm('Remove this photo?')) return;
+  await STATE.supabase.storage.from('evidence').remove([person.photo_path]);
+  const { error } = await STATE.supabase.from('personnel').update({ photo_path: null }).eq('id', personId);
+  if(error){ toast('Could not remove: ' + error.message, 'error'); return; }
+  await loadPersonnel();
+  openPersonDetail(personId);
+  toast('Photo removed.', 'success');
+};
+
 async function openPersonDetail(id){
   const p = personById(id);
   if(!p) return;
@@ -6885,11 +6931,20 @@ async function openPersonDetail(id){
   document.getElementById('pers-detail-slot').innerHTML = `
     <div class="detail-panel">
       <div class="detail-head">
-        <div><span class="ref">${p.ref_code}</span><h3>${p.full_name}</h3></div>
+        <div style="display:flex; align-items:center; gap:14px;">
+          ${personPhotoUrl(p) ? `<img src="${personPhotoUrl(p)}" class="person-photo-lg">` : `<div class="person-photo-lg person-photo-fallback">${initialsFor(p.full_name)}</div>`}
+          <div><span class="ref">${p.ref_code}</span><h3>${p.full_name}</h3></div>
+        </div>
         <div style="display:flex; gap:8px;">
           <button class="btn-small" onclick="printPerson('${p.id}')">Print / PDF</button>
           <button class="close-btn" onclick="closePersonDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
+      </div>
+      <div class="status-row">
+        <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase;">Photo</label>
+        <input type="file" id="pd-photo-input" accept="image/*">
+        <button class="btn-small primary" onclick="uploadPersonPhoto('${p.id}')">Upload</button>
+        ${p.photo_path ? `<button class="btn-small" onclick="removePersonPhoto('${p.id}')">Remove</button>` : ''}
       </div>
       <div class="detail-meta">
         <div class="dm-item"><div class="l">Company number</div><div class="v">${p.company_number || '—'}</div></div>
