@@ -285,6 +285,31 @@
   .btn-small.primary:hover{background:var(--red-dark);}
 
   .empty-state{text-align:center; padding:50px 20px; color:var(--text-faint);}
+
+  /* Organisation Chart — classic connector-line tree, built from nested
+     lists. Each node centers its own children beneath it; the
+     ::before/::after pseudo-elements draw the horizontal and vertical
+     connecting lines, a well-proven technique for this exact shape. */
+  .oc-scroll{overflow-x:auto; padding:30px 20px 50px;}
+  .oc-tree, .oc-tree ul{display:flex; justify-content:center; padding-top:30px; position:relative;}
+  .oc-tree{padding-top:0;}
+  .oc-tree li{display:flex; flex-direction:column; align-items:center; list-style:none; position:relative; padding:30px 14px 0;}
+  .oc-tree li::before, .oc-tree li::after{content:''; position:absolute; top:0; right:50%; border-top:2px solid var(--border); width:50%; height:30px;}
+  .oc-tree li::after{right:auto; left:50%; border-left:2px solid var(--border);}
+  .oc-tree li:only-child::before, .oc-tree li:only-child::after{display:none;}
+  .oc-tree li:only-child{padding-top:0;}
+  .oc-tree li:first-child::before{border:0 none;}
+  .oc-tree li:last-child::after{border:0 none;}
+  .oc-tree li:last-child::before{border-right:2px solid var(--border); border-radius:0 6px 0 0;}
+  .oc-tree li:first-child::after{border-radius:6px 0 0 0;}
+  .oc-tree ul::before{content:''; position:absolute; top:0; left:50%; border-left:2px solid var(--border); width:0; height:30px;}
+  .oc-tree > li{padding-top:0;}
+  .oc-card{background:var(--panel); border:1.5px solid var(--border); border-radius:12px; padding:14px 18px; min-width:150px; box-shadow:0 2px 8px rgba(0,0,0,.04); transition:box-shadow .15s, border-color .15s;}
+  .oc-card:hover{box-shadow:0 6px 18px rgba(0,0,0,.08); border-color:var(--red);}
+  .oc-avatar{width:38px; height:38px; border-radius:50%; background:var(--charcoal); color:#fff; display:flex; align-items:center; justify-content:center; font-family:'Poppins'; font-weight:600; font-size:13px; margin:0 auto 8px;}
+  .oc-name{font-family:'Poppins'; font-weight:600; font-size:12.5px; text-align:center; color:var(--text-main, #1E1C1B);}
+  .oc-title{font-size:11px; color:var(--text-faint); text-align:center; margin-top:2px;}
+  @media print{.oc-scroll{overflow:visible;}}
   .empty-state svg{width:34px; height:34px; margin:0 auto 14px; opacity:.5;}
   .empty-state p{font-size:13.5px;}
 
@@ -710,6 +735,7 @@
       <div class="nav-item" data-mod="objectives" onclick="showModule('objectives')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg> Objectives &amp; Targets <span class="nd amber" id="nd-objective"></span></div>
       <div class="nav-item" data-mod="legal" onclick="showModule('legal')"><svg viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M5 8l-3 6a3 3 0 006 0z"/><path d="M19 8l-3 6a3 3 0 006 0z"/><path d="M5 8h14"/><path d="M8 21h8"/></svg> Legal Compliance <span class="nd amber" id="nd-legal"></span></div>
       <div class="nav-item" data-mod="personnel" onclick="showModule('personnel')"><svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a5 5 0 015-5h4a5 5 0 015 5v2"/><path d="M16 3.13a4 4 0 010 7.75"/><path d="M22 21v-2a4 4 0 00-3-3.87"/></svg> Personnel &amp; Competence</div>
+      <div class="nav-item" data-mod="orgchart" onclick="showModule('orgchart')"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="6" rx="1"/><rect x="3" y="15" width="6" height="6" rx="1"/><rect x="15" y="15" width="6" height="6" rx="1"/><path d="M12 9v3M6 15v-3h12v3"/></svg> Organisation Chart</div>
       <div class="nav-item" data-mod="training" onclick="showModule('training')"><svg viewBox="0 0 24 24"><path d="M22 10v6M2 10l10-5 10 5-10 5-10-5z"/><path d="M6 12v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5"/></svg> Training <span class="nd amber" id="nd-training"></span></div>
       <div class="nav-item" data-mod="appraisals" onclick="showModule('appraisals')"><svg viewBox="0 0 24 24"><path d="M12 20V10M18 20V4M6 20v-4"/></svg> KPIs &amp; Appraisals <span class="nd amber" id="nd-appraisal"></span></div>
       <div class="nav-item" data-mod="assets" onclick="showModule('assets')"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg> Assets &amp; Maintenance <span class="nd amber" id="nd-asset"></span></div>
@@ -1360,6 +1386,7 @@ const MODULE_META = {
   objectives:{title:'Objectives & Targets', sub:() => 'MOD-09 · SMART objectives, planned and monitored per ISO 6.2'},
   legal:{title:'Legal Compliance', sub:() => 'MOD-10 · Legal register, compliance reviews, linked to internal audits'},
   personnel:{title:'Personnel & Competence', sub:() => 'MOD-11 · Register, positions, and the organisation competence matrix'},
+  orgchart:{title:'Organisation Chart', sub:() => 'Generated automatically from recorded line managers and positions'},
   training:{title:'Training', sub:() => 'MOD-12 · Needs, planning, completion, and certificates'},
   appraisals:{title:'KPIs & Appraisals', sub:() => 'MOD-13 · Position KPIs, self-assessment, and manager review'},
   assets:{title:'Assets Management & Maintenance', sub:() => 'MOD-14 · Register, inspection checklists, certificates'},
@@ -1372,6 +1399,61 @@ const MODULE_META = {
 };
 
 const GATED_MODULES = ['nonconformances','tasks','documents','audits','risks','suppliers','customers','objectives','legal','personnel','training','appraisals','assets','bulletins','all_documents','five_s','processes','management_review','administration'];
+
+function personTitleFor(personId){
+  const primary = primaryCompetenceFor(personId);
+  if(!primary) return null;
+  const pos = STATE.positions.find(x=>x.id===primary.position_id);
+  return pos ? pos.title : null;
+}
+
+function initialsFor(name){
+  return (name||'').split(' ').filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join('');
+}
+
+function orgChartNodeHTML(person){
+  const title = personTitleFor(person.id);
+  return `
+    <div class="oc-card">
+      <div class="oc-avatar">${initialsFor(person.full_name)}</div>
+      <div class="oc-name">${person.full_name}</div>
+      ${title ? `<div class="oc-title">${title}</div>` : ''}
+    </div>
+  `;
+}
+
+function orgChartBranchHTML(person, active, visited){
+  if(visited.has(person.id)) return orgChartNodeHTML(person); // guards against a circular reporting chain in the data
+  visited.add(person.id);
+  const reports = active.filter(p => p.line_manager_id === person.id);
+  if(!reports.length){
+    return `<li>${orgChartNodeHTML(person)}</li>`;
+  }
+  return `<li>${orgChartNodeHTML(person)}
+    <ul>${reports.map(r => orgChartBranchHTML(r, active, visited)).join('')}</ul>
+  </li>`;
+}
+
+function renderOrgChart(){
+  const wrap = document.getElementById('orgchart-root');
+  if(!wrap) return;
+  const active = STATE.personnel.filter(p => p.status === 'active');
+  const activeIds = new Set(active.map(p=>p.id));
+  // A root is anyone with no manager, or whose recorded manager isn't
+  // an active person in this list — that second case matters, or
+  // someone whose manager left the company would silently vanish from
+  // their own org chart instead of surfacing at the top of their branch.
+  const roots = active.filter(p => !p.line_manager_id || !activeIds.has(p.line_manager_id));
+
+  if(!active.length){
+    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a5 5 0 015-5h4a5 5 0 015 5v2"/></svg><p>No active personnel recorded yet — add people under Personnel &amp; Competence first.</p></div>`;
+    return;
+  }
+
+  const visited = new Set();
+  wrap.innerHTML = `<div class="oc-scroll"><ul class="oc-tree">${roots.map(r => orgChartBranchHTML(r, active, visited)).join('')}</ul></div>`;
+}
+window.renderOrgChart = renderOrgChart;
 
 function canAccessModule(mod){
   if(!GATED_MODULES.includes(mod)) return true; // overview, compliance — always visible
@@ -1420,6 +1502,7 @@ function showModule(mod){
   if(mod === 'objectives') renderObjectivesTable();
   if(mod === 'legal') renderLegalTable();
   if(mod === 'personnel') renderPersonnelView();
+  if(mod === 'orgchart') renderOrgChart();
   if(mod === 'training') renderTrainingTable();
   if(mod === 'appraisals') renderAppraisalsTable();
   if(mod === 'assets') renderAssetsTable();
@@ -2165,6 +2248,13 @@ const RENDERERS = {
     </div>
   `,
 
+  orgchart: () => `
+    <div class="toolbar">
+      <p style="font-size:12.5px; color:var(--text-faint); max-width:600px;">Built automatically from each person's recorded line manager and position — set those on Personnel &amp; Competence, and this updates on its own.</p>
+      <button class="btn-small" onclick="window.print()">Print / PDF</button>
+    </div>
+    <div id="orgchart-root"></div>
+  `,
   personnel: () => `
     <div class="toolbar">
       <div class="filters">
@@ -2202,6 +2292,7 @@ const RENDERERS = {
         <div class="field"><label>Company number</label><input id="pf-company-number"></div>
         <div class="field"><label>Full time / Contract</label><select id="pf-employment">${optionList(EMPLOYMENT_TYPES)}</select></div>
         <div class="field"><label>Date started</label><input type="date" id="pf-date-started" value="${todayISO()}"></div>
+        <div class="field"><label>Line manager</label><select id="pf-line-manager"><option value="">None — reports to nobody in this system (e.g. the top of the org)</option>${STATE.personnel.map(p=>`<option value="${p.id}">${p.full_name}</option>`).join('')}</select></div>
         <div class="field span3"><label>Qualifications and/or experience</label><textarea id="pf-quals"></textarea></div>
         <div class="field span3"><label>Comments</label><textarea id="pf-comments"></textarea></div>
       </div>
@@ -2318,7 +2409,7 @@ const RENDERERS = {
     <div class="form-panel" id="appraisal-form">
       <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:14px;">Start an appraisal</h3>
       <div class="form-grid">
-        <div class="field"><label>Personnel</label><select id="af-personnel">${STATE.personnel.map(p=>`<option value="${p.id}">${p.full_name} (${p.ref_code})</option>`).join('')}</select></div>
+        <div class="field"><label>Personnel</label><select id="af-personnel" onchange="autofillAppraisalManager()">${STATE.personnel.map(p=>`<option value="${p.id}">${p.full_name} (${p.ref_code})</option>`).join('')}</select></div>
         <div class="field"><label>Line manager</label><select id="af-manager">${memberOptions(STATE.user.id)}</select></div>
         <div class="field"><label>Period start</label><input type="date" id="af-period-start"></div>
         <div class="field"><label>Period end</label><input type="date" id="af-period-end" value="${todayISO()}"></div>
@@ -6688,6 +6779,7 @@ window.submitPerson = async function(){
     qualifications_experience: document.getElementById('pf-quals').value.trim(),
     date_started: document.getElementById('pf-date-started').value || null,
     comments: document.getElementById('pf-comments').value.trim(),
+    line_manager_id: document.getElementById('pf-line-manager').value || null,
     created_by: STATE.user.id,
   }).select().single();
   if(pErr){ toast('Could not register person: ' + pErr.message, 'error'); return; }
@@ -6816,6 +6908,15 @@ async function openPersonDetail(id){
         </select>
         <button class="btn-small primary" onclick="savePersonStatus('${p.id}')">Update status</button>
         <button class="btn-small" onclick="prefillTrainingFromPerson('${p.id}')">+ Training need</button>
+      </div>
+
+      <div class="status-row">
+        <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase;">Line manager</label>
+        <select id="pd-line-manager">
+          <option value="">None — reports to nobody in this system</option>
+          ${STATE.personnel.filter(x=>x.id!==p.id).map(x=>`<option value="${x.id}" ${p.line_manager_id===x.id?'selected':''}>${x.full_name}</option>`).join('')}
+        </select>
+        <button class="btn-small primary" onclick="savePersonLineManager('${p.id}')">Save</button>
       </div>
 
       <div class="status-row">
@@ -7068,6 +7169,16 @@ window.savePersonLink = async function(personId){
   toast(userId ? 'Login linked.' : 'Login link removed.', 'success');
 };
 
+window.savePersonLineManager = async function(personId){
+  const managerId = document.getElementById('pd-line-manager').value || null;
+  if(managerId === personId){ toast('Someone can\'t be their own line manager.', 'error'); return; }
+  const { error } = await STATE.supabase.from('personnel').update({ line_manager_id: managerId }).eq('id', personId);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  await loadPersonnel();
+  openPersonDetail(personId);
+  toast('Line manager updated.', 'success');
+};
+
 window.toggleComplimentForm = function(personId){
   document.getElementById('compliment-form').classList.toggle('open');
 };
@@ -7310,6 +7421,18 @@ window.toggleKpiActive = async function(kpiId, newVal){
 /* ---- New appraisal ---- */
 function toggleAppraisalForm(){ document.getElementById('appraisal-form').classList.toggle('open'); }
 window.toggleAppraisalForm = toggleAppraisalForm;
+
+window.autofillAppraisalManager = function(){
+  const personId = document.getElementById('af-personnel').value;
+  const person = personById(personId);
+  if(!person || !person.line_manager_id) return; // no recorded line manager — leave the dropdown as it was, for manual choice
+  const manager = personById(person.line_manager_id);
+  if(!manager || !manager.linked_profile_id) return; // their manager doesn't have a Watchman login to select — same, leave it manual
+  const managerSelect = document.getElementById('af-manager');
+  if(managerSelect.querySelector(`option[value="${manager.linked_profile_id}"]`)){
+    managerSelect.value = manager.linked_profile_id;
+  }
+};
 
 window.submitAppraisal = async function(){
   const personnelId = document.getElementById('af-personnel').value;
