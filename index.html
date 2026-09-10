@@ -136,6 +136,9 @@
   .topbar-left h2{font-family:'Poppins'; font-size:19px; font-weight:700;}
   .topbar-left p{font-size:12px; color:var(--text-faint); margin-top:2px;}
   .avatar-wrap{display:flex; align-items:center; gap:5px; cursor:pointer; position:relative; padding:4px 6px; border-radius:20px; transition:background .15s;}
+  .account-hint{font-family:'Inter'; font-size:11.5px; font-weight:600; color:var(--text-faint); cursor:pointer; white-space:nowrap;}
+  .account-hint:hover{color:var(--red);}
+  @media (max-width:900px){.account-hint{display:none;}}
   .avatar-wrap:hover{background:var(--panel-alt, #F7F6F5);}
   .avatar{width:30px; height:30px; border-radius:50%; background:var(--charcoal); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; font-family:'Poppins'; font-weight:600;}
   .avatar-chevron{width:14px; height:14px; stroke:var(--text-faint); stroke-width:2.4; fill:none; transition:transform .15s;}
@@ -349,6 +352,9 @@
   #print-container{display:none;}
 
   .watchman-chat-fab{position:fixed; bottom:24px; right:24px; width:56px; height:56px; border-radius:50%; background:var(--red); color:#fff; display:flex; align-items:center; justify-content:center; box-shadow:0 6px 20px rgba(178,22,22,.35); z-index:200; cursor:pointer;}
+  .watchman-chat-hint{position:fixed; bottom:38px; right:92px; background:var(--charcoal-dark, #26241F); color:#fff; font-family:'Inter'; font-size:12px; font-weight:600; padding:8px 14px; border-radius:20px; z-index:199; cursor:pointer; white-space:nowrap; box-shadow:0 4px 12px rgba(0,0,0,.15);}
+  .watchman-chat-hint::after{content:''; position:absolute; top:50%; right:-6px; transform:translateY(-50%); border-width:6px 0 6px 7px; border-style:solid; border-color:transparent transparent transparent var(--charcoal-dark, #26241F);}
+  @media (max-width:640px){.watchman-chat-hint{display:none;}}
   .watchman-chat-fab:hover{background:var(--red-dark);}
   .watchman-chat-fab svg{width:24px; height:24px;}
   .watchman-chat-backdrop{position:fixed; inset:0; background:rgba(30,28,27,.45); z-index:200; display:none;}
@@ -630,6 +636,7 @@
 
 <div id="toast-root"></div>
 
+<div class="watchman-chat-hint" onclick="toggleWatchmanChat()">Ask Watchman a question</div>
 <button class="watchman-chat-fab" id="watchman-chat-fab" onclick="toggleWatchmanChat()">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
 </button>
@@ -723,12 +730,15 @@
           </div>
           <div class="client-logo-slot"></div>
         </div>
-        <div class="avatar-wrap" id="user-avatar" onclick="toggleAvatarMenu(event)">
-          <div class="avatar"><span id="user-avatar-initials">–</span></div>
-          <svg class="avatar-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-          <div class="avatar-menu" id="avatar-menu">
-            <a id="switch-org-link" onclick="showOrgPicker()" style="display:none;"><svg viewBox="0 0 24 24"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg> Switch organisation</a>
-            <a onclick="doSignOut()"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Sign out</a>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div class="account-hint" onclick="toggleAvatarMenu(event)">Switch organisation or sign out</div>
+          <div class="avatar-wrap" id="user-avatar" onclick="toggleAvatarMenu(event)">
+            <div class="avatar"><span id="user-avatar-initials">–</span></div>
+            <svg class="avatar-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            <div class="avatar-menu" id="avatar-menu">
+              <a id="switch-org-link" onclick="showOrgPicker()" style="display:none;"><svg viewBox="0 0 24 24"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg> Switch organisation</a>
+              <a onclick="doSignOut()"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Sign out</a>
+            </div>
           </div>
         </div>
       </div>
@@ -2985,8 +2995,8 @@ async function buildAndPrintNC(id, sections){
     body += printTable(['Task','Assignee','Due','Status'], linkedTasks.map(t => [t.title, memberName(t.assignee_id), fmtDate(t.due_date), label(t.status)]));
   }
 
-  if(sections.otherEvidence && otherFiles.length){
-    body += printSectionTitle('Other Evidence Attached') + '<ul>' + otherFiles.map(f=>`<li>${f.file_name}</li>`).join('') + '</ul>';
+  if(sections.otherEvidence){
+    body += buildPrintSupportingDocsList(evidenceFiles);
   }
 
   if(sections.history && history && history.length){
@@ -3235,9 +3245,14 @@ function renderAuditPlan(){
   const wrap = document.getElementById('audit-subtab-content');
   if(!wrap) return;
   const planned = STATE.audits.filter(a => a.status === 'planned').sort((a,b) => new Date(a.planned_date) - new Date(b.planned_date));
+  const completed = STATE.audits.filter(a => ['completed','report_issued'].includes(a.status)).sort((a,b) => new Date(b.actual_date||0) - new Date(a.actual_date||0));
 
   wrap.innerHTML = `
-    <div class="detail-card">
+    <div class="toolbar" style="padding:0 0 16px;">
+      <button class="btn-primary btn-add" onclick="toggleScheduleAuditForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Schedule an Audit</button>
+    </div>
+
+    <div class="detail-card" id="schedule-audit-form" style="display:none;">
       <div class="panel-head"><h3>Schedule an Audit</h3></div>
       <div class="form-grid">
         <div class="field span3"><label>Title</label><input id="af-title" placeholder="e.g. Q3 internal quality audit — welding line"></div>
@@ -3255,7 +3270,10 @@ function renderAuditPlan(){
         <div class="field"><label>Checklist (optional)</label><select id="af-checklist"><option value="">None</option>${STATE.auditChecklistTemplates.map(t=>`<option value="${t.id}">${t.title}</option>`).join('')}</select></div>
         <div class="field"><label>Scheduled date</label><input type="date" id="af-planned" value="${todayISO()}"></div>
       </div>
-      <button class="btn-primary" onclick="submitAuditPlan()">Schedule audit</button>
+      <div class="form-actions">
+        <button class="btn-cancel" onclick="toggleScheduleAuditForm()">Cancel</button>
+        <button class="btn-primary" onclick="submitAuditPlan()">Schedule audit</button>
+      </div>
     </div>
 
     <div class="detail-card">
@@ -3270,9 +3288,26 @@ function renderAuditPlan(){
         </tr>`).join('')}
       </table>` : '<p style="font-size:12.5px; color:var(--text-faint);">Nothing scheduled yet.</p>'}
     </div>
+
+    <div class="detail-card">
+      <div class="panel-head"><h3>Completed Audits (${completed.length})</h3></div>
+      ${completed.length ? `<table>
+        <tr><th>Title</th><th>Type</th><th>Completed</th><th>Standard(s)</th></tr>
+        ${completed.map(a => `<tr class="clickable" onclick="openAuditDetail('${a.id}')">
+          <td class="strong">${a.title}</td>
+          <td style="text-transform:capitalize">${a.audit_type}</td>
+          <td>${fmtDate(a.actual_date)}</td>
+          <td>${(a.standards && a.standards.length) ? a.standards.join(', ') : (a.standard || '—')}</td>
+        </tr>`).join('')}
+      </table>` : '<p style="font-size:12.5px; color:var(--text-faint);">No completed audits yet.</p>'}
+    </div>
   `;
   toggleAuditorField();
 }
+window.toggleScheduleAuditForm = function(){
+  const el = document.getElementById('schedule-audit-form');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+};
 
 window.submitAuditPlan = async function(){
   const title = document.getElementById('af-title').value.trim();
@@ -3674,11 +3709,7 @@ window.printAudit = async function(id){
     body += printSectionTitle('Findings');
     body += printTable(['Type','Clause','Description'], findings.map(f => [label(f.finding_type), f.clause_reference||'—', f.description]));
   }
-  const otherFiles = nonImageFiles(evidenceFiles);
-  if(otherFiles.length){
-    body += printSectionTitle('Supporting Documents');
-    body += '<ul>' + otherFiles.map(f=>`<li>${f.file_name}${f.description ? ' — '+f.description : ''}</li>`).join('') + '</ul>';
-  }
+  body += buildPrintSupportingDocsList(evidenceFiles);
   await printRecord('Audit Report', audit.audit_ref, meta, body, null, 'audits');
 };
 
@@ -6503,18 +6534,21 @@ window.printLegal = async function(id){
   const l = legalById(id);
   if(!l) return;
   const { data: reviews } = await STATE.supabase.from('legal_reviews').select('*').eq('legal_register_id', id).order('review_date', {ascending:false});
+  const { files: evidenceFiles } = await loadEvidence('legal_register', id);
   const meta = [
     ['Status', l.current_status ? label(l.current_status) : 'Not yet reviewed'], ['Owner', memberName(l.owner_id)],
     ['Last reviewed', fmtDate(l.last_reviewed_date)], ['Next review due', fmtDate(l.next_review_due_date)],
   ];
   let body = `<p><b>Description</b><br>${l.description || 'No description recorded.'}</p>`;
+  body += await buildPrintPhotoGallery(evidenceFiles);
   if(reviews && reviews.length){
     body += printSectionTitle('Compliance Review History');
     body += printTable(['Date','Status','Finding','Close-out'], reviews.map(r => [
       fmtDate(r.review_date), label(r.compliance_status), r.finding_text || '—', r.close_out_date ? fmtDate(r.close_out_date) : '—'
     ]));
   }
-  printRecord('Legal Compliance Record', l.ref_code, meta, body, null, 'legal');
+  body += buildPrintSupportingDocsList(evidenceFiles);
+  await printRecord('Legal Compliance Record', l.ref_code, meta, body, null, 'legal');
 };
 
 function renderLegalReviewRow(r){
@@ -7416,6 +7450,7 @@ window.printAppraisal = async function(id){
   const person = personById(a.personnel_id);
   const position = a.position_id ? positionById(a.position_id) : null;
   const { data: kpis } = await STATE.supabase.from('appraisal_kpis').select('*').eq('appraisal_id', id).order('sort_order', {ascending:true});
+  const { files: evidenceFiles } = await loadEvidence('appraisal', id);
   const meta = [
     ['Personnel', person ? person.full_name : '—'], ['Position', position ? position.title : '—'],
     ['Period', `${fmtDate(a.period_start)} – ${fmtDate(a.period_end)}`], ['Line manager', memberName(a.line_manager_id)],
@@ -7437,7 +7472,9 @@ window.printAppraisal = async function(id){
     body += `<p style="margin-top:6px;"><b>Manager's comment:</b> ${a.manager_comment || '—'}</p>`;
     body += `<p style="margin-top:6px;"><b>Agreed objectives:</b> ${a.agreed_objectives || '—'}</p>`;
   }
-  printRecord('Performance Appraisal', a.ref_code, meta, body, null, 'appraisals');
+  body += await buildPrintPhotoGallery(evidenceFiles);
+  body += buildPrintSupportingDocsList(evidenceFiles);
+  await printRecord('Performance Appraisal', a.ref_code, meta, body, null, 'appraisals');
 };
 
 function renderSendSelfAssessment(a){
@@ -7849,6 +7886,26 @@ window.toggleNewInspectionForm = function(assetId){
   `;
 };
 
+window.printAssetInspection = async function(inspectionId, assetId){
+  const insp = STATE.assetInspectionsSummary.find(i=>i.id===inspectionId) || (await STATE.supabase.from('asset_inspections').select('*').eq('id', inspectionId).single()).data;
+  if(!insp) return;
+  const a = assetById(assetId);
+  const { data: items } = await STATE.supabase.from('asset_inspection_responses').select('*').eq('inspection_id', inspectionId).order('id', {ascending:true});
+  const { files: evidenceFiles } = await loadEvidence('asset_inspection', inspectionId);
+  const meta = [
+    ['Asset', a ? `${a.ref_code} — ${a.description}` : '—'], ['Inspected by', insp.inspected_by_name || '—'],
+    ['Date', fmtDate(insp.inspection_date)], ['Overall result', insp.status ? label(insp.status) : 'In progress'],
+    ['Next inspection due', fmtDate(insp.next_inspection_date)],
+  ];
+  let body = (items && items.length)
+    ? printTable(['Criterion','Condition','Notes'], items.map(it => [it.item_text, assetConditionLabel(it.result), it.notes || '—']))
+    : '<p>No checklist criteria on this inspection.</p>';
+  if(insp.overall_notes) body += `<p style="margin-top:10px;"><b>Overall notes</b><br>${insp.overall_notes}</p>`;
+  body += await buildPrintPhotoGallery(evidenceFiles);
+  body += buildPrintSupportingDocsList(evidenceFiles);
+  await printRecord('Asset Inspection', a ? a.ref_code : 'Inspection', meta, body, null, 'assets');
+};
+
 window.printAsset = async function(id){
   const a = assetById(id);
   if(!a) return;
@@ -7907,6 +7964,7 @@ async function openInspectionDetail(inspectionId, assetId){
       <div class="detail-head">
         <div><span class="ref">Inspection · ${fmtDate(insp.inspection_date)}</span><h3>${insp.inspected_by_name || 'Inspection'}</h3></div>
         <div style="display:flex; gap:8px;">
+          <button class="btn-small" onclick="printAssetInspection('${inspectionId}','${assetId}')">Print / PDF</button>
           <button class="btn-small" onclick="deleteAssetInspection('${inspectionId}','${assetId}')">Delete</button>
           <button class="close-btn" onclick="openAssetDetail('${assetId}')"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
@@ -8364,11 +8422,7 @@ window.printFiveS = async function(id){
     FIVE_S_CATEGORY_LABELS[it.five_s_category] || '—', it.item_text_snapshot, it.result ? label(it.result) : 'Not scored', it.notes || '',
   ]));
   body += await buildPrintPhotoGallery(evidenceFiles);
-  const otherFiles = nonImageFiles(evidenceFiles);
-  if(otherFiles.length){
-    body += printSectionTitle('Supporting Documents');
-    body += '<ul>' + otherFiles.map(f=>`<li>${f.file_name}${f.description ? ' — '+f.description : ''}</li>`).join('') + '</ul>';
-  }
+  body += buildPrintSupportingDocsList(evidenceFiles);
   await printRecord('5S Inspection', insp.ref_code, meta, body, null, 'five_s');
 };
 
@@ -9830,6 +9884,17 @@ async function buildPrintPhotoGallery(evidenceFiles){
 }
 function nonImageFiles(evidenceFiles){
   return (evidenceFiles || []).filter(f => !(f.file_type||'').startsWith('image/'));
+}
+// Shared across every print function — a real reference number per
+// supporting document (Attachment 1, 2, 3…), not just a bare filename,
+// so a printed report can actually be cross-checked against what's
+// physically attached or filed alongside it.
+function buildPrintSupportingDocsList(evidenceFiles){
+  const files = nonImageFiles(evidenceFiles);
+  if(!files.length) return '';
+  let html = printSectionTitle('Supporting Documents');
+  html += printTable(['Ref','File','Description'], files.map((f,i) => [`Attachment ${i+1}`, f.file_name, f.description || '—']));
+  return html;
 }
 
 function waitForPrintImages(container){
