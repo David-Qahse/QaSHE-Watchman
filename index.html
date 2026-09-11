@@ -63,7 +63,9 @@
   .btn-ghost:hover{border-color:var(--charcoal); background:var(--grey-tint);}
 
   .hero{padding:80px 5vw 40px; text-align:center;}
-  .eyebrow{display:inline-flex; align-items:center; gap:8px; font-family:'JetBrains Mono'; font-size:12px; color:var(--red); letter-spacing:.12em; text-transform:uppercase; border:1px solid #EFC9C9; background:var(--red-tint); padding:6px 14px; border-radius:100px; margin-bottom:30px;}
+  .icon-strip{display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px 18px; margin-bottom:30px;}
+  .icon-strip-item{display:flex; align-items:center; gap:6px; font-family:'Inter',sans-serif; font-size:12.5px; color:var(--text); font-weight:500;}
+  .icon-strip-item svg{width:15px; height:15px; stroke:var(--red); fill:none; stroke-width:2; flex-shrink:0;}
   .eyebrow .dot{width:6px; height:6px; border-radius:50%; background:var(--red); animation:pulse 2.2s infinite;}
   @keyframes pulse{0%,100%{opacity:1;} 50%{opacity:.3;}}
 
@@ -92,6 +94,7 @@
   @media (max-width:900px){.iso-grid{grid-template-columns:repeat(2,1fr);}}
   @media (max-width:560px){.iso-grid{grid-template-columns:1fr;}}
   .iso-card{background:#fff; border:1px solid var(--border); border-radius:10px; padding:16px 18px;}
+  .iso-icon-line{width:20px; height:20px; stroke:var(--red); fill:none; stroke-width:2; margin-bottom:8px; display:block;}
   .iso-code{font-family:'JetBrains Mono'; font-weight:600; font-size:13px; color:var(--red); margin-bottom:4px;}
   .iso-name{font-size:13.5px; color:var(--text-dim); font-weight:500;}
   @media (max-width:900px){.module-strip{grid-template-columns:repeat(2,1fr);}}
@@ -345,21 +348,34 @@
   ::-webkit-scrollbar-thumb{background:var(--grey); border-radius:5px;}
 
   /* ============ AUTH / CONFIG GATES ============ */
-  .gate{min-height:100vh; display:none; align-items:center; justify-content:center; padding:24px;}
+  .gate{min-height:100vh; display:none; align-items:center; justify-content:center; padding:24px; background:var(--bg); background-image:radial-gradient(var(--border-soft) 1px, transparent 1px); background-size:26px 26px;}
   .gate.active{display:flex;}
-  .gate-card{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:32px; width:100%; max-width:420px;}
-  .gate-card h2{font-family:'Poppins'; font-size:19px; font-weight:700; margin-bottom:6px;}
-  .gate-card p.sub{font-size:12.5px; color:var(--text-faint); margin-bottom:20px; line-height:1.5;}
+  .gate-card{background:var(--panel); border:1px solid var(--border); border-top:3px solid var(--red); border-radius:14px; padding:36px 32px 32px; width:100%; max-width:420px; box-shadow:0 12px 40px rgba(30,28,27,.07);}
+  .gate-brand{display:flex; flex-direction:column; align-items:center; text-align:center; margin-bottom:26px;}
+  .gate-icon-strip{display:flex; flex-wrap:wrap; justify-content:center; gap:8px 14px; margin-bottom:18px;}
+  .gate-icon-strip-item{display:flex; align-items:center; gap:5px; font-family:'Inter',sans-serif; font-size:10.5px; color:var(--text-faint); font-weight:500;}
+  .gate-icon-strip-item svg{width:13px; height:13px; stroke:var(--red); fill:none; stroke-width:2; flex-shrink:0;}
+  .gate-watch{position:relative; width:56px; height:56px; margin-bottom:14px;}
+  .gate-watch-ring{position:absolute; inset:0; border-radius:50%; border:1.5px solid var(--border);}
+  .gate-watch svg{position:absolute; inset:0;}
+  .gate-sweep{transform-origin:28px 28px; animation:gateSweep 4s linear infinite;}
+  @keyframes gateSweep{from{transform:rotate(0deg);} to{transform:rotate(360deg);}}
+  @media (prefers-reduced-motion: reduce){ .gate-sweep{animation:none;} }
+  .gate-wordmark{font-family:'Poppins'; font-weight:700; font-size:15px; letter-spacing:-.01em;}
+  .gate-wordmark .hl{color:var(--red);}
+  .gate-product{font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); letter-spacing:.06em; text-transform:uppercase; margin-top:2px;}
+  .gate-card h2{font-family:'Poppins'; font-size:19px; font-weight:700; margin-bottom:6px; text-align:center;}
+  .gate-card p.sub{font-size:12.5px; color:var(--text-faint); margin-bottom:22px; line-height:1.5; text-align:center;}
   .gate-card .field{display:flex; flex-direction:column; gap:6px; margin-bottom:14px;}
   .gate-card .field label{font-family:'JetBrains Mono'; font-size:10.5px; color:var(--text-faint); letter-spacing:.04em; text-transform:uppercase;}
-  .gate-card .field input{border:1px solid var(--border); border-radius:6px; padding:10px 12px; background:#fff; color:var(--text); width:100%;}
+  .gate-card .field input{border:1px solid var(--border); border-radius:8px; padding:11px 13px; background:#fff; color:var(--text); width:100%; transition:border-color .15s;}
   .gate-card .field input:focus{outline:none; border-color:var(--red);}
-  .gate-btn{width:100%; background:var(--red); color:#fff; font-weight:600; font-size:14px; padding:11px; border-radius:7px; border:none;}
+  .gate-btn{width:100%; background:var(--red); color:#fff; font-weight:600; font-size:14px; padding:12px; border-radius:8px; border:none; transition:background .15s;}
   .gate-btn:hover{background:var(--red-dark);}
   .gate-btn:disabled{opacity:.5;}
   .gate-error{background:var(--red-tint); color:var(--red); font-size:12.5px; padding:10px 12px; border-radius:7px; margin-bottom:14px;}
   .gate-success{background:var(--green-tint); color:var(--green); font-size:12.5px; padding:10px 12px; border-radius:7px; margin-bottom:14px;}
-  .gate-hint{font-size:11.5px; color:var(--text-faint); margin-top:12px; line-height:1.5;}
+  .gate-hint{font-size:11.5px; color:var(--text-faint); margin-top:12px; line-height:1.5; text-align:center;}
   .org-pick-item{padding:14px; border:1px solid var(--border); border-radius:8px; margin-bottom:8px; cursor:pointer;}
   .org-pick-item:hover{border-color:var(--charcoal); background:var(--grey-tint);}
   .org-pick-item .n{font-weight:600; font-size:14px;}
@@ -486,7 +502,7 @@
 
   <section class="hero">
     <h1 class="display">One system,<br>always <span class="hl">watching.</span></h1>
-    <p class="lead">QaSHE Watchman is Group QaSHE CG's integrated business management system — one platform behind every client engagement, built to deliver high-value monitoring and compliance management across quality, safety, environment, risk, and governance.</p>
+    <p class="lead">QaSHE Watchman is Group QaSHE CG's integrated business management system, one platform behind every client engagement, built to deliver high-value monitoring and compliance management across quality, safety, environment, risk, and governance.</p>
     <div class="hero-ctas">
       <button class="btn-primary" onclick="goTo('dashboard')">Enter Watchman</button>
       <button class="btn-ghost" onclick="document.getElementById('modules-anchor').scrollIntoView({behavior:'smooth'})">View Modules</button>
@@ -504,7 +520,13 @@
         </svg>
       </div>
       <div class="watch-readout">STATUS: <b>WATCHING</b></div>
-      <div class="eyebrow" style="margin-top:22px;"><span class="dot"></span> QUALITY ASSURANCE · CORPORATE GOVERNANCE · BUSINESS EXCELLENCE · LEGAL COMPLIANCE · RISK CONTROL</div>
+      <div class="icon-strip" style="margin-top:22px;">
+        <div class="icon-strip-item"><svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg> Quality Assurance</div>
+        <div class="icon-strip-item"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg> Corporate Governance</div>
+        <div class="icon-strip-item"><svg viewBox="0 0 24 24"><path d="M12 2l3 7h7l-5.5 4.5L18.5 21 12 16.5 5.5 21l2-7.5L2 9h7z"/></svg> Business Excellence</div>
+        <div class="icon-strip-item"><svg viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M5 8l-3 6a3.5 3.5 0 007 0l-3-6z"/><path d="M19 8l-3 6a3.5 3.5 0 007 0l-3-6z"/><path d="M3 8h6M15 8h6M9 21h6"/></svg> Legal Compliance</div>
+        <div class="icon-strip-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg> Risk Control</div>
+      </div>
     </div>
   </section>
 
@@ -514,13 +536,13 @@
   </div>
 
   <div class="iso-grid">
-    <div class="iso-card"><div class="iso-code">ISO 9001:2026</div><div class="iso-name">Quality Assurance</div></div>
-    <div class="iso-card"><div class="iso-code">ISO 45001:2026</div><div class="iso-name">Health and Safety</div></div>
-    <div class="iso-card"><div class="iso-code">ISO 14001:2026</div><div class="iso-name">Environment</div></div>
-    <div class="iso-card"><div class="iso-code">ISO 27001:2022</div><div class="iso-name">Information Security</div></div>
-    <div class="iso-card"><div class="iso-code">ISO 37000:2021</div><div class="iso-name">Corporate Governance</div></div>
-    <div class="iso-card"><div class="iso-code">ISO 37001:2016</div><div class="iso-name">Anti-Bribery &amp; Corruption</div></div>
-    <div class="iso-card"><div class="iso-code">ISO 31000:2018</div><div class="iso-name">Risks &amp; Opportunities</div></div>
+    <div class="iso-card"><svg class="iso-icon-line" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg><div class="iso-code">ISO 9001:2026</div><div class="iso-name">Quality Assurance</div></div>
+    <div class="iso-card"><svg class="iso-icon-line" viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V5l8-3z"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg><div class="iso-code">ISO 45001:2026</div><div class="iso-name">Health and Safety</div></div>
+    <div class="iso-card"><svg class="iso-icon-line" viewBox="0 0 24 24"><path d="M11 20A7 7 0 019.8 6.1C15.5 5 17 4.48 19 3c1 5.5-1.5 10-6.5 14a13 13 0 01-1.5 3z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 11 13 11 13"/></svg><div class="iso-code">ISO 14001:2026</div><div class="iso-name">Environment</div></div>
+    <div class="iso-card"><svg class="iso-icon-line" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg><div class="iso-code">ISO 27001:2022</div><div class="iso-name">Information Security</div></div>
+    <div class="iso-card"><svg class="iso-icon-line" viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg><div class="iso-code">ISO 37000:2021</div><div class="iso-name">Corporate Governance</div></div>
+    <div class="iso-card"><svg class="iso-icon-line" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M5 8l-3 6a3.5 3.5 0 007 0l-3-6z"/><path d="M19 8l-3 6a3.5 3.5 0 007 0l-3-6z"/><path d="M3 8h6M15 8h6M9 21h6"/></svg><div class="iso-code">ISO 37001:2016</div><div class="iso-name">Anti-Bribery &amp; Corruption</div></div>
+    <div class="iso-card"><svg class="iso-icon-line" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg><div class="iso-code">ISO 31000:2018</div><div class="iso-name">Risks &amp; Opportunities</div></div>
   </div>
 
   <div class="section-head">
@@ -629,6 +651,21 @@
 <!-- ================= GATES ================= -->
 <div id="gate-auth" class="gate">
   <div class="gate-card">
+    <div class="gate-brand">
+      <div class="gate-icon-strip">
+        <div class="gate-icon-strip-item"><svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg> Quality</div>
+        <div class="gate-icon-strip-item"><svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V5l8-3z"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg> Safety</div>
+        <div class="gate-icon-strip-item"><svg viewBox="0 0 24 24"><path d="M11 20A7 7 0 019.8 6.1C15.5 5 17 4.48 19 3c1 5.5-1.5 10-6.5 14a13 13 0 01-1.5 3z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 11 13 11 13"/></svg> Environment</div>
+        <div class="gate-icon-strip-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg> Risk</div>
+        <div class="gate-icon-strip-item"><svg viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M5 8l-3 6a3.5 3.5 0 007 0l-3-6z"/><path d="M19 8l-3 6a3.5 3.5 0 007 0l-3-6z"/><path d="M3 8h6M15 8h6M9 21h6"/></svg> Compliance</div>
+      </div>
+      <div class="gate-watch">
+        <div class="gate-watch-ring"></div>
+        <svg viewBox="0 0 56 56"><g class="gate-sweep"><line x1="28" y1="28" x2="28" y2="6" stroke="#B21616" stroke-width="2" opacity="0.9"/></g><circle cx="28" cy="28" r="4" fill="#B21616"/></svg>
+      </div>
+      <div class="gate-wordmark">QaSHE <span class="hl">Watchman</span></div>
+      <div class="gate-product">Integrated Management System</div>
+    </div>
     <h2>Sign in</h2>
     <p class="sub">Sign in with the account your admin invited you with.</p>
     <div id="auth-error"></div>
@@ -641,6 +678,13 @@
 
 <div id="gate-reset-request" class="gate">
   <div class="gate-card">
+    <div class="gate-brand">
+      <div class="gate-watch">
+        <div class="gate-watch-ring"></div>
+        <svg viewBox="0 0 56 56"><g class="gate-sweep"><line x1="28" y1="28" x2="28" y2="6" stroke="#B21616" stroke-width="2" opacity="0.9"/></g><circle cx="28" cy="28" r="4" fill="#B21616"/></svg>
+      </div>
+      <div class="gate-wordmark">QaSHE <span class="hl">Watchman</span></div>
+    </div>
     <h2>Reset your password</h2>
     <p class="sub">Enter the email you sign in with — we'll send you a link to set a new password.</p>
     <div id="reset-request-error"></div>
@@ -653,6 +697,13 @@
 
 <div id="gate-reset-confirm" class="gate">
   <div class="gate-card">
+    <div class="gate-brand">
+      <div class="gate-watch">
+        <div class="gate-watch-ring"></div>
+        <svg viewBox="0 0 56 56"><g class="gate-sweep"><line x1="28" y1="28" x2="28" y2="6" stroke="#B21616" stroke-width="2" opacity="0.9"/></g><circle cx="28" cy="28" r="4" fill="#B21616"/></svg>
+      </div>
+      <div class="gate-wordmark">QaSHE <span class="hl">Watchman</span></div>
+    </div>
     <h2>Set a new password</h2>
     <p class="sub">You're signed in via the reset link — choose a new password to finish.</p>
     <div id="reset-confirm-error"></div>
@@ -664,6 +715,13 @@
 
 <div id="gate-noaccess" class="gate">
   <div class="gate-card">
+    <div class="gate-brand">
+      <div class="gate-watch">
+        <div class="gate-watch-ring"></div>
+        <svg viewBox="0 0 56 56"><g class="gate-sweep"><line x1="28" y1="28" x2="28" y2="6" stroke="#B21616" stroke-width="2" opacity="0.9"/></g><circle cx="28" cy="28" r="4" fill="#B21616"/></svg>
+      </div>
+      <div class="gate-wordmark">QaSHE <span class="hl">Watchman</span></div>
+    </div>
     <h2>No organisation access yet</h2>
     <p class="sub">Your account is signed in, but isn't attached to any organisation yet. Ask your Group QaSHE CG contact to send you an invite.</p>
     <button class="gate-btn" onclick="doSignOut()">Sign out</button>
@@ -672,6 +730,13 @@
 
 <div id="gate-orgpicker" class="gate">
   <div class="gate-card">
+    <div class="gate-brand">
+      <div class="gate-watch">
+        <div class="gate-watch-ring"></div>
+        <svg viewBox="0 0 56 56"><g class="gate-sweep"><line x1="28" y1="28" x2="28" y2="6" stroke="#B21616" stroke-width="2" opacity="0.9"/></g><circle cx="28" cy="28" r="4" fill="#B21616"/></svg>
+      </div>
+      <div class="gate-wordmark">QaSHE <span class="hl">Watchman</span></div>
+    </div>
     <h2>Choose an organisation</h2>
     <p class="sub">You belong to more than one — pick which register to open.</p>
     <div id="org-pick-list"></div>
@@ -7043,7 +7108,7 @@ window.uploadPersonPhoto = async function(personId){
   if(!file.type.startsWith('image/')){ alert('Please choose an image file.'); return; }
 
   const resized = await resizeImageFile(file, 500, 0.85); // headshots don't need to be large — keeps this light to load everywhere it's shown
-  const path = `personnel-photos/${STATE.org.id}/${personId}/${Date.now()}-${sanitizeFileName(resized.name)}`;
+  const path = `${STATE.org.id}/personnel-photos/${personId}/${Date.now()}-${sanitizeFileName(resized.name)}`;
   const { error: uploadErr } = await STATE.supabase.storage.from('evidence').upload(path, resized);
   if(uploadErr){ toast('Could not upload the photo: ' + uploadErr.message, 'error'); return; }
 
