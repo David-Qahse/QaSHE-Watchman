@@ -855,6 +855,7 @@ const STATE = {
   assessmentTemplates:[], assessmentItems:[], assessmentRecords:[], customerSurveys:[], bulkDocuments:[], fiveSInspections:[],
   processes:[], processKpis:[], processReviews:[], managementReviews:[], managementReviewActions:[], invites:[], moduleDescriptions:[], assetInspectionsSummary:[],
   auditChecklistTemplates:[], auditChecklistItems:[], auditTeamMembers:[],
+  divisions:[], personnelDivisions:[],
 };
 let personnelView = 'register';
 let pendingModule = 'overview';
@@ -893,8 +894,51 @@ function toast(msg, kind){
 // Row-Level Security rather than secrecy. Fill in your actual project
 // values before deploying. No one using this app — including real clients
 // — should ever need to know these exist.
-const SUPABASE_URL = "https://uzywxhptwavnvpfzbhkb.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_8XxT0I-Qdmswhd2I-TT_jg_CuI8a24f";
+-- ============================================================================
+-- QaSHE Watchman — Migration 070
+-- Divisions & Per-Division Organisation Charts
+-- Run this AFTER qashe-watchman-schema-personnel-photos.sql
+--
+-- Division is a genuinely separate concept from the existing Department
+-- system — a Division groups people for the purpose of the org chart
+-- and reporting structure (e.g. "Manufacturing", "Corporate Services"),
+-- not document numbering.
+--
+-- A real many-to-many junction table, not a single column — one person
+-- can belong to more than one division, which a simple division_id on
+-- personnel could never represent.
+--
+-- doc_number, revision, and revision_date live on divisions itself —
+-- lightweight, deliberately not routed through the full Document
+-- Control module, since a division's org chart is its own simple
+-- controlled artefact, not a document register entry with all the
+-- surrounding workflow that implies.
+-- ============================================================================
+
+create table divisions (
+  id uuid primary key default gen_random_uuid(),
+  organisation_id uuid not null references organisations(id) on delete cascade,
+  name text not null,
+  doc_number text,
+  revision text,
+  revision_date date,
+  created_by uuid references profiles(id),
+  created_at timestamptz not null default now()
+);
+alter table divisions enable row level security;
+create policy "divisions access" on divisions for all
+  using (organisation_id in (select get_my_org_ids())) with check (organisation_id in (select get_my_org_ids()));
+
+create table personnel_divisions (
+  id uuid primary key default gen_random_uuid(),
+  organisation_id uuid not null references organisations(id) on delete cascade,
+  personnel_id uuid not null references personnel(id) on delete cascade,
+  division_id uuid not null references divisions(id) on delete cascade,
+  unique (personnel_id, division_id)
+);
+alter table personnel_divisions enable row level security;
+create policy "personnel divisions access" on personnel_divisions for all
+  using (organisation_id in (select get_my_org_ids())) with check (organisation_id in (select get_my_org_ids()));
 
 function initSupabase(url, key){
   STATE.supabase = supabaseLib.createClient(url, key);
@@ -1117,6 +1161,7 @@ window.selectOrg = async function(orgId){
   await loadLegalRegister();
   await loadPositions();
   await loadPersonnel();
+  await loadDivisions();
   await loadCompetence();
   await loadTraining();
   await loadPositionKpis();
@@ -1284,6 +1329,13 @@ async function loadPositions(){
   if(error){ toast('Could not load positions: ' + error.message, 'error'); return; }
   STATE.positions = data || [];
 }
+async function loadDivisions(){
+  const { data, error } = await STATE.supabase.from('divisions').select('*').eq('organisation_id', STATE.org.id).order('name', {ascending:true});
+  if(error){ toast('Could not load divisions: ' + error.message, 'error'); return; }
+  STATE.divisions = data || [];
+  const { data: pd } = await STATE.supabase.from('personnel_divisions').select('*').eq('organisation_id', STATE.org.id);
+  STATE.personnelDivisions = pd || [];
+}
 async function loadPersonnel(){
   const { data, error } = await STATE.supabase.from('personnel').select('*').eq('organisation_id', STATE.org.id).order('full_name', {ascending:true});
   if(error){ toast('Could not load personnel: ' + error.message, 'error'); return; }
@@ -1414,11 +1466,11 @@ function initialsFor(name){
   return (name||'').split(' ').filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join('');
 }
 
-function orgChartNodeHTML(person){
+function orgChartNodeHTML(person, clickable){
   const title = personTitleFor(person.id);
   const photo = personPhotoUrl(person);
   return `
-    <div class="oc-card" onclick="showModule('personnel'); setTimeout(()=>openPersonDetail('${person.id}'),0);">
+    <div class="oc-card" ${clickable ? `onclick="showModule('personnel'); setTimeout(()=>openPersonDetail('${person.id}'),0);"` : ''}>
       ${photo ? `<img src="${photo}" class="oc-avatar-photo">` : `<div class="oc-avatar">${initialsFor(person.full_name)}</div>`}
       <div class="oc-name">${person.full_name}</div>
       ${title ? `<div class="oc-title">${title}</div>` : ''}
@@ -1426,38 +1478,152 @@ function orgChartNodeHTML(person){
   `;
 }
 
-function orgChartBranchHTML(person, active, visited){
-  if(visited.has(person.id)) return orgChartNodeHTML(person); // guards against a circular reporting chain in the data
+function orgChartBranchHTML(person, peopleInScope, visited, clickable){
+  if(visited.has(person.id)) return `<li>${orgChartNodeHTML(person, clickable)}</li>`; // guards against a circular reporting chain in the data
   visited.add(person.id);
-  const reports = active.filter(p => p.line_manager_id === person.id);
+  const reports = peopleInScope.filter(p => p.line_manager_id === person.id);
   if(!reports.length){
-    return `<li>${orgChartNodeHTML(person)}</li>`;
+    return `<li>${orgChartNodeHTML(person, clickable)}</li>`;
   }
-  return `<li>${orgChartNodeHTML(person)}
-    <ul>${reports.map(r => orgChartBranchHTML(r, active, visited)).join('')}</ul>
+  return `<li>${orgChartNodeHTML(person, clickable)}
+    <ul>${reports.map(r => orgChartBranchHTML(r, peopleInScope, visited, clickable)).join('')}</ul>
   </li>`;
+}
+
+// Shared between the live, on-screen view and the printed report — the
+// same tree, built from whichever subset of people is passed in,
+// clickable on screen and static on paper.
+function orgChartTreeHTML(peopleInScope, clickable){
+  if(!peopleInScope.length){
+    return '<p style="font-size:12.5px; color:var(--text-faint);">Nobody is currently assigned here.</p>';
+  }
+  const idsInScope = new Set(peopleInScope.map(p=>p.id));
+  // A root, within this scope, is anyone with no manager, or whose
+  // manager isn't part of this particular division — otherwise someone
+  // whose manager sits in a different division would silently vanish
+  // instead of surfacing at the top of their own branch here.
+  const roots = peopleInScope.filter(p => !p.line_manager_id || !idsInScope.has(p.line_manager_id));
+  const visited = new Set();
+  return `<div class="oc-scroll"><ul class="oc-tree">${roots.map(r => orgChartBranchHTML(r, peopleInScope, visited, clickable)).join('')}</ul></div>`;
 }
 
 function renderOrgChart(){
   const wrap = document.getElementById('orgchart-root');
   if(!wrap) return;
-  const active = STATE.personnel.filter(p => p.status === 'active');
-  const activeIds = new Set(active.map(p=>p.id));
-  // A root is anyone with no manager, or whose recorded manager isn't
-  // an active person in this list — that second case matters, or
-  // someone whose manager left the company would silently vanish from
-  // their own org chart instead of surfacing at the top of their branch.
-  const roots = active.filter(p => !p.line_manager_id || !activeIds.has(p.line_manager_id));
+  renderDivisionsManageList();
 
+  const active = STATE.personnel.filter(p => p.status === 'active');
   if(!active.length){
     wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a5 5 0 015-5h4a5 5 0 015 5v2"/></svg><p>No active personnel recorded yet — add people under Personnel &amp; Competence first.</p></div>`;
     return;
   }
 
-  const visited = new Set();
-  wrap.innerHTML = `<div class="oc-scroll"><ul class="oc-tree">${roots.map(r => orgChartBranchHTML(r, active, visited)).join('')}</ul></div>`;
+  if(!STATE.divisions.length){
+    wrap.innerHTML = `
+      <div class="detail-card">
+        <div class="panel-head"><h3>Organisation Chart</h3></div>
+        ${orgChartTreeHTML(active, true)}
+      </div>`;
+    return;
+  }
+
+  const assignedIds = new Set(STATE.personnelDivisions.map(pd=>pd.personnel_id));
+  const unassigned = active.filter(p => !assignedIds.has(p.id));
+
+  wrap.innerHTML = STATE.divisions.map(div => {
+    const memberIds = new Set(STATE.personnelDivisions.filter(pd=>pd.division_id===div.id).map(pd=>pd.personnel_id));
+    const members = active.filter(p => memberIds.has(p.id));
+    return `
+      <div class="detail-card">
+        <div class="panel-head">
+          <h3>${div.name}</h3>
+          <button class="btn-small" onclick="printDivisionOrgChart('${div.id}')">Print / PDF</button>
+        </div>
+        ${div.doc_number || div.revision ? `<p style="font-size:11px; color:var(--text-faint); margin-bottom:10px;">${div.doc_number ? 'Doc '+div.doc_number : ''}${div.doc_number && div.revision ? ' · ' : ''}${div.revision ? 'Rev '+div.revision : ''}${div.revision_date ? ' ('+fmtDate(div.revision_date)+')' : ''}</p>` : ''}
+        ${orgChartTreeHTML(members, true)}
+      </div>`;
+  }).join('') + (unassigned.length ? `
+      <div class="detail-card">
+        <div class="panel-head"><h3>Unassigned</h3></div>
+        <p style="font-size:11.5px; color:var(--text-faint); margin-bottom:10px;">Not yet allocated to a division.</p>
+        ${orgChartTreeHTML(unassigned, true)}
+      </div>` : '');
 }
 window.renderOrgChart = renderOrgChart;
+
+function renderDivisionsManageList(){
+  const wrap = document.getElementById('divisions-manage-list');
+  if(!wrap) return;
+  wrap.innerHTML = STATE.divisions.length ? STATE.divisions.map(d => `
+    <div class="evidence-row">
+      <div style="flex:1;">
+        <b>${d.name}</b>
+        <div id="div-doc-display-${d.id}" style="font-size:11px; color:var(--text-faint); margin-top:2px;">
+          ${d.doc_number || d.revision ? `Doc ${d.doc_number||'—'} · Rev ${d.revision||'—'}${d.revision_date ? ' ('+fmtDate(d.revision_date)+')' : ''}` : 'No document number set'}
+          <a onclick="toggleDivisionDocEdit('${d.id}')" style="color:var(--red); cursor:pointer; margin-left:6px;">Edit</a>
+        </div>
+        <div id="div-doc-edit-${d.id}" style="display:none; margin-top:8px;">
+          <div class="form-grid">
+            <div class="field"><label>Document number</label><input id="div-docnum-${d.id}" value="${d.doc_number||''}"></div>
+            <div class="field"><label>Revision</label><input id="div-rev-${d.id}" value="${d.revision||''}"></div>
+            <div class="field"><label>Revision date</label><input type="date" id="div-revdate-${d.id}" value="${d.revision_date||''}"></div>
+          </div>
+          <button class="btn-small primary" onclick="saveDivisionDocInfo('${d.id}')">Save</button>
+        </div>
+      </div>
+      <div class="ev-actions"><button class="btn-small" onclick="deleteDivision('${d.id}')">Delete</button></div>
+    </div>`).join('') : '<p style="font-size:12.5px; color:var(--text-faint);">No divisions yet — add one above.</p>';
+}
+
+window.addDivision = async function(){
+  const name = document.getElementById('div-new-name').value.trim();
+  if(!name){ alert('Give the division a name.'); return; }
+  const { error } = await STATE.supabase.from('divisions').insert({ organisation_id: STATE.org.id, name, created_by: STATE.user.id });
+  if(error){ toast('Could not add division: ' + error.message, 'error'); return; }
+  document.getElementById('div-new-name').value = '';
+  await loadDivisions();
+  renderOrgChart();
+  toast('Division added.', 'success');
+};
+
+window.toggleDivisionDocEdit = function(divId){
+  const el = document.getElementById('div-doc-edit-'+divId);
+  if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+};
+
+window.saveDivisionDocInfo = async function(divId){
+  const { error } = await STATE.supabase.from('divisions').update({
+    doc_number: document.getElementById('div-docnum-'+divId).value.trim(),
+    revision: document.getElementById('div-rev-'+divId).value.trim(),
+    revision_date: document.getElementById('div-revdate-'+divId).value || null,
+  }).eq('id', divId);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  await loadDivisions();
+  renderOrgChart();
+  toast('Document details saved.', 'success');
+};
+
+window.deleteDivision = async function(divId){
+  if(!confirm('Delete this division? People currently in it will move to "Unassigned" — their records themselves are not affected.')) return;
+  const { error } = await STATE.supabase.from('divisions').delete().eq('id', divId);
+  if(error){ toast('Could not delete: ' + error.message, 'error'); return; }
+  await loadDivisions();
+  renderOrgChart();
+  toast('Division deleted.', 'success');
+};
+
+window.printDivisionOrgChart = async function(divisionId){
+  const div = STATE.divisions.find(d=>d.id===divisionId);
+  if(!div) return;
+  const active = STATE.personnel.filter(p => p.status === 'active');
+  const memberIds = new Set(STATE.personnelDivisions.filter(pd=>pd.division_id===divisionId).map(pd=>pd.personnel_id));
+  const members = active.filter(p => memberIds.has(p.id));
+  const meta = [
+    ['Document number', div.doc_number || '—'], ['Revision', div.revision || '—'], ['Revision date', div.revision_date ? fmtDate(div.revision_date) : '—'],
+  ];
+  const bodyHtml = orgChartTreeHTML(members, false);
+  await printRecord(`${div.name} — Organisation Chart`, div.doc_number || `${div.name} (no document number set)`, meta, bodyHtml, null, null);
+};
 
 function canAccessModule(mod){
   if(!GATED_MODULES.includes(mod)) return true; // overview, compliance — always visible
@@ -2253,9 +2419,13 @@ const RENDERERS = {
   `,
 
   orgchart: () => `
-    <div class="toolbar">
-      <div></div>
-      <button class="btn-small" onclick="window.print()">Print / PDF</button>
+    <div class="detail-card">
+      <div class="panel-head"><h3>Divisions</h3></div>
+      <div class="form-grid" style="margin-bottom:10px;">
+        <div class="field"><label>New division name</label><input id="div-new-name" placeholder="e.g. Manufacturing, Corporate Services"></div>
+      </div>
+      <button class="btn-small primary" onclick="addDivision()">Add division</button>
+      <div id="divisions-manage-list" style="margin-top:14px;"></div>
     </div>
     <div id="orgchart-root"></div>
   `,
@@ -2297,6 +2467,7 @@ const RENDERERS = {
         <div class="field"><label>Full time / Contract</label><select id="pf-employment">${optionList(EMPLOYMENT_TYPES)}</select></div>
         <div class="field"><label>Date started</label><input type="date" id="pf-date-started" value="${todayISO()}"></div>
         <div class="field"><label>Line manager</label><select id="pf-line-manager"><option value="">None — reports to nobody in this system (e.g. the top of the org)</option>${STATE.personnel.map(p=>`<option value="${p.id}">${p.full_name}</option>`).join('')}</select></div>
+        <div class="field"><label>Divisions</label>${checkboxMultiSelect('pf-division', STATE.divisions.map(d=>({id:d.id, label:d.name})), [])}</div>
         <div class="field span3"><label>Qualifications and/or experience</label><textarea id="pf-quals"></textarea></div>
         <div class="field span3"><label>Comments</label><textarea id="pf-comments"></textarea></div>
       </div>
@@ -6800,9 +6971,16 @@ window.submitPerson = async function(){
   });
   if(cErr){ toast('Person registered, but the primary competence record could not be saved: ' + cErr.message, 'error'); }
 
+  const divisionIds = getCheckedValues('pf-division');
+  if(divisionIds.length){
+    const divRows = divisionIds.map(divId => ({ organisation_id: STATE.org.id, personnel_id: newPerson.id, division_id: divId }));
+    await STATE.supabase.from('personnel_divisions').insert(divRows);
+  }
+
   togglePersonForm();
   document.querySelectorAll('#person-form input, #person-form textarea').forEach(el=>el.value='');
   await loadPersonnel();
+  await loadDivisions();
   await loadCompetence();
   renderPersonnelView();
   toast(`${newPerson.ref_code} registered.`, 'success');
@@ -6972,6 +7150,12 @@ async function openPersonDetail(id){
           ${STATE.personnel.filter(x=>x.id!==p.id).map(x=>`<option value="${x.id}" ${p.line_manager_id===x.id?'selected':''}>${x.full_name}</option>`).join('')}
         </select>
         <button class="btn-small primary" onclick="savePersonLineManager('${p.id}')">Save</button>
+      </div>
+
+      <div class="status-row" style="flex-direction:column; align-items:flex-start;">
+        <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Divisions</label>
+        ${checkboxMultiSelect('pd-division', STATE.divisions.map(d=>({id:d.id, label:d.name})), STATE.personnelDivisions.filter(pd=>pd.personnel_id===p.id).map(pd=>pd.division_id))}
+        <button class="btn-small primary" style="margin-top:8px;" onclick="savePersonDivisions('${p.id}')">Save divisions</button>
       </div>
 
       <div class="status-row">
@@ -7232,6 +7416,19 @@ window.savePersonLineManager = async function(personId){
   await loadPersonnel();
   openPersonDetail(personId);
   toast('Line manager updated.', 'success');
+};
+
+window.savePersonDivisions = async function(personId){
+  const divisionIds = getCheckedValues('pd-division');
+  await STATE.supabase.from('personnel_divisions').delete().eq('personnel_id', personId);
+  if(divisionIds.length){
+    const rows = divisionIds.map(divId => ({ organisation_id: STATE.org.id, personnel_id: personId, division_id: divId }));
+    const { error } = await STATE.supabase.from('personnel_divisions').insert(rows);
+    if(error){ toast('Could not save divisions: ' + error.message, 'error'); return; }
+  }
+  await loadDivisions();
+  openPersonDetail(personId);
+  toast('Divisions updated.', 'success');
 };
 
 window.toggleComplimentForm = function(personId){
