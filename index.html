@@ -7107,7 +7107,9 @@ window.uploadPersonPhoto = async function(personId){
   if(!file){ alert('Choose a photo first.'); return; }
   if(!file.type.startsWith('image/')){ alert('Please choose an image file.'); return; }
 
-  const resized = await resizeImageFile(file, 500, 0.85); // headshots don't need to be large — keeps this light to load everywhere it's shown
+  const resizeResult = await resizeImageFile(file, 500, 0.85); // headshots don't need to be large — keeps this light to load everywhere it's shown
+  if(!resizeResult.ok){ toast('That image could not be processed — try a different photo (some phone photo formats like HEIC aren\'t readable by the browser).', 'error'); return; }
+  const resized = resizeResult.file;
   const path = `${STATE.org.id}/personnel-photos/${personId}/${Date.now()}-${sanitizeFileName(resized.name)}`;
   const { error: uploadErr } = await STATE.supabase.storage.from('evidence').upload(path, resized);
   if(uploadErr){ toast('Could not upload the photo: ' + uploadErr.message, 'error'); return; }
