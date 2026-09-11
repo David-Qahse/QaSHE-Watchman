@@ -285,6 +285,23 @@
   .btn-small.primary:hover{background:var(--red-dark);}
 
   .empty-state{text-align:center; padding:50px 20px; color:var(--text-faint);}
+
+  /* Process Flowcharts — a clean, linear top-to-bottom sequence with
+     distinct shapes per step type, matching standard flowchart
+     conventions without needing a full drag-and-drop diagram editor. */
+  .fc-chart{display:flex; flex-direction:column; align-items:center; padding:20px 10px;}
+  .fc-step{display:flex; flex-direction:column; align-items:center; max-width:340px;}
+  .fc-arrow{width:2px; height:26px; background:var(--border); position:relative;}
+  .fc-arrow::after{content:''; position:absolute; bottom:-1px; left:50%; transform:translateX(-50%); border-width:7px 5px 0 5px; border-style:solid; border-color:var(--border) transparent transparent transparent;}
+  .fc-shape-start, .fc-shape-end{background:var(--charcoal); color:#fff; border-radius:24px; padding:10px 22px; font-family:'Poppins'; font-weight:600; font-size:12.5px; text-align:center; cursor:pointer;}
+  .fc-shape-process{background:#fff; border:1.5px solid var(--border); border-radius:8px; padding:12px 20px; font-size:12.5px; text-align:center; box-shadow:0 2px 6px rgba(0,0,0,.04); cursor:pointer; min-width:160px;}
+  .fc-shape-decision{background:var(--red-tint); border:1.5px solid var(--red); border-radius:8px; padding:14px 24px; font-size:12px; text-align:center; font-weight:600; color:var(--red-dark); cursor:pointer; position:relative;}
+  .fc-shape-document{background:#fff; border:1.5px solid var(--border); border-radius:8px; padding:12px 20px 12px 14px; font-size:12.5px; text-align:center; box-shadow:0 2px 6px rgba(0,0,0,.04); cursor:pointer; display:flex; align-items:center; gap:8px; min-width:160px;}
+  .fc-icon{width:16px; height:16px; flex-shrink:0; color:var(--text-faint);}
+  .fc-icon svg{width:100%; height:100%;}
+  .fc-responsible{font-size:10.5px; color:var(--text-faint); margin-top:4px; font-family:'JetBrains Mono';}
+  .fc-decision-labels{display:flex; flex-direction:column; gap:2px; font-size:10.5px; color:var(--text-dim); margin-top:6px; text-align:center;}
+  @media print{ .fc-step, .fc-shape-start, .fc-shape-process, .fc-shape-decision, .fc-shape-document, .fc-shape-end{cursor:default;} }
   .person-photo-lg{width:52px; height:52px; border-radius:50%; object-fit:cover; flex-shrink:0;}
   .person-photo-fallback{background:var(--charcoal); color:#fff; display:flex; align-items:center; justify-content:center; font-family:'Poppins'; font-weight:600; font-size:16px;}
 
@@ -856,6 +873,7 @@ const STATE = {
   processes:[], processKpis:[], processReviews:[], managementReviews:[], managementReviewActions:[], invites:[], moduleDescriptions:[], assetInspectionsSummary:[],
   auditChecklistTemplates:[], auditChecklistItems:[], auditTeamMembers:[],
   divisions:[], personnelDivisions:[],
+  processFlowchartSteps:[], processKpiSamples:[],
 };
 let personnelView = 'register';
 let pendingModule = 'overview';
@@ -894,51 +912,8 @@ function toast(msg, kind){
 // Row-Level Security rather than secrecy. Fill in your actual project
 // values before deploying. No one using this app — including real clients
 // — should ever need to know these exist.
--- ============================================================================
--- QaSHE Watchman — Migration 070
--- Divisions & Per-Division Organisation Charts
--- Run this AFTER qashe-watchman-schema-personnel-photos.sql
---
--- Division is a genuinely separate concept from the existing Department
--- system — a Division groups people for the purpose of the org chart
--- and reporting structure (e.g. "Manufacturing", "Corporate Services"),
--- not document numbering.
---
--- A real many-to-many junction table, not a single column — one person
--- can belong to more than one division, which a simple division_id on
--- personnel could never represent.
---
--- doc_number, revision, and revision_date live on divisions itself —
--- lightweight, deliberately not routed through the full Document
--- Control module, since a division's org chart is its own simple
--- controlled artefact, not a document register entry with all the
--- surrounding workflow that implies.
--- ============================================================================
-
-create table divisions (
-  id uuid primary key default gen_random_uuid(),
-  organisation_id uuid not null references organisations(id) on delete cascade,
-  name text not null,
-  doc_number text,
-  revision text,
-  revision_date date,
-  created_by uuid references profiles(id),
-  created_at timestamptz not null default now()
-);
-alter table divisions enable row level security;
-create policy "divisions access" on divisions for all
-  using (organisation_id in (select get_my_org_ids())) with check (organisation_id in (select get_my_org_ids()));
-
-create table personnel_divisions (
-  id uuid primary key default gen_random_uuid(),
-  organisation_id uuid not null references organisations(id) on delete cascade,
-  personnel_id uuid not null references personnel(id) on delete cascade,
-  division_id uuid not null references divisions(id) on delete cascade,
-  unique (personnel_id, division_id)
-);
-alter table personnel_divisions enable row level security;
-create policy "personnel divisions access" on personnel_divisions for all
-  using (organisation_id in (select get_my_org_ids())) with check (organisation_id in (select get_my_org_ids()));
+const SUPABASE_URL = "https://uzywxhptwavnvpfzbhkb.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_8XxT0I-Qdmswhd2I-TT_jg_CuI8a24f";
 
 function initSupabase(url, key){
   STATE.supabase = supabaseLib.createClient(url, key);
@@ -8857,15 +8832,86 @@ function renderProcessesTable(){
 }
 window.renderProcessesTable = renderProcessesTable;
 
+// Standard process capability calculation. Cp needs both spec limits
+// (it measures raw spread against the full tolerance band); Cpk works
+// with just one limit if that's all the process has, since it measures
+// how centered the process is relative to whichever limit is closer.
+function calcCpCpk(samples, usl, lsl){
+  const values = (samples||[]).map(s=>Number(s.value)).filter(v=>!isNaN(v));
+  if(values.length < 2) return null; // a meaningful standard deviation needs at least 2 points
+  const n = values.length;
+  const mean = values.reduce((a,b)=>a+b,0) / n;
+  const variance = values.reduce((a,b)=>a+Math.pow(b-mean,2),0) / (n-1); // sample variance, n-1 denominator
+  const stdDev = Math.sqrt(variance);
+  if(stdDev === 0) return { mean, stdDev, cp:null, cpk:null, n };
+
+  let cp = null;
+  if(usl !== null && usl !== undefined && lsl !== null && lsl !== undefined){
+    cp = (usl - lsl) / (6 * stdDev);
+  }
+  const cpkUpper = (usl !== null && usl !== undefined) ? (usl - mean) / (3 * stdDev) : null;
+  const cpkLower = (lsl !== null && lsl !== undefined) ? (mean - lsl) / (3 * stdDev) : null;
+  let cpk = null;
+  if(cpkUpper !== null && cpkLower !== null) cpk = Math.min(cpkUpper, cpkLower);
+  else if(cpkUpper !== null) cpk = cpkUpper;
+  else if(cpkLower !== null) cpk = cpkLower;
+
+  return { mean, stdDev, cp, cpk, n };
+}
+
+// Standard Six Sigma / SPC interpretation bands for Cpk.
+function cpkInterpretation(cpk){
+  if(cpk === null || cpk === undefined) return null;
+  if(cpk >= 1.33) return { label: 'Capable', color: 'var(--green)' };
+  if(cpk >= 1.0) return { label: 'Marginal — monitor closely', color: 'var(--amber)' };
+  return { label: 'Not capable — process needs attention', color: 'var(--red)' };
+}
+
+const FLOWCHART_STEP_ICONS = {
+  document: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>`,
+};
+
+function processFlowchartHTML(steps){
+  if(!steps.length){
+    return '<p style="font-size:12.5px; color:var(--text-faint);">No steps added yet — build the flowchart below.</p>';
+  }
+  return `<div class="fc-chart">${steps.map((s, idx) => {
+    const shapeClass = 'fc-shape-' + s.step_type;
+    const responsibleLabel = s.responsible_id ? memberName(s.responsible_id) : null;
+    return `
+      ${idx > 0 ? '<div class="fc-arrow"></div>' : ''}
+      <div class="fc-step">
+        <div class="${shapeClass}" onclick="deleteFlowchartStepConfirm('${s.id}')" title="Click to remove this step">
+          ${FLOWCHART_STEP_ICONS[s.step_type] ? `<span class="fc-icon">${FLOWCHART_STEP_ICONS[s.step_type]}</span>` : ''}
+          <span>${s.step_text}</span>
+        </div>
+        ${responsibleLabel ? `<div class="fc-responsible">${responsibleLabel}</div>` : ''}
+        ${s.step_type === 'decision' && (s.decision_yes_label || s.decision_no_label) ? `
+          <div class="fc-decision-labels">
+            ${s.decision_yes_label ? `<span><b>Yes →</b> ${s.decision_yes_label}</span>` : ''}
+            ${s.decision_no_label ? `<span><b>No →</b> ${s.decision_no_label}</span>` : ''}
+          </div>` : ''}
+      </div>
+    `;
+  }).join('')}</div>`;
+}
+
 async function openProcessDetail(id){
   const p = STATE.processes.find(x=>x.id===id);
   if(!p) return;
   const { data: reviews } = await STATE.supabase.from('process_reviews').select('*').eq('process_id', id).order('review_date', {ascending:false});
   const { data: linkedObjectives } = await STATE.supabase.from('objectives').select('*').eq('process_id', id);
   const { data: linkedNcs } = await STATE.supabase.from('nonconformances').select('*').eq('process_id', id);
+  const { data: steps } = await STATE.supabase.from('process_flowchart_steps').select('*').eq('process_id', id).order('sort_order', {ascending:true});
   const kpis = STATE.processKpis.filter(k=>k.process_id===id);
   const activeKpis = kpis.filter(k=>k.is_active);
   const weightTotal = activeKpis.reduce((s,k)=>s+Number(k.weight||0), 0);
+  const kpiIds = kpis.map(k=>k.id);
+  let samplesByKpi = {};
+  if(kpiIds.length){
+    const { data: samples } = await STATE.supabase.from('process_kpi_samples').select('*').in('kpi_id', kpiIds).order('sample_date', {ascending:true});
+    (samples||[]).forEach(s => { (samplesByKpi[s.kpi_id] = samplesByKpi[s.kpi_id] || []).push(s); });
+  }
 
   document.getElementById('process-detail-slot').innerHTML = `
     <div class="detail-panel">
@@ -8881,6 +8927,15 @@ async function openProcessDetail(id){
         <div class="dm-item"><div class="l">Review frequency</div><div class="v" style="text-transform:capitalize">${p.review_frequency||'—'}</div></div>
         <div class="dm-item"><div class="l">Departments involved</div><div class="v">${p.departments_involved||'—'}</div></div>
         <div class="dm-item"><div class="l">Status</div><div class="v">${pill(p.status)}</div></div>
+      </div>
+      <div class="status-row" style="flex-direction:column; align-items:flex-start;">
+        <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Document Control</label>
+        <div class="form-grid" style="width:100%;">
+          <div class="field"><label>Document number</label><input id="proc-docnum" value="${p.doc_number||''}"></div>
+          <div class="field"><label>Revision</label><input id="proc-rev" value="${p.revision||''}"></div>
+          <div class="field"><label>Revision date</label><input type="date" id="proc-revdate" value="${p.revision_date||''}"></div>
+        </div>
+        <button class="btn-small primary" style="margin-top:8px;" onclick="saveProcessDocInfo('${p.id}')">Save</button>
       </div>
       ${p.purpose ? `<p style="font-size:13px; color:var(--text-dim); margin-bottom:12px;"><b>Purpose:</b> ${p.purpose}</p>` : ''}
       <div style="display:flex; gap:24px; margin-bottom:16px;">
@@ -8901,25 +8956,82 @@ async function openProcessDetail(id){
         <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">KPIs</h3>
           <span class="mono" style="font-size:11px; color:${weightTotal===100?'var(--green)':'var(--amber)'};">Weight total: ${weightTotal}%</span>
         </div>
-        ${kpis.length ? kpis.map(k=>`
-          <div class="evidence-row" style="${!k.is_active?'opacity:.5;':''}">
-            <div style="flex:1;">
-              <b>${k.title}</b> <span class="mono" style="font-size:11px; color:var(--text-faint);">Weight ${k.weight}%</span>
-              ${k.target ? `<div style="font-size:12px; color:var(--text-dim);">Target: ${k.target}</div>` : ''}
+        ${kpis.length ? kpis.map(k=>{
+          const samples = samplesByKpi[k.id] || [];
+          const capability = (k.usl !== null || k.lsl !== null) ? calcCpCpk(samples, k.usl, k.lsl) : null;
+          const interp = capability ? cpkInterpretation(capability.cpk) : null;
+          return `
+          <div class="evidence-row" style="${!k.is_active?'opacity:.5;':''} flex-direction:column; align-items:flex-start;">
+            <div style="display:flex; justify-content:space-between; width:100%;">
+              <div style="flex:1;">
+                <b>${k.title}</b> <span class="mono" style="font-size:11px; color:var(--text-faint);">Weight ${k.weight}%</span>
+                ${k.target ? `<div style="font-size:12px; color:var(--text-dim);">Target: ${k.target}</div>` : ''}
+                ${(k.usl!==null || k.lsl!==null) ? `<div style="font-size:11px; color:var(--text-faint);">Spec limits: ${k.lsl??'—'} to ${k.usl??'—'}</div>` : ''}
+              </div>
+              <button class="btn-small" onclick="toggleProcessKpiActive('${k.id}','${p.id}',${!k.is_active})">${k.is_active?'Deactivate':'Activate'}</button>
             </div>
-            <button class="btn-small" onclick="toggleProcessKpiActive('${k.id}','${p.id}',${!k.is_active})">${k.is_active?'Deactivate':'Activate'}</button>
+            ${(k.usl !== null || k.lsl !== null) ? `
+            <div style="width:100%; background:var(--grey-tint); border-radius:8px; padding:10px 12px; margin-top:8px;">
+              ${capability ? `
+                <div style="display:flex; gap:18px; flex-wrap:wrap; align-items:center;">
+                  ${capability.cp !== null ? `<div><span class="mono" style="font-size:10px; color:var(--text-faint);">CP</span><div style="font-family:'Poppins'; font-weight:700; font-size:16px;">${capability.cp.toFixed(2)}</div></div>` : ''}
+                  ${capability.cpk !== null ? `<div><span class="mono" style="font-size:10px; color:var(--text-faint);">CPK</span><div style="font-family:'Poppins'; font-weight:700; font-size:16px; color:${interp.color};">${capability.cpk.toFixed(2)}</div></div>` : ''}
+                  ${interp ? `<span class="sev-badge" style="background:${interp.color}; color:#fff;">${interp.label}</span>` : ''}
+                  <span class="mono" style="font-size:10.5px; color:var(--text-faint);">n=${capability.n} · mean ${capability.mean.toFixed(3)} · σ ${capability.stdDev.toFixed(3)}</span>
+                </div>
+              ` : `<p style="font-size:11.5px; color:var(--text-faint);">Log at least 2 samples to calculate Cp/Cpk.</p>`}
+              <button class="btn-small" style="margin-top:8px;" onclick="toggleLogSampleForm('${k.id}')">Log sample</button>
+              <button class="btn-small" style="margin-top:8px;" onclick="toggleSampleHistory('${k.id}')">${samples.length} sample${samples.length===1?'':'s'}</button>
+              <div id="log-sample-form-${k.id}" style="display:none; margin-top:8px;">
+                <input type="number" step="any" id="sample-value-${k.id}" placeholder="Measured value" style="width:140px; padding:6px 8px; border:1px solid var(--border); border-radius:5px; font-size:12.5px;">
+                <input type="date" id="sample-date-${k.id}" value="${todayISO()}" style="padding:6px 8px; border:1px solid var(--border); border-radius:5px; font-size:12.5px;">
+                <input type="text" id="sample-batch-${k.id}" placeholder="Batch ref (optional)" style="width:120px; padding:6px 8px; border:1px solid var(--border); border-radius:5px; font-size:12.5px;">
+                <button class="btn-small primary" onclick="logKpiSample('${k.id}','${p.id}')">Save sample</button>
+              </div>
+              <div id="sample-history-${k.id}" style="display:none; margin-top:8px;">
+                ${samples.length ? `<table><tr><th>Date</th><th>Value</th><th>Batch</th><th></th></tr>${samples.map(s=>`<tr><td>${fmtDate(s.sample_date)}</td><td>${s.value}</td><td>${s.batch_ref||'—'}</td><td><a onclick="deleteKpiSample('${s.id}','${p.id}')" style="color:var(--red); cursor:pointer; font-size:11px;">Delete</a></td></tr>`).join('')}</table>` : ''}
+              </div>
+            </div>` : ''}
           </div>
-        `).join('') : '<p style="font-size:12.5px; color:var(--text-faint); margin-bottom:10px;">No KPIs defined yet.</p>'}
+        `;}).join('') : '<p style="font-size:12.5px; color:var(--text-faint); margin-bottom:10px;">No KPIs defined yet.</p>'}
         <div class="form-panel" id="add-process-kpi-form" style="margin-top:10px;">
           <div class="form-grid">
             <div class="field span2"><label>KPI title</label><input id="pk-title" placeholder="What's being measured"></div>
             <div class="field"><label>Weight (%)</label><input type="number" id="pk-weight" placeholder="e.g. 25"></div>
             <div class="field span2"><label>Target</label><input id="pk-target" placeholder="e.g. 98% on-time delivery"></div>
             <div class="field"><label>Source of measure</label><input id="pk-source" placeholder="Where this number comes from"></div>
+            <div class="field"><label>Lower spec limit (optional)</label><input type="number" step="any" id="pk-lsl" placeholder="For Cp/Cpk"></div>
+            <div class="field"><label>Upper spec limit (optional)</label><input type="number" step="any" id="pk-usl" placeholder="For Cp/Cpk"></div>
           </div>
           <button class="btn-small primary" onclick="submitProcessKpi('${p.id}')">Add KPI</button>
         </div>
         <button class="btn-small" onclick="toggleAddProcessKpiForm()" style="margin-top:8px;">+ Add KPI</button>
+      </div>
+
+      <div class="detail-card" style="padding:16px; margin-bottom:16px;">
+        <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Flowchart</h3>
+          <button class="btn-small" onclick="printProcessFlowchart('${p.id}')">Print / PDF</button>
+        </div>
+        <div id="process-flowchart-display">${processFlowchartHTML(steps || [])}</div>
+        <div class="detail-card" style="margin-top:14px; background:var(--grey-tint);">
+          <div style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:10px;">Add a step</div>
+          <div class="form-grid">
+            <div class="field"><label>Step type</label><select id="fc-step-type" onchange="toggleDecisionLabels()">
+              <option value="start">Start</option>
+              <option value="process" selected>Process step</option>
+              <option value="decision">Decision</option>
+              <option value="document">Document / Record</option>
+              <option value="end">End</option>
+            </select></div>
+            <div class="field span2"><label>Description</label><input id="fc-step-text" placeholder="What happens at this step"></div>
+            <div class="field"><label>Responsible</label><select id="fc-step-responsible"><option value="">Unassigned</option>${memberOptions()}</select></div>
+          </div>
+          <div class="form-grid" id="fc-decision-labels" style="display:none;">
+            <div class="field"><label>"Yes" leads to</label><input id="fc-yes-label" placeholder="e.g. Proceed to dispatch"></div>
+            <div class="field"><label>"No" leads to</label><input id="fc-no-label" placeholder="e.g. Return for rework"></div>
+          </div>
+          <button class="btn-small primary" onclick="addFlowchartStep('${p.id}')">Add step</button>
+        </div>
       </div>
 
       <div class="detail-card" style="padding:16px; margin-bottom:16px;">
@@ -8951,10 +9063,14 @@ window.submitProcessKpi = async function(processId){
   const weight = parseFloat(document.getElementById('pk-weight').value) || 0;
   if(!title){ alert('KPI title is required.'); return; }
   const nextSort = STATE.processKpis.filter(k=>k.process_id===processId).length * 10 + 10;
+  const lslVal = document.getElementById('pk-lsl').value;
+  const uslVal = document.getElementById('pk-usl').value;
   const { error } = await STATE.supabase.from('process_kpis').insert({
     organisation_id: STATE.org.id, process_id: processId, title, weight,
     target: document.getElementById('pk-target').value.trim(),
     source_of_measure: document.getElementById('pk-source').value.trim(),
+    lsl: lslVal === '' ? null : parseFloat(lslVal),
+    usl: uslVal === '' ? null : parseFloat(uslVal),
     sort_order: nextSort,
   });
   if(error){ toast('Could not add the KPI: ' + error.message, 'error'); return; }
@@ -8968,6 +9084,93 @@ window.toggleProcessKpiActive = async function(kpiId, processId, newVal){
   if(error){ toast('Could not update: ' + error.message, 'error'); return; }
   await loadProcessKpis();
   openProcessDetail(processId);
+};
+
+window.saveProcessDocInfo = async function(processId){
+  const { error } = await STATE.supabase.from('processes').update({
+    doc_number: document.getElementById('proc-docnum').value.trim(),
+    revision: document.getElementById('proc-rev').value.trim(),
+    revision_date: document.getElementById('proc-revdate').value || null,
+  }).eq('id', processId);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  await loadProcesses();
+  openProcessDetail(processId);
+  toast('Document details saved.', 'success');
+};
+
+window.toggleDecisionLabels = function(){
+  const el = document.getElementById('fc-decision-labels');
+  if(el) el.style.display = document.getElementById('fc-step-type').value === 'decision' ? 'grid' : 'none';
+};
+
+window.addFlowchartStep = async function(processId){
+  const stepText = document.getElementById('fc-step-text').value.trim();
+  if(!stepText){ alert('Describe the step.'); return; }
+  const { data: existing } = await STATE.supabase.from('process_flowchart_steps').select('id').eq('process_id', processId);
+  const nextSort = ((existing||[]).length) * 10 + 10;
+  const stepType = document.getElementById('fc-step-type').value;
+  const { error } = await STATE.supabase.from('process_flowchart_steps').insert({
+    organisation_id: STATE.org.id, process_id: processId, step_type: stepType, step_text: stepText,
+    decision_yes_label: stepType === 'decision' ? document.getElementById('fc-yes-label').value.trim() : null,
+    decision_no_label: stepType === 'decision' ? document.getElementById('fc-no-label').value.trim() : null,
+    responsible_id: document.getElementById('fc-step-responsible').value || null,
+    sort_order: nextSort,
+  });
+  if(error){ toast('Could not add the step: ' + error.message, 'error'); return; }
+  document.getElementById('fc-step-text').value = '';
+  openProcessDetail(processId);
+  toast('Step added.', 'success');
+};
+
+window.deleteFlowchartStepConfirm = async function(stepId){
+  if(!confirm('Remove this step from the flowchart?')) return;
+  const { data: step } = await STATE.supabase.from('process_flowchart_steps').select('process_id').eq('id', stepId).single();
+  const { error } = await STATE.supabase.from('process_flowchart_steps').delete().eq('id', stepId);
+  if(error){ toast('Could not remove: ' + error.message, 'error'); return; }
+  if(step) openProcessDetail(step.process_id);
+};
+
+window.toggleLogSampleForm = function(kpiId){
+  const el = document.getElementById('log-sample-form-'+kpiId);
+  if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+};
+
+window.toggleSampleHistory = function(kpiId){
+  const el = document.getElementById('sample-history-'+kpiId);
+  if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+};
+
+window.logKpiSample = async function(kpiId, processId){
+  const valueInput = document.getElementById('sample-value-'+kpiId);
+  const value = parseFloat(valueInput.value);
+  if(isNaN(value)){ alert('Enter a measured value.'); return; }
+  const { error } = await STATE.supabase.from('process_kpi_samples').insert({
+    organisation_id: STATE.org.id, kpi_id: kpiId, value,
+    sample_date: document.getElementById('sample-date-'+kpiId).value || todayISO(),
+    batch_ref: document.getElementById('sample-batch-'+kpiId).value.trim(),
+    recorded_by: STATE.user.id,
+  });
+  if(error){ toast('Could not log the sample: ' + error.message, 'error'); return; }
+  openProcessDetail(processId);
+  toast('Sample logged.', 'success');
+};
+
+window.deleteKpiSample = async function(sampleId, processId){
+  const { error } = await STATE.supabase.from('process_kpi_samples').delete().eq('id', sampleId);
+  if(error){ toast('Could not delete: ' + error.message, 'error'); return; }
+  openProcessDetail(processId);
+};
+
+window.printProcessFlowchart = async function(processId){
+  const p = STATE.processes.find(x=>x.id===processId);
+  if(!p) return;
+  const { data: steps } = await STATE.supabase.from('process_flowchart_steps').select('*').eq('process_id', processId).order('sort_order', {ascending:true});
+  const meta = [
+    ['Document number', p.doc_number || '—'], ['Revision', p.revision || '—'], ['Revision date', p.revision_date ? fmtDate(p.revision_date) : '—'],
+    ['Owner', memberName(p.owner_id)],
+  ];
+  const bodyHtml = processFlowchartHTML(steps || []);
+  await printRecord(`${p.name} — Process Flowchart`, p.doc_number || p.ref_code, meta, bodyHtml, null, null);
 };
 
 window.toggleProcessReviewForm = function(processId){
