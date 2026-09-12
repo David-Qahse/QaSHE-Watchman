@@ -7097,7 +7097,7 @@ function renderPersonnelMatrix(){
 /* ---- Person detail ---- */
 function personPhotoUrl(person){
   if(!person || !person.photo_path) return null;
-  const { data } = STATE.supabase.storage.from('evidence').getPublicUrl(person.photo_path);
+  const { data } = STATE.supabase.storage.from('avatars').getPublicUrl(person.photo_path);
   return data ? data.publicUrl : null;
 }
 
@@ -7111,7 +7111,7 @@ window.uploadPersonPhoto = async function(personId){
   if(!resizeResult.ok){ toast('That image could not be processed — try a different photo (some phone photo formats like HEIC aren\'t readable by the browser).', 'error'); return; }
   const resized = resizeResult.file;
   const path = `${STATE.org.id}/personnel-photos/${personId}/${Date.now()}-${sanitizeFileName(resized.name)}`;
-  const { error: uploadErr } = await STATE.supabase.storage.from('evidence').upload(path, resized);
+  const { error: uploadErr } = await STATE.supabase.storage.from('avatars').upload(path, resized);
   if(uploadErr){ toast('Could not upload the photo: ' + uploadErr.message, 'error'); return; }
 
   const person = personById(personId);
@@ -7120,7 +7120,7 @@ window.uploadPersonPhoto = async function(personId){
   const { error } = await STATE.supabase.from('personnel').update({ photo_path: path }).eq('id', personId);
   if(error){ toast('Photo uploaded, but could not be saved to this record: ' + error.message, 'error'); return; }
 
-  if(oldPath) await STATE.supabase.storage.from('evidence').remove([oldPath]); // replacing a photo shouldn't leave the old one behind, taking up space with nothing pointing to it
+  if(oldPath) await STATE.supabase.storage.from('avatars').remove([oldPath]); // replacing a photo shouldn't leave the old one behind, taking up space with nothing pointing to it
 
   await loadPersonnel();
   openPersonDetail(personId);
@@ -7131,7 +7131,7 @@ window.removePersonPhoto = async function(personId){
   const person = personById(personId);
   if(!person || !person.photo_path) return;
   if(!confirm('Remove this photo?')) return;
-  await STATE.supabase.storage.from('evidence').remove([person.photo_path]);
+  await STATE.supabase.storage.from('avatars').remove([person.photo_path]);
   const { error } = await STATE.supabase.from('personnel').update({ photo_path: null }).eq('id', personId);
   if(error){ toast('Could not remove: ' + error.message, 'error'); return; }
   await loadPersonnel();
