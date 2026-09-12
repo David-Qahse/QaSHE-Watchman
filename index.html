@@ -440,7 +440,9 @@
   @media print {
     body > *:not(#print-container){display:none !important;}
     #print-container{display:block; position:static; width:100%; padding:0;}
-    .print-header{border-bottom:2.5px solid #B21616; padding-bottom:14px; margin-bottom:18px;}
+    .print-header{border-bottom:2.5px solid #B21616; padding-bottom:14px; margin-bottom:18px; display:flex; align-items:center; gap:14px;}
+    .print-header .print-logo{max-height:50px; max-width:130px; object-fit:contain; flex-shrink:0;}
+    .print-header .print-header-text{flex:1;}
     .print-brand{font-family:'Poppins',sans-serif; font-weight:700; font-size:15px; color:#B21616;}
     .print-doc-title{font-family:'Poppins',sans-serif; font-weight:700; font-size:21px; color:#1E1C1B; margin-top:4px;}
     .print-ref{font-size:11px; color:#615C59; margin-top:3px; font-family:'JetBrains Mono',monospace;}
@@ -5133,7 +5135,7 @@ function renderDocumentsTable(){
       <td>${d.developer_id ? memberName(d.developer_id) : '—'}${d.developer_signed_off_at ? ' <span class="mono" style="color:var(--green); font-size:10px;">✓ signed</span>' : ''}</td>
       <td>${d.approver_id ? memberName(d.approver_id) : '—'}${d.approver_signed_off_at ? ' <span class="mono" style="color:var(--green); font-size:10px;">✓ signed</span>' : ''}</td>
       <td><span class="sev-badge" style="background:${st.color}; color:#fff;">${st.label}</span></td>
-      <td><button class="btn-small" onclick="event.stopPropagation(); downloadDocumentPdf('${d.id}')">Download PDF</button></td>
+      <td><button class="btn-small" onclick="event.stopPropagation(); downloadDocumentPdf('${d.id}')">View / Print PDF</button></td>
     </tr>`;}).join('')}
   </table>`;
 }
@@ -5149,6 +5151,7 @@ async function openDocumentDetail(id){
   const { data: links } = await STATE.supabase.from('document_links').select('*').eq('document_id', id);
   const { data: sectionImages } = await STATE.supabase.from('document_section_images').select('*').eq('document_id', id).order('sort_order', {ascending:true});
   const { data: addendums } = await STATE.supabase.from('document_addendums').select('*').eq('document_id', id).order('sort_order', {ascending:true});
+  const { data: reviewComments } = await STATE.supabase.from('document_review_comments').select('*').eq('document_id', id).order('created_at', {ascending:true});
 
   document.getElementById('doc-detail-slot').innerHTML = `
     <div class="detail-panel">
@@ -5156,7 +5159,7 @@ async function openDocumentDetail(id){
         <div><span class="ref">${d.doc_number}${dept && type ? ' · '+dept.name+' / '+type.name : ''}</span><h3>${d.title}</h3></div>
         <div style="display:flex; gap:8px;">
           <button class="btn-small" onclick="printDocumentContent('${d.id}')" title="Editable copy for review and drafting">Download Word (Review Copy)</button>
-          <button class="btn-small primary" onclick="downloadDocumentPdf('${d.id}')" title="Final, non-editable copy for distribution">Download PDF (Final)</button>
+          <button class="btn-small primary" onclick="downloadDocumentPdf('${d.id}')" title="Final, non-editable copy for printing">View / Print PDF (Final)</button>
           <button class="btn-small" onclick="printDocument('${d.id}')">Print Register Summary</button>
           <button class="close-btn" onclick="closeDocumentDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
@@ -5207,6 +5210,26 @@ async function openDocumentDetail(id){
           </div>
         </div>
         ${d.approver_signed_off_at ? `<div style="margin-top:14px; padding:10px 14px; background:var(--green-tint); border-radius:8px; font-size:12.5px; color:var(--green); font-weight:600;">✓ Fully approved and official</div>` : ''}
+
+        <div style="margin-top:18px; border-top:1px solid var(--border); padding-top:14px;">
+          <div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:10px;">Review Discussion</div>
+          <div id="document-review-thread"></div>
+          ${d.developer_id === STATE.user.id ? `
+            <div style="margin-top:10px;">
+              <textarea id="comment-developer" placeholder="Comment as developer…" style="width:100%; min-height:60px; font-size:12.5px; padding:8px 10px; border:1px solid var(--border); border-radius:6px;"></textarea>
+              <button class="btn-small" style="margin-top:6px;" onclick="addReviewComment('${d.id}','developer')">Post as developer</button>
+            </div>` : ''}
+          ${d.reviewer_id === STATE.user.id ? `
+            <div style="margin-top:10px;">
+              <textarea id="comment-reviewer" placeholder="Comment as reviewer…" style="width:100%; min-height:60px; font-size:12.5px; padding:8px 10px; border:1px solid var(--border); border-radius:6px;"></textarea>
+              <button class="btn-small" style="margin-top:6px;" onclick="addReviewComment('${d.id}','reviewer')">Post as reviewer</button>
+            </div>` : ''}
+          ${d.approver_id === STATE.user.id ? `
+            <div style="margin-top:10px;">
+              <textarea id="comment-approver" placeholder="Comment as approver…" style="width:100%; min-height:60px; font-size:12.5px; padding:8px 10px; border:1px solid var(--border); border-radius:6px;"></textarea>
+              <button class="btn-small" style="margin-top:6px;" onclick="addReviewComment('${d.id}','approver')">Post as approver</button>
+            </div>` : ''}
+        </div>
       </div>
 
       <div class="detail-card" style="padding:16px; margin-bottom:16px;">
@@ -5303,6 +5326,7 @@ async function openDocumentDetail(id){
   renderDocumentSectionsList(id, sections || [], sectionImages || []);
   renderDocumentLinksList(id, links || []);
   renderDocumentAddendumsList(id, addendums || []);
+  renderDocumentReviewThread(id, reviewComments || []);
 }
 window.openDocumentDetail = openDocumentDetail;
 function closeDocumentDetail(){ document.getElementById('doc-detail-slot').innerHTML = ''; }
@@ -5701,12 +5725,9 @@ window.downloadDocumentPdf = async function(id){
   function addParagraph(text){
     doc.setFont('helvetica', 'normal'); doc.setFontSize(12); doc.setTextColor(0,0,0);
     const lines = doc.splitTextToSize(text, contentW);
-    lines.forEach(line => {
-      ensureSpace(16);
-      doc.text(line, marginL, y, { align: 'justify', maxWidth: contentW });
-      y += 16;
-    });
-    y += 8;
+    ensureSpace(lines.length * 16); // whole paragraph together - passing lines one at a time to doc.text() silently drops justification
+    doc.text(lines, marginL, y, { align: 'justify', maxWidth: contentW });
+    y += lines.length * 16 + 8;
   }
 
   (sections || []).forEach((s, idx) => {
@@ -5784,8 +5805,14 @@ window.downloadDocumentPdf = async function(id){
     doc.text(`Page ${i} of ${pageCount}`, pageW - marginR, fy + 11, { align: 'right' });
   }
 
-  doc.save(`${d.doc_number} - ${d.title}.pdf`);
-  toast('PDF downloaded.', 'success');
+  // Opens for viewing/printing rather than forcing a download — the
+  // whole point of the document control principle behind this feature
+  // is that staff work from the controlled register each time, not
+  // from a copy sitting on their own computer that could go stale the
+  // moment a new revision is issued.
+  const blobUrl = doc.output('bloburl');
+  window.open(blobUrl, '_blank');
+  toast('PDF opened for viewing — use your browser\'s print option to print it.', 'success');
 };
 
 window.printDocumentContent = async function(id){
@@ -5997,6 +6024,49 @@ window.signOffDocument = async function(docId, role){
   await loadDocuments();
   openDocumentDetail(docId);
   toast('Signed off.', 'success');
+};
+
+const REVIEW_STAGE_LABELS = { developer: 'Developer', reviewer: 'Reviewer', approver: 'Approver' };
+
+function renderDocumentReviewThread(docId, comments){
+  const wrap = document.getElementById('document-review-thread');
+  if(!wrap) return;
+  wrap.innerHTML = comments.length ? comments.map(c => `
+    <div style="padding:8px 0; border-bottom:1px solid var(--border-soft);">
+      <div style="display:flex; justify-content:space-between;">
+        <b style="font-size:11.5px;">${REVIEW_STAGE_LABELS[c.stage]||c.stage} — ${memberName(c.author_id)}</b>
+        <span class="mono" style="font-size:10px; color:var(--text-faint);">${fmtDate(c.created_at)}</span>
+      </div>
+      <p style="font-size:12.5px; color:var(--text-dim); margin-top:4px; white-space:pre-wrap;">${c.comment_text}</p>
+    </div>`).join('') : '<p style="font-size:12px; color:var(--text-faint);">No discussion yet.</p>';
+}
+
+// Every comment notifies whoever's on the other side of that stage's
+// conversation — a developer's comment goes to the reviewer, and vice
+// versa, and the same pairing between reviewer and approver — so
+// nobody has to remember to check back manually.
+window.addReviewComment = async function(docId, stage){
+  const textarea = document.getElementById('comment-'+stage);
+  const text = textarea.value.trim();
+  if(!text){ alert('Write a comment first.'); return; }
+  const { error } = await STATE.supabase.from('document_review_comments').insert({
+    organisation_id: STATE.org.id, document_id: docId, stage, author_id: STATE.user.id, comment_text: text,
+  });
+  if(error){ toast('Could not post the comment: ' + error.message, 'error'); return; }
+
+  const d = documentById(docId);
+  const docLabel = `${d.doc_number} — ${d.title}`;
+  const notifyMap = { developer: d.reviewer_id, reviewer: d.developer_id || d.approver_id, approver: d.reviewer_id };
+  // Reviewer's comment could reasonably go back to whoever they're
+  // actively corresponding with — developer if the document hasn't
+  // reached the approver stage yet, approver if it has.
+  const notifyId = stage === 'reviewer' ? (d.approver_signed_off_at || d.reviewer_signed_off_at ? d.approver_id : d.developer_id) : notifyMap[stage];
+  if(notifyId){
+    sendNotificationEmail(notifyId, `New comment on ${docLabel}`, `${memberName(STATE.user.id)} left a comment as ${REVIEW_STAGE_LABELS[stage]} on ${docLabel} in QaSHE Watchman:\n\n"${text}"`);
+  }
+
+  openDocumentDetail(docId);
+  toast('Comment posted.', 'success');
 };
 
 window.saveDocumentStatus = async function(id){
@@ -11390,9 +11460,12 @@ async function printRecord(docTitle, refLine, metaPairs, bodyHtml, extraHtml, mo
   const formId = moduleKey ? formIdWithDate(moduleKey) : null;
   container.innerHTML = `
     <div class="print-header">
-      <div class="print-brand">${STATE.org.name}</div>
-      <div class="print-doc-title">${docTitle}</div>
-      <div class="print-ref">${refLine} · Printed ${new Date().toLocaleString('en-GB')} by ${STATE.profile.name || STATE.user.email}</div>
+      ${STATE.org.logo_url ? `<img class="print-logo" src="${STATE.org.logo_url}">` : ''}
+      <div class="print-header-text">
+        <div class="print-brand">${STATE.org.name}</div>
+        <div class="print-doc-title">${docTitle}</div>
+        <div class="print-ref">${refLine} · Printed ${new Date().toLocaleString('en-GB')} by ${STATE.profile.name || STATE.user.email}</div>
+      </div>
     </div>
     <div class="print-meta-grid">
       ${metaPairs.map(([k,v])=>`<div><b>${k}:</b> ${v ?? '—'}</div>`).join('')}
