@@ -5100,6 +5100,15 @@ function renderDocSetupTab(){
   renderFormIdsList();
 }
 
+// Computed directly from the sign-off timestamps already on the
+// document — not a separate, manually-set field that could drift out
+// of sync with what's actually been signed.
+function documentSignoffStatus(d){
+  if(d.approver_signed_off_at) return { label: 'Approved', color: '#2E5AA8' };
+  if(d.developer_signed_off_at) return { label: 'Under Review', color: '#2E7D4F' };
+  return { label: 'Draft', color: '#B26A16' };
+}
+
 function renderDocumentsTable(){
   const wrap = document.getElementById('doc-table-wrap');
   if(!wrap) return;
@@ -5114,18 +5123,18 @@ function renderDocumentsTable(){
     return;
   }
   wrap.innerHTML = `<table>
-    <tr><th>Document Number</th><th>Document Name</th><th>Created</th><th>Revision</th><th>Revision Date</th><th>Next Review</th><th>Developer</th><th>Approver</th><th></th></tr>
-    ${rows.map(d=>`<tr class="clickable" onclick="openDocumentDetail('${d.id}')">
+    <tr><th>Document Number</th><th>Document Name</th><th>Revision</th><th>Revision Date</th><th>Next Review</th><th>Developer</th><th>Approver</th><th>Status</th><th></th></tr>
+    ${rows.map(d=>{ const st = documentSignoffStatus(d); return `<tr class="clickable" onclick="openDocumentDetail('${d.id}')">
       <td class="mono-cell">${d.doc_number}</td>
       <td class="strong">${d.title}</td>
-      <td>${fmtDate(d.introduced_date)}</td>
       <td style="text-align:center;">${d.current_revision}</td>
       <td>${fmtDate(d.current_revision_date)}</td>
       <td>${fmtDate(d.next_review_date)} ${dateStatusBadge(d.next_review_date, ['withdrawn','superseded'].includes(d.status))}</td>
       <td>${d.developer_id ? memberName(d.developer_id) : '—'}${d.developer_signed_off_at ? ' <span class="mono" style="color:var(--green); font-size:10px;">✓ signed</span>' : ''}</td>
       <td>${d.approver_id ? memberName(d.approver_id) : '—'}${d.approver_signed_off_at ? ' <span class="mono" style="color:var(--green); font-size:10px;">✓ signed</span>' : ''}</td>
-      <td><button class="btn-small" onclick="event.stopPropagation(); printDocumentContent('${d.id}')">Download Word Doc</button></td>
-    </tr>`).join('')}
+      <td><span class="sev-badge" style="background:${st.color}; color:#fff;">${st.label}</span></td>
+      <td><button class="btn-small" onclick="event.stopPropagation(); downloadDocumentPdf('${d.id}')">Download PDF</button></td>
+    </tr>`;}).join('')}
   </table>`;
 }
 window.renderDocumentsTable = renderDocumentsTable;
@@ -5146,7 +5155,8 @@ async function openDocumentDetail(id){
       <div class="detail-head">
         <div><span class="ref">${d.doc_number}${dept && type ? ' · '+dept.name+' / '+type.name : ''}</span><h3>${d.title}</h3></div>
         <div style="display:flex; gap:8px;">
-          <button class="btn-small primary" onclick="printDocumentContent('${d.id}')">Download Word Document</button>
+          <button class="btn-small" onclick="printDocumentContent('${d.id}')" title="Editable copy for review and drafting">Download Word (Review Copy)</button>
+          <button class="btn-small primary" onclick="downloadDocumentPdf('${d.id}')" title="Final, non-editable copy for distribution">Download PDF (Final)</button>
           <button class="btn-small" onclick="printDocument('${d.id}')">Print Register Summary</button>
           <button class="close-btn" onclick="closeDocumentDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
@@ -5608,7 +5618,19 @@ async function fetchImageForDocx(url){
   const contentType = res.headers.get('content-type') || '';
   const data = await res.arrayBuffer();
   const type = contentType.includes('png') ? 'png' : contentType.includes('gif') ? 'gif' : 'jpg';
-  return { data, type };
+  // Real dimensions read from the image itself — a fixed box would
+  // stretch or squash whatever doesn't happen to match its exact
+  // proportions, which is exactly what was distorting the logo before.
+  const blob = new Blob([data], { type: contentType || 'image/png' });
+  const bitmap = await createImageBitmap(blob);
+  return { data, type, naturalWidth: bitmap.width, naturalHeight: bitmap.height };
+}
+
+// Scales to fit within a maximum box while preserving the original
+// aspect ratio exactly — never stretches in one dimension only.
+function fitImageDimensions(naturalWidth, naturalHeight, maxWidth, maxHeight){
+  const ratio = Math.min(maxWidth / naturalWidth, maxHeight / naturalHeight);
+  return { width: Math.round(naturalWidth * ratio), height: Math.round(naturalHeight * ratio) };
 }
 
 // Generates a genuine .docx file matching the sample document's actual
@@ -5616,6 +5638,156 @@ async function fetchImageForDocx(url){
 // one. This replaced an HTML/browser-print approach entirely, after
 // that approach couldn't reliably produce the professional, consistent
 // result needed here.
+// Shared by both the PDF generator (register, for staff) and the Word
+// generator (detail view, for the authoring team) — same underlying
+// content, fetched once, rather than duplicating this in both places.
+async function fetchDocumentContentData(id){
+  const { data: sections } = await STATE.supabase.from('document_content_sections').select('*').eq('document_id', id).order('sort_order', {ascending:true});
+  const { data: sectionImages } = await STATE.supabase.from('document_section_images').select('*').eq('document_id', id).order('sort_order', {ascending:true});
+  const { data: addendums } = await STATE.supabase.from('document_addendums').select('*').eq('document_id', id).order('sort_order', {ascending:true});
+
+  let logoImage = null;
+  if(STATE.org.logo_url){
+    try { logoImage = await fetchImageForDocx(STATE.org.logo_url); } catch(e) { console.warn('Logo could not be fetched:', e); }
+  }
+  const sectionImageData = {};
+  for(const img of (sectionImages || [])){
+    const { data: signedData } = await STATE.supabase.storage.from('documents').createSignedUrl(img.storage_path, 3600);
+    if(signedData){
+      try { sectionImageData[img.id] = await fetchImageForDocx(signedData.signedUrl); } catch(e) { console.warn('A section image could not be fetched:', e); }
+    }
+  }
+  return { sections: sections||[], sectionImages: sectionImages||[], addendums: addendums||[], logoImage, sectionImageData };
+}
+
+function arrayBufferToDataUrl(buffer, mimeType){
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  for(let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  return `data:${mimeType};base64,${btoa(binary)}`;
+}
+
+// This is the button staff actually use from the register — a real,
+// non-editable PDF. Document control principle behind keeping this
+// separate from the Word version: an editable copy circulating outside
+// the authoring/sign-off workflow undermines the whole point of
+// controlling revisions in the first place. Staff get a finished
+// artefact, not a file they could accidentally alter.
+window.downloadDocumentPdf = async function(id){
+  const d = documentById(id);
+  if(!d) return;
+  toast('Generating PDF…', 'success');
+
+  const jspdfLib = await import('https://cdn.jsdelivr.net/npm/jspdf@4.2.1/+esm');
+  const { jsPDF } = jspdfLib;
+  const { sections, sectionImages, addendums, logoImage, sectionImageData } = await fetchDocumentContentData(id);
+
+  const pageW = 595, pageH = 842; // A4 in points
+  const marginL = 45, marginR = 45, contentW = pageW - marginL - marginR;
+  const headerH = 90, footerH = 70;
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  let y = headerH + 20;
+
+  function ensureSpace(needed){
+    if(y + needed > pageH - footerH){ doc.addPage(); y = headerH + 20; }
+  }
+
+  function addHeading(text, size){
+    ensureSpace(size + 16);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(size); doc.setTextColor(0,0,0);
+    doc.text(text, marginL, y);
+    y += size + 10;
+  }
+  function addParagraph(text){
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(12); doc.setTextColor(0,0,0);
+    const lines = doc.splitTextToSize(text, contentW);
+    lines.forEach(line => {
+      ensureSpace(16);
+      doc.text(line, marginL, y, { align: 'justify', maxWidth: contentW });
+      y += 16;
+    });
+    y += 8;
+  }
+
+  (sections || []).forEach((s, idx) => {
+    addHeading(`${idx + 1}. ${s.section_title}`, 14);
+    (s.content || '').split('\n').forEach(p => { if(p.trim()) addParagraph(p); });
+    (sectionImages||[]).filter(img => img.section_id === s.id).forEach(img => {
+      const imgData = sectionImageData[img.id];
+      if(!imgData) return;
+      const dims = fitImageDimensions(imgData.naturalWidth, imgData.naturalHeight, 320, 220);
+      ensureSpace(dims.height + 24);
+      const dataUrl = arrayBufferToDataUrl(imgData.data, imgData.type === 'png' ? 'image/png' : 'image/jpeg');
+      const x = marginL + (contentW - dims.width) / 2;
+      doc.addImage(dataUrl, imgData.type.toUpperCase(), x, y, dims.width, dims.height);
+      y += dims.height + 6;
+      if(img.caption){
+        doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(68,68,68);
+        doc.text(img.caption, pageW/2, y, { align: 'center' });
+        y += 16;
+      }
+    });
+  });
+
+  if((addendums||[]).length){
+    doc.addPage(); y = headerH + 20;
+    addHeading('Addendums', 16);
+    addendums.forEach((a, idx) => {
+      addHeading(`${String.fromCharCode(65+idx)}. ${a.title}`, 13);
+      (a.content||'').split('\n').forEach(p => { if(p.trim()) addParagraph(p); });
+      if(a.storage_path){
+        doc.setFont('helvetica','italic'); doc.setFontSize(10);
+        ensureSpace(14); doc.text(`(See attached file: ${a.title})`, marginL, y); y += 18;
+      }
+    });
+  }
+
+  if(!(sections||[]).length){
+    doc.setFont('helvetica','italic'); doc.setFontSize(11); doc.setTextColor(100,100,100);
+    doc.text('No content sections have been authored yet.', marginL, y);
+  }
+
+  const pageCount = doc.internal.getNumberOfPages();
+  const reviewLine = d.reviewer_id ? `Reviewer: ${memberName(d.reviewer_id)} — ${d.reviewer_signed_off_at ? 'Reviewed '+fmtDate(d.reviewer_signed_off_at) : 'Pending'}` : 'Reviewer: —';
+  const approveLine = d.approver_id ? `Approver: ${memberName(d.approver_id)} — ${d.approver_signed_off_at ? 'Approved '+fmtDate(d.approver_signed_off_at) : 'Pending'}` : 'Approver: —';
+
+  for(let i = 1; i <= pageCount; i++){
+    doc.setPage(i);
+    // Header, repeated identically on every page
+    let hy = 30;
+    if(logoImage){
+      const logoDims = fitImageDimensions(logoImage.naturalWidth, logoImage.naturalHeight, 100, 40);
+      const dataUrl = arrayBufferToDataUrl(logoImage.data, logoImage.type === 'png' ? 'image/png' : 'image/jpeg');
+      doc.addImage(dataUrl, logoImage.type.toUpperCase(), marginL, hy - 10, logoDims.width, logoDims.height);
+    }
+    doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(0,0,0);
+    doc.text(STATE.org.name, marginL + (logoImage ? 115 : 0), hy);
+    doc.setFont('helvetica','normal'); doc.setFontSize(9);
+    if(STATE.org.address) doc.text(STATE.org.address, marginL + (logoImage ? 115 : 0), hy + 14);
+    doc.setFont('helvetica','bold'); doc.setFontSize(13);
+    doc.text(d.title, pageW - marginR, hy, { align: 'right' });
+    doc.setLineWidth(1.2); doc.line(marginL, headerH - 15, pageW - marginR, headerH - 15);
+
+    // Footer, repeated identically on every page — the real "Page X of Y"
+    // this format never allowed reliably before
+    const fy = pageH - footerH + 12;
+    doc.setDrawColor(208,208,208); doc.setLineWidth(0.6);
+    doc.line(marginL, fy - 8, pageW - marginR, fy - 8);
+    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(0,0,0);
+    const col1 = marginL, col2 = marginL + 150, col3 = marginL + 330;
+    doc.text(`Doc No: ${d.doc_number}`, col1, fy);
+    doc.text(`Rev: ${d.current_revision}  |  ${fmtDate(d.current_revision_date)}`, col1, fy + 11);
+    doc.text('Printed copies are uncontrolled.', col2, fy);
+    doc.text('Refer to QaSHE Watchman for current status.', col2, fy + 11);
+    doc.text(reviewLine, col3, fy);
+    doc.text(approveLine, col3, fy + 11);
+    doc.text(`Page ${i} of ${pageCount}`, pageW - marginR, fy + 11, { align: 'right' });
+  }
+
+  doc.save(`${d.doc_number} - ${d.title}.pdf`);
+  toast('PDF downloaded.', 'success');
+};
+
 window.printDocumentContent = async function(id){
   const d = documentById(id);
   if(!d) return;
@@ -5646,7 +5818,8 @@ window.printDocumentContent = async function(id){
 
   const headerChildren = [];
   if(logoImage){
-    headerChildren.push(new Paragraph({ children: [new ImageRun({ data: logoImage.data, type: logoImage.type, transformation: { width: 130, height: 55 } })] }));
+    const logoDims = fitImageDimensions(logoImage.naturalWidth, logoImage.naturalHeight, 140, 60);
+    headerChildren.push(new Paragraph({ children: [new ImageRun({ data: logoImage.data, type: logoImage.type, transformation: logoDims })] }));
   }
   headerChildren.push(new Paragraph({ children: [new TextRun({ text: STATE.org.name, bold: true, size: 32, font: "Arial" })] }));
   if(STATE.org.address){
@@ -5704,10 +5877,11 @@ window.printDocumentContent = async function(id){
     images.forEach(img => {
       const imgData = sectionImageData[img.id];
       if(!imgData) return;
+      const dims = fitImageDimensions(imgData.naturalWidth, imgData.naturalHeight, 380, 260);
       bodyChildren.push(new Paragraph({
         alignment: AlignmentType.CENTER,
         spacing: { before: 120, after: 60 },
-        children: [new ImageRun({ data: imgData.data, type: imgData.type, transformation: { width: 320, height: 220 } })],
+        children: [new ImageRun({ data: imgData.data, type: imgData.type, transformation: dims })],
       }));
       if(img.caption){
         bodyChildren.push(new Paragraph({
