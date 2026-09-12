@@ -1711,7 +1711,7 @@ function showModule(mod){
   if(mod === 'tasks') renderTaskTable();
   if(mod === 'audits') switchAuditSubtab(STATE._auditSubtab || 'plan');
   if(mod === 'risks') renderRisksTable();
-  if(mod === 'documents') renderDocumentsTable();
+  if(mod === 'documents') switchDocSubtab(STATE._docSubtab || 'register');
   if(mod === 'suppliers') renderSuppliersTable();
   if(mod === 'customers') renderCustomersTable();
   if(mod === 'objectives') renderObjectivesTable();
@@ -2173,6 +2173,10 @@ const RENDERERS = {
   documents: () => `
     <div class="toolbar">
       <div class="filters">
+        <button class="btn-small ${STATE._docSubtab==='register'||!STATE._docSubtab?'primary':''}" onclick="switchDocSubtab('register')">Register</button>
+        <button class="btn-small ${STATE._docSubtab==='setup'?'primary':''}" onclick="switchDocSubtab('setup')">Naming Convention Setup</button>
+      </div>
+      <div class="filters" id="doc-register-toolbar-extra" style="display:${STATE._docSubtab==='setup' ? 'none' : 'flex'};">
         <select id="doc-filter-status" onchange="renderDocumentsTable()">
           <option value="">All statuses</option>
           ${optionList(DOC_STATUSES)}
@@ -2185,46 +2189,13 @@ const RENDERERS = {
           <option value="">All types</option>
           ${STATE.docTypes.map(t=>`<option value="${t.id}">${t.code} — ${t.name}</option>`).join('')}
         </select>
-      </div>
-      <div style="display:flex; gap:8px;">
-        <button class="btn-small" onclick="toggleDocListsPanel()">Manage Departments &amp; Types</button>
-        <button class="btn-small" onclick="toggleFormIdsPanel()">Form Identification Numbers</button>
         <button class="btn-small" onclick="exportModuleExcel('documents')">Export Excel</button>
-      <button class="btn-small" onclick="printCurrentRegister('documents','Document Control Register')">Print Register</button>
-      <button class="btn-primary btn-add" onclick="toggleDocForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Document</button>
+        <button class="btn-small" onclick="printCurrentRegister('documents','Document Control Register')">Print Register</button>
+        <button class="btn-primary btn-add" onclick="toggleDocForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Create New Procedure</button>
       </div>
     </div>
 
-    <div class="form-panel" id="doc-lists-panel">
-      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:6px;">Departments &amp; Document Types</h3>
-      <p style="font-size:12px; color:var(--text-faint); margin-bottom:14px;">These two lists build every document number — e.g. <b>GOV-POL-001</b> is department GOV, type POL, the 1st document in that combination. Edit these to match how your organisation actually classifies documents.</p>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px;">
-        <div>
-          <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Departments</div>
-          <div id="doc-departments-list" style="margin-bottom:12px; max-height:220px; overflow-y:auto;"></div>
-          <div class="form-grid">
-            <div class="field"><label>Code</label><input id="dept-new-code" placeholder="e.g. HSE" style="text-transform:uppercase;" maxlength="8"></div>
-            <div class="field"><label>Name</label><input id="dept-new-name" placeholder="e.g. Health Safety & Environment"></div>
-          </div>
-          <button class="btn-small primary" onclick="addDocDepartment()">Add department</button>
-        </div>
-        <div>
-          <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Document Types</div>
-          <div id="doc-types-list" style="margin-bottom:12px; max-height:220px; overflow-y:auto;"></div>
-          <div class="form-grid">
-            <div class="field"><label>Code</label><input id="type-new-code" placeholder="e.g. POL" style="text-transform:uppercase;" maxlength="8"></div>
-            <div class="field"><label>Name</label><input id="type-new-name" placeholder="e.g. Policy"></div>
-          </div>
-          <button class="btn-small primary" onclick="addDocType()">Add type</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="form-panel" id="form-ids-panel">
-      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:6px;">Form Identification Numbers</h3>
-      <p style="font-size:12px; color:var(--text-faint); margin-bottom:14px;">This gives each built-in electronic form its own controlled identity — like <b>QAE-FRM-001</b> for the Nonconformance form itself, separate from any individual nonconformance raised using it. Once assigned, this number appears on every printed output from that module.</p>
-      <div id="form-ids-list"></div>
-    </div>
+    <div id="doc-subtab-content"></div>
 
     <div class="form-panel" id="doc-form">
       <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:14px;">Add a controlled document</h3>
@@ -2237,7 +2208,7 @@ const RENDERERS = {
         <div class="field"><label>Approver</label><select id="df-approver">${memberOptions()}</select></div>
         <div class="field"><label>Next review date</label><input type="date" id="df-review"></div>
         <div class="field span2"><label>Revision 0 — change description</label><input id="df-rev-desc" placeholder="e.g. Initial issue" value="Initial issue"></div>
-        <div class="field"><label>Revision 0 — file</label><input type="file" id="df-file"></div>
+        <div class="field"><label>Revision 0 — file (optional)</label><input type="file" id="df-file"></div>
       </div>
       <div class="form-actions">
         <button class="btn-cancel" onclick="toggleDocForm()">Cancel</button>
@@ -4990,8 +4961,7 @@ window.addDocDepartment = async function(){
   if(document.getElementById('admin-subtab-content')){
     renderAdminDepartments(); // called from Administration — stay put and refresh in place
   } else {
-    showModule('documents');
-    toggleDocListsPanel();
+    renderDocSetupTab(); // called from the Setup tab — same principle, stay put and refresh in place
   }
   toast('Department added.', 'success');
 };
@@ -5006,8 +4976,7 @@ window.addDocType = async function(){
   if(document.getElementById('admin-subtab-content')){
     renderAdminDepartments(); // called from Administration — stay put and refresh in place
   } else {
-    showModule('documents');
-    toggleDocListsPanel();
+    renderDocSetupTab(); // called from the Setup tab — same principle, stay put and refresh in place
   }
   toast('Document type added.', 'success');
 };
@@ -5067,6 +5036,70 @@ window.submitDocument = async function(){
   toast(`${newDoc.doc_number} added.`, 'success');
 };
 
+window.switchDocSubtab = function(tab){
+  STATE._docSubtab = tab;
+  document.querySelectorAll('#content-root .toolbar .btn-small').forEach(b => {
+    if(!b.closest('#doc-register-toolbar-extra')) b.classList.remove('primary');
+  });
+  const activeBtn = document.querySelector(`#content-root .toolbar .btn-small[onclick="switchDocSubtab('${tab}')"]`);
+  if(activeBtn) activeBtn.classList.add('primary');
+  const extraToolbar = document.getElementById('doc-register-toolbar-extra');
+  if(extraToolbar) extraToolbar.style.display = (tab === 'register') ? 'flex' : 'none';
+  renderDocSubtabContent(tab);
+};
+
+function renderDocSubtabContent(tab){
+  if(tab === 'register') renderDocRegisterTab();
+  if(tab === 'setup') renderDocSetupTab();
+}
+
+function renderDocRegisterTab(){
+  const wrap = document.getElementById('doc-subtab-content');
+  if(!wrap) return;
+  wrap.innerHTML = `<div class="panel" style="padding:0; overflow:hidden;"><div id="doc-table-wrap"></div></div>`;
+  renderDocumentsTable();
+}
+
+function renderDocSetupTab(){
+  const wrap = document.getElementById('doc-subtab-content');
+  if(!wrap) return;
+  wrap.innerHTML = `
+    <div class="detail-card">
+      <div class="panel-head"><h3>Departments &amp; Document Types</h3></div>
+      <p style="font-size:12px; color:var(--text-faint); margin-bottom:14px;">These two lists build every document number — e.g. <b>GOV-POL-001</b> is department GOV, type POL, the 1st document in that combination. Edit these to match how your organisation actually classifies documents.</p>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px;">
+        <div>
+          <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Departments</div>
+          <div id="doc-departments-list" style="margin-bottom:12px; max-height:220px; overflow-y:auto;"></div>
+          <div class="form-grid">
+            <div class="field"><label>Code</label><input id="dept-new-code" placeholder="e.g. HSE" style="text-transform:uppercase;" maxlength="8"></div>
+            <div class="field"><label>Name</label><input id="dept-new-name" placeholder="e.g. Health Safety & Environment"></div>
+          </div>
+          <button class="btn-small primary" onclick="addDocDepartment()">Add department</button>
+        </div>
+        <div>
+          <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Document Types</div>
+          <div id="doc-types-list" style="margin-bottom:12px; max-height:220px; overflow-y:auto;"></div>
+          <div class="form-grid">
+            <div class="field"><label>Code</label><input id="type-new-code" placeholder="e.g. POL" style="text-transform:uppercase;" maxlength="8"></div>
+            <div class="field"><label>Name</label><input id="type-new-name" placeholder="e.g. Policy"></div>
+          </div>
+          <button class="btn-small primary" onclick="addDocType()">Add type</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="detail-card">
+      <div class="panel-head"><h3>Form Identification Numbers</h3></div>
+      <p style="font-size:12px; color:var(--text-faint); margin-bottom:14px;">This gives each built-in electronic form its own controlled identity — like <b>QAE-FRM-001</b> for the Nonconformance form itself, separate from any individual nonconformance raised using it. Once assigned, this number appears on every printed output from that module.</p>
+      <div id="form-ids-list"></div>
+    </div>
+  `;
+  renderDocDepartmentsList();
+  renderDocTypesList();
+  renderFormIdsList();
+}
+
 function renderDocumentsTable(){
   const wrap = document.getElementById('doc-table-wrap');
   if(!wrap) return;
@@ -5081,7 +5114,7 @@ function renderDocumentsTable(){
     return;
   }
   wrap.innerHTML = `<table>
-    <tr><th>Document Number</th><th>Document Name</th><th>Created</th><th>Revision</th><th>Revision Date</th><th>Next Review</th><th>Developer</th><th>Approver</th></tr>
+    <tr><th>Document Number</th><th>Document Name</th><th>Created</th><th>Revision</th><th>Revision Date</th><th>Next Review</th><th>Developer</th><th>Approver</th><th></th></tr>
     ${rows.map(d=>`<tr class="clickable" onclick="openDocumentDetail('${d.id}')">
       <td class="mono-cell">${d.doc_number}</td>
       <td class="strong">${d.title}</td>
@@ -5091,6 +5124,7 @@ function renderDocumentsTable(){
       <td>${fmtDate(d.next_review_date)} ${dateStatusBadge(d.next_review_date, ['withdrawn','superseded'].includes(d.status))}</td>
       <td>${d.developer_id ? memberName(d.developer_id) : '—'}${d.developer_signed_off_at ? ' <span class="mono" style="color:var(--green); font-size:10px;">✓ signed</span>' : ''}</td>
       <td>${d.approver_id ? memberName(d.approver_id) : '—'}${d.approver_signed_off_at ? ' <span class="mono" style="color:var(--green); font-size:10px;">✓ signed</span>' : ''}</td>
+      <td><button class="btn-small" onclick="event.stopPropagation(); printDocumentContent('${d.id}')">Download Word Doc</button></td>
     </tr>`).join('')}
   </table>`;
 }
@@ -5112,7 +5146,7 @@ async function openDocumentDetail(id){
       <div class="detail-head">
         <div><span class="ref">${d.doc_number}${dept && type ? ' · '+dept.name+' / '+type.name : ''}</span><h3>${d.title}</h3></div>
         <div style="display:flex; gap:8px;">
-          <button class="btn-small primary" onclick="printDocumentContent('${d.id}')">Print Document</button>
+          <button class="btn-small primary" onclick="printDocumentContent('${d.id}')">Download Word Document</button>
           <button class="btn-small" onclick="printDocument('${d.id}')">Print Register Summary</button>
           <button class="close-btn" onclick="closeDocumentDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
@@ -5564,102 +5598,176 @@ window.printDocument = async function(id){
 // number/revision/date together, the standard uncontrolled-copy
 // disclaimer, and the current sign-off status — rather than the app's
 // own Poppins-headed internal register styling used everywhere else.
+// Fetches an image and determines its actual type from the response
+// itself (Content-Type header) rather than guessing from the URL,
+// since docx's ImageRun needs to know the real format to embed it
+// correctly.
+async function fetchImageForDocx(url){
+  const res = await fetch(url);
+  if(!res.ok) return null;
+  const contentType = res.headers.get('content-type') || '';
+  const data = await res.arrayBuffer();
+  const type = contentType.includes('png') ? 'png' : contentType.includes('gif') ? 'gif' : 'jpg';
+  return { data, type };
+}
+
+// Generates a genuine .docx file matching the sample document's actual
+// structure — a real Word document, not an HTML page pretending to be
+// one. This replaced an HTML/browser-print approach entirely, after
+// that approach couldn't reliably produce the professional, consistent
+// result needed here.
 window.printDocumentContent = async function(id){
   const d = documentById(id);
   if(!d) return;
+  toast('Generating document…', 'success');
+
+  const docxLib = await import('https://cdn.jsdelivr.net/npm/docx@9.7.1/+esm');
+  const { Document, Packer, Paragraph, TextRun, AlignmentType, Header, Footer,
+    Table, TableRow, TableCell, WidthType, BorderStyle, ImageRun, PageBreak } = docxLib;
+
   const { data: sections } = await STATE.supabase.from('document_content_sections').select('*').eq('document_id', id).order('sort_order', {ascending:true});
   const { data: sectionImages } = await STATE.supabase.from('document_section_images').select('*').eq('document_id', id).order('sort_order', {ascending:true});
   const { data: addendums } = await STATE.supabase.from('document_addendums').select('*').eq('document_id', id).order('sort_order', {ascending:true});
 
-  // Signed URLs fetched up front, all at once, before any HTML is
-  // built — the documents bucket is private, same reasoning as
-  // everywhere else private files get displayed in this app.
-  const imageUrls = {};
+  // Every image needed — logo and every section illustration — fetched
+  // up front, all at once, before building any document structure.
+  const thinBorder = { style: BorderStyle.SINGLE, size: 4, color: "D0D0D0" };
+  let logoImage = null;
+  if(STATE.org.logo_url){
+    try { logoImage = await fetchImageForDocx(STATE.org.logo_url); } catch(e) { console.warn('Logo could not be fetched for the document:', e); }
+  }
+  const sectionImageData = {};
   for(const img of (sectionImages || [])){
-    const { data } = await STATE.supabase.storage.from('documents').createSignedUrl(img.storage_path, 3600);
-    if(data) imageUrls[img.id] = data.signedUrl;
+    const { data: signedData } = await STATE.supabase.storage.from('documents').createSignedUrl(img.storage_path, 3600);
+    if(signedData){
+      try { sectionImageData[img.id] = await fetchImageForDocx(signedData.signedUrl); } catch(e) { console.warn('A section image could not be fetched:', e); }
+    }
   }
 
+  const headerChildren = [];
+  if(logoImage){
+    headerChildren.push(new Paragraph({ children: [new ImageRun({ data: logoImage.data, type: logoImage.type, transformation: { width: 130, height: 55 } })] }));
+  }
+  headerChildren.push(new Paragraph({ children: [new TextRun({ text: STATE.org.name, bold: true, size: 32, font: "Arial" })] }));
+  if(STATE.org.address){
+    STATE.org.address.split('\n').forEach(line => {
+      headerChildren.push(new Paragraph({ children: [new TextRun({ text: line, size: 22, font: "Arial" })] }));
+    });
+  }
+  if(STATE.org.registration_number){
+    headerChildren.push(new Paragraph({ children: [new TextRun({ text: `Reg No: ${STATE.org.registration_number}`, size: 22, font: "Arial" })] }));
+  }
+  headerChildren.push(new Paragraph({ children: [new TextRun({ text: d.title, bold: true, size: 32, font: "Arial" })], spacing: { before: 200 } }));
+
   const reviewLine = d.reviewer_id
-    ? `Reviewer: ${memberName(d.reviewer_id)}<br>${d.reviewer_signed_off_at ? 'Reviewed: '+fmtDate(d.reviewer_signed_off_at) : 'Review: Pending'}`
+    ? `Reviewer: ${memberName(d.reviewer_id)}\n${d.reviewer_signed_off_at ? 'Reviewed: '+fmtDate(d.reviewer_signed_off_at) : 'Review: Pending'}`
     : 'Reviewer: —';
   const approveLine = d.approver_id
-    ? `Approver: ${memberName(d.approver_id)}<br>${d.approver_signed_off_at ? 'Approved: '+fmtDate(d.approver_signed_off_at) : 'Approval: Pending'}`
+    ? `Approver: ${memberName(d.approver_id)}\n${d.approver_signed_off_at ? 'Approved: '+fmtDate(d.approver_signed_off_at) : 'Approval: Pending'}`
     : 'Approver: —';
 
-  const sectionsHtml = (sections || []).map((s, idx) => {
+  function footerCell(text, widthPct){
+    return new TableCell({
+      width: { size: widthPct, type: WidthType.PERCENTAGE },
+      children: text.split('\n').map(line => new Paragraph({ children: [new TextRun({ text: line, size: 16, font: "Arial" })] })),
+    });
+  }
+
+  const footerTable = new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder, insideHorizontal: thinBorder, insideVertical: thinBorder },
+    rows: [ new TableRow({ children: [
+      footerCell(`Document Number: ${d.doc_number}\nRevision Status: ${d.current_revision}\nRevision Date: ${fmtDate(d.current_revision_date)}`, 30),
+      footerCell(`Soft copies controlled in QaSHE Watchman.\nPrinted copies are considered uncontrolled — refer to QaSHE Watchman to validate current revision and approval status.`, 35),
+      footerCell(reviewLine, 17.5),
+      footerCell(approveLine, 17.5),
+    ] }) ],
+  });
+
+  // Body content — real paragraph headings in bold, real justified
+  // body text, real section illustrations embedded inline.
+  const bodyChildren = [];
+  (sections || []).forEach((s, idx) => {
+    bodyChildren.push(new Paragraph({
+      children: [new TextRun({ text: `${idx + 1}. ${s.section_title}`, bold: true, size: 28, font: "Arial", color: "000000" })],
+      spacing: { before: 240, after: 120 },
+    }));
+    (s.content || '').split('\n').forEach(para => {
+      if(!para.trim()) return;
+      bodyChildren.push(new Paragraph({
+        alignment: AlignmentType.JUSTIFIED,
+        spacing: { after: 160, line: 276 },
+        children: [new TextRun({ text: para, size: 24, font: "Arial", color: "000000" })],
+      }));
+    });
     const images = (sectionImages || []).filter(img => img.section_id === s.id);
-    return `
-    <div class="doc-print-section">
-      <div class="doc-print-heading">${idx + 1}. ${s.section_title}</div>
-      <div class="doc-print-body">${(s.content || '').split('\n').map(p => `<p>${p}</p>`).join('')}</div>
-      ${images.length ? `<div class="doc-print-images">${images.map(img => `
-        <div class="doc-print-image-block">
-          <img src="${imageUrls[img.id]||''}">
-          ${img.caption ? `<div class="doc-print-caption">${img.caption}</div>` : ''}
-        </div>`).join('')}</div>` : ''}
-    </div>
-  `;}).join('');
+    images.forEach(img => {
+      const imgData = sectionImageData[img.id];
+      if(!imgData) return;
+      bodyChildren.push(new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 120, after: 60 },
+        children: [new ImageRun({ data: imgData.data, type: imgData.type, transformation: { width: 320, height: 220 } })],
+      }));
+      if(img.caption){
+        bodyChildren.push(new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 160 },
+          children: [new TextRun({ text: img.caption, italics: true, size: 18, font: "Arial", color: "444444" })],
+        }));
+      }
+    });
+  });
 
-  const addendumsHtml = (addendums || []).length ? `
-    <div class="doc-print-section" style="page-break-before:always;">
-      <div class="doc-print-heading" style="font-size:16px;">Addendums</div>
-      ${addendums.map((a, idx) => `
-        <div style="margin-bottom:14px;">
-          <div class="doc-print-heading">${String.fromCharCode(65+idx)}. ${a.title}</div>
-          ${a.content ? `<div class="doc-print-body">${a.content.split('\n').map(p => `<p>${p}</p>`).join('')}</div>` : ''}
-          ${a.storage_path ? `<p style="font-size:11px; font-style:italic;">(See attached file: ${a.title})</p>` : ''}
-        </div>
-      `).join('')}
-    </div>
-  ` : '';
+  if((addendums || []).length){
+    bodyChildren.push(new Paragraph({ children: [new PageBreak()] }));
+    bodyChildren.push(new Paragraph({
+      children: [new TextRun({ text: "Addendums", bold: true, size: 32, font: "Arial", color: "000000" })],
+      spacing: { after: 200 },
+    }));
+    addendums.forEach((a, idx) => {
+      bodyChildren.push(new Paragraph({
+        children: [new TextRun({ text: `${String.fromCharCode(65+idx)}. ${a.title}`, bold: true, size: 26, font: "Arial", color: "000000" })],
+        spacing: { before: 180, after: 100 },
+      }));
+      (a.content || '').split('\n').forEach(para => {
+        if(!para.trim()) return;
+        bodyChildren.push(new Paragraph({
+          alignment: AlignmentType.JUSTIFIED,
+          spacing: { after: 140, line: 276 },
+          children: [new TextRun({ text: para, size: 24, font: "Arial", color: "000000" })],
+        }));
+      });
+      if(a.storage_path){
+        bodyChildren.push(new Paragraph({
+          children: [new TextRun({ text: `(See attached file: ${a.title})`, italics: true, size: 20, font: "Arial" })],
+        }));
+      }
+    });
+  }
 
-  const container = document.getElementById('print-container');
-  container.innerHTML = `
-    <style>
-      #print-container.doc-print-mode { font-family: Arial, sans-serif; color:#000; }
-      #print-container.doc-print-mode .doc-print-header{ display:flex; align-items:center; gap:16px; border-bottom:2px solid #000; padding-bottom:14px; margin-bottom:20px; }
-      #print-container.doc-print-mode .doc-print-header img.doc-logo{ max-height:60px; max-width:160px; object-fit:contain; }
-      #print-container.doc-print-mode .doc-print-header .co-block{ flex:1; }
-      #print-container.doc-print-mode .doc-print-header .company{ font-size:16px; font-weight:bold; }
-      #print-container.doc-print-mode .doc-print-header .addr{ font-size:11px; line-height:1.4; }
-      #print-container.doc-print-mode .doc-print-title-block{ text-align:right; }
-      #print-container.doc-print-mode .doc-print-title{ font-size:16px; font-weight:bold; }
-      #print-container.doc-print-mode .doc-print-section{ margin-bottom:16px; }
-      #print-container.doc-print-mode .doc-print-heading{ font-size:14px; font-weight:bold; margin-bottom:8px; }
-      #print-container.doc-print-mode .doc-print-body p{ font-size:12px; text-align:justify; margin-bottom:10px; line-height:1.5; }
-      #print-container.doc-print-mode .doc-print-images{ display:flex; flex-wrap:wrap; gap:14px; margin:10px 0 16px; }
-      #print-container.doc-print-mode .doc-print-image-block{ text-align:center; }
-      #print-container.doc-print-mode .doc-print-image-block img{ max-width:260px; max-height:200px; object-fit:contain; border:1px solid #D0D0D0; }
-      #print-container.doc-print-mode .doc-print-caption{ font-size:10px; color:#444; margin-top:4px; max-width:260px; }
-      #print-container.doc-print-mode table.doc-footer-table{ width:100%; border-collapse:collapse; font-size:10px; margin-top:30px; }
-      #print-container.doc-print-mode table.doc-footer-table td{ border:1px solid #D0D0D0; padding:6px 8px; vertical-align:top; }
-    </style>
-    <div class="doc-print-mode">
-      <div class="doc-print-header">
-        ${STATE.org.logo_url ? `<img class="doc-logo" src="${STATE.org.logo_url}">` : ''}
-        <div class="co-block">
-          <div class="company">${STATE.org.name}</div>
-          <div class="addr">${STATE.org.address ? STATE.org.address.replace(/\n/g,'<br>') : ''}${STATE.org.registration_number ? '<br>Reg No: '+STATE.org.registration_number : ''}</div>
-        </div>
-        <div class="doc-print-title-block">
-          <div class="doc-print-title">${d.title}</div>
-        </div>
-      </div>
-      ${sectionsHtml || '<p style="font-size:12px; color:#666;">No content sections have been authored yet.</p>'}
-      ${addendumsHtml}
-      <table class="doc-footer-table">
-        <tr>
-          <td style="width:20%;">Document Number: ${d.doc_number}<br>Revision Status: ${d.current_revision}<br>Revision Date: ${fmtDate(d.current_revision_date)}</td>
-          <td style="width:40%;">Soft copies controlled in QaSHE Watchman.<br>Printed copies are considered uncontrolled — refer to QaSHE Watchman to validate current revision and approval status.</td>
-          <td style="width:20%;">${reviewLine}</td>
-          <td style="width:20%;">${approveLine}</td>
-        </tr>
-      </table>
-    </div>
-  `;
-  await waitForPrintImages(container);
-  window.print();
+  if(!bodyChildren.length){
+    bodyChildren.push(new Paragraph({ children: [new TextRun({ text: "No content sections have been authored yet.", italics: true, size: 22, font: "Arial", color: "666666" })] }));
+  }
+
+  const doc = new Document({
+    sections: [{
+      headers: { default: new Header({ children: headerChildren }) },
+      footers: { default: new Footer({ children: [footerTable] }) },
+      children: bodyChildren,
+    }],
+  });
+
+  const blob = await Packer.toBlob(doc);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${d.doc_number} - ${d.title}.docx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Document downloaded.', 'success');
 };
 
 // A notification failing to send should never block the actual
