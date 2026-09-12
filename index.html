@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#B21616">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="icon-180-apple-touch.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -5976,21 +5980,35 @@ window.printDocumentContent = async function(id){
 // important action; the email is a courtesy on top of it. Failures are
 // logged to the console for troubleshooting, not surfaced as a blocking
 // error to the person signing off.
-async function sendNotificationEmail(toUserId, subject, message){
+// Low-level sender both notification paths share — looking someone up
+// by their existing Watchman profile, or sending straight to a raw
+// address (an invitee, who by definition has no profile yet).
+async function actuallySendEmail(toEmail, subject, message){
   try {
-    const { data: profile } = await STATE.supabase.from('profiles').select('email').eq('id', toUserId).single();
-    if(!profile || !profile.email) return;
+    if(!toEmail) return false;
     const { data: sessionData } = await STATE.supabase.auth.getSession();
     const token = sessionData?.session?.access_token;
-    if(!token) return;
-    await fetch(`${SUPABASE_URL}/functions/v1/send-notification-email`, {
+    if(!token) return false;
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/send-notification-email`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ to: profile.email, subject, message }),
+      body: JSON.stringify({ to: toEmail, subject, message }),
     });
+    return res.ok;
   } catch(e) {
     console.warn('Notification email could not be sent:', e);
+    return false;
   }
+}
+
+async function sendNotificationEmail(toUserId, subject, message){
+  const { data: profile } = await STATE.supabase.from('profiles').select('email').eq('id', toUserId).single();
+  if(!profile || !profile.email) return false;
+  return await actuallySendEmail(profile.email, subject, message);
+}
+
+async function sendEmailToAddress(toEmail, subject, message){
+  return await actuallySendEmail(toEmail, subject, message);
 }
 
 window.saveDocumentSignoffAssignment = async function(docId){
@@ -6937,9 +6955,24 @@ window.sendSurvey = async function(customerId){
 
   btn.disabled = false; btn.textContent = 'Generate survey link';
   const link = `${url}${url.includes('?')?'&':'?'}token=${survey.token}`;
+
+  const customer = customerById(customerId);
+  let emailStatusHtml = '';
+  if(customer && customer.contact_email){
+    const emailSent = await sendEmailToAddress(
+      customer.contact_email,
+      `We'd value your feedback — ${STATE.org.name}`,
+      `Hello,\n\nWe'd appreciate a few minutes of your time to share your feedback with us. Please click the link below to complete a short survey:\n\n${link}\n\nThank you,\n${STATE.org.name}`
+    );
+    emailStatusHtml = `<div style="font-size:12px; ${emailSent?'color:var(--green);':'color:var(--red);'} font-weight:600; margin-bottom:8px;">${emailSent ? `✓ Survey emailed to ${customer.contact_email}` : `Could not send automatically — use the link below instead`}</div>`;
+  } else {
+    emailStatusHtml = `<div style="font-size:11.5px; color:var(--text-faint); margin-bottom:8px;">No contact email on file for this customer — copy the link below instead.</div>`;
+  }
+
   document.getElementById('send-survey-result').innerHTML = `
     <div class="link-box" style="margin-top:12px;">
-      <div class="link-box-label">Copy this link and send it to the customer yourself — by email, WhatsApp, however you'd reach them</div>
+      ${emailStatusHtml}
+      <div class="link-box-label">Backup — copy this link and send it yourself, by email, WhatsApp, however you'd reach them</div>
       <div class="link-box-row"><input type="text" readonly id="survey-link-${survey.id}" value="${link}"><button class="btn-small primary" onclick="copyApprLink('survey-link-${survey.id}')">Copy</button></div>
     </div>`;
   await loadCustomers();
@@ -8823,11 +8856,24 @@ window.sendSelfAssessment = async function(appraisalId){
   await loadAppraisals();
   const a = appraisalById(appraisalId);
   const link = `${url}${url.includes('?')?'&':'?'}token=${a.token}`;
+  const person = personById(a.personnel_id);
+  let emailStatusHtml = '';
+  if(person && person.email){
+    const emailSent = await sendEmailToAddress(
+      person.email,
+      `Your self-assessment — ${STATE.org.name}`,
+      `Hello ${person.full_name},\n\nPlease complete your self-assessment for your upcoming appraisal by clicking the link below:\n\n${link}\n\nThank you,\n${STATE.org.name}`
+    );
+    emailStatusHtml = `<div style="font-size:12px; ${emailSent?'color:var(--green);':'color:var(--red);'} font-weight:600; margin-bottom:8px;">${emailSent ? `✓ Emailed to ${person.email}` : `Could not send automatically — use the link below instead`}</div>`;
+  } else {
+    emailStatusHtml = `<div style="font-size:11.5px; color:var(--text-faint); margin-bottom:8px;">No email on file for ${person?.full_name || 'this person'} — copy the link below instead.</div>`;
+  }
   const resultSlot = document.getElementById('apr-link-result-'+appraisalId);
   if(resultSlot){
     resultSlot.innerHTML = `
       <div class="link-box" style="margin-top:12px;">
-        <div class="link-box-label">Copy this link and send it to ${personById(a.personnel_id)?.full_name || 'them'} yourself</div>
+        ${emailStatusHtml}
+        <div class="link-box-label">Backup — copy this link and send it to ${person?.full_name || 'them'} yourself</div>
         <div class="link-box-row"><input type="text" readonly id="apr-link-${appraisalId}" value="${link}"><button class="btn-small primary" onclick="copyApprLink('apr-link-${appraisalId}')">Copy</button></div>
       </div>`;
   }
@@ -9427,7 +9473,28 @@ window.generateInspectionLink = async function(inspectionId){
       <button class="btn-small primary" onclick="navigator.clipboard.writeText(document.getElementById('insp-link-${inspectionId}').value); toast('Copied.','success');">Copy</button>
     </div>
     <div style="font-size:10.5px; color:var(--text-faint); margin-top:6px;">Valid for 30 days, and only until the inspection is completed — either from this link or from here.</div>
+    <div style="display:flex; gap:6px; margin-top:8px;">
+      <input type="email" id="insp-email-to-${inspectionId}" placeholder="Optional — email this link to…" style="flex:1; font-size:12px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+      <button class="btn-small" onclick="emailInspectionLink('${inspectionId}')">Send</button>
+    </div>
   `;
+};
+
+// No pre-known inspector to look up automatically here, unlike surveys
+// or appraisals — whoever's generating the link fills in an address on
+// the spot instead, since often nobody specific is assigned yet.
+window.emailInspectionLink = async function(inspectionId){
+  const emailInput = document.getElementById('insp-email-to-'+inspectionId);
+  const toEmail = emailInput.value.trim();
+  if(!toEmail){ alert('Enter an email address first.'); return; }
+  const linkInput = document.getElementById('insp-link-'+inspectionId);
+  const link = linkInput.value;
+  const sent = await sendEmailToAddress(
+    toEmail,
+    `Asset inspection to complete — ${STATE.org.name}`,
+    `Hello,\n\nPlease complete the following asset inspection by clicking the link below:\n\n${link}\n\nThank you,\n${STATE.org.name}`
+  );
+  toast(sent ? `Emailed to ${toEmail}.` : 'Could not send the email — use the copied link instead.', sent ? 'success' : 'error');
 };
 
 window.completeInspection = async function(inspectionId, assetId){
@@ -10845,9 +10912,23 @@ window.sendAdminInvite = async function(){
   if(error){ toast('Invite failed: ' + error.message, 'error'); return; }
 
   const link = `${window.location.origin}${window.location.pathname.replace(/index\.html$/,'')}accept-invite.html?token=${newInvite.token}`;
+
+  // Real email is the primary path now — but the link itself is what
+  // actually grants access, so it's kept visible regardless of whether
+  // the email send succeeds, as a genuine backup rather than a
+  // decorative fallback that quietly stops working.
+  const emailSent = await sendEmailToAddress(
+    email,
+    `You've been invited to QaSHE Watchman`,
+    `You've been invited to join ${STATE.org.name} on QaSHE Watchman.\n\nClick the link below to accept and set up your account:\n\n${link}\n\nThis link expires in 30 days and works once.`
+  );
+
   resultEl.innerHTML = `
     <div style="background:var(--grey-tint); border-radius:8px; padding:12px; margin-top:10px;">
-      <div style="font-size:11.5px; color:var(--text-faint); margin-bottom:6px;">Copy this link and send it to ${email} yourself</div>
+      <div style="font-size:12px; ${emailSent ? 'color:var(--green);' : 'color:var(--red);'} font-weight:600; margin-bottom:8px;">
+        ${emailSent ? `✓ Invite email sent to ${email}` : `Could not send the email automatically — use the backup link below instead`}
+      </div>
+      <div style="font-size:11.5px; color:var(--text-faint); margin-bottom:6px;">Backup — copy this link and send it yourself if needed</div>
       <div style="display:flex; gap:6px;">
         <input type="text" readonly id="admin-invite-link" value="${link}" style="flex:1; font-size:12px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
         <button class="btn-small primary" onclick="navigator.clipboard.writeText(document.getElementById('admin-invite-link').value); toast('Copied.','success');">Copy</button>
@@ -11718,3 +11799,35 @@ async function ensureSupabaseLib(){
 </script>
 </body>
 </html>
+
+{
+  "name": "QaSHE Watchman",
+  "short_name": "Watchman",
+  "description": "Integrated Business Management System — Group QaSHE CG",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F7F6F5",
+  "theme_color": "#B21616",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
