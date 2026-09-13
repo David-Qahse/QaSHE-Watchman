@@ -128,12 +128,33 @@ function showStage(id){
   document.querySelectorAll('.stage').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
 }
-function getToken(){ return new URLSearchParams(window.location.search).get('token'); }
+// Starts as whatever's in the URL, but gets replaced with the new
+// inspection's own token the moment one is created from an asset scan
+// — everything downstream (submission, evidence upload) always
+// operates on this variable, never re-reading the URL directly.
+let activeToken = new URLSearchParams(window.location.search).get('token');
+function getToken(){ return activeToken; }
 
 let inspectionData = null;
 let selectedFiles = [];
 
 async function init(){
+  const assetToken = new URLSearchParams(window.location.search).get('asset_token');
+
+  if(assetToken){
+    const { data, error } = await supabase.rpc('start_asset_inspection_by_asset_token', { p_asset_token: assetToken });
+    if(error || !data || data.error){
+      document.getElementById('error-message').textContent = (data && data.error) || 'We couldn\u2019t recognise this QR code. Check with whoever manages this asset.';
+      showStage('stage-error');
+      return;
+    }
+    activeToken = data.token; // every submission from here on uses this, not the asset token
+    inspectionData = data;
+    renderForm(data);
+    showStage('stage-form');
+    return;
+  }
+
   const token = getToken();
   if(!token){
     document.getElementById('error-message').textContent = 'No inspection link found. Check the link you were sent and try again.';
