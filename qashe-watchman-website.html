@@ -27,6 +27,13 @@
   .qr-modal-overlay{position:fixed; inset:0; background:rgba(30,28,27,.6); z-index:200; display:none; align-items:center; justify-content:center;}
   .qr-modal-overlay.active{display:flex;}
   .qr-modal-card{background:#fff; border-radius:14px; padding:32px; position:relative; display:flex; flex-direction:column; align-items:center;}
+  @media print {
+    body.printing-qr > *:not(#qr-watchman-modal) { display:none !important; }
+    body.printing-qr #qr-watchman-modal { position:static; display:block !important; background:none; }
+    body.printing-qr #qr-watchman-modal .qr-modal-card { box-shadow:none; padding:60px 20px; }
+    body.printing-qr #qr-watchman-modal .close-x, body.printing-qr #qr-watchman-modal button.btn { display:none !important; }
+    body.printing-qr #qr-watchman-large { width:400px !important; height:400px !important; }
+  }
   .nav-brand img{height:34px; width:34px; border-radius:50%;}
   .nav-brand span{font-family:'Poppins'; font-weight:700; font-size:17px;}
   .nav-links{display:flex; align-items:center; gap:22px; font-size:13.5px; color:var(--text-dim); font-weight:500;}
@@ -41,7 +48,12 @@
   .btn-ghost:hover{border-color:var(--charcoal);}
 
   .hero{text-align:center; padding:80px 6vw 60px; background:var(--grey-tint);}
-  .eyebrow{display:inline-flex; align-items:center; gap:8px; font-family:'Inter',sans-serif; font-size:13px; color:var(--text-dim); letter-spacing:.02em; margin-bottom:14px;}
+  .icon-strip{display:flex; flex-wrap:wrap; justify-content:center; gap:18px 26px; margin-bottom:18px;}
+  .icon-strip-item{display:flex; align-items:center; gap:7px; font-family:'Inter',sans-serif; font-size:12.5px; color:var(--text-dim); font-weight:500;}
+  .icon-strip-item svg{width:16px; height:16px; stroke:var(--red); fill:none; stroke-width:2; flex-shrink:0;}
+  .icon-strip.iso-strip{margin-bottom:28px; max-width:720px; margin-left:auto; margin-right:auto;}
+  .icon-strip.iso-strip .icon-strip-item{font-size:11.5px; color:var(--text-faint);}
+  .icon-strip.iso-strip svg{width:14px; height:14px;}
   .iso-line{font-family:'Arial',sans-serif; font-size:12px; color:var(--text-faint); margin-bottom:28px; max-width:700px; margin-left:auto; margin-right:auto; line-height:1.7;}
   .hero h1{font-size:38px; font-weight:800; line-height:1.2; margin-bottom:18px;}
   .hero h1 .hl{color:var(--red);}
@@ -216,9 +228,35 @@
   </div>
 </div>
 
+<div id="qr-watchman-modal" class="qr-modal-overlay" onclick="if(event.target===this)this.classList.remove('active')">
+  <div class="qr-modal-card">
+    <button class="close-x" onclick="document.getElementById('qr-watchman-modal').classList.remove('active')" style="position:absolute; top:16px; right:16px; float:none;">&times;</button>
+    <div id="qr-watchman-print-area">
+      <img id="qr-watchman-large" style="width:280px; height:280px;">
+      <p style="font-size:14px; font-weight:600; color:var(--text); margin-top:16px; text-align:center;">Scan to open QaSHE Watchman</p>
+      <p style="font-size:12px; color:var(--text-faint); margin-top:2px; text-align:center;">Group QaSHE CG — Integrated Business Management System</p>
+    </div>
+    <button class="btn btn-primary" style="margin-top:18px;" onclick="printWatchmanQr()">Print for notice board</button>
+  </div>
+</div>
+
 <section class="hero">
-  <div class="eyebrow">QUALITY ASSURANCE · CORPORATE GOVERNANCE · BUSINESS EXCELLENCE · LEGAL COMPLIANCE · RISK CONTROL</div>
-  <div class="iso-line">ISO 9001:2026 Quality Assurance · ISO 45001:2026 Health and Safety · ISO 14001:2026 Environment · ISO 27001:2022 Information Security · ISO 37000:2021 Corporate Governance · ISO 37001:2016 Anti Bribery and Corruption · ISO 31000:2018 Risks &amp; Opportunities</div>
+  <div class="icon-strip">
+    <div class="icon-strip-item"><svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg> Quality Assurance</div>
+    <div class="icon-strip-item"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg> Corporate Governance</div>
+    <div class="icon-strip-item"><svg viewBox="0 0 24 24"><path d="M12 2l3 7h7l-5.5 4.5L18.5 21 12 16.5 5.5 21l2-7.5L2 9h7z"/></svg> Business Excellence</div>
+    <div class="icon-strip-item"><svg viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M5 8l-3 6a3.5 3.5 0 007 0l-3-6z"/><path d="M19 8l-3 6a3.5 3.5 0 007 0l-3-6z"/><path d="M3 8h6M15 8h6M9 21h6"/></svg> Legal Compliance</div>
+    <div class="icon-strip-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg> Risk Control</div>
+  </div>
+  <div class="icon-strip iso-strip">
+    <div class="icon-strip-item"><svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg> ISO 9001:2026 Quality</div>
+    <div class="icon-strip-item"><svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V5l8-3z"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg> ISO 45001:2026 Health &amp; Safety</div>
+    <div class="icon-strip-item"><svg viewBox="0 0 24 24"><path d="M11 20A7 7 0 019.8 6.1C15.5 5 17 4.48 19 3c1 5.5-1.5 10-6.5 14a13 13 0 01-1.5 3z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 11 13 11 13"/></svg> ISO 14001:2026 Environment</div>
+    <div class="icon-strip-item"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg> ISO 27001:2022 Information Security</div>
+    <div class="icon-strip-item"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg> ISO 37000:2021 Corporate Governance</div>
+    <div class="icon-strip-item"><svg viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M5 8l-3 6a3.5 3.5 0 007 0l-3-6z"/><path d="M19 8l-3 6a3.5 3.5 0 007 0l-3-6z"/><path d="M3 8h6M15 8h6M9 21h6"/></svg> ISO 37001:2016 Anti Bribery and Corruption</div>
+    <div class="icon-strip-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg> ISO 31000:2018 Risks &amp; Opportunities</div>
+  </div>
   <h1>Part of your team.<br>In <span class="hl">every</span> sense.</h1>
   <p>Group QaSHE CG is the strategic governance and technology partner behind a wider group, bringing corporate governance, legal compliance, and QaSHE Watchman, our integrated management platform, alongside QaHSE Services' hands on technical delivery.</p>
   <div class="hero-ctas">
@@ -407,7 +445,7 @@
       <button class="btn btn-primary" onclick="document.getElementById('pricing').scrollIntoView({behavior:'smooth'})">Request an Introduction</button>
     </div>
     <div style="display:flex; align-items:center; gap:12px;">
-      <img id="qr-watchman" style="width:76px; height:76px; border-radius:4px;">
+      <img id="qr-watchman" onclick="document.getElementById('qr-watchman-modal').classList.add('active')" style="width:76px; height:76px; border-radius:4px; cursor:pointer;" title="Click to enlarge and print">
       <div style="font-size:12px; color:var(--text-dim); max-width:150px;">Scan to open Watchman on your phone</div>
     </div>
   </div>
@@ -892,11 +930,24 @@ function renderQRCodes(){
   const signInLink = document.querySelector('.nav-links a[href*="github.io"]') || document.querySelector('.nav-links a:last-of-type');
   const rawHref = signInLink ? signInLink.getAttribute('href') : null;
   const watchmanUrl = (rawHref && rawHref !== 'https://david-qahse.github.io/QaSHE-Watchman/') ? signInLink.href : siteUrl;
-  if(watchmanUrl === siteUrl) console.warn('QR (watchman): "Sign In" link still reads APP_URL_HERE — this QR code currently points at the website itself, not the app, until that placeholder is replaced.');
+  if(watchmanUrl === siteUrl) console.warn('QR (watchman): "Sign In" link still reads https://david-qahse.github.io/QaSHE-Watchman/ — this QR code currently points at the website itself, not the app, until that placeholder is replaced.');
   const watchmanImg = document.getElementById('qr-watchman');
   if(watchmanImg) watchmanImg.src = qrImageUrl(watchmanUrl, 160);
+  const watchmanLargeImg = document.getElementById('qr-watchman-large');
+  if(watchmanLargeImg) watchmanLargeImg.src = qrImageUrl(watchmanUrl, 560);
 }
 renderQRCodes();
+
+// A genuinely separate, focused print — everything else on the page
+// gets hidden via a dedicated class while printing, so what actually
+// comes out is a clean, large QR code suitable for a notice board,
+// not the whole website with a small image buried in it.
+function printWatchmanQr(){
+  document.body.classList.add('printing-qr');
+  window.print();
+  document.body.classList.remove('printing-qr');
+}
+
 
 
 loadProducts();
