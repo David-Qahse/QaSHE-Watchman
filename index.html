@@ -417,6 +417,12 @@
   #print-container{display:none;}
 
   .watchman-chat-fab{position:fixed; bottom:24px; right:24px; width:56px; height:56px; border-radius:50%; background:var(--red); color:#fff; display:flex; align-items:center; justify-content:center; box-shadow:0 6px 20px rgba(178,22,22,.35); z-index:200; cursor:pointer;}
+  .report-problem-fab{position:fixed; top:24px; right:24px; width:48px; height:48px; border-radius:50%; background:#B45309; color:#fff; display:flex; align-items:center; justify-content:center; box-shadow:0 6px 20px rgba(180,83,9,.35); z-index:200; cursor:pointer;}
+  .report-problem-fab:hover{background:#92400E;}
+  .report-problem-fab svg{width:22px; height:22px;}
+  .report-problem-modal{position:fixed; top:88px; right:24px; width:340px; background:#fff; border-radius:14px; box-shadow:0 20px 60px rgba(0,0,0,.25); display:none; flex-direction:column; z-index:201; padding:18px;}
+  .report-problem-modal.open{display:flex;}
+  @media (max-width:640px){.report-problem-modal{width:calc(100vw - 32px); right:16px;}}
   .watchman-chat-hint{position:fixed; bottom:38px; right:92px; background:var(--charcoal-dark, #26241F); color:#fff; font-family:'Inter'; font-size:12px; font-weight:600; padding:8px 14px; border-radius:20px; z-index:199; cursor:pointer; white-space:nowrap; box-shadow:0 4px 12px rgba(0,0,0,.15);}
   .watchman-chat-hint::after{content:''; position:absolute; top:50%; right:-6px; transform:translateY(-50%); border-width:6px 0 6px 7px; border-style:solid; border-color:transparent transparent transparent var(--charcoal-dark, #26241F);}
   @media (max-width:640px){.watchman-chat-hint{display:none;}}
@@ -739,6 +745,21 @@
   </div>
 </div>
 
+<div id="gate-suspended" class="gate">
+  <div class="gate-card">
+    <div class="gate-brand">
+      <div class="gate-watch">
+        <div class="gate-watch-ring"></div>
+        <svg viewBox="0 0 56 56"><g class="gate-sweep"><line x1="28" y1="28" x2="28" y2="6" stroke="#B21616" stroke-width="2" opacity="0.9"/></g><circle cx="28" cy="28" r="4" fill="#B21616"/></svg>
+      </div>
+      <div class="gate-wordmark">QaSHE <span class="hl">Watchman</span></div>
+    </div>
+    <h2>Account access paused</h2>
+    <p class="sub">Access to this organisation is currently paused, most often due to a subscription or billing matter. Please contact Group QaSHE CG to resolve this and restore access.</p>
+    <button class="gate-btn" onclick="doSignOut()">Sign out</button>
+  </div>
+</div>
+
 <div id="gate-orgpicker" class="gate">
   <div class="gate-card">
     <div class="gate-brand">
@@ -768,6 +789,19 @@
 <button class="watchman-chat-fab" id="watchman-chat-fab" onclick="toggleWatchmanChat()">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
 </button>
+
+<button class="report-problem-fab" id="report-problem-fab" onclick="toggleReportProblem()" title="Report a problem or malfunction">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+</button>
+<div class="report-problem-modal" id="report-problem-modal">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+    <b style="font-family:'Poppins'; font-size:14px;">Report a Problem</b>
+    <button class="close-btn" onclick="toggleReportProblem()" style="width:24px; height:24px;"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+  </div>
+  <p style="font-size:11.5px; color:var(--text-faint); margin-bottom:10px;">Describe what's wrong or not working as expected — this goes directly to Group QaSHE CG.</p>
+  <textarea id="report-problem-text" placeholder="What happened, and what were you trying to do?" style="width:100%; min-height:90px; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px;"></textarea>
+  <button class="btn-primary" style="margin-top:10px; width:100%;" onclick="submitProblemReport()" id="report-problem-btn">Send report</button>
+</div>
 
 <div class="watchman-chat-backdrop" id="watchman-chat-backdrop" onclick="toggleWatchmanChat()"></div>
 <div class="watchman-chat-panel" id="watchman-chat-panel">
@@ -853,6 +887,9 @@
     <main class="main">
       <div class="topbar">
         <div class="topbar-left" style="display:flex; align-items:center; gap:18px;">
+          <button id="mod-back-btn" onclick="showModule('overview')" style="display:none; background:none; border:1px solid var(--border); border-radius:7px; padding:7px 9px; cursor:pointer; color:var(--text-dim);" title="Back to Overview">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          </button>
           <div>
             <h2 id="mod-title">Overview</h2>
             <p id="mod-sub">Group QaSHE CG — Demo Organisation</p>
@@ -980,6 +1017,12 @@ function taskLinkedRef(t){
   if(t.linked_type === 'nonconformance'){ const n = ncById(t.linked_id); return n ? n.ref_code : null; }
   if(t.linked_type === 'objective'){ const o = objectiveById(t.linked_id); return o ? o.ref_code : null; }
   return null;
+}
+
+// Admins always can, matching how they already bypass module-access
+// restrictions elsewhere — everyone else needs the explicit flag.
+function canDownload(){
+  return STATE.myRole === 'admin' || !!STATE.myCanDownload;
 }
 
 function toast(msg, kind){
@@ -1157,7 +1200,7 @@ async function afterSignIn(user){
 
   const { data: memberships, error: memErr } = await STATE.supabase
     .from('organisation_members')
-    .select('organisation_id, role, module_access, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color, all_documents_enabled, document_control_enabled, administration_enabled, ebitda)')
+    .select('organisation_id, role, module_access, can_download, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color, all_documents_enabled, document_control_enabled, administration_enabled, ebitda, subscription_status)')
     .eq('user_id', user.id).eq('status','active');
 
   if(memErr){ toast('Could not load your organisations: ' + memErr.message, 'error'); return; }
@@ -1186,13 +1229,23 @@ window.selectOrg = async function(orgId){
   STATE.org = membership.organisations;
   STATE.myRole = membership.role;
   STATE.myModuleAccess = membership.module_access || [];
+  STATE.myCanDownload = membership.can_download || false;
+
+  // Platform staff stay exempt — they genuinely need to get into a
+  // suspended tenant to help resolve whatever caused the suspension in
+  // the first place, not be locked out along with everyone else.
+  const blockedStatuses = ['cancelled', 'suspended', 'past_due'];
+  if(!STATE.profile.is_platform_staff && blockedStatuses.includes(STATE.org.subscription_status)){
+    showGate('gate-suspended');
+    return;
+  }
 
   showBootLoading();
   try {
 
   const { data: members, error: memErr } = await STATE.supabase
     .from('organisation_members')
-    .select('user_id, role, is_approver, module_access, profiles!organisation_members_user_id_fkey(name)')
+    .select('user_id, role, is_approver, module_access, can_download, profiles!organisation_members_user_id_fkey(name)')
     .eq('organisation_id', orgId).eq('status','active');
   if(memErr){ toast('Could not load organisation members: ' + memErr.message, 'error'); return; }
   STATE.members = members || [];
@@ -1730,6 +1783,7 @@ function showModule(mod){
   if(navEl) navEl.classList.add('active');
   document.getElementById('mod-title').textContent = MODULE_META[mod].title;
   document.getElementById('mod-sub').textContent = MODULE_META[mod].sub();
+  document.getElementById('mod-back-btn').style.display = (mod === 'overview') ? 'none' : 'flex';
   document.getElementById('content-root').innerHTML = renderModuleInfoCard(mod) + RENDERERS[mod]();
   updateNavBadges();
   if(mod === 'nonconformances') renderNCTable();
@@ -2210,11 +2264,11 @@ const RENDERERS = {
         </select>
         <select id="doc-filter-department" onchange="renderDocumentsTable()">
           <option value="">All departments</option>
-          ${STATE.docDepartments.map(d=>`<option value="${d.id}">${d.code} — ${d.name}</option>`).join('')}
+          ${STATE.docDepartments.map(d=>`<option value="${d.id}">${d.code}: ${d.name}</option>`).join('')}
         </select>
         <select id="doc-filter-type" onchange="renderDocumentsTable()">
           <option value="">All types</option>
-          ${STATE.docTypes.map(t=>`<option value="${t.id}">${t.code} — ${t.name}</option>`).join('')}
+          ${STATE.docTypes.map(t=>`<option value="${t.id}">${t.code}: ${t.name}</option>`).join('')}
         </select>
         <button class="btn-small" onclick="exportModuleExcel('documents')">Export Excel</button>
         <button class="btn-small" onclick="printCurrentRegister('documents','Document Control Register')">Print Register</button>
@@ -2228,8 +2282,8 @@ const RENDERERS = {
       <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:14px;">Add a controlled document</h3>
       <div class="form-grid">
         <div class="field span3"><label>Title / description</label><input id="df-title" placeholder="e.g. Welding Procedure Specification"></div>
-        <div class="field"><label>Department</label><select id="df-department">${STATE.docDepartments.filter(d=>d.is_active).map(d=>`<option value="${d.id}">${d.code} — ${d.name}</option>`).join('')}</select></div>
-        <div class="field"><label>Document type</label><select id="df-type">${STATE.docTypes.filter(t=>t.is_active).map(t=>`<option value="${t.id}">${t.code} — ${t.name}</option>`).join('')}</select></div>
+        <div class="field"><label>Department</label><select id="df-department">${STATE.docDepartments.filter(d=>d.is_active).map(d=>`<option value="${d.id}">${d.code}: ${d.name}</option>`).join('')}</select></div>
+        <div class="field"><label>Document type</label><select id="df-type">${STATE.docTypes.filter(t=>t.is_active).map(t=>`<option value="${t.id}">${t.code}: ${t.name}</option>`).join('')}</select></div>
         <div class="field"><label>Owner</label><select id="df-owner">${memberOptions(STATE.user.id)}</select></div>
         <div class="field"><label>Developer</label><select id="df-developer">${memberOptions(STATE.user.id)}</select></div>
         <div class="field"><label>Approver</label><select id="df-approver">${memberOptions()}</select></div>
@@ -4829,8 +4883,8 @@ window.toggleAssignFormId = function(moduleKey){
         <button class="btn-small" onclick="toggleAssignFormId('${moduleKey}')">Cancel</button>
       ` : `
         <div class="form-grid">
-          <div class="field"><label>Department</label><select id="form-id-dept-${moduleKey}">${STATE.docDepartments.filter(d=>d.is_active).map(d=>`<option value="${d.id}">${d.code} — ${d.name}</option>`).join('')}</select></div>
-          <div class="field"><label>Document type</label><select id="form-id-type-${moduleKey}">${STATE.docTypes.filter(t=>t.is_active).map(t=>`<option value="${t.id}">${t.code} — ${t.name}</option>`).join('')}</select></div>
+          <div class="field"><label>Department</label><select id="form-id-dept-${moduleKey}">${STATE.docDepartments.filter(d=>d.is_active).map(d=>`<option value="${d.id}">${d.code}: ${d.name}</option>`).join('')}</select></div>
+          <div class="field"><label>Document type</label><select id="form-id-type-${moduleKey}">${STATE.docTypes.filter(t=>t.is_active).map(t=>`<option value="${t.id}">${t.code}: ${t.name}</option>`).join('')}</select></div>
         </div>
         <button class="btn-small primary" onclick="assignFormId('${moduleKey}')">Assign number</button>
         <button class="btn-small" onclick="toggleAssignFormId('${moduleKey}')">Cancel</button>
@@ -4887,7 +4941,7 @@ function renderDocDepartmentsList(){
   if(!wrap) return;
   wrap.innerHTML = STATE.docDepartments.length ? STATE.docDepartments.map(d => `
     <div class="evidence-row" style="${!d.is_active?'opacity:.5;':''}">
-      <div style="flex:1;"><b class="mono-cell">${d.code}</b> — <span id="dept-name-${d.id}">${d.name}</span>${!d.is_active ? ' <span class="mono" style="color:var(--text-faint); font-size:10.5px;">(inactive for this client)</span>' : ''}</div>
+      <div style="flex:1;"><b class="mono-cell">${d.code}</b>: <span id="dept-name-${d.id}">${d.name}</span>${!d.is_active ? ' <span class="mono" style="color:var(--text-faint); font-size:10.5px;">(inactive for this client)</span>' : ''}</div>
       <div class="ev-actions">
         <button class="btn-small" onclick="toggleEditDept('${d.id}')">Edit</button>
         <button class="btn-small" onclick="toggleDeptActive('${d.id}', ${!d.is_active})">${d.is_active ? 'Deactivate' : 'Activate'}</button>
@@ -4901,7 +4955,7 @@ function renderDocTypesList(){
   if(!wrap) return;
   wrap.innerHTML = STATE.docTypes.length ? STATE.docTypes.map(t => `
     <div class="evidence-row" style="${!t.is_active?'opacity:.5;':''}">
-      <div style="flex:1;"><b class="mono-cell">${t.code}</b> — <span id="type-name-${t.id}">${t.name}</span>${!t.is_active ? ' <span class="mono" style="color:var(--text-faint); font-size:10.5px;">(inactive for this client)</span>' : ''}</div>
+      <div style="flex:1;"><b class="mono-cell">${t.code}</b>: <span id="type-name-${t.id}">${t.name}</span>${!t.is_active ? ' <span class="mono" style="color:var(--text-faint); font-size:10.5px;">(inactive for this client)</span>' : ''}</div>
       <div class="ev-actions">
         <button class="btn-small" onclick="toggleEditType('${t.id}')">Edit</button>
         <button class="btn-small" onclick="toggleTypeActive('${t.id}', ${!t.is_active})">${t.is_active ? 'Deactivate' : 'Activate'}</button>
@@ -5160,7 +5214,7 @@ function renderDocumentsTable(){
       <td>${d.developer_id ? memberName(d.developer_id) : '—'}${d.developer_signed_off_at ? ' <span class="mono" style="color:var(--green); font-size:10px;">✓ signed</span>' : ''}</td>
       <td>${d.approver_id ? memberName(d.approver_id) : '—'}${d.approver_signed_off_at ? ' <span class="mono" style="color:var(--green); font-size:10px;">✓ signed</span>' : ''}</td>
       <td><span class="sev-badge" style="background:${st.color}; color:#fff;">${st.label}</span></td>
-      <td><button class="btn-small" onclick="event.stopPropagation(); downloadDocumentPdf('${d.id}')">View / Print PDF</button></td>
+      <td><button class="btn-small" onclick="event.stopPropagation(); downloadDocumentPdf('${d.id}')">View / Print PDF</button>${canDownload() ? ` <button class="btn-small" onclick="event.stopPropagation(); downloadDocumentPdf('${d.id}','download')" title="Download a copy">⬇</button>` : ''}</td>
     </tr>`;}).join('')}
   </table>`;
 }
@@ -5175,8 +5229,10 @@ async function openDocumentDetail(id){
   const { data: sections } = await STATE.supabase.from('document_content_sections').select('*').eq('document_id', id).order('sort_order', {ascending:true});
   const { data: links } = await STATE.supabase.from('document_links').select('*').eq('document_id', id);
   const { data: sectionImages } = await STATE.supabase.from('document_section_images').select('*').eq('document_id', id).order('sort_order', {ascending:true});
+  const { data: sectionTables } = await STATE.supabase.from('document_section_tables').select('*').eq('document_id', id).order('sort_order', {ascending:true});
   const { data: addendums } = await STATE.supabase.from('document_addendums').select('*').eq('document_id', id).order('sort_order', {ascending:true});
   const { data: reviewComments } = await STATE.supabase.from('document_review_comments').select('*').eq('document_id', id).order('created_at', {ascending:true});
+  const { data: referenceUploads } = await STATE.supabase.from('document_reference_uploads').select('*').eq('document_id', id).order('created_at', {ascending:false});
 
   document.getElementById('doc-detail-slot').innerHTML = `
     <div class="detail-panel">
@@ -5185,6 +5241,7 @@ async function openDocumentDetail(id){
         <div style="display:flex; gap:8px;">
           <button class="btn-small" onclick="printDocumentContent('${d.id}')" title="Editable copy for review and drafting">Download Word (Review Copy)</button>
           <button class="btn-small primary" onclick="downloadDocumentPdf('${d.id}')" title="Final, non-editable copy for printing">View / Print PDF (Final)</button>
+          ${canDownload() ? `<button class="btn-small" onclick="downloadDocumentPdf('${d.id}','download')" title="Download a copy of the final PDF">Download PDF</button>` : ''}
           <button class="btn-small" onclick="printDocument('${d.id}')">Print Register Summary</button>
           <button class="close-btn" onclick="closeDocumentDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
@@ -5269,6 +5326,16 @@ async function openDocumentDetail(id){
       </div>
 
       <div class="detail-card" style="padding:16px; margin-bottom:16px;">
+        <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Historical Reference Documents</h3></div>
+        <p style="font-size:11.5px; color:var(--text-faint); margin-bottom:10px;">Upload the client's own existing document (Word or PDF) — used purely as context to make AI-assisted drafting genuinely specific to this client, not a generic template. Never appears in the final Word or PDF output.</p>
+        <div id="reference-uploads-list"></div>
+        <div style="display:flex; gap:6px; align-items:center; margin-top:10px;">
+          <input type="file" id="reference-upload-input-${d.id}" accept=".docx,.pdf">
+          <button class="btn-small primary" onclick="uploadReferenceDocument('${d.id}')" id="reference-upload-btn-${d.id}">Upload for context</button>
+        </div>
+      </div>
+
+      <div class="detail-card" style="padding:16px; margin-bottom:16px;">
         <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Content</h3>
           <button class="btn-small" onclick="toggleAiDraftForm('${d.id}')">✨ AI-assisted draft</button>
         </div>
@@ -5277,7 +5344,7 @@ async function openDocumentDetail(id){
             <div class="field span3"><label>What is this document about? Describe its purpose and scope in a sentence or two</label><textarea id="ai-draft-prompt" placeholder="e.g. A procedure for how nonconformances get raised, investigated, and closed out"></textarea></div>
           </div>
           <button class="btn-small primary" onclick="generateAiDraft('${d.id}')" id="ai-draft-btn">Generate draft sections</button>
-          <p style="font-size:11px; color:var(--text-faint); margin-top:6px;">Generates a starting draft for you to review and edit — nothing here gets treated as final or signed off automatically.</p>
+          <p style="font-size:11px; color:var(--text-faint); margin-top:6px;">Generates a starting draft for you to review and edit — nothing here gets treated as final or signed off automatically.${(referenceUploads||[]).length ? ' Uses your uploaded historical document(s) above as context, so this draft reflects how this client actually does things.' : ''}</p>
         </div>
         <div id="document-toc" style="margin-bottom:14px;"></div>
         <div id="document-sections-list"></div>
@@ -5360,8 +5427,9 @@ async function openDocumentDetail(id){
       </div>
     </div>
   `;
-  renderDocumentSectionsList(id, sections || [], sectionImages || []);
+  renderDocumentSectionsList(id, sections || [], sectionImages || [], sectionTables || []);
   renderDocumentToc(sections || []);
+  renderReferenceUploadsList(id, referenceUploads || []);
   renderDocumentLinksList(id, links || []);
   renderDocumentAddendumsList(id, addendums || []);
   renderDocumentReviewThread(id, reviewComments || []);
@@ -5381,11 +5449,96 @@ function renderDocumentToc(sections){
     </div>`;
 }
 
-function renderDocumentSectionsList(docId, sections, sectionImages){
+function renderReferenceUploadsList(docId, uploads){
+  const wrap = document.getElementById('reference-uploads-list');
+  if(!wrap) return;
+  wrap.innerHTML = uploads.length ? uploads.map(u => `
+    <div class="evidence-row">
+      <div style="flex:1;">
+        <b style="font-size:12.5px;">${u.file_name}</b>
+        ${u.extracted_text ? `<div style="font-size:11px; color:var(--text-faint); margin-top:2px;">${u.extracted_text.length.toLocaleString()} characters extracted — ready to inform AI drafting</div>` : `<div style="font-size:11px; color:var(--red); margin-top:2px;">Text could not be extracted from this file — it won't inform AI drafting, but stays here for your own reference.</div>`}
+      </div>
+      <button class="btn-small" onclick="deleteReferenceUpload('${u.id}','${u.storage_path}','${docId}')">Remove</button>
+    </div>`).join('') : '<p style="font-size:12px; color:var(--text-faint);">None uploaded yet.</p>';
+}
+
+// Extracts plain text from an uploaded historical document — mammoth
+// for Word, pdf.js for PDF — tested directly against real files before
+// being trusted here. Returns null (not thrown) on failure, since a
+// file that can't be parsed should still be kept as a reference
+// attachment, just without informing AI drafting.
+async function extractReferenceText(file){
+  try {
+    if(file.name.toLowerCase().endsWith('.docx')){
+      const mammothLib = await import('https://cdn.jsdelivr.net/npm/mammoth@1.12.3/+esm');
+      const arrayBuffer = await file.arrayBuffer();
+      const result = await mammothLib.extractRawText({ arrayBuffer });
+      return result.value || null;
+    }
+    if(file.name.toLowerCase().endsWith('.pdf')){
+      const pdfjsLib = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@6.3.289/+esm');
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@6.3.289/build/pdf.worker.min.mjs';
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+      let fullText = '';
+      for(let i = 1; i <= pdf.numPages; i++){
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        fullText += content.items.map(item => item.str).join(' ') + '\n';
+      }
+      return fullText || null;
+    }
+    return null;
+  } catch(e) {
+    console.warn('Could not extract text from this reference document:', e);
+    return null;
+  }
+}
+
+window.uploadReferenceDocument = async function(docId){
+  const input = document.getElementById('reference-upload-input-'+docId);
+  const file = input.files[0];
+  if(!file){ alert('Choose a file first.'); return; }
+  const btn = document.getElementById('reference-upload-btn-'+docId);
+  btn.disabled = true; btn.textContent = 'Uploading…';
+  showLoader('Extracting text for context…');
+
+  try {
+    const extractedText = await extractReferenceText(file);
+    const path = `${STATE.org.id}/${docId}/reference/${Date.now()}-${sanitizeFileName(file.name)}`;
+    const { error: upErr } = await STATE.supabase.storage.from('documents').upload(path, file);
+    if(upErr) throw new Error(upErr.message);
+
+    const { error } = await STATE.supabase.from('document_reference_uploads').insert({
+      organisation_id: STATE.org.id, document_id: docId, file_name: file.name, storage_path: path,
+      extracted_text: extractedText, uploaded_by: STATE.user.id,
+    });
+    if(error) throw new Error(error.message);
+
+    openDocumentDetail(docId);
+    toast(extractedText ? 'Uploaded — text extracted and ready to inform AI drafting.' : 'Uploaded, but text could not be extracted from this file.', extractedText ? 'success' : 'error');
+  } catch(e) {
+    toast('Could not upload: ' + e.message, 'error');
+  } finally {
+    hideLoader();
+    btn.disabled = false; btn.textContent = 'Upload for context';
+  }
+};
+
+window.deleteReferenceUpload = async function(uploadId, storagePath, docId){
+  if(!confirm('Remove this reference document?')) return;
+  await STATE.supabase.storage.from('documents').remove([storagePath]);
+  const { error } = await STATE.supabase.from('document_reference_uploads').delete().eq('id', uploadId);
+  if(error){ toast('Could not remove: ' + error.message, 'error'); return; }
+  openDocumentDetail(docId);
+};
+
+function renderDocumentSectionsList(docId, sections, sectionImages, sectionTables){
   const wrap = document.getElementById('document-sections-list');
   if(!wrap) return;
   wrap.innerHTML = sections.length ? sections.map((s, idx) => {
     const images = sectionImages.filter(img => img.section_id === s.id);
+    const tables = (sectionTables || []).filter(t => t.section_id === s.id);
     return `
     <div class="detail-card" id="doc-section-anchor-${idx}" style="margin-bottom:10px; padding:14px 16px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -5409,19 +5562,99 @@ function renderDocumentSectionsList(docId, sections, sectionImages){
           <a onclick="deleteSectionImage('${img.id}','${docId}')" style="display:block; font-size:10.5px; color:var(--red); cursor:pointer; margin-top:2px;">Remove</a>
         </div>`).join('')}
       </div>` : ''}
+      ${tables.map(t => renderDocumentTableBlock(t, docId)).join('')}
       <div style="margin-top:10px; display:flex; gap:6px; align-items:center;">
         <input type="file" id="sec-img-input-${s.id}" accept="image/*" style="font-size:11.5px; max-width:200px;">
         <input type="text" id="sec-img-caption-${s.id}" placeholder="Caption (optional)" style="font-size:11.5px; padding:5px 8px; border:1px solid var(--border); border-radius:5px; max-width:160px;">
         <button class="btn-small" onclick="uploadSectionImage('${s.id}','${docId}')">Add illustration</button>
+        <button class="btn-small" onclick="addDocumentTable('${s.id}','${docId}')">Add table</button>
       </div>
     </div>`;
   }).join('') : '<p style="font-size:12.5px; color:var(--text-faint);">No content sections yet — add one below, or generate a draft with AI.</p>';
   hydrateSectionImages();
 }
 
+// A plain, editable HTML table — contenteditable cells rather than an
+// <input> per cell, since that avoids tracking a growing number of
+// individually-IDed inputs as rows and columns are added or removed.
+function renderDocumentTableBlock(t, docId){
+  const rows = t.table_data || [];
+  return `
+    <div class="detail-card" style="margin-top:12px; padding:12px; background:var(--grey-tint);">
+      <input type="text" value="${(t.caption||'').replace(/"/g,'&quot;')}" placeholder="Table caption (optional)" id="table-caption-${t.id}" onchange="saveDocumentTableCaption('${t.id}', this.value)" style="width:100%; margin-bottom:8px; padding:6px 8px; border:1px solid var(--border); border-radius:5px; font-size:12px; font-style:italic;">
+      <table class="doc-content-table" id="doc-table-${t.id}" style="width:100%; border-collapse:collapse;">
+        ${rows.map((row, ri) => `<tr>${row.map((cell, ci) => `<td contenteditable="true" data-row="${ri}" data-col="${ci}" onblur="saveDocumentTableCell('${t.id}')" style="border:1px solid var(--border); padding:6px 8px; font-size:12.5px; min-width:60px;">${cell || ''}</td>`).join('')}</tr>`).join('')}
+      </table>
+      <div style="display:flex; gap:6px; margin-top:8px;">
+        <button class="btn-small" onclick="addTableRow('${t.id}','${docId}')">+ Row</button>
+        <button class="btn-small" onclick="addTableColumn('${t.id}','${docId}')">+ Column</button>
+        <button class="btn-small" onclick="deleteDocumentTable('${t.id}','${docId}')">Delete table</button>
+      </div>
+    </div>`;
+}
+
 // The documents bucket is genuinely private, same as evidence — a
 // signed URL has to be fetched for each image individually rather than
 // a plain public URL, which would simply fail here.
+// Reconstructs the full 2D array from the DOM each time, since
+// contenteditable cells don't carry a bound value the way an <input>
+// would — this is the one place that needs to happen, everything else
+// just calls it.
+function readTableFromDom(tableId){
+  const tableEl = document.getElementById('doc-table-'+tableId);
+  const rows = [];
+  tableEl.querySelectorAll('tr').forEach(tr => {
+    const row = [];
+    tr.querySelectorAll('td').forEach(td => row.push(td.textContent));
+    rows.push(row);
+  });
+  return rows;
+}
+
+window.addDocumentTable = async function(sectionId, docId){
+  const { error } = await STATE.supabase.from('document_section_tables').insert({
+    organisation_id: STATE.org.id, document_id: docId, section_id: sectionId,
+    table_data: [["", ""], ["", ""]],
+  });
+  if(error){ toast('Could not add table: ' + error.message, 'error'); return; }
+  openDocumentDetail(docId);
+};
+
+window.saveDocumentTableCell = async function(tableId){
+  const tableData = readTableFromDom(tableId);
+  const { error } = await STATE.supabase.from('document_section_tables').update({ table_data: tableData }).eq('id', tableId);
+  if(error) toast('Could not save table: ' + error.message, 'error');
+};
+
+window.saveDocumentTableCaption = async function(tableId, caption){
+  const { error } = await STATE.supabase.from('document_section_tables').update({ caption }).eq('id', tableId);
+  if(error) toast('Could not save caption: ' + error.message, 'error');
+};
+
+window.addTableRow = async function(tableId, docId){
+  const tableData = readTableFromDom(tableId);
+  const colCount = tableData[0] ? tableData[0].length : 2;
+  tableData.push(new Array(colCount).fill(''));
+  const { error } = await STATE.supabase.from('document_section_tables').update({ table_data: tableData }).eq('id', tableId);
+  if(error){ toast('Could not add row: ' + error.message, 'error'); return; }
+  openDocumentDetail(docId);
+};
+
+window.addTableColumn = async function(tableId, docId){
+  const tableData = readTableFromDom(tableId);
+  tableData.forEach(row => row.push(''));
+  const { error } = await STATE.supabase.from('document_section_tables').update({ table_data: tableData }).eq('id', tableId);
+  if(error){ toast('Could not add column: ' + error.message, 'error'); return; }
+  openDocumentDetail(docId);
+};
+
+window.deleteDocumentTable = async function(tableId, docId){
+  if(!confirm('Remove this table?')) return;
+  const { error } = await STATE.supabase.from('document_section_tables').delete().eq('id', tableId);
+  if(error){ toast('Could not remove: ' + error.message, 'error'); return; }
+  openDocumentDetail(docId);
+};
+
 async function hydrateSectionImages(){
   const imgs = document.querySelectorAll('#document-sections-list img.doc-section-img[data-storage-path]');
   for(const img of imgs){
@@ -5562,7 +5795,11 @@ window.generateAiDraft = async function(docId){
   btn.disabled = true; btn.textContent = 'Generating…';
   showLoader('Generating draft with AI…');
 
-  const instructionPrompt = `You are drafting the content of a formal, ISO-compliant ${type ? type.name : 'business'} document titled "${d.title}" for a company's management system. The document is about: ${userPrompt}
+  const { data: referenceUploads } = await STATE.supabase.from('document_reference_uploads').select('extracted_text').eq('document_id', docId).not('extracted_text', 'is', null);
+  const referenceText = (referenceUploads || []).map(u => u.extracted_text).join('\n\n---\n\n').substring(0, 8000);
+  const referenceBlock = referenceText ? `\n\nThe client's own existing document on this subject is provided below for genuine context — use it to understand how this specific client actually operates, their terminology, and their existing structure, so the new draft is genuinely bespoke to them rather than generic. Do not simply copy it verbatim; produce a properly structured, ISO-compliant version informed by it:\n\n"""${referenceText}"""` : '';
+
+  const instructionPrompt = `You are drafting the content of a formal, ISO-compliant ${type ? type.name : 'business'} document titled "${d.title}" for a company's management system. The document is about: ${userPrompt}${referenceBlock}
 
 Produce a genuinely usable first draft, structured as clearly-labeled sections such as Purpose, Scope, Responsibilities, Procedure/Requirements, and Records (adjust the exact sections to whatever genuinely fits a document of this type). Return ONLY valid JSON, no other text, in exactly this shape:
 {"sections": [{"title": "Purpose", "content": "..."}, {"title": "Scope", "content": "..."}]}`;
@@ -5657,7 +5894,7 @@ window.printDocument = async function(id){
   const type = STATE.docTypes.find(x=>x.id===d.type_id);
   const { data: revisions } = await STATE.supabase.from('document_revisions').select('*').eq('document_id', id).order('revision_code', {ascending:false});
   const meta = [
-    ['Department', dept ? `${dept.code} — ${dept.name}` : '—'], ['Document type', type ? `${type.code} — ${type.name}` : '—'],
+    ['Department', dept ? `${dept.code}: ${dept.name}` : '—'], ['Document type', type ? `${type.code}: ${type.name}` : '—'],
     ['Current revision', d.current_revision], ['Introduced', fmtDate(d.introduced_date)],
     ['This revision dated', fmtDate(d.current_revision_date)], ['Owner', memberName(d.owner_id)],
     ['Developer', d.developer_id ? `${memberName(d.developer_id)}${d.developer_signed_off_at ? ' — signed '+fmtDate(d.developer_signed_off_at) : ' — not yet signed'}` : '—'],
@@ -5719,6 +5956,7 @@ function fitImageDimensions(naturalWidth, naturalHeight, maxWidth, maxHeight){
 async function fetchDocumentContentData(id){
   const { data: sections } = await STATE.supabase.from('document_content_sections').select('*').eq('document_id', id).order('sort_order', {ascending:true});
   const { data: sectionImages } = await STATE.supabase.from('document_section_images').select('*').eq('document_id', id).order('sort_order', {ascending:true});
+  const { data: sectionTables } = await STATE.supabase.from('document_section_tables').select('*').eq('document_id', id).order('sort_order', {ascending:true});
   const { data: addendums } = await STATE.supabase.from('document_addendums').select('*').eq('document_id', id).order('sort_order', {ascending:true});
 
   let logoImage = null;
@@ -5732,7 +5970,7 @@ async function fetchDocumentContentData(id){
       try { sectionImageData[img.id] = await fetchImageForDocx(signedData.signedUrl); } catch(e) { console.warn('A section image could not be fetched:', e); }
     }
   }
-  return { sections: sections||[], sectionImages: sectionImages||[], addendums: addendums||[], logoImage, sectionImageData };
+  return { sections: sections||[], sectionImages: sectionImages||[], sectionTables: sectionTables||[], addendums: addendums||[], logoImage, sectionImageData };
 }
 
 function arrayBufferToDataUrl(buffer, mimeType){
@@ -5748,17 +5986,22 @@ function arrayBufferToDataUrl(buffer, mimeType){
 // the authoring/sign-off workflow undermines the whole point of
 // controlling revisions in the first place. Staff get a finished
 // artefact, not a file they could accidentally alter.
-window.downloadDocumentPdf = async function(id){
+window.downloadDocumentPdf = async function(id, mode){
+  mode = mode || 'view';
+  if(mode === 'download' && !canDownload()){
+    toast("You don't have permission to download files — you can still view and print. Contact your admin if you need this.", 'error');
+    return;
+  }
   const d = documentById(id);
   if(!d) return;
   showLoader('Generating PDF…');
 
   const jspdfLib = await import('https://cdn.jsdelivr.net/npm/jspdf@4.2.1/+esm');
   const { jsPDF } = jspdfLib;
-  const { sections, sectionImages, addendums, logoImage, sectionImageData } = await fetchDocumentContentData(id);
+  const { sections, sectionImages, sectionTables, addendums, logoImage, sectionImageData } = await fetchDocumentContentData(id);
 
   const pageW = 595, pageH = 842; // A4 in points
-  const marginL = 45, marginR = 45, contentW = pageW - marginL - marginR;
+  const marginL = 38, marginR = 38, contentW = pageW - marginL - marginR;
   const headerH = 90, footerH = 70;
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   let y = headerH + 20;
@@ -5792,9 +6035,45 @@ window.downloadDocumentPdf = async function(id){
     doc.addPage(); y = headerH + 20;
   }
 
+  // Manual table drawing — no extra library, matching the same
+  // approach already proven for everything else in this generator.
+  // Draws row by row so a tall table can genuinely span a page break
+  // without cutting a row in half.
+  function addPdfTable(rows, caption){
+    if(!rows || !rows.length) return;
+    const colCount = rows[0].length;
+    const colW = contentW / colCount;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+    rows.forEach((row, ri) => {
+      const cellLines = row.map(cell => doc.splitTextToSize(String(cell ?? ''), colW - 12));
+      const rowH = Math.max(...cellLines.map(lines => lines.length * 12)) + 10;
+      ensureSpace(rowH);
+      doc.setDrawColor(190,190,190); doc.setLineWidth(0.5);
+      row.forEach((cell, ci) => {
+        const cx = marginL + ci * colW;
+        doc.rect(cx, y, colW, rowH);
+        doc.setFont('helvetica', ri === 0 ? 'bold' : 'normal');
+        doc.text(cellLines[ci], cx + 6, y + 13);
+      });
+      y += rowH;
+    });
+    if(caption){
+      y += 4;
+      doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(68,68,68);
+      doc.text(caption, marginL, y);
+      y += 16;
+      doc.setTextColor(0,0,0);
+    } else {
+      y += 12;
+    }
+  }
+
   (sections || []).forEach((s, idx) => {
     addHeading(`${idx + 1}. ${s.section_title}`, 14);
     (s.content || '').split('\n').forEach(p => { if(p.trim()) addParagraph(p); });
+    (sectionTables||[]).filter(t => t.section_id === s.id).forEach(t => {
+      addPdfTable(t.table_data, t.caption);
+    });
     (sectionImages||[]).filter(img => img.section_id === s.id).forEach(img => {
       const imgData = sectionImageData[img.id];
       if(!imgData) return;
@@ -5853,34 +6132,46 @@ window.downloadDocumentPdf = async function(id){
 
     // Footer, repeated identically on every page — the real "Page X of Y"
     // this format never allowed reliably before
-    const fy = pageH - footerH + 12;
+    const fy = pageH - footerH + 14;
     doc.setDrawColor(208,208,208); doc.setLineWidth(0.6);
-    doc.line(marginL, fy - 8, pageW - marginR, fy - 8);
-    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(0,0,0);
-    const col1 = marginL, col2 = marginL + 150, col3 = marginL + 330;
+    doc.line(marginL, fy - 10, pageW - marginR, fy - 10);
+    doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(0,0,0);
+    const col1 = marginL, col2 = marginL + 130, col3 = marginL + 330, col4 = marginL + 415;
+    const sigStatus = documentSignoffStatus(d);
     doc.text(`Doc No: ${d.doc_number}`, col1, fy);
-    doc.text(`Rev: ${d.current_revision}  |  ${fmtDate(d.current_revision_date)}`, col1, fy + 11);
-    doc.text('Printed copies are uncontrolled.', col2, fy);
-    doc.text('Refer to QaSHE Watchman for current status.', col2, fy + 11);
+    doc.text(`Rev ${d.current_revision} — ${fmtDate(d.current_revision_date)}`, col1, fy + 10);
+    doc.text(`Status: ${sigStatus.label}`, col1, fy + 20);
+    const disclaimerLines = doc.splitTextToSize('This document is controlled within QaSHE Watchman. A printed or saved copy is valid only at the time of printing and may not reflect the current revision. Personnel must always refer to QaSHE Watchman for the latest approved version.', 190);
+    doc.text(disclaimerLines, col2, fy);
     doc.text(reviewLine, col3, fy);
-    doc.text(approveLine, col3, fy + 11);
-    doc.text(`Page ${i} of ${pageCount}`, pageW - marginR, fy + 11, { align: 'right' });
+    doc.text(approveLine, col4, fy);
+    doc.text(`Page ${i} of ${pageCount}`, pageW - marginR, fy + 20, { align: 'right' });
   }
 
-  // Opens for viewing/printing rather than forcing a download — the
-  // whole point of the document control principle behind this feature
-  // is that staff work from the controlled register each time, not
-  // from a copy sitting on their own computer that could go stale the
-  // moment a new revision is issued.
-  const blobUrl = doc.output('bloburl');
-  window.open(blobUrl, '_blank');
   hideLoader();
-  toast('PDF opened for viewing — use your browser\'s print option to print it.', 'success');
+  if(mode === 'download'){
+    doc.save(`${d.doc_number} - ${d.title}.pdf`);
+    toast('PDF downloaded.', 'success');
+  } else {
+    // Opens for viewing/printing rather than forcing a download — the
+    // whole point of the document control principle behind this feature
+    // is that staff work from the controlled register each time, not
+    // from a copy sitting on their own computer that could go stale the
+    // moment a new revision is issued.
+    const blobUrl = doc.output('bloburl');
+    window.open(blobUrl, '_blank');
+    toast('PDF opened for viewing — use your browser\'s print option to print it.', 'success');
+  }
 };
 
 window.printDocumentContent = async function(id){
   const d = documentById(id);
   if(!d) return;
+  const isAssignedToThisDoc = [d.developer_id, d.reviewer_id, d.approver_id].includes(STATE.user.id);
+  if(!canDownload() && !isAssignedToThisDoc){
+    toast("You don't have permission to download files — you can still view and print. Contact your admin if you need this.", 'error');
+    return;
+  }
   showLoader('Generating Word document…');
 
   const docxLib = await import('https://cdn.jsdelivr.net/npm/docx@9.7.1/+esm');
@@ -5889,6 +6180,7 @@ window.printDocumentContent = async function(id){
 
   const { data: sections } = await STATE.supabase.from('document_content_sections').select('*').eq('document_id', id).order('sort_order', {ascending:true});
   const { data: sectionImages } = await STATE.supabase.from('document_section_images').select('*').eq('document_id', id).order('sort_order', {ascending:true});
+  const { data: sectionTables } = await STATE.supabase.from('document_section_tables').select('*').eq('document_id', id).order('sort_order', {ascending:true});
   const { data: addendums } = await STATE.supabase.from('document_addendums').select('*').eq('document_id', id).order('sort_order', {ascending:true});
 
   // Every image needed — logo and every section illustration — fetched
@@ -5936,12 +6228,13 @@ window.printDocumentContent = async function(id){
     });
   }
 
+  const wordSigStatus = documentSignoffStatus(d);
   const footerTable = new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder, insideHorizontal: thinBorder, insideVertical: thinBorder },
     rows: [ new TableRow({ children: [
-      footerCell(`Document Number: ${d.doc_number}\nRevision Status: ${d.current_revision}\nRevision Date: ${fmtDate(d.current_revision_date)}`, 30),
-      footerCell(`Soft copies controlled in QaSHE Watchman.\nPrinted copies are considered uncontrolled — refer to QaSHE Watchman to validate current revision and approval status.`, 35),
+      footerCell(`Document Number: ${d.doc_number}\nRevision Status: ${d.current_revision}\nRevision Date: ${fmtDate(d.current_revision_date)}\nStatus: ${wordSigStatus.label}`, 26),
+      footerCell(`This document is controlled within QaSHE Watchman. A printed or saved copy is valid only at the time of printing and may not reflect the current revision. Personnel must always refer to QaSHE Watchman for the latest approved version.`, 39),
       footerCell(reviewLine, 17.5),
       footerCell(approveLine, 17.5),
     ] }) ],
@@ -5975,6 +6268,27 @@ window.printDocumentContent = async function(id){
         spacing: { after: 160, line: 276 },
         children: [new TextRun({ text: para, size: 24, font: "Arial", color: "000000" })],
       }));
+    });
+    (sectionTables || []).filter(t => t.section_id === s.id).forEach(t => {
+      const rows = t.table_data || [];
+      bodyChildren.push(new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        borders: { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder, insideHorizontal: thinBorder, insideVertical: thinBorder },
+        rows: rows.map((row, ri) => new TableRow({
+          children: row.map(cell => new TableCell({
+            children: [new Paragraph({ children: [new TextRun({ text: String(cell ?? ''), size: 22, font: "Arial", bold: ri === 0, color: "000000" })] })],
+          })),
+        })),
+      }));
+      if(t.caption){
+        bodyChildren.push(new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 60, after: 160 },
+          children: [new TextRun({ text: t.caption, italics: true, size: 20, font: "Arial", color: "444444" })],
+        }));
+      } else {
+        bodyChildren.push(new Paragraph({ spacing: { after: 120 }, children: [] }));
+      }
     });
     const images = (sectionImages || []).filter(img => img.section_id === s.id);
     images.forEach(img => {
@@ -6029,6 +6343,11 @@ window.printDocumentContent = async function(id){
 
   const doc = new Document({
     sections: [{
+      properties: {
+        page: {
+          margin: { top: 1000, bottom: 1300, left: 850, right: 850 }, // twips — tighter than the 1" default, while leaving real room for the header/footer table
+        },
+      },
       headers: { default: new Header({ children: headerChildren }) },
       footers: { default: new Footer({ children: [footerTable] }) },
       children: bodyChildren,
@@ -9271,6 +9590,40 @@ function renderAssetsTable(){
 window.renderAssetsTable = renderAssetsTable;
 
 /* ---- Asset detail ---- */
+// Reuses the exact same image-API QR generation already proven on the
+// website — no client-side QR library needed, just an image URL.
+function assetQrCodeUrl(asset, sizePx){
+  const publicUrl = `${window.location.origin}${window.location.pathname.replace(/index\.html$/,'')}qashe-watchman-asset-inspection-link.html?asset_token=${asset.qr_token}`;
+  return `https://api.qrserver.com/v1/create-qr-code/?size=${sizePx}x${sizePx}&data=${encodeURIComponent(publicUrl)}`;
+}
+
+// A physical label, not a formal document — deliberately not using
+// the shared printRecord header/footer, since this needs to be large,
+// stark, and legible from across a workshop floor, ready to be cut out
+// and stuck onto the actual equipment.
+window.printAssetQrLabel = function(assetId){
+  const a = assetById(assetId);
+  if(!a) return;
+  const container = document.getElementById('print-container');
+  container.innerHTML = `
+    <style>
+      #print-container.qr-label-mode{ font-family:Arial, sans-serif; color:#000; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding-top:60px; }
+      #print-container.qr-label-mode img{ width:320px; height:320px; }
+      #print-container.qr-label-mode .qr-ref{ font-size:26px; font-weight:bold; margin-top:20px; }
+      #print-container.qr-label-mode .qr-desc{ font-size:15px; margin-top:6px; max-width:400px; }
+      #print-container.qr-label-mode .qr-org{ font-size:11px; color:#666; margin-top:16px; }
+    </style>
+    <div class="qr-label-mode">
+      <img src="${assetQrCodeUrl(a, 500)}">
+      <div class="qr-ref">${a.ref_code}</div>
+      <div class="qr-desc">${a.description}</div>
+      <div class="qr-org">${STATE.org.name} — Scan to complete an inspection</div>
+    </div>
+  `;
+  showLoader('Preparing label…');
+  waitForPrintImages(container).then(() => { hideLoader(); window.print(); });
+};
+
 async function openAssetDetail(id){
   const a = assetById(id);
   if(!a) return;
@@ -9297,6 +9650,15 @@ async function openAssetDetail(id){
         <b>${a.certificate_type}</b> — ${a.certificate_expiry_date ? dateStatusBadge(a.certificate_expiry_date, false) : 'no expiry date recorded'}
       </div>` : ''}
       ${a.notes ? `<p style="font-size:12.5px; color:var(--text-faint); margin-bottom:16px;">${a.notes}</p>` : ''}
+
+      <div class="detail-card" style="padding:16px; margin-bottom:16px; display:flex; align-items:center; gap:20px;">
+        <img src="${assetQrCodeUrl(a, 220)}" style="width:150px; height:150px; border:1px solid var(--border); border-radius:8px; flex-shrink:0;">
+        <div style="flex:1;">
+          <div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Asset QR Code</div>
+          <p style="font-size:12.5px; color:var(--text-dim); margin-bottom:10px;">Print this and attach it to the physical asset. Scanning it with any phone or tablet camera opens a fresh inspection for this asset — no login needed, and works indefinitely, not just once.</p>
+          <button class="btn-small primary" onclick="printAssetQrLabel('${a.id}')">Print QR Label</button>
+        </div>
+      </div>
 
       <div class="panel-head"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Inspections</h3>
         <button class="btn-small primary" onclick="toggleNewInspectionForm('${a.id}')">+ New inspection</button>
@@ -9416,7 +9778,12 @@ async function openInspectionDetail(inspectionId, assetId){
   if(iErr || !insp){ toast('Could not load inspection.', 'error'); return; }
   const { data: responses, error: rErr } = await STATE.supabase.from('asset_inspection_responses').select('*').eq('inspection_id', inspectionId).order('sort_order', {ascending:true});
   const { files: evidenceFiles } = await loadEvidence('asset_inspection', inspectionId);
+  const { data: certificates } = await STATE.supabase.from('asset_inspection_certificates').select('*').eq('inspection_id', inspectionId).order('created_at', {ascending:false});
   const isComplete = !!insp.status;
+  const asset = assetById(assetId);
+  const responsiblePerson = asset && asset.responsible_person_id ? personById(asset.responsible_person_id) : null;
+  const canApprove = STATE.myRole === 'admin' || (responsiblePerson && responsiblePerson.linked_profile_id === STATE.user.id);
+  const isApproved = insp.approval_status === 'approved';
 
   document.getElementById('asset-detail-slot').innerHTML = `
     <div class="detail-panel">
@@ -9455,6 +9822,31 @@ async function openInspectionDetail(inspectionId, assetId){
         <span class="sev-badge ${insp.status==='quarantine'?'critical':'minor'}" style="text-transform:capitalize;">${insp.status}</span>
         ${insp.overall_notes ? `<p style="font-size:13px; color:var(--text-dim); margin-top:10px;">${insp.overall_notes}</p>` : ''}
         <p style="font-size:11.5px; color:var(--text-faint); margin-top:8px;">Next inspection: ${fmtDate(insp.next_inspection_date)}</p>
+      </div>
+
+      <div class="detail-card" style="padding:16px; margin-top:16px;">
+        <div style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Review &amp; Approval</div>
+        ${isApproved
+          ? `<div style="padding:10px 14px; background:var(--green-tint); border-radius:8px; font-size:12.5px; color:var(--green); font-weight:600;">✓ Approved by ${memberName(insp.approved_by)} on ${fmtDate(insp.approved_at)}</div>`
+          : canApprove
+            ? `<p style="font-size:12px; color:var(--text-dim); margin-bottom:10px;">Review the results above, then approve to finalise this inspection and unlock supporting certificate uploads.</p><button class="btn-small primary" onclick="approveInspection('${inspectionId}','${assetId}')">Approve inspection</button>`
+            : `<p style="font-size:12px; color:var(--text-faint);">Awaiting review and approval by the assigned responsible person for this asset.</p>`}
+
+        ${isApproved || canApprove ? `
+        <div style="margin-top:16px; border-top:1px solid var(--border-soft); padding-top:14px;">
+          <div style="font-size:11.5px; color:var(--text-faint); margin-bottom:8px;">Supporting certificates (e.g. load test, calibration)</div>
+          <div id="inspection-certificates-list">
+            ${(certificates||[]).length ? certificates.map(c => `<div class="evidence-row">
+              <div style="flex:1; font-size:12.5px;">${c.file_name}</div>
+              <button class="btn-small" onclick="downloadFromBucket('documents','${c.storage_path}')">Download</button>
+              <button class="btn-small" onclick="deleteInspectionCertificate('${c.id}','${c.storage_path}','${inspectionId}','${assetId}')">Remove</button>
+            </div>`).join('') : '<p style="font-size:12px; color:var(--text-faint);">None uploaded yet.</p>'}
+          </div>
+          ${isApproved ? `<div style="display:flex; gap:6px; margin-top:8px;">
+            <input type="file" id="inspection-cert-input-${inspectionId}">
+            <button class="btn-small" onclick="uploadInspectionCertificate('${inspectionId}','${assetId}')">Upload certificate</button>
+          </div>` : '<p style="font-size:11px; color:var(--text-faint); margin-top:6px;">Certificates can be uploaded once this inspection is approved.</p>'}
+        </div>` : ''}
       </div>`}
 
       ${renderEvidenceSection('asset_inspection', inspectionId, evidenceFiles)}
@@ -9462,6 +9854,39 @@ async function openInspectionDetail(inspectionId, assetId){
   `;
 }
 window.openInspectionDetail = openInspectionDetail;
+
+window.approveInspection = async function(inspectionId, assetId){
+  if(!confirm('Approve this inspection? This confirms it has been reviewed and is finalised.')) return;
+  const { error } = await STATE.supabase.from('asset_inspections').update({
+    approval_status: 'approved', approved_by: STATE.user.id, approved_at: new Date().toISOString(),
+  }).eq('id', inspectionId);
+  if(error){ toast('Could not approve: ' + error.message, 'error'); return; }
+  openInspectionDetail(inspectionId, assetId);
+  toast('Inspection approved.', 'success');
+};
+
+window.uploadInspectionCertificate = async function(inspectionId, assetId){
+  const input = document.getElementById('inspection-cert-input-'+inspectionId);
+  const file = input.files[0];
+  if(!file){ alert('Choose a file first.'); return; }
+  const path = `${STATE.org.id}/${assetId}/certificates/${Date.now()}-${sanitizeFileName(file.name)}`;
+  const { error: upErr } = await STATE.supabase.storage.from('documents').upload(path, file);
+  if(upErr){ toast('Upload failed: ' + upErr.message, 'error'); return; }
+  const { error } = await STATE.supabase.from('asset_inspection_certificates').insert({
+    organisation_id: STATE.org.id, inspection_id: inspectionId, file_name: file.name, storage_path: path, uploaded_by: STATE.user.id,
+  });
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  openInspectionDetail(inspectionId, assetId);
+  toast('Certificate uploaded.', 'success');
+};
+
+window.deleteInspectionCertificate = async function(certId, storagePath, inspectionId, assetId){
+  if(!confirm('Remove this certificate?')) return;
+  await STATE.supabase.storage.from('documents').remove([storagePath]);
+  const { error } = await STATE.supabase.from('asset_inspection_certificates').delete().eq('id', certId);
+  if(error){ toast('Could not remove: ' + error.message, 'error'); return; }
+  openInspectionDetail(inspectionId, assetId);
+};
 
 function renderInspectionItemRow(r, inspectionId, assetId, isComplete){
   const isPoor = r.result === '4' || r.result === '5' || r.result === 'fail';
@@ -11071,6 +11496,10 @@ window.toggleAdminMemberEdit = function(userId){
           `).join('')}
         </div>
       </div>
+      <div class="field" style="display:flex; align-items:center; gap:8px; margin-top:10px;">
+        <input type="checkbox" id="admin-edit-download-${userId}" style="width:auto;" ${m.can_download?'checked':''}>
+        <label for="admin-edit-download-${userId}" style="text-transform:none; font-family:'Inter'; font-size:12.5px; color:var(--text-dim);">Can download files (Word/PDF) — beyond viewing and printing. Admins always have this regardless of this setting.</label>
+      </div>
       <button class="btn-small primary" onclick="saveAdminMemberAccess('${userId}')">Save</button>
       <button class="btn-small" onclick="toggleAdminMemberEdit('${userId}')">Cancel</button>
     </div>
@@ -11080,14 +11509,15 @@ window.toggleAdminMemberEdit = function(userId){
 window.saveAdminMemberAccess = async function(userId){
   const role = document.getElementById('admin-edit-role-'+userId).value;
   const moduleAccess = Array.from(document.querySelectorAll('.admin-edit-module-cb-'+userId+':checked')).map(el => el.value);
+  const canDownloadFlag = document.getElementById('admin-edit-download-'+userId).checked;
   if(role !== 'admin' && !moduleAccess.length){
     toast('Tick at least one module — otherwise this person will have no modules to work in at all.', 'error');
     return;
   }
-  const { error } = await STATE.supabase.from('organisation_members').update({ role, module_access: moduleAccess }).eq('user_id', userId).eq('organisation_id', STATE.org.id);
+  const { error } = await STATE.supabase.from('organisation_members').update({ role, module_access: moduleAccess, can_download: canDownloadFlag }).eq('user_id', userId).eq('organisation_id', STATE.org.id);
   if(error){ toast('Could not update access: ' + error.message, 'error'); return; }
   toast('Access updated.', 'success');
-  const { data: members } = await STATE.supabase.from('organisation_members').select('user_id, role, is_approver, module_access, profiles!organisation_members_user_id_fkey(name)').eq('organisation_id', STATE.org.id).eq('status','active');
+  const { data: members } = await STATE.supabase.from('organisation_members').select('user_id, role, is_approver, module_access, can_download, profiles!organisation_members_user_id_fkey(name)').eq('organisation_id', STATE.org.id).eq('status','active');
   STATE.members = members || [];
   renderAdminTeam();
 };
@@ -11650,14 +12080,16 @@ async function printRecord(docTitle, refLine, metaPairs, bodyHtml, extraHtml, mo
     </div>
     <div class="print-body">${bodyHtml || ''}</div>
     ${extraHtml || ''}
-    <div class="print-closing-note">Generated by QaSHE Watchman — ${STATE.org.name}. This is a point-in-time snapshot; the live record may have changed since printing.</div>
+    <div class="print-closing-note">This is a point-in-time snapshot from QaSHE Watchman — ${STATE.org.name}. A printed or saved copy is valid only at the time of printing and may not reflect the current record. Personnel must always refer to QaSHE Watchman for the latest information.</div>
     <div class="print-footer-fixed">
       <span><b>Doc No:</b> ${refLine}</span>
       ${formId ? `<span><b>Form Ref:</b> ${formId.line}${formId.date ? ` (Rev. date ${formId.date})` : ''}</span>` : ''}
       <span>${STATE.org.name}</span>
     </div>
   `;
+  showLoader('Preparing document…');
   await waitForPrintImages(container);
+  hideLoader();
   window.print();
 }
 window.printRecord = printRecord;
@@ -11834,6 +12266,47 @@ function toggleWatchmanChat(){
   document.getElementById('watchman-chat-backdrop').classList.toggle('open');
 }
 window.toggleWatchmanChat = toggleWatchmanChat;
+
+function toggleReportProblem(){
+  document.getElementById('report-problem-modal').classList.toggle('open');
+}
+window.toggleReportProblem = toggleReportProblem;
+
+window.submitProblemReport = async function(){
+  const description = document.getElementById('report-problem-text').value.trim();
+  if(!description){ alert('Describe the problem first.'); return; }
+  const btn = document.getElementById('report-problem-btn');
+  btn.disabled = true; btn.textContent = 'Sending…';
+
+  try {
+    const { error } = await STATE.supabase.from('problem_reports').insert({
+      organisation_id: STATE.org ? STATE.org.id : null,
+      reported_by: STATE.user ? STATE.user.id : null,
+      reporter_name: STATE.profile ? STATE.profile.name : null,
+      reporter_email: STATE.user ? STATE.user.email : null,
+      description,
+      page_context: document.getElementById('mod-title') ? document.getElementById('mod-title').textContent : null,
+    });
+    if(error) throw new Error(error.message);
+
+    // Also emails David directly, in addition to the admin console
+    // record — a report about the system itself shouldn't rely on him
+    // remembering to check a queue.
+    await sendEmailToAddress(
+      'david@groupqashecg.com',
+      `Watchman problem report — ${STATE.org ? STATE.org.name : 'Unknown organisation'}`,
+      `${STATE.profile ? STATE.profile.name : 'A user'} (${STATE.user ? STATE.user.email : 'unknown email'}) reported a problem in QaSHE Watchman:\n\n"${description}"\n\nOrganisation: ${STATE.org ? STATE.org.name : 'Unknown'}\nPage: ${document.getElementById('mod-title') ? document.getElementById('mod-title').textContent : 'Unknown'}`
+    );
+
+    document.getElementById('report-problem-text').value = '';
+    toggleReportProblem();
+    toast('Thank you — this has been reported to Group QaSHE CG.', 'success');
+  } catch(e) {
+    toast('Could not send report: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Send report';
+  }
+};
 
 function watchmanChatAppendMessage(role, text){
   const wrap = document.getElementById('watchman-chat-messages');
