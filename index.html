@@ -756,6 +756,13 @@
 </div>
 
 <div id="toast-root"></div>
+<div id="global-loader" style="display:none; position:fixed; inset:0; background:rgba(247,246,245,0.85); z-index:9999; align-items:center; justify-content:center; flex-direction:column;">
+  <div class="gate-watch" style="width:70px; height:70px;">
+    <div class="gate-watch-ring"></div>
+    <svg viewBox="0 0 56 56"><g class="gate-sweep"><line x1="28" y1="28" x2="28" y2="6" stroke="#B21616" stroke-width="2.5" opacity="0.9"/></g><circle cx="28" cy="28" r="4" fill="#B21616"/></svg>
+  </div>
+  <div id="global-loader-text" class="mono" style="margin-top:14px; font-size:11px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.06em;">Working…</div>
+</div>
 
 <div class="watchman-chat-hint" onclick="toggleWatchmanChat()">Help</div>
 <button class="watchman-chat-fab" id="watchman-chat-fab" onclick="toggleWatchmanChat()">
@@ -980,7 +987,19 @@ function toast(msg, kind){
   el.className = 'toast' + (kind ? ' ' + kind : '');
   el.textContent = msg;
   document.getElementById('toast-root').appendChild(el);
-  setTimeout(()=> el.remove(), 4500);
+  setTimeout(()=> el.remove(), 6000);
+}
+
+// The same brand radar-sweep used on the sign-in screen, reused here
+// for any operation that genuinely takes noticeable time — PDF/Word
+// generation, AI drafting — rather than flashing on every fast,
+// sub-second database call where it would just be visual noise.
+function showLoader(text){
+  document.getElementById('global-loader-text').textContent = text || 'Working…';
+  document.getElementById('global-loader').style.display = 'flex';
+}
+function hideLoader(){
+  document.getElementById('global-loader').style.display = 'none';
 }
 
 /* ============ CONFIG ============ */
@@ -2185,7 +2204,9 @@ const RENDERERS = {
       <div class="filters" id="doc-register-toolbar-extra" style="display:${STATE._docSubtab==='setup' ? 'none' : 'flex'};">
         <select id="doc-filter-status" onchange="renderDocumentsTable()">
           <option value="">All statuses</option>
-          ${optionList(DOC_STATUSES)}
+          <option value="Draft">Draft</option>
+          <option value="Under Review">Under Review</option>
+          <option value="Approved">Approved</option>
         </select>
         <select id="doc-filter-department" onchange="renderDocumentsTable()">
           <option value="">All departments</option>
@@ -5122,7 +5143,7 @@ function renderDocumentsTable(){
   const fDept = document.getElementById('doc-filter-department').value;
   const fType = document.getElementById('doc-filter-type').value;
   const rows = STATE.documents.filter(d =>
-    (!fStatus||d.status===fStatus) && (!fDept||d.department_id===fDept) && (!fType||d.type_id===fType)
+    (!fStatus||documentSignoffStatus(d).label===fStatus) && (!fDept||d.department_id===fDept) && (!fType||d.type_id===fType)
   );
   if(!rows.length){
     wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z"/><line x1="9" y1="12" x2="17" y2="12"/><line x1="9" y1="16" x2="17" y2="16"/></svg><p>No documents match this filter.</p></div>`;
@@ -5177,6 +5198,17 @@ async function openDocumentDetail(id){
 
       <div class="detail-card" style="padding:16px; margin-bottom:16px;">
         <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Developer, Reviewer &amp; Approver Sign-Off</h3></div>
+        ${(() => {
+          let stageLabel, stagePersonId, stageRole;
+          if(!d.developer_signed_off_at){ stageLabel = 'Developer'; stagePersonId = d.developer_id; stageRole = 'developer'; }
+          else if(!d.reviewer_signed_off_at){ stageLabel = 'Reviewer'; stagePersonId = d.reviewer_id; stageRole = 'reviewer'; }
+          else if(!d.approver_signed_off_at){ stageLabel = 'Approver'; stagePersonId = d.approver_id; stageRole = 'approver'; }
+          if(!stageLabel) return '';
+          return `<div style="background:var(--grey-tint); border-radius:8px; padding:10px 14px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div style="font-size:12.5px;"><b>Currently with: ${stageLabel}</b>${stagePersonId ? ` — ${memberName(stagePersonId)}` : ' (not yet assigned)'}. Only they can sign off or comment at this stage — this is enforced by the system itself, not just this screen.</div>
+            ${stagePersonId ? `<button class="btn-small" onclick="sendDocumentReminder('${d.id}','${stageRole}')">Send reminder</button>` : ''}
+          </div>`;
+        })()}
         <div class="form-grid" style="margin-bottom:10px;">
           <div class="field"><label>Developer</label><select id="dd-developer">${memberOptions(d.developer_id)}</select></div>
           <div class="field"><label>Reviewer</label><select id="dd-reviewer">${memberOptions(d.reviewer_id)}</select></div>
@@ -5247,6 +5279,7 @@ async function openDocumentDetail(id){
           <button class="btn-small primary" onclick="generateAiDraft('${d.id}')" id="ai-draft-btn">Generate draft sections</button>
           <p style="font-size:11px; color:var(--text-faint); margin-top:6px;">Generates a starting draft for you to review and edit — nothing here gets treated as final or signed off automatically.</p>
         </div>
+        <div id="document-toc" style="margin-bottom:14px;"></div>
         <div id="document-sections-list"></div>
         <div class="detail-card" style="margin-top:12px; background:var(--grey-tint);">
           <div class="form-grid">
@@ -5328,6 +5361,7 @@ async function openDocumentDetail(id){
     </div>
   `;
   renderDocumentSectionsList(id, sections || [], sectionImages || []);
+  renderDocumentToc(sections || []);
   renderDocumentLinksList(id, links || []);
   renderDocumentAddendumsList(id, addendums || []);
   renderDocumentReviewThread(id, reviewComments || []);
@@ -5336,15 +5370,26 @@ window.openDocumentDetail = openDocumentDetail;
 function closeDocumentDetail(){ document.getElementById('doc-detail-slot').innerHTML = ''; }
 window.closeDocumentDetail = closeDocumentDetail;
 
+function renderDocumentToc(sections){
+  const wrap = document.getElementById('document-toc');
+  if(!wrap) return;
+  if(!sections.length){ wrap.innerHTML = ''; return; }
+  wrap.innerHTML = `
+    <div style="background:var(--grey-tint); border-radius:8px; padding:12px 14px;">
+      <div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Table of Contents</div>
+      ${sections.map((s, idx) => `<div style="font-size:12.5px; padding:2px 0;"><a onclick="document.getElementById('doc-section-anchor-${idx}').scrollIntoView({behavior:'smooth'});" style="color:var(--red); cursor:pointer;">${idx + 1}. ${s.section_title}</a></div>`).join('')}
+    </div>`;
+}
+
 function renderDocumentSectionsList(docId, sections, sectionImages){
   const wrap = document.getElementById('document-sections-list');
   if(!wrap) return;
-  wrap.innerHTML = sections.length ? sections.map(s => {
+  wrap.innerHTML = sections.length ? sections.map((s, idx) => {
     const images = sectionImages.filter(img => img.section_id === s.id);
     return `
-    <div class="detail-card" style="margin-bottom:10px; padding:14px 16px;">
+    <div class="detail-card" id="doc-section-anchor-${idx}" style="margin-bottom:10px; padding:14px 16px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <b style="font-size:13px;">${s.section_title}</b>
+        <b style="font-size:13px;">${idx + 1}. ${s.section_title}</b>
         <div style="display:flex; gap:6px;">
           <button class="btn-small" onclick="toggleEditDocumentSection('${s.id}')">Edit</button>
           <button class="btn-small" onclick="deleteDocumentSection('${s.id}','${docId}')">Delete</button>
@@ -5515,6 +5560,7 @@ window.generateAiDraft = async function(docId){
   if(!userPrompt){ alert('Describe what this document is about first.'); return; }
   const btn = document.getElementById('ai-draft-btn');
   btn.disabled = true; btn.textContent = 'Generating…';
+  showLoader('Generating draft with AI…');
 
   const instructionPrompt = `You are drafting the content of a formal, ISO-compliant ${type ? type.name : 'business'} document titled "${d.title}" for a company's management system. The document is about: ${userPrompt}
 
@@ -5551,6 +5597,7 @@ Produce a genuinely usable first draft, structured as clearly-labeled sections s
     toast('Could not generate a draft: ' + e.message, 'error');
   } finally {
     btn.disabled = false; btn.textContent = 'Generate draft sections';
+    hideLoader();
   }
 };
 
@@ -5704,7 +5751,7 @@ function arrayBufferToDataUrl(buffer, mimeType){
 window.downloadDocumentPdf = async function(id){
   const d = documentById(id);
   if(!d) return;
-  toast('Generating PDF…', 'success');
+  showLoader('Generating PDF…');
 
   const jspdfLib = await import('https://cdn.jsdelivr.net/npm/jspdf@4.2.1/+esm');
   const { jsPDF } = jspdfLib;
@@ -5732,6 +5779,17 @@ window.downloadDocumentPdf = async function(id){
     ensureSpace(lines.length * 16); // whole paragraph together - passing lines one at a time to doc.text() silently drops justification
     doc.text(lines, marginL, y, { align: 'justify', maxWidth: contentW });
     y += lines.length * 16 + 8;
+  }
+
+  if((sections || []).length){
+    addHeading('Table of Contents', 16);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(12); doc.setTextColor(0,0,0);
+    sections.forEach((s, idx) => {
+      ensureSpace(18);
+      doc.text(`${idx + 1}. ${s.section_title}`, marginL, y);
+      y += 18;
+    });
+    doc.addPage(); y = headerH + 20;
   }
 
   (sections || []).forEach((s, idx) => {
@@ -5816,13 +5874,14 @@ window.downloadDocumentPdf = async function(id){
   // moment a new revision is issued.
   const blobUrl = doc.output('bloburl');
   window.open(blobUrl, '_blank');
+  hideLoader();
   toast('PDF opened for viewing — use your browser\'s print option to print it.', 'success');
 };
 
 window.printDocumentContent = async function(id){
   const d = documentById(id);
   if(!d) return;
-  toast('Generating document…', 'success');
+  showLoader('Generating Word document…');
 
   const docxLib = await import('https://cdn.jsdelivr.net/npm/docx@9.7.1/+esm');
   const { Document, Packer, Paragraph, TextRun, AlignmentType, Header, Footer,
@@ -5891,6 +5950,19 @@ window.printDocumentContent = async function(id){
   // Body content — real paragraph headings in bold, real justified
   // body text, real section illustrations embedded inline.
   const bodyChildren = [];
+  if((sections || []).length){
+    bodyChildren.push(new Paragraph({
+      children: [new TextRun({ text: "Table of Contents", bold: true, size: 32, font: "Arial", color: "000000" })],
+      spacing: { after: 200 },
+    }));
+    sections.forEach((s, idx) => {
+      bodyChildren.push(new Paragraph({
+        children: [new TextRun({ text: `${idx + 1}. ${s.section_title}`, size: 24, font: "Arial", color: "000000" })],
+        spacing: { after: 100 },
+      }));
+    });
+    bodyChildren.push(new Paragraph({ children: [new PageBreak()] }));
+  }
   (sections || []).forEach((s, idx) => {
     bodyChildren.push(new Paragraph({
       children: [new TextRun({ text: `${idx + 1}. ${s.section_title}`, bold: true, size: 28, font: "Arial", color: "000000" })],
@@ -5972,6 +6044,7 @@ window.printDocumentContent = async function(id){
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+  hideLoader();
   toast('Document downloaded.', 'success');
 };
 
@@ -6031,17 +6104,39 @@ window.signOffDocument = async function(docId, role){
 
   const d = documentById(docId);
   const docLabel = `${d.doc_number} — ${d.title}`;
+  let notifyMsg = '';
   if(role === 'developer' && d.reviewer_id){
-    sendNotificationEmail(d.reviewer_id, `Ready for your review: ${docLabel}`, `${d.doc_number} — ${d.title} has been signed off by its developer and is now ready for your review in QaSHE Watchman.`);
+    const sent = await sendNotificationEmail(d.reviewer_id, `Ready for your review: ${docLabel}`, `${d.doc_number} — ${d.title} has been signed off by its developer and is now ready for your review in QaSHE Watchman.`);
+    notifyMsg = sent ? ` An email has been sent to ${memberName(d.reviewer_id)} (Reviewer).` : ` Could not email ${memberName(d.reviewer_id)} — let them know directly.`;
   } else if(role === 'reviewer' && d.approver_id){
-    sendNotificationEmail(d.approver_id, `Ready for your approval: ${docLabel}`, `${d.doc_number} — ${d.title} has been reviewed and is now ready for your approval in QaSHE Watchman.`);
+    const sent = await sendNotificationEmail(d.approver_id, `Ready for your approval: ${docLabel}`, `${d.doc_number} — ${d.title} has been reviewed and is now ready for your approval in QaSHE Watchman.`);
+    notifyMsg = sent ? ` An email has been sent to ${memberName(d.approver_id)} (Approver).` : ` Could not email ${memberName(d.approver_id)} — let them know directly.`;
   } else if(role === 'approver' && d.owner_id){
-    sendNotificationEmail(d.owner_id, `Now official: ${docLabel}`, `${d.doc_number} — ${d.title} has been fully approved and is now official in QaSHE Watchman.`);
+    const sent = await sendNotificationEmail(d.owner_id, `Now official: ${docLabel}`, `${d.doc_number} — ${d.title} has been fully approved and is now official in QaSHE Watchman.`);
+    notifyMsg = sent ? ` An email has been sent to ${memberName(d.owner_id)} (Owner).` : '';
   }
 
   await loadDocuments();
   openDocumentDetail(docId);
-  toast('Signed off.', 'success');
+  toast(`Signed off as ${role}.${notifyMsg}`, 'success');
+};
+
+// A manual reminder button — a genuinely different thing from an
+// automatic, scheduled reminder (e.g. "nudge after 3 days with no
+// action"), which would need a scheduled background job this system
+// doesn't currently have. This gives the same practical outcome by
+// hand, on demand, right now.
+window.sendDocumentReminder = async function(docId, stageRole){
+  const d = documentById(docId);
+  const personId = { developer: d.developer_id, reviewer: d.reviewer_id, approver: d.approver_id }[stageRole];
+  if(!personId){ alert('Nobody is assigned to this stage yet.'); return; }
+  const roleLabel = REVIEW_STAGE_LABELS[stageRole];
+  const sent = await sendNotificationEmail(
+    personId,
+    `Reminder — action needed on ${d.doc_number}`,
+    `This is a reminder that ${d.doc_number} — ${d.title} is waiting on your action as ${roleLabel} in QaSHE Watchman.`
+  );
+  toast(sent ? `Reminder emailed to ${memberName(personId)}.` : 'Could not send the reminder.', sent ? 'success' : 'error');
 };
 
 const REVIEW_STAGE_LABELS = { developer: 'Developer', reviewer: 'Reviewer', approver: 'Approver' };
@@ -6079,12 +6174,14 @@ window.addReviewComment = async function(docId, stage){
   // actively corresponding with — developer if the document hasn't
   // reached the approver stage yet, approver if it has.
   const notifyId = stage === 'reviewer' ? (d.approver_signed_off_at || d.reviewer_signed_off_at ? d.approver_id : d.developer_id) : notifyMap[stage];
+  let notifyMsg = '';
   if(notifyId){
-    sendNotificationEmail(notifyId, `New comment on ${docLabel}`, `${memberName(STATE.user.id)} left a comment as ${REVIEW_STAGE_LABELS[stage]} on ${docLabel} in QaSHE Watchman:\n\n"${text}"`);
+    const sent = await sendNotificationEmail(notifyId, `New comment on ${docLabel}`, `${memberName(STATE.user.id)} left a comment as ${REVIEW_STAGE_LABELS[stage]} on ${docLabel} in QaSHE Watchman:\n\n"${text}"`);
+    notifyMsg = sent ? ` An email has been sent to ${memberName(notifyId)}.` : ` Could not email ${memberName(notifyId)} — let them know directly.`;
   }
 
   openDocumentDetail(docId);
-  toast('Comment posted.', 'success');
+  toast(`Comment posted.${notifyMsg}`, 'success');
 };
 
 window.saveDocumentStatus = async function(id){
@@ -11799,35 +11896,3 @@ async function ensureSupabaseLib(){
 </script>
 </body>
 </html>
-
-{
-  "name": "QaSHE Watchman",
-  "short_name": "Watchman",
-  "description": "Integrated Business Management System — Group QaSHE CG",
-  "start_url": "./index.html",
-  "scope": "./",
-  "display": "standalone",
-  "orientation": "any",
-  "background_color": "#F7F6F5",
-  "theme_color": "#B21616",
-  "icons": [
-    {
-      "src": "icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "icon-512-maskable.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    }
-  ]
-}
