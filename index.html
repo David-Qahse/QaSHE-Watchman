@@ -1800,6 +1800,7 @@ function showModule(mod){
   document.getElementById('content-root').innerHTML = renderModuleInfoCard(mod) + RENDERERS[mod]();
   updateNavBadges();
   if(mod === 'nonconformances') renderNCTable();
+  if(mod === 'raga') renderRagaTable();
   if(mod === 'tasks') renderTaskTable();
   if(mod === 'audits') switchAuditSubtab(STATE._auditSubtab || 'plan');
   if(mod === 'risks') renderRisksTable();
@@ -3534,20 +3535,104 @@ window.saveRagaDetail = async function(id){
   toast('Saved.', 'success');
 };
 
-window.printRaga = async function(id){
+const RAGA_PRINT_SECTIONS = [
+  { key:'rootcause', label:'Root Cause' },
+  { key:'correction', label:'Correction / Corrective Action' },
+  { key:'risks', label:'Linked Risks & Opportunities' },
+  { key:'tasks', label:'Linked Tasks' },
+  { key:'otherEvidence', label:'Other Evidence Attached' },
+];
+
+window.printRaga = function(id){
+  const overlay = document.getElementById('print-options-overlay');
+  const modal = document.getElementById('print-options-modal');
+  modal.innerHTML = `
+    <button class="close-btn" style="position:absolute; top:20px; right:20px;" onclick="closePrintOptions()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    <h3 style="padding-right:36px;">What should this printout include?</h3>
+    <p class="sub" style="margin-bottom:16px;">The record's core details, description, and photos always print. Everything below is optional — untick anything you don't want in this specific copy.</p>
+    <div style="max-height:320px; overflow-y:auto; margin-bottom:16px;">
+      ${RAGA_PRINT_SECTIONS.map(s => `<label style="display:flex; align-items:center; gap:8px; padding:6px 0; font-size:13px; cursor:pointer;"><input type="checkbox" id="rps-${s.key}" checked style="width:auto;"> ${s.label}</label>`).join('')}
+    </div>
+    <div class="form-actions">
+      <button class="btn-cancel" onclick="closePrintOptions()">Cancel</button>
+      <button class="btn-primary" onclick="confirmPrintRaga('${id}')">Print / PDF</button>
+    </div>
+  `;
+  overlay.classList.add('active');
+};
+
+window.confirmPrintRaga = async function(id){
+  const sections = {};
+  RAGA_PRINT_SECTIONS.forEach(s => { sections[s.key] = document.getElementById('rps-'+s.key).checked; });
+  closePrintOptions();
+  await buildAndPrintRaga(id, sections);
+};
+
+async function buildAndPrintRaga(id, sections){
   const r = ragaById(id);
   if(!r) return;
-  const typeLabel = { red: 'Red Alert', orange: 'Orange Alert', green: 'Green Alert' };
   const isGreen = r.alert_type === 'green';
+  const typeLabel = { red: 'Red Alert', orange: 'Orange Alert', green: 'Green Alert' };
+  const linkedTasks = STATE.tasks.filter(t=>t.linked_type==='raga_alert' && t.linked_id===id);
+  const { data: riskLinks } = await STATE.supabase.from('raga_risk_links').select('risk_id, risk_register(ref_code, title)').eq('raga_alert_id', id);
+  const { files: evidenceFiles } = await loadEvidence('raga_alert', id);
+
+  // Real embedded photos, not a filename list — same signed-URL
+  // approach already proven for Nonconformances. RAGA's evidence has
+  // no per-section assignment, so every photo simply appears with the
+  // description, same as an NC's unassigned photos already do.
+  const imageFiles = (evidenceFiles || []).filter(f => (f.file_type||'').startsWith('image/'));
+  const photos = [];
+  for(const f of imageFiles){
+    const { data } = await STATE.supabase.storage.from('evidence').createSignedUrl(f.storage_path, 3600);
+    if(!data || !data.signedUrl) continue;
+    photos.push({ url: data.signedUrl, name: f.description || f.file_name });
+  }
+  const photoBlock = photos.length ? `<div style="margin:14px 0; display:flex; flex-wrap:wrap; gap:16px;">
+    ${photos.map(p => `<div style="text-align:center; background:#FAFAF9; border:1px solid #E3E1DF; border-radius:8px; padding:10px;">
+      <img src="${p.url}" style="max-width:280px; max-height:220px; object-fit:contain; border-radius:4px; display:block;">
+      <div style="font-size:10.5px; color:#615C59; margin-top:8px; font-weight:600; max-width:280px;">${p.name}</div>
+    </div>`).join('')}
+  </div>` : '';
+
   const meta = isGreen
     ? [['Alert type', typeLabel[r.alert_type]], ['Raised', `${fmtDate(r.raised_date)} by ${memberName(r.raised_by)}`], ['Recognised', r.recognised_person_id && personById(r.recognised_person_id) ? personById(r.recognised_person_id).full_name : '—']]
-    : [['Alert type', typeLabel[r.alert_type]], ['Owner', memberName(r.owner_id)], ['Raised', `${fmtDate(r.raised_date)} by ${memberName(r.raised_by)}`], ['Target close', fmtDate(r.target_close_date)], ['Status', r.status]];
-  const body = `
-    <p>${r.description || ''}</p>
-    ${!isGreen ? `<p><b>Root cause:</b> ${r.root_cause || '—'}</p><p><b>Correction:</b> ${r.correction || '—'}</p>` : ''}
-  `;
+    : [['Alert type', typeLabel[r.alert_type]], ['Owner', memberName(r.owner_id)], ['Raised', `${fmtDate(r.raised_date)} by ${memberName(r.raised_by)}`], ['Target close', fmtDate(r.target_close_date)], ['Status', label(r.status)]];
+  if(!isGreen && r.status === 'closed'){
+    meta.push(['Verified by', memberName(r.verified_by)], ['Verified date', fmtDate(r.verified_date)], ['Closure signature', r.closure_signature_name || '—']);
+  }
+
+  let body = `<p><b>Description</b><br>${r.description || 'No description recorded.'}</p>`;
+  body += photoBlock;
+
+  if(!isGreen){
+    if(sections.rootcause && r.root_cause) body += printSectionTitle('Root Cause') + `<p>${r.root_cause}</p>`;
+    if(sections.correction && r.correction) body += printSectionTitle('Correction / Corrective Action') + `<p>${r.correction}</p>`;
+  }
+
+  if(sections.risks && riskLinks && riskLinks.length){
+    body += printSectionTitle('Linked Risks & Opportunities');
+    body += '<ul>' + riskLinks.map(l=>`<li>${l.risk_register.ref_code} — ${l.risk_register.title}</li>`).join('') + '</ul>';
+  }
+
+  if(sections.tasks && linkedTasks.length){
+    body += printSectionTitle('Linked Tasks');
+    body += printTable(['Task','Assignee','Due','Status'], linkedTasks.map(t => [t.title, memberName(t.assignee_id), fmtDate(t.due_date), label(t.status)]));
+  }
+
+  if(sections.otherEvidence){
+    body += buildPrintSupportingDocsList(evidenceFiles);
+  }
+
+  if(!isGreen){
+    body += `<div style="margin-top:32px; padding-top:16px; border-top:1px solid #E3E1DF; display:flex; gap:40px;">
+      <div style="flex:1;"><div style="font-size:10px; color:#9C9895; text-transform:uppercase; margin-bottom:22px;">Prepared By — Sign &amp; Date</div><div style="border-top:1px solid #545454; width:100%;"></div></div>
+      <div style="flex:1;"><div style="font-size:10px; color:#9C9895; text-transform:uppercase; margin-bottom:22px;">Verified By — Sign &amp; Date</div><div style="border-top:1px solid #545454; width:100%;"></div></div>
+    </div>`;
+  }
+
   await printRecord(r.title, r.ref_code, meta, body, '', 'raga');
-};
+}
 function closeNCDetail(){ document.getElementById('nc-detail-slot').innerHTML = ''; }
 window.closeNCDetail = closeNCDetail;
 
@@ -8968,14 +9053,18 @@ async function openPersonDetail(id){
         <button class="btn-small primary" onclick="uploadPersonPhoto('${p.id}')">Upload</button>
         ${p.photo_path ? `<button class="btn-small" onclick="removePersonPhoto('${p.id}')">Remove</button>` : ''}
       </div>
-      <div class="detail-meta">
-        <div class="dm-item"><div class="l">Company number</div><div class="v">${p.company_number || '—'}</div></div>
-        <div class="dm-item"><div class="l">Type</div><div class="v" style="text-transform:capitalize">${p.employment_type.replace('_',' ')}</div></div>
-        <div class="dm-item"><div class="l">Date started</div><div class="v">${fmtDate(p.date_started)}</div></div>
-        <div class="dm-item"><div class="l">Status</div><div class="v">${pill(p.status)}</div></div>
+      <div class="form-grid" style="margin-bottom:10px;">
+        <div class="field span2"><label>Full name</label><input id="pd-full-name" value="${(p.full_name||'').replace(/"/g,'&quot;')}"></div>
+        <div class="field"><label>Company number</label><input id="pd-company-number" value="${(p.company_number||'').replace(/"/g,'&quot;')}"></div>
+        <div class="field"><label>Type</label><select id="pd-employment-type">
+          <option value="full_time" ${p.employment_type==='full_time'?'selected':''}>Full Time</option>
+          <option value="contract" ${p.employment_type==='contract'?'selected':''}>Contract</option>
+        </select></div>
+        <div class="field"><label>Date started</label><input type="date" id="pd-date-started" value="${p.date_started||''}"></div>
+        <div class="field span3"><label>Qualifications/experience</label><textarea id="pd-qualifications" placeholder="Qualifications, prior experience">${p.qualifications_experience||''}</textarea></div>
+        <div class="field span3"><label>Comments</label><textarea id="pd-comments" placeholder="Anything else worth recording">${p.comments||''}</textarea></div>
       </div>
-      ${p.qualifications_experience ? `<p style="font-size:13px; color:var(--text-dim); margin-bottom:10px;"><b>Qualifications/experience:</b> ${p.qualifications_experience}</p>` : ''}
-      ${p.comments ? `<p style="font-size:12.5px; color:var(--text-faint); margin-bottom:16px;"><b>Comments:</b> ${p.comments}</p>` : ''}
+      <button class="btn-small primary" style="margin-bottom:16px;" onclick="savePersonDetails('${p.id}')">Save details</button>
 
       <div class="status-row">
         <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase;">Status</label>
@@ -9232,6 +9321,24 @@ window.removeCompetence = async function(competenceId, personId){
   await loadCompetence();
   openPersonDetail(personId);
   renderPersonnelView();
+};
+
+window.savePersonDetails = async function(personId){
+  const fullName = document.getElementById('pd-full-name').value.trim();
+  if(!fullName){ toast('Full name is required.', 'error'); return; }
+  const { error } = await STATE.supabase.from('personnel').update({
+    full_name: fullName,
+    company_number: document.getElementById('pd-company-number').value.trim(),
+    employment_type: document.getElementById('pd-employment-type').value,
+    date_started: document.getElementById('pd-date-started').value || null,
+    qualifications_experience: document.getElementById('pd-qualifications').value.trim(),
+    comments: document.getElementById('pd-comments').value.trim(),
+  }).eq('id', personId);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  await loadPersonnel();
+  openPersonDetail(personId);
+  renderPersonnelView();
+  toast('Details saved.', 'success');
 };
 
 window.savePersonStatus = async function(personId){
