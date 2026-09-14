@@ -1202,7 +1202,7 @@ async function afterSignIn(user){
 
   const { data: memberships, error: memErr } = await STATE.supabase
     .from('organisation_members')
-    .select('organisation_id, role, module_access, can_download, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color, all_documents_enabled, document_control_enabled, administration_enabled, raga_enabled, ebitda, subscription_status)')
+    .select('organisation_id, role, module_access, can_download, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color, all_documents_enabled, document_control_enabled, administration_enabled, raga_enabled, nc_enabled, ebitda, subscription_status)')
     .eq('user_id', user.id).eq('status','active');
 
   if(memErr){ toast('Could not load your organisations: ' + memErr.message, 'error'); return; }
@@ -1315,6 +1315,7 @@ window.selectOrg = async function(orgId){
 };
 
 async function loadNCs(){
+  if(STATE.org.nc_enabled === false) return; // no point querying a module this org has switched off
   const { data, error } = await STATE.supabase.from('nonconformances').select('*').eq('organisation_id', STATE.org.id).order('raised_date', {ascending:false});
   if(error){ toast('Could not load nonconformances: ' + error.message, 'error'); return; }
   STATE.ncs = data || [];
@@ -1763,7 +1764,8 @@ function canAccessModule(mod){
   if(mod === 'all_documents') return !!STATE.org.all_documents_enabled; // org-level switch only — everyone sees it when on, nobody when off
   if(mod === 'documents') return !!STATE.org.document_control_enabled; // same mechanism — org-level switch only
   if(mod === 'administration') return !!STATE.org.administration_enabled; // same mechanism — org-level switch only
-  if(mod === 'raga') return !!STATE.org.raga_enabled; // same mechanism — org-level switch only, on for Allmech specifically for now
+  if(mod === 'raga') return !!STATE.org.raga_enabled; // same mechanism — org-level switch only
+  if(mod === 'nonconformances') return STATE.org.nc_enabled !== false; // org-level switch — defaults true so no existing client loses access
   if(STATE.myRole === 'admin') return true;
   return (STATE.myModuleAccess || []).includes(mod);
 }
@@ -3345,6 +3347,9 @@ async function openRagaDetail(id){
   const r = ragaById(id);
   if(!r) return;
   const { files: evidenceFiles } = await loadEvidence('raga_alert', id);
+  const linkedTasks = STATE.tasks.filter(t=>t.linked_type==='raga_alert' && t.linked_id===id);
+  const { data: riskLinks } = await STATE.supabase.from('raga_risk_links').select('id, risk_id, risk_register(ref_code, title, entry_type, status)').eq('raga_alert_id', id);
+  const linkedRisks = riskLinks || [];
   const typeLabel = { red: '🔴 Red Alert', orange: '🟠 Orange Alert', green: '🟢 Green Alert' };
   const isGreen = r.alert_type === 'green';
 
@@ -3393,6 +3398,25 @@ async function openRagaDetail(id){
           <input id="raga-d-closure-signature" value="${(r.closure_signature_name||'').replace(/"/g,'&quot;')}" placeholder="Full name">
         </div>
       `}
+
+      <div style="margin-bottom:16px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase;">Tasks</div>
+          <button class="btn-small" onclick="prefillTaskFromRaga('${r.id}')">+ ${isGreen ? 'Follow-up' : 'Corrective action'} task</button>
+        </div>
+        ${linkedTasks.length ? linkedTasks.map(t=>`<span class="linked-task-chip"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12l3 3 6-6"/></svg>${t.title} — ${pill(t.status)}</span>`).join('') : '<p style="font-size:12.5px; color:var(--text-faint);">No tasks linked yet.</p>'}
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase;">Risks &amp; Opportunities</div>
+          <button class="btn-small" onclick="toggleRagaRiskLinkForm('${r.id}', [${linkedRisks.map(l=>`'${l.risk_id}'`).join(',')}])">+ Link risk/opportunity</button>
+        </div>
+        ${linkedRisks.length ? linkedRisks.map(l=>`<span class="linked-task-chip">${entryTypeBadge(l.risk_register.entry_type)} ${l.risk_register.ref_code} — ${l.risk_register.title}
+          <a href="#" onclick="unlinkRagaRisk('${l.id}','${r.id}'); return false;" style="color:var(--text-faint); margin-left:6px;" title="Unlink">✕</a>
+        </span>`).join('') : '<p style="font-size:12.5px; color:var(--text-faint);">Not linked to any risk or opportunity yet.</p>'}
+        <div id="raga-risk-link-form-${r.id}"></div>
+      </div>
 
       ${renderEvidenceSection('raga_alert', r.id, evidenceFiles)}
     </div>
@@ -3676,6 +3700,15 @@ window.prefillTaskFromNC = function(ncId){
   setTimeout(()=>{
     document.getElementById('task-form').classList.add('open');
     document.getElementById('tf-linked').value = 'nonconformance:' + ncId;
+    document.getElementById('tf-title').focus();
+  },0);
+};
+
+window.prefillTaskFromRaga = function(ragaId){
+  showModule('tasks');
+  setTimeout(()=>{
+    document.getElementById('task-form').classList.add('open');
+    document.getElementById('tf-linked').value = 'raga_alert:' + ragaId;
     document.getElementById('tf-title').focus();
   },0);
 };
@@ -4669,6 +4702,97 @@ window.unlinkRisk = async function(linkId, ncId){
   const { error } = await STATE.supabase.from('nc_risk_links').delete().eq('id', linkId);
   if(error){ toast('Could not unlink: ' + error.message, 'error'); return; }
   await openNCDetail(ncId);
+};
+
+window.toggleRagaRiskLinkForm = function(ragaId, alreadyLinkedIds){
+  const slot = document.getElementById('raga-risk-link-form-'+ragaId);
+  if(!slot) return;
+  if(slot.innerHTML.trim()){ slot.innerHTML = ''; return; }
+  const available = STATE.risks.filter(r => !alreadyLinkedIds.includes(r.id));
+  slot.innerHTML = `
+    <div class="form-panel open" style="margin-top:10px;">
+      <div class="form-grid">
+        <div class="field span3">
+          <label>Link to</label>
+          <select id="rrl-pick-${ragaId}" onchange="toggleNewRagaRiskFields('${ragaId}')">
+            ${available.length ? `<option value="">— choose an existing entry —</option>` + available.map(r=>`<option value="${r.id}">${r.ref_code} — ${r.title} (${r.entry_type})</option>`).join('') : ''}
+            <option value="__new__">+ Log a new risk or opportunity</option>
+          </select>
+        </div>
+      </div>
+      <div id="rrl-new-fields-${ragaId}" style="display:none;">
+        <div class="form-grid">
+          <div class="field span2"><label>Title</label><input id="rrl-new-title-${ragaId}"></div>
+          <div class="field"><label>Type</label><select id="rrl-new-type-${ragaId}" onchange="updateInlineRagaRiskFormLabels('${ragaId}')"><option value="risk">Risk</option><option value="opportunity">Opportunity</option></select></div>
+          <div class="field span3"><label>Description</label><textarea id="rrl-new-desc-${ragaId}" placeholder="What this is and why it matters"></textarea></div>
+          <div class="field"><label>Category</label><select id="rrl-new-category-${ragaId}">${RISK_CATEGORIES.map(c=>`<option value="${c}">${riskCategoryLabel(c)}</option>`).join('')}</select></div>
+          <div class="field"><label id="rrl-new-likelihood-label-${ragaId}">Likelihood</label><select id="rrl-new-likelihood-${ragaId}">${SCALE_1_5.map(v=>`<option value="${v}" ${v==='3'?'selected':''}>${v}</option>`).join('')}</select></div>
+          <div class="field"><label id="rrl-new-impact-label-${ragaId}">Impact</label><select id="rrl-new-impact-${ragaId}">${SCALE_1_5.map(v=>`<option value="${v}" ${v==='3'?'selected':''}>${v}</option>`).join('')}</select></div>
+          <div class="field"><label>Owner</label><select id="rrl-new-owner-${ragaId}">${memberOptions(STATE.user.id)}</select></div>
+          <div class="field"><label>Review date</label><input type="date" id="rrl-new-review-${ragaId}" value="${todayISO()}"></div>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-cancel" onclick="toggleRagaRiskLinkForm('${ragaId}', [])">Cancel</button>
+        <button class="btn-small primary" onclick="confirmRagaRiskLink('${ragaId}')">Link</button>
+      </div>
+    </div>
+  `;
+};
+
+window.toggleNewRagaRiskFields = function(ragaId){
+  const picked = document.getElementById('rrl-pick-'+ragaId).value;
+  document.getElementById('rrl-new-fields-'+ragaId).style.display = (picked === '__new__') ? 'block' : 'none';
+};
+
+window.updateInlineRagaRiskFormLabels = function(ragaId){
+  const isOpp = document.getElementById('rrl-new-type-'+ragaId).value === 'opportunity';
+  document.getElementById('rrl-new-likelihood-label-'+ragaId).textContent = isOpp ? 'Probability' : 'Likelihood';
+  document.getElementById('rrl-new-impact-label-'+ragaId).textContent = isOpp ? 'Benefit' : 'Impact';
+};
+
+window.confirmRagaRiskLink = async function(ragaId){
+  const picked = document.getElementById('rrl-pick-'+ragaId).value;
+  if(!picked){ toast('Choose an entry to link, or create a new one.', 'error'); return; }
+
+  let riskId = picked;
+  if(picked === '__new__'){
+    const title = document.getElementById('rrl-new-title-'+ragaId).value.trim();
+    if(!title){ alert('Title is required for a new entry.'); return; }
+    const payload = {
+      organisation_id: STATE.org.id,
+      entry_type: document.getElementById('rrl-new-type-'+ragaId).value,
+      title,
+      description: document.getElementById('rrl-new-desc-'+ragaId).value.trim(),
+      category: document.getElementById('rrl-new-category-'+ragaId).value,
+      likelihood: parseInt(document.getElementById('rrl-new-likelihood-'+ragaId).value, 10),
+      impact: parseInt(document.getElementById('rrl-new-impact-'+ragaId).value, 10),
+      owner_id: document.getElementById('rrl-new-owner-'+ragaId).value,
+      review_date: document.getElementById('rrl-new-review-'+ragaId).value || null,
+      created_by: STATE.user.id,
+    };
+    const { data: newRisk, error: riskErr } = await STATE.supabase.from('risk_register').insert(payload).select().single();
+    if(riskErr){ toast('Could not create entry: ' + riskErr.message, 'error'); return; }
+    riskId = newRisk.id;
+    await loadRisks();
+  }
+
+  const { error: linkErr } = await STATE.supabase.from('raga_risk_links').insert({
+    organisation_id: STATE.org.id, raga_alert_id: ragaId, risk_id: riskId, linked_by: STATE.user.id
+  });
+  if(linkErr){
+    toast(linkErr.message.toLowerCase().includes('duplicate') ? 'Already linked.' : 'Could not link: ' + linkErr.message, 'error');
+    return;
+  }
+
+  await openRagaDetail(ragaId);
+  toast('Linked.', 'success');
+};
+
+window.unlinkRagaRisk = async function(linkId, ragaId){
+  const { error } = await STATE.supabase.from('raga_risk_links').delete().eq('id', linkId);
+  if(error){ toast('Could not unlink: ' + error.message, 'error'); return; }
+  await openRagaDetail(ragaId);
 };
 
 /* ============ Root Cause Analysis (5-Why) ============ */
