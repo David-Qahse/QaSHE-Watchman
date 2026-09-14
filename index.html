@@ -1992,6 +1992,40 @@ function applyBranding(org){
 function kpi(l,val,cls,unit){ return `<div class="kpi-card"><div class="k-label">${l}</div><div class="k-val ${cls||''}">${val}${unit?'<small> '+unit+'</small>':''}</div></div>`; }
 function optionList(arr, selected){ return arr.map(v=>`<option value="${v}" ${v===selected?'selected':''}>${label(v)}</option>`).join(''); }
 function memberOptions(selected){ return STATE.members.map(m=>`<option value="${m.user_id}" ${m.user_id===selected?'selected':''}>${(m.profiles&&m.profiles.name)||'Unknown'}</option>`).join(''); }
+
+// Reused by NC and RAGA's create form and detail view alike — a
+// dropdown of the org's issue-category list (the fixed set, plus
+// anything the client has added), with an "Other" option that reveals
+// a free-text input for a genuinely one-off title that doesn't fit
+// any category.
+function renderTitleCategoryPicker(idPrefix, currentTitle){
+  const matchingType = STATE.ncTypes.find(t => t.name === currentTitle);
+  const isOther = currentTitle && !matchingType;
+  return `
+    <div class="field span2">
+      <label>Title (category)</label>
+      <select id="${idPrefix}-title-select" onchange="toggleTitleOtherField('${idPrefix}')">
+        <option value="">— choose —</option>
+        ${STATE.ncTypes.filter(t=>t.is_active).map(t=>`<option value="${t.name}" ${t.name===currentTitle?'selected':''}>${t.name}</option>`).join('')}
+        <option value="__other__" ${isOther?'selected':''}>Other (specify)</option>
+      </select>
+    </div>
+    <div class="field" id="${idPrefix}-title-other-field" style="display:${isOther?'block':'none'};">
+      <label>Specify</label>
+      <input id="${idPrefix}-title-other" value="${isOther ? currentTitle.replace(/"/g,'&quot;') : ''}" placeholder="A one-off title that doesn't fit any category">
+    </div>
+  `;
+}
+window.toggleTitleOtherField = function(idPrefix){
+  const picked = document.getElementById(idPrefix+'-title-select').value;
+  document.getElementById(idPrefix+'-title-other-field').style.display = (picked === '__other__') ? 'block' : 'none';
+};
+// Reads back whichever the person actually used — the picked category, or their custom "Other" text.
+function readTitleFromPicker(idPrefix){
+  const picked = document.getElementById(idPrefix+'-title-select').value;
+  if(picked === '__other__') return document.getElementById(idPrefix+'-title-other').value.trim();
+  return picked;
+}
 function personnelOptions(selected){ return STATE.personnel.map(p=>`<option value="${p.id}" ${p.id===selected?'selected':''}>${p.full_name}</option>`).join(''); }
 
 // A scrollable checkbox list — used for the audit plan's Departments,
@@ -2110,7 +2144,7 @@ const RENDERERS = {
       <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:14px;">Raise a nonconformance</h3>
       <div class="form-grid">
 
-        <div class="field span3"><label>Type</label><select id="f-type">${STATE.ncTypes.filter(t=>t.is_active).map(t=>`<option value="${t.id}">${t.name}</option>`).join('')}</select></div>
+        ${renderTitleCategoryPicker('f', '')}
         <div class="field span3">
           <label>Description</label>
           <p style="font-size:11.5px; color:var(--text-faint); margin:-2px 0 6px;">Complete a full description of what occurred including date, time, whoever was involved, and references to any associated documentation for traceability.</p>
@@ -2180,7 +2214,7 @@ const RENDERERS = {
             <option value="green">🟢 Green Alert — positive recognition</option>
           </select>
         </div>
-        <div class="field"><label>Title</label><input id="raga-title" placeholder="Short, specific summary"></div>
+        ${renderTitleCategoryPicker('raga', '')}
         <div class="field span3"><label>Description</label><textarea id="raga-description" placeholder="For Red/Orange: what happened. For Green: what was done well, or what the compliment was."></textarea></div>
       </div>
       <div id="raga-issue-fields" class="form-grid" style="margin-bottom:0;">
@@ -3017,16 +3051,16 @@ window.toggleSupplierSeverityField = function(){
 };
 
 window.submitNC = async function(){
-  const typeId = document.getElementById('f-type').value;
+  const title = readTitleFromPicker('f');
   const target_close_date = document.getElementById('f-target').value;
-  if(!typeId || !target_close_date){ alert('Type and target close date are required.'); return; }
-  const selectedType = STATE.ncTypes.find(t=>t.id===typeId);
+  if(!title || !target_close_date){ alert('Title and target close date are required.'); return; }
+  const matchingType = STATE.ncTypes.find(t=>t.name===title);
   const costVal = document.getElementById('f-cost').value;
   const severityVal = document.getElementById('f-supplier-severity').value;
   const payload = {
     organisation_id: STATE.org.id,
-    title: selectedType ? selectedType.name : '',
-    nc_type_id: typeId,
+    title,
+    nc_type_id: matchingType ? matchingType.id : null,
     description: document.getElementById('f-desc').value.trim(),
     immediate_action_taken: document.getElementById('f-immediate-action').value.trim(),
     contact_details: document.getElementById('f-contact-details').value.trim(),
@@ -3172,16 +3206,23 @@ async function openNCDetail(id){
       ${sourceFinding ? `<div style="margin-bottom:14px;"><span class="linked-task-chip"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>Raised from audit ${sourceFinding.audits ? sourceFinding.audits.audit_ref : ''} — ${sourceFinding.audits ? sourceFinding.audits.title : 'finding'}</span></div>` : ''}
       ${n.supplier_id ? (() => { const s = STATE.suppliers.find(x=>x.id===n.supplier_id); return s ? `<div style="margin-bottom:14px;"><span class="linked-task-chip"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a4 4 0 018 0v2"/></svg>Supplier: ${s.ref_code} — ${s.name}</span></div>` : ''; })() : ''}
       <div class="detail-meta">
-        <div class="dm-item"><div class="l">Severity</div><div class="v">${sevBadge(n.severity)}</div></div>
-        <div class="dm-item"><div class="l">Owner</div><div class="v">${memberName(n.owner_id)}</div></div>
+        <div class="dm-item"><div class="l">Severity</div><div class="v"><select id="d-severity">
+          <option value="minor" ${n.severity==='minor'?'selected':''}>Minor</option>
+          <option value="major" ${n.severity==='major'?'selected':''}>Major</option>
+          <option value="critical" ${n.severity==='critical'?'selected':''}>Critical</option>
+        </select></div></div>
+        <div class="dm-item"><div class="l">Owner</div><div class="v"><select id="d-owner">${memberOptions(n.owner_id)}</select></div></div>
         <div class="dm-item"><div class="l">Raised</div><div class="v">${fmtDate(n.raised_date)} by ${memberName(n.raised_by)}</div></div>
-        <div class="dm-item"><div class="l">Target close</div><div class="v">${fmtDate(n.target_close_date)}</div></div>
+        <div class="dm-item"><div class="l">Target close</div><div class="v"><input type="date" id="d-target-close" value="${n.target_close_date||''}" style="font-size:12.5px; padding:3px 6px;"></div></div>
       </div>
-      <p style="font-size:13.5px; color:var(--text-dim); margin-bottom:16px; line-height:1.55;">${n.description || 'No description recorded.'}</p>
-      ${n.immediate_action_taken ? `<div style="margin-bottom:16px;"><div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:4px;">Immediate Action Taken</div><p style="font-size:13.5px; color:var(--text-dim); line-height:1.55;">${n.immediate_action_taken}</p></div>` : ''}
-      ${n.contact_details ? `<div style="margin-bottom:16px;"><div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:4px;">Contact Details of Involved Parties</div><p style="font-size:13.5px; color:var(--text-dim); line-height:1.55;">${n.contact_details}</p></div>` : ''}
+      <div class="form-grid" style="margin-bottom:16px;">
+        <div class="field span3"><label>Description — the context behind the title</label><textarea id="d-description" placeholder="What happened, specifically">${n.description||''}</textarea></div>
+        <div class="field span3"><label>Immediate action taken</label><textarea id="d-immediate-action" placeholder="What was done right away">${n.immediate_action_taken||''}</textarea></div>
+        <div class="field span3"><label>Contact details of involved parties</label><textarea id="d-contact-details" placeholder="Who was involved, and how to reach them">${n.contact_details||''}</textarea></div>
+      </div>
 
       <div class="form-grid" style="margin-bottom:16px;">
+        ${renderTitleCategoryPicker('d', n.title)}
         <div class="field"><label>Department</label><select id="d-department"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}" ${n.department_id===x.id?'selected':''}>${x.name}</option>`).join('')}</select></div>
         <div class="field"><label>Containment action</label>
           <select id="d-containment">
@@ -3309,11 +3350,20 @@ window.toggleRagaFormFields = function(){
   document.getElementById('raga-green-fields').style.display = (type === 'green') ? 'grid' : 'none';
 };
 
+window.toggleRagaDetailFields = function(){
+  const type = document.getElementById('raga-d-alert-type').value;
+  const isGreen = type === 'green';
+  document.getElementById('raga-d-issue-fields').style.display = isGreen ? 'none' : 'grid';
+  document.getElementById('raga-d-green-fields').style.display = isGreen ? 'grid' : 'none';
+  document.getElementById('raga-d-green-message').style.display = isGreen ? 'block' : 'none';
+  document.getElementById('raga-d-investigation-section').style.display = isGreen ? 'none' : 'block';
+};
+
 window.createRagaAlert = async function(){
   const alertType = document.getElementById('raga-alert-type').value;
-  const title = document.getElementById('raga-title').value.trim();
+  const title = readTitleFromPicker('raga');
   const description = document.getElementById('raga-description').value.trim();
-  if(!title){ alert('Give this alert a title.'); return; }
+  if(!title){ alert('Choose or specify a title.'); return; }
 
   const payload = {
     organisation_id: STATE.org.id, alert_type: alertType, title, description,
@@ -3334,7 +3384,8 @@ window.createRagaAlert = async function(){
   await loadRagaAlerts();
   renderRagaTable();
   toggleRagaForm();
-  document.getElementById('raga-title').value = '';
+  document.getElementById('raga-title-select').value = '';
+  toggleTitleOtherField('raga');
   document.getElementById('raga-description').value = '';
   toast('Alert raised.', 'success');
 };
@@ -3363,17 +3414,30 @@ async function openRagaDetail(id){
         </div>
       </div>
       <div class="detail-meta">
-        <div class="dm-item"><div class="l">Alert type</div><div class="v">${typeLabel[r.alert_type]}</div></div>
+        <div class="dm-item"><div class="l">Alert type</div><div class="v"><select id="raga-d-alert-type" onchange="toggleRagaDetailFields()">
+          <option value="red" ${r.alert_type==='red'?'selected':''}>🔴 Red Alert</option>
+          <option value="orange" ${r.alert_type==='orange'?'selected':''}>🟠 Orange Alert</option>
+          <option value="green" ${r.alert_type==='green'?'selected':''}>🟢 Green Alert</option>
+        </select></div></div>
         <div class="dm-item"><div class="l">Raised</div><div class="v">${fmtDate(r.raised_date)} by ${memberName(r.raised_by)}</div></div>
-        ${isGreen
-          ? `<div class="dm-item"><div class="l">Recognised</div><div class="v">${r.recognised_person_id && personById(r.recognised_person_id) ? personById(r.recognised_person_id).full_name : '—'}</div></div>`
-          : `<div class="dm-item"><div class="l">Owner</div><div class="v">${memberName(r.owner_id)}</div></div><div class="dm-item"><div class="l">Target close</div><div class="v">${fmtDate(r.target_close_date)}</div></div>`}
       </div>
-      <p style="font-size:13.5px; color:var(--text-dim); margin-bottom:16px; line-height:1.55;">${r.description || 'No description recorded.'}</p>
+      <div class="form-grid" style="margin-bottom:16px;">
+        ${renderTitleCategoryPicker('raga-d', r.title)}
+      </div>
+      <div id="raga-d-issue-fields" class="form-grid" style="display:${isGreen?'none':'grid'}; margin-bottom:16px;">
+        <div class="field"><label>Owner</label><select id="raga-d-owner">${memberOptions(r.owner_id)}</select></div>
+        <div class="field"><label>Target close date</label><input type="date" id="raga-d-target-close" value="${r.target_close_date||''}"></div>
+      </div>
+      <div id="raga-d-green-fields" class="form-grid" style="display:${isGreen?'grid':'none'}; margin-bottom:16px;">
+        <div class="field span2"><label>Who is being recognised?</label><select id="raga-d-recognised-person">${personnelOptions(r.recognised_person_id)}</select></div>
+      </div>
+      <div class="form-grid" style="margin-bottom:10px;">
+        <div class="field span3"><label>Description</label><textarea id="raga-d-description" placeholder="What happened, or what the compliment was">${r.description||''}</textarea></div>
+      </div>
 
-      ${isGreen ? `
-        <div style="padding:12px 16px; background:var(--green-tint); border-radius:8px; font-size:12.5px; color:var(--green); font-weight:600;">✓ Recognition recorded — no further action needed.</div>
-      ` : `
+      <div id="raga-d-green-message" style="display:${isGreen?'block':'none'}; padding:12px 16px; background:var(--green-tint); border-radius:8px; font-size:12.5px; color:var(--green); font-weight:600; margin-bottom:16px;">✓ Recognition — no investigation needed, though you can still save changes below.</div>
+
+      <div id="raga-d-investigation-section" style="display:${isGreen?'none':'block'};">
         <div class="form-grid" style="margin-bottom:10px;">
           <div class="field span3"><label>Root cause</label><textarea id="raga-d-rootcause" placeholder="Why this happened">${r.root_cause||''}</textarea></div>
           <div class="field span3"><label>Correction / corrective action</label><textarea id="raga-d-correction" placeholder="The fix">${r.correction||''}</textarea></div>
@@ -3391,13 +3455,13 @@ async function openRagaDetail(id){
             <option value="">—</option>
             ${approverOptions(r.verified_by)}
           </select>
-          <button class="btn-small primary" onclick="saveRagaDetail('${r.id}')">Save changes</button>
         </div>
         <div class="field span3" style="margin-bottom:10px;">
           <label>Closure signature — required to close, type full name to confirm</label>
           <input id="raga-d-closure-signature" value="${(r.closure_signature_name||'').replace(/"/g,'&quot;')}" placeholder="Full name">
         </div>
-      `}
+      </div>
+      <button class="btn-small primary" style="margin-bottom:16px;" onclick="saveRagaDetail('${r.id}')">Save changes</button>
 
       <div style="margin-bottom:16px;">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
@@ -3425,20 +3489,44 @@ async function openRagaDetail(id){
 window.openRagaDetail = openRagaDetail;
 
 window.saveRagaDetail = async function(id){
-  const status = document.getElementById('raga-d-status').value;
-  const verifiedBy = document.getElementById('raga-d-verifiedby').value || null;
-  const closureSignature = document.getElementById('raga-d-closure-signature').value.trim();
-  if(status === 'closed' && !closureSignature){
-    toast('A closure signature is required to close this alert.', 'error');
-    return;
+  const title = readTitleFromPicker('raga-d');
+  if(!title){ toast('Choose or specify a title.', 'error'); return; }
+  const alertType = document.getElementById('raga-d-alert-type').value;
+  const description = document.getElementById('raga-d-description').value.trim();
+  const isGreen = alertType === 'green';
+
+  const patch = { title, alert_type: alertType, description };
+
+  if(isGreen){
+    patch.recognised_person_id = document.getElementById('raga-d-recognised-person').value || null;
+    patch.owner_id = null;
+    patch.target_close_date = null;
+    patch.root_cause = null;
+    patch.correction = null;
+    patch.status = 'closed'; // matches create-time logic — a compliment doesn't need investigating
+    patch.verified_by = null;
+    patch.verified_date = null;
+    patch.closure_signature_name = null;
+  } else {
+    const status = document.getElementById('raga-d-status').value;
+    const verifiedBy = document.getElementById('raga-d-verifiedby').value || null;
+    const closureSignature = document.getElementById('raga-d-closure-signature').value.trim();
+    if(status === 'closed' && !closureSignature){
+      toast('A closure signature is required to close this alert.', 'error');
+      return;
+    }
+    patch.owner_id = document.getElementById('raga-d-owner').value || null;
+    patch.target_close_date = document.getElementById('raga-d-target-close').value || null;
+    patch.root_cause = document.getElementById('raga-d-rootcause').value;
+    patch.correction = document.getElementById('raga-d-correction').value;
+    patch.status = status;
+    patch.verified_by = verifiedBy;
+    patch.verified_date = verifiedBy ? todayISO() : null;
+    patch.closure_signature_name = closureSignature || null;
+    patch.recognised_person_id = null;
   }
-  const { error } = await STATE.supabase.from('raga_alerts').update({
-    root_cause: document.getElementById('raga-d-rootcause').value,
-    correction: document.getElementById('raga-d-correction').value,
-    status, verified_by: verifiedBy,
-    verified_date: verifiedBy ? todayISO() : null,
-    closure_signature_name: closureSignature || null,
-  }).eq('id', id);
+
+  const { error } = await STATE.supabase.from('raga_alerts').update(patch).eq('id', id);
   if(error){ toast('Could not save: ' + error.message, 'error'); return; }
   await loadRagaAlerts();
   renderRagaTable();
@@ -3652,8 +3740,18 @@ window.saveNCDetail = async function(id){
   const correction = document.getElementById('d-correction').value.trim();
   const isRepeated = document.getElementById('d-is-repeated').value === 'true';
   const identifyEarlierVal = document.getElementById('d-identify-earlier').value;
+  const title = readTitleFromPicker('d');
+  if(!title){ toast('Title is required.', 'error'); return; }
+  const matchingType = STATE.ncTypes.find(t=>t.name===title);
 
   const patch = {
+    title, nc_type_id: matchingType ? matchingType.id : null,
+    severity: document.getElementById('d-severity').value,
+    owner_id: document.getElementById('d-owner').value || null,
+    target_close_date: document.getElementById('d-target-close').value || null,
+    description: document.getElementById('d-description').value.trim(),
+    immediate_action_taken: document.getElementById('d-immediate-action').value.trim(),
+    contact_details: document.getElementById('d-contact-details').value.trim(),
     status: newStatus, correction: correction,
     department_id: document.getElementById('d-department').value || null,
     containment_action: document.getElementById('d-containment').value || null,
@@ -5156,6 +5254,7 @@ window.uploadEvidence = async function(entityType, entityId){
   if(entityType === 'appraisal') openAppraisalDetail(entityId);
   if(entityType === 'asset') openAssetDetail(entityId);
   if(entityType === 'bulletin') openBulletinDetail(entityId);
+  if(entityType === 'raga_alert') openRagaDetail(entityId);
   if(entityType === 'asset_inspection'){
     const { data: insp } = await STATE.supabase.from('asset_inspections').select('asset_id').eq('id', entityId).single();
     if(insp) openInspectionDetail(entityId, insp.asset_id);
