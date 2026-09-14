@@ -863,6 +863,7 @@
       <div class="nav-item" data-mod="compliance" onclick="showModule('compliance')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 3"/></svg> Compliance Dashboard</div>
       <div class="nav-group-label">Live modules</div>
       <div class="nav-item" data-mod="nonconformances" onclick="showModule('nonconformances')"><svg viewBox="0 0 24 24"><path d="M12 3l10 18H2L12 3z"/><line x1="12" y1="10" x2="12" y2="14"/><line x1="12" y1="17" x2="12" y2="17.01"/></svg> Nonconformances <span class="nd red" id="nd-nc"></span></div>
+      <div class="nav-item" data-mod="raga" onclick="showModule('raga')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/></svg> RAGA</div>
       <div class="nav-item" data-mod="tasks" onclick="showModule('tasks')"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12l3 3 6-6"/></svg> Tasks <span class="nd amber" id="nd-task"></span></div>
       <div class="nav-item" data-mod="documents" onclick="showModule('documents')"><svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z"/><line x1="9" y1="12" x2="17" y2="12"/><line x1="9" y1="16" x2="17" y2="16"/></svg> Documents <span class="nd amber" id="nd-doc"></span></div>
       <div class="nav-item" data-mod="audits" onclick="showModule('audits')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg> Audits <span class="nd amber" id="nd-audit"></span></div>
@@ -1013,6 +1014,7 @@ const RISK_CATEGORY_LABELS = {
 function riskCategoryLabel(c){ return RISK_CATEGORY_LABELS[c] || label(c); }
 function memberName(userId){ return STATE.memberMap[userId] || '—'; }
 function ncById(id){ return STATE.ncs.find(n=>n.id===id); }
+function ragaById(id){ return (STATE.ragaAlerts||[]).find(r=>r.id===id); }
 function taskLinkedRef(t){
   if(t.linked_type === 'nonconformance'){ const n = ncById(t.linked_id); return n ? n.ref_code : null; }
   if(t.linked_type === 'objective'){ const o = objectiveById(t.linked_id); return o ? o.ref_code : null; }
@@ -1200,7 +1202,7 @@ async function afterSignIn(user){
 
   const { data: memberships, error: memErr } = await STATE.supabase
     .from('organisation_members')
-    .select('organisation_id, role, module_access, can_download, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color, all_documents_enabled, document_control_enabled, administration_enabled, ebitda, subscription_status)')
+    .select('organisation_id, role, module_access, can_download, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color, all_documents_enabled, document_control_enabled, administration_enabled, raga_enabled, ebitda, subscription_status)')
     .eq('user_id', user.id).eq('status','active');
 
   if(memErr){ toast('Could not load your organisations: ' + memErr.message, 'error'); return; }
@@ -1253,6 +1255,7 @@ window.selectOrg = async function(orgId){
   STATE.members.forEach(m => { STATE.memberMap[m.user_id] = (m.profiles && m.profiles.name) || 'Unknown'; });
 
   await loadNCs();
+  await loadRagaAlerts();
   await loadNCTypes();
   await loadAssessmentTemplates();
   await loadAssessmentItems();
@@ -1315,6 +1318,12 @@ async function loadNCs(){
   const { data, error } = await STATE.supabase.from('nonconformances').select('*').eq('organisation_id', STATE.org.id).order('raised_date', {ascending:false});
   if(error){ toast('Could not load nonconformances: ' + error.message, 'error'); return; }
   STATE.ncs = data || [];
+}
+async function loadRagaAlerts(){
+  if(!STATE.org.raga_enabled) return; // no point querying a module this org doesn't have switched on
+  const { data, error } = await STATE.supabase.from('raga_alerts').select('*').eq('organisation_id', STATE.org.id).order('raised_date', {ascending:false});
+  if(error){ toast('Could not load RAGA alerts: ' + error.message, 'error'); return; }
+  STATE.ragaAlerts = data || [];
 }
 async function loadNCTypes(){
   const { data, error } = await STATE.supabase.from('nc_types').select('*').eq('organisation_id', STATE.org.id).order('sort_order', {ascending:true});
@@ -1555,6 +1564,7 @@ const MODULE_META = {
   overview:{title:'Overview', sub:() => `${STATE.org.name} — ${STATE.org.ref_prefix}`},
   compliance:{title:'Compliance Dashboard', sub:() => 'A snapshot of every register\'s status, at a glance'},
   nonconformances:{title:'Nonconformances', sub:() => 'MOD-01 · Opportunities for Improvement register'},
+  raga:{title:'RAGA', sub:() => 'Red Alert · Orange Alert · Green Alert register'},
   tasks:{title:'Task Management', sub:() => 'MOD-02 · Every action, linked back to its source'},
   documents:{title:'Document Control', sub:() => 'MOD-03 · Controlled documents, revisions archived automatically'},
   audits:{title:'Audits', sub:() => 'MOD-04 · Audits, findings, and promotion to nonconformance'},
@@ -1576,7 +1586,7 @@ const MODULE_META = {
   administration:{title:'Administration', sub:() => 'Departments, people, and team access — one control centre, enabled by Group QaSHE CG per client'},
 };
 
-const GATED_MODULES = ['nonconformances','tasks','documents','audits','risks','suppliers','customers','objectives','legal','personnel','training','appraisals','assets','bulletins','all_documents','five_s','processes','management_review','administration'];
+const GATED_MODULES = ['nonconformances','tasks','documents','audits','risks','suppliers','customers','objectives','legal','personnel','training','appraisals','assets','bulletins','all_documents','five_s','processes','management_review','administration','raga'];
 
 function personTitleFor(personId){
   const primary = primaryCompetenceFor(personId);
@@ -1753,6 +1763,7 @@ function canAccessModule(mod){
   if(mod === 'all_documents') return !!STATE.org.all_documents_enabled; // org-level switch only — everyone sees it when on, nobody when off
   if(mod === 'documents') return !!STATE.org.document_control_enabled; // same mechanism — org-level switch only
   if(mod === 'administration') return !!STATE.org.administration_enabled; // same mechanism — org-level switch only
+  if(mod === 'raga') return !!STATE.org.raga_enabled; // same mechanism — org-level switch only, on for Allmech specifically for now
   if(STATE.myRole === 'admin') return true;
   return (STATE.myModuleAccess || []).includes(mod);
 }
@@ -1979,6 +1990,7 @@ function applyBranding(org){
 function kpi(l,val,cls,unit){ return `<div class="kpi-card"><div class="k-label">${l}</div><div class="k-val ${cls||''}">${val}${unit?'<small> '+unit+'</small>':''}</div></div>`; }
 function optionList(arr, selected){ return arr.map(v=>`<option value="${v}" ${v===selected?'selected':''}>${label(v)}</option>`).join(''); }
 function memberOptions(selected){ return STATE.members.map(m=>`<option value="${m.user_id}" ${m.user_id===selected?'selected':''}>${(m.profiles&&m.profiles.name)||'Unknown'}</option>`).join(''); }
+function personnelOptions(selected){ return STATE.personnel.map(p=>`<option value="${p.id}" ${p.id===selected?'selected':''}>${p.full_name}</option>`).join(''); }
 
 // A scrollable checkbox list — used for the audit plan's Departments,
 // Processes, Suppliers, and Audit Team fields, all genuine multi-select
@@ -2095,6 +2107,7 @@ const RENDERERS = {
     <div class="form-panel" id="nc-form">
       <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:14px;">Raise a nonconformance</h3>
       <div class="form-grid">
+
         <div class="field span3"><label>Type</label><select id="f-type">${STATE.ncTypes.filter(t=>t.is_active).map(t=>`<option value="${t.id}">${t.name}</option>`).join('')}</select></div>
         <div class="field span3">
           <label>Description</label>
@@ -2132,6 +2145,55 @@ const RENDERERS = {
     <div class="panel" style="padding:0; overflow:hidden;">
       <div id="nc-table-wrap"></div>
     </div>
+  `,
+  raga: () => `
+    <div class="toolbar">
+      <div class="filters">
+        <select id="raga-filter-alert-type" onchange="renderRagaTable()">
+          <option value="">All alert types</option>
+          <option value="red">🔴 Red Alert</option>
+          <option value="orange">🟠 Orange Alert</option>
+          <option value="green">🟢 Green Alert</option>
+        </select>
+        <select id="raga-filter-status" onchange="renderRagaTable()">
+          <option value="">All statuses</option>
+          <option value="open">Open</option>
+          <option value="in_progress">In Progress</option>
+          <option value="pending_verification">Pending Verification</option>
+          <option value="closed">Closed</option>
+        </select>
+      </div>
+      <button class="btn-small" onclick="printCurrentRegister('raga','RAGA Register')">Print Register</button>
+      <button class="btn-primary btn-add" onclick="toggleRagaForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Raise Alert</button>
+    </div>
+
+    <div class="form-panel" id="raga-form">
+      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:6px;">Raise a RAGA Alert</h3>
+      <p style="font-size:12px; color:var(--text-faint); margin-bottom:14px;">Red — serious, high-risk nonconformance. Orange — minor, low-risk issue. Green — a positive achievement, customer compliment, or staff recognition.</p>
+      <div class="form-grid">
+        <div class="field"><label>Alert type</label>
+          <select id="raga-alert-type" onchange="toggleRagaFormFields()">
+            <option value="red">🔴 Red Alert — serious/high risk</option>
+            <option value="orange">🟠 Orange Alert — minor/low risk</option>
+            <option value="green">🟢 Green Alert — positive recognition</option>
+          </select>
+        </div>
+        <div class="field"><label>Title</label><input id="raga-title" placeholder="Short, specific summary"></div>
+        <div class="field span3"><label>Description</label><textarea id="raga-description" placeholder="For Red/Orange: what happened. For Green: what was done well, or what the compliment was."></textarea></div>
+      </div>
+      <div id="raga-issue-fields" class="form-grid" style="margin-bottom:0;">
+        <div class="field"><label>Owner</label><select id="raga-owner">${memberOptions()}</select></div>
+        <div class="field"><label>Target close date</label><input type="date" id="raga-target-close"></div>
+      </div>
+      <div id="raga-green-fields" class="form-grid" style="display:none; margin-bottom:0;">
+        <div class="field span2"><label>Who is being recognised?</label><select id="raga-recognised-person">${personnelOptions()}</select></div>
+      </div>
+      <button class="btn-small primary" style="margin-top:12px;" onclick="createRagaAlert()">Raise alert</button>
+      <button class="btn-small" style="margin-top:12px;" onclick="toggleRagaForm()">Cancel</button>
+    </div>
+
+    <div id="raga-table-wrap"></div>
+    <div id="raga-detail-slot"></div>
   `,
 
   tasks: () => `
@@ -3205,6 +3267,175 @@ async function openNCDetail(id){
   `;
 }
 window.openNCDetail = openNCDetail;
+
+function renderRagaTable(){
+  const wrap = document.getElementById('raga-table-wrap');
+  if(!wrap) return;
+  const fType = document.getElementById('raga-filter-alert-type').value;
+  const fStatus = document.getElementById('raga-filter-status').value;
+  const rows = (STATE.ragaAlerts||[]).filter(r => (!fType||r.alert_type===fType) && (!fStatus||r.status===fStatus));
+  if(!rows.length){
+    wrap.innerHTML = `<div class="empty-state"><p>No RAGA alerts match this filter.</p></div>`;
+    return;
+  }
+  const typeBadge = { red: '🔴 Red', orange: '🟠 Orange', green: '🟢 Green' };
+  wrap.innerHTML = `<div class="panel" style="padding:0; overflow:hidden;"><table>
+    <tr><th>Ref</th><th>Alert</th><th>Title</th><th>Raised</th><th>Status</th></tr>
+    ${rows.map(r=>`<tr class="clickable" onclick="openRagaDetail('${r.id}')">
+      <td class="mono-cell">${r.ref_code}</td>
+      <td>${typeBadge[r.alert_type]}</td>
+      <td class="strong">${r.title}</td>
+      <td>${fmtDate(r.raised_date)} by ${memberName(r.raised_by)}</td>
+      <td>${r.alert_type === 'green' ? pill(r.status) : pill(r.status)}</td>
+    </tr>`).join('')}
+  </table></div>`;
+}
+window.renderRagaTable = renderRagaTable;
+
+window.toggleRagaForm = function(){
+  const el = document.getElementById('raga-form');
+  el.style.display = el.style.display === 'block' ? 'none' : 'block';
+  toggleRagaFormFields();
+};
+
+// A Red/Orange alert is a genuine issue to investigate — owner, target
+// close date. A Green alert is recognition, not an investigation — who's
+// being recognised instead. Never both sets of fields at once.
+window.toggleRagaFormFields = function(){
+  const type = document.getElementById('raga-alert-type').value;
+  document.getElementById('raga-issue-fields').style.display = (type === 'green') ? 'none' : 'grid';
+  document.getElementById('raga-green-fields').style.display = (type === 'green') ? 'grid' : 'none';
+};
+
+window.createRagaAlert = async function(){
+  const alertType = document.getElementById('raga-alert-type').value;
+  const title = document.getElementById('raga-title').value.trim();
+  const description = document.getElementById('raga-description').value.trim();
+  if(!title){ alert('Give this alert a title.'); return; }
+
+  const payload = {
+    organisation_id: STATE.org.id, alert_type: alertType, title, description,
+    raised_by: STATE.user.id,
+  };
+  if(alertType === 'green'){
+    payload.recognised_person_id = document.getElementById('raga-recognised-person').value || null;
+    payload.recognised_by = STATE.user.id;
+    payload.status = 'closed'; // a compliment doesn't need investigating to closure — it's already complete
+  } else {
+    payload.owner_id = document.getElementById('raga-owner').value || null;
+    payload.target_close_date = document.getElementById('raga-target-close').value || null;
+    if(!payload.target_close_date){ alert('Set a target close date for a Red or Orange alert.'); return; }
+  }
+
+  const { error } = await STATE.supabase.from('raga_alerts').insert(payload);
+  if(error){ toast('Could not raise alert: ' + error.message, 'error'); return; }
+  await loadRagaAlerts();
+  renderRagaTable();
+  toggleRagaForm();
+  document.getElementById('raga-title').value = '';
+  document.getElementById('raga-description').value = '';
+  toast('Alert raised.', 'success');
+};
+
+window.closeRagaDetail = function(){
+  document.getElementById('raga-detail-slot').innerHTML = '';
+};
+
+async function openRagaDetail(id){
+  const r = ragaById(id);
+  if(!r) return;
+  const { files: evidenceFiles } = await loadEvidence('raga_alert', id);
+  const typeLabel = { red: '🔴 Red Alert', orange: '🟠 Orange Alert', green: '🟢 Green Alert' };
+  const isGreen = r.alert_type === 'green';
+
+  document.getElementById('raga-detail-slot').innerHTML = `
+    <div class="detail-panel">
+      <div class="detail-head">
+        <div><span class="ref">${r.ref_code}</span><h3>${r.title}</h3></div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-small" onclick="printRaga('${r.id}')">Print / PDF</button>
+          <button class="close-btn" onclick="closeRagaDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+      </div>
+      <div class="detail-meta">
+        <div class="dm-item"><div class="l">Alert type</div><div class="v">${typeLabel[r.alert_type]}</div></div>
+        <div class="dm-item"><div class="l">Raised</div><div class="v">${fmtDate(r.raised_date)} by ${memberName(r.raised_by)}</div></div>
+        ${isGreen
+          ? `<div class="dm-item"><div class="l">Recognised</div><div class="v">${r.recognised_person_id && personById(r.recognised_person_id) ? personById(r.recognised_person_id).full_name : '—'}</div></div>`
+          : `<div class="dm-item"><div class="l">Owner</div><div class="v">${memberName(r.owner_id)}</div></div><div class="dm-item"><div class="l">Target close</div><div class="v">${fmtDate(r.target_close_date)}</div></div>`}
+      </div>
+      <p style="font-size:13.5px; color:var(--text-dim); margin-bottom:16px; line-height:1.55;">${r.description || 'No description recorded.'}</p>
+
+      ${isGreen ? `
+        <div style="padding:12px 16px; background:var(--green-tint); border-radius:8px; font-size:12.5px; color:var(--green); font-weight:600;">✓ Recognition recorded — no further action needed.</div>
+      ` : `
+        <div class="form-grid" style="margin-bottom:10px;">
+          <div class="field span3"><label>Root cause</label><textarea id="raga-d-rootcause" placeholder="Why this happened">${r.root_cause||''}</textarea></div>
+          <div class="field span3"><label>Correction / corrective action</label><textarea id="raga-d-correction" placeholder="The fix">${r.correction||''}</textarea></div>
+        </div>
+        <div class="status-row">
+          <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase;">Status</label>
+          <select id="raga-d-status">
+            <option value="open" ${r.status==='open'?'selected':''}>Open</option>
+            <option value="in_progress" ${r.status==='in_progress'?'selected':''}>In Progress</option>
+            <option value="pending_verification" ${r.status==='pending_verification'?'selected':''}>Pending Verification</option>
+            <option value="closed" ${r.status==='closed'?'selected':''}>Closed</option>
+          </select>
+          <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase;">Verified by</label>
+          <select id="raga-d-verifiedby">
+            <option value="">—</option>
+            ${approverOptions(r.verified_by)}
+          </select>
+          <button class="btn-small primary" onclick="saveRagaDetail('${r.id}')">Save changes</button>
+        </div>
+        <div class="field span3" style="margin-bottom:10px;">
+          <label>Closure signature — required to close, type full name to confirm</label>
+          <input id="raga-d-closure-signature" value="${(r.closure_signature_name||'').replace(/"/g,'&quot;')}" placeholder="Full name">
+        </div>
+      `}
+
+      ${renderEvidenceSection('raga_alert', r.id, evidenceFiles)}
+    </div>
+  `;
+}
+window.openRagaDetail = openRagaDetail;
+
+window.saveRagaDetail = async function(id){
+  const status = document.getElementById('raga-d-status').value;
+  const verifiedBy = document.getElementById('raga-d-verifiedby').value || null;
+  const closureSignature = document.getElementById('raga-d-closure-signature').value.trim();
+  if(status === 'closed' && !closureSignature){
+    toast('A closure signature is required to close this alert.', 'error');
+    return;
+  }
+  const { error } = await STATE.supabase.from('raga_alerts').update({
+    root_cause: document.getElementById('raga-d-rootcause').value,
+    correction: document.getElementById('raga-d-correction').value,
+    status, verified_by: verifiedBy,
+    verified_date: verifiedBy ? todayISO() : null,
+    closure_signature_name: closureSignature || null,
+  }).eq('id', id);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  await loadRagaAlerts();
+  renderRagaTable();
+  openRagaDetail(id);
+  toast('Saved.', 'success');
+};
+
+window.printRaga = async function(id){
+  const r = ragaById(id);
+  if(!r) return;
+  const typeLabel = { red: 'Red Alert', orange: 'Orange Alert', green: 'Green Alert' };
+  const isGreen = r.alert_type === 'green';
+  const meta = isGreen
+    ? [['Alert type', typeLabel[r.alert_type]], ['Raised', `${fmtDate(r.raised_date)} by ${memberName(r.raised_by)}`], ['Recognised', r.recognised_person_id && personById(r.recognised_person_id) ? personById(r.recognised_person_id).full_name : '—']]
+    : [['Alert type', typeLabel[r.alert_type]], ['Owner', memberName(r.owner_id)], ['Raised', `${fmtDate(r.raised_date)} by ${memberName(r.raised_by)}`], ['Target close', fmtDate(r.target_close_date)], ['Status', r.status]];
+  const body = `
+    <p>${r.description || ''}</p>
+    ${!isGreen ? `<p><b>Root cause:</b> ${r.root_cause || '—'}</p><p><b>Correction:</b> ${r.correction || '—'}</p>` : ''}
+  `;
+  await printRecord(r.title, r.ref_code, meta, body, '', 'raga');
+};
 function closeNCDetail(){ document.getElementById('nc-detail-slot').innerHTML = ''; }
 window.closeNCDetail = closeNCDetail;
 
@@ -12157,6 +12388,11 @@ function getModuleExportConfig(moduleKey){
       {header:'Severity', get:r=>r.severity},
       {header:'Status', get:r=>r.status}, {header:'Raised Date', get:r=>r.raised_date}, {header:'Target Close', get:r=>r.target_close_date},
       {header:'Owner', get:r=>memberName(r.owner_id)},
+    ]},
+    raga: { rows: STATE.ragaAlerts||[], filename: `raga-${orgSlug}.xlsx`, columns: [
+      {header:'Ref', get:r=>r.ref_code}, {header:'Alert Type', get:r=>r.alert_type}, {header:'Title', get:r=>r.title}, {header:'Description', get:r=>r.description},
+      {header:'Status', get:r=>r.status}, {header:'Raised Date', get:r=>r.raised_date}, {header:'Raised By', get:r=>memberName(r.raised_by)},
+      {header:'Owner', get:r=>r.owner_id?memberName(r.owner_id):''}, {header:'Target Close', get:r=>r.target_close_date||''},
     ]},
     tasks: { rows: STATE.tasks, filename: `tasks-${orgSlug}.xlsx`, columns: [
       {header:'Title', get:r=>r.title}, {header:'Description', get:r=>r.description}, {header:'Status', get:r=>r.status},
