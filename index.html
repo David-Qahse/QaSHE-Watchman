@@ -6921,14 +6921,21 @@ async function actuallySendEmail(toEmail, subject, message){
     const { data: sessionData } = await STATE.supabase.auth.getSession();
     const token = sessionData?.session?.access_token;
     if(!token) return false;
+    // A fetch with no timeout waits forever if the network genuinely
+    // stalls rather than actively rejecting — this guarantees a real,
+    // visible failure after 15s instead of hanging indefinitely.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
     const res = await fetch(`${SUPABASE_URL}/functions/v1/send-notification-email`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ to: toEmail, subject, message }),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
     return res.ok;
   } catch(e) {
-    console.warn('Notification email could not be sent:', e);
+    console.warn('Notification email could not be sent:', e.name === 'AbortError' ? 'Timed out after 15s waiting for a response' : e);
     return false;
   }
 }
