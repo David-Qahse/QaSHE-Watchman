@@ -417,10 +417,10 @@
   #print-container{display:none;}
 
   .watchman-chat-fab{position:fixed; bottom:24px; right:24px; width:56px; height:56px; border-radius:50%; background:var(--red); color:#fff; display:flex; align-items:center; justify-content:center; box-shadow:0 6px 20px rgba(178,22,22,.35); z-index:200; cursor:pointer;}
-  .report-problem-fab{position:fixed; top:24px; right:24px; width:48px; height:48px; border-radius:50%; background:#B45309; color:#fff; display:flex; align-items:center; justify-content:center; box-shadow:0 6px 20px rgba(180,83,9,.35); z-index:200; cursor:pointer;}
+  .report-problem-fab{position:fixed; top:88px; right:24px; width:48px; height:48px; border-radius:50%; background:#B45309; color:#fff; display:flex; align-items:center; justify-content:center; box-shadow:0 6px 20px rgba(180,83,9,.35); z-index:200; cursor:pointer;}
   .report-problem-fab:hover{background:#92400E;}
   .report-problem-fab svg{width:22px; height:22px;}
-  .report-problem-modal{position:fixed; top:88px; right:24px; width:340px; background:#fff; border-radius:14px; box-shadow:0 20px 60px rgba(0,0,0,.25); display:none; flex-direction:column; z-index:201; padding:18px;}
+  .report-problem-modal{position:fixed; top:152px; right:24px; width:340px; background:#fff; border-radius:14px; box-shadow:0 20px 60px rgba(0,0,0,.25); display:none; flex-direction:column; z-index:201; padding:18px;}
   .report-problem-modal.open{display:flex;}
   @media (max-width:640px){.report-problem-modal{width:calc(100vw - 32px); right:16px;}}
   .watchman-chat-hint{position:fixed; bottom:38px; right:92px; background:var(--charcoal-dark, #26241F); color:#fff; font-family:'Inter'; font-size:12px; font-weight:600; padding:8px 14px; border-radius:20px; z-index:199; cursor:pointer; white-space:nowrap; box-shadow:0 4px 12px rgba(0,0,0,.15);}
@@ -11917,7 +11917,7 @@ window.saveAdminPerson = async function(id){
 function renderAdminTeam(){
   const wrap = document.getElementById('admin-subtab-content');
   if(!wrap) return;
-  const isAdmin = STATE.myRole === 'admin';
+  const isAdmin = STATE.myRole === 'admin' || STATE.profile.is_platform_staff;
   wrap.innerHTML = `
     ${isAdmin ? `
     <div class="detail-card">
@@ -11979,6 +11979,7 @@ function renderAdminTeam(){
 }
 
 window.sendAdminInvite = async function(){
+  try {
   const email = document.getElementById('admin-inv-email').value.trim();
   const role = document.getElementById('admin-inv-role').value;
   const moduleAccess = Array.from(document.querySelectorAll('.admin-inv-module-cb:checked')).map(el => el.value);
@@ -12021,6 +12022,10 @@ window.sendAdminInvite = async function(){
   `;
   document.getElementById('admin-inv-email').value = '';
   await loadInvites();
+  } catch(e) {
+    console.error('sendAdminInvite failed:', e);
+    toast('Something went wrong sending this invite: ' + (e.message || e), 'error');
+  }
 };
 
 window.deleteAdminInvite = async function(id){
