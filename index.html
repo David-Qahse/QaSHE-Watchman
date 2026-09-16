@@ -3202,7 +3202,22 @@ async function openNCDetail(id){
         <div><span class="ref">${n.ref_code}</span><h3>${n.title}</h3></div>
         <div style="display:flex; gap:8px;">
           <button class="btn-small" onclick="printNC('${n.id}')">Print / PDF</button>
+          <button class="btn-small" onclick="openNcUpdateLinkModal('${n.id}')">Send update link</button>
           <button class="close-btn" onclick="closeNCDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+      </div>
+      <div id="nc-update-link-modal-${n.id}" class="form-panel" style="display:none;">
+        <h3 style="font-family:'Poppins'; font-size:14px; font-weight:600; margin-bottom:6px;">Send an update link by email</h3>
+        <p style="font-size:12px; color:var(--text-faint); margin-bottom:12px;">The recipient fills these fields in from a link — no login needed. Choose only what they should actually see and fill in.</p>
+        <div style="margin-bottom:10px;">
+          ${NC_UPDATE_LINK_SECTIONS.map(s => `<label style="display:flex; align-items:center; gap:8px; padding:5px 0; font-size:13px; cursor:pointer;"><input type="checkbox" id="nculm-${n.id}-${s.key}" style="width:auto;"> ${s.label}</label>`).join('')}
+        </div>
+        <div class="form-grid" style="margin-bottom:0;">
+          <div class="field span3"><label>Recipient email</label><input type="email" id="nculm-${n.id}-email" placeholder="name@example.com"></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn-cancel" onclick="openNcUpdateLinkModal('${n.id}')">Cancel</button>
+          <button class="btn-primary" onclick="sendNcUpdateLink('${n.id}')">Send link</button>
         </div>
       </div>
       ${sourceFinding ? `<div style="margin-bottom:14px;"><span class="linked-task-chip"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>Raised from audit ${sourceFinding.audits ? sourceFinding.audits.audit_ref : ''} — ${sourceFinding.audits ? sourceFinding.audits.title : 'finding'}</span></div>` : ''}
@@ -3637,6 +3652,46 @@ async function buildAndPrintRaga(id, sections){
 function closeNCDetail(){ document.getElementById('nc-detail-slot').innerHTML = ''; }
 window.closeNCDetail = closeNCDetail;
 
+const NC_UPDATE_LINK_SECTIONS = [
+  { key: 'description', label: 'Description' },
+  { key: 'immediate_action_taken', label: 'Immediate Action Taken' },
+  { key: 'root_cause', label: 'Root Cause' },
+  { key: 'correction', label: 'Correction / Corrective Action' },
+  { key: 'preventive_action', label: 'Preventive Action' },
+  { key: 'contact_details', label: 'Contact Details of Involved Parties' },
+];
+
+window.openNcUpdateLinkModal = function(ncId){
+  const modal = document.getElementById('nc-update-link-modal-'+ncId);
+  modal.style.display = modal.style.display === 'block' ? 'none' : 'block';
+};
+
+window.sendNcUpdateLink = async function(ncId){
+  const sections = NC_UPDATE_LINK_SECTIONS.filter(s => document.getElementById(`nculm-${ncId}-${s.key}`).checked).map(s => s.key);
+  const email = document.getElementById(`nculm-${ncId}-email`).value.trim();
+  if(!sections.length){ toast('Tick at least one field for them to complete.', 'error'); return; }
+  if(!email){ toast('An email address is required.', 'error'); return; }
+
+  showLoader('Sending link…');
+  try {
+    const n = ncById(ncId);
+    const { data: newLink, error } = await STATE.supabase.from('nc_update_links').insert({
+      organisation_id: STATE.org.id, nc_id: ncId, sections, recipient_email: email, created_by: STATE.user.id,
+    }).select().single();
+    if(error){ toast('Could not create link: ' + error.message, 'error'); return; }
+
+    const publicUrl = `${window.location.origin}${window.location.pathname.replace(/index\.html$/,'')}qashe-watchman-nc-update-link.html?token=${newLink.token}`;
+    const sent = await sendEmailToAddress(
+      email,
+      `Update needed: ${n.ref_code} — ${n.title}`,
+      `You've been asked to provide an update on nonconformance ${n.ref_code} — ${n.title} in QaSHE Watchman.\n\nClick the link below to fill this in — no login needed:\n\n${publicUrl}`
+    );
+    openNcUpdateLinkModal(ncId);
+    toast(sent ? `Update link emailed to ${email}.` : `Could not email it automatically — copy this link and send it yourself: ${publicUrl}`, sent ? 'success' : 'error');
+  } finally {
+    hideLoader();
+  }
+};
 const NC_PRINT_SECTIONS = [
   { key:'containment', label:'Containment Action' },
   { key:'immediate', label:'Immediate Action Taken' },
