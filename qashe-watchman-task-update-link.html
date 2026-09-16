@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Update Task — QaSHE Watchman</title>
+<style>
+  :root{ --red:#B21616; --charcoal:#26241F; --cream:#F7F6F5; --text-dim:#615C59; --border:#E3E1DF; }
+  *{box-sizing:border-box;}
+  body{margin:0; font-family:Arial, sans-serif; background:var(--cream); color:var(--charcoal); padding:24px 16px;}
+  .card{max-width:560px; margin:0 auto; background:#fff; border-radius:14px; box-shadow:0 4px 20px rgba(0,0,0,.06); padding:28px 24px;}
+  #brand-row{margin-bottom:18px;}
+  #brand-row img{max-height:44px;}
+  .fallback{font-weight:700; font-size:18px; color:var(--red);}
+  h1{font-size:19px; margin:0 0 4px;}
+  .sub{font-size:13px; color:var(--text-dim); margin:0 0 20px; line-height:1.5;}
+  label{display:block; font-size:12.5px; font-weight:600; color:var(--text-dim); margin-bottom:6px; margin-top:16px;}
+  select, textarea{width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:14px;}
+  textarea{min-height:90px; resize:vertical;}
+  button{width:100%; margin-top:22px; padding:13px; border:none; border-radius:8px; background:var(--red); color:#fff; font-size:15px; font-weight:600; cursor:pointer;}
+  button:disabled{opacity:.6; cursor:default;}
+  .error-box{background:#FBEAEA; border:1px solid #EFC9C9; color:#8A1F1F; padding:14px; border-radius:8px; font-size:13.5px;}
+  .stage{display:none;}
+  .stage.active{display:block;}
+  .done-icon{width:48px; height:48px; margin:0 auto 14px; display:block;}
+  .due-note{font-size:12.5px; color:var(--text-dim); margin-top:2px;}
+</style>
+</head>
+<body>
+<div class="card">
+  <div id="brand-row"></div>
+
+  <div id="stage-loading" class="stage active"><p class="sub">Loading…</p></div>
+
+  <div id="stage-error" class="stage">
+    <div class="error-box" id="error-message"></div>
+  </div>
+
+  <div id="stage-form" class="stage">
+    <h1 id="task-title"></h1>
+    <p class="sub" id="task-description"></p>
+    <p class="due-note" id="task-due"></p>
+
+    <label for="f-status">Status</label>
+    <select id="f-status">
+      <option value="todo">To do</option>
+      <option value="in_progress">In Progress</option>
+      <option value="blocked">Blocked</option>
+      <option value="done">Done</option>
+    </select>
+
+    <label for="f-comment">Progress note (optional)</label>
+    <textarea id="f-comment" placeholder="Anything worth noting about this update"></textarea>
+
+    <button id="submit-btn" onclick="submitUpdate()">Submit</button>
+  </div>
+
+  <div id="stage-done" class="stage">
+    <svg class="done-icon" viewBox="0 0 24 24" fill="none" stroke="#2E7D32" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-6"/></svg>
+    <p class="sub" style="text-align:center; font-size:14px;">Thank you — this has been submitted and the task has been updated.</p>
+  </div>
+</div>
+
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const SUPABASE_URL = 'https://uzywxhptwavnvpfzbhkb.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_8XxT0I-Qdmswhd2I-TT_jg_CuI8a24f';
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+function showStage(id){
+  document.querySelectorAll('.stage').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function getToken(){ return new URLSearchParams(window.location.search).get('token'); }
+function fmtDate(d){ if(!d) return ''; const dt = new Date(d+'T00:00:00'); return dt.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }); }
+
+async function init(){
+  const token = getToken();
+  if(!token){
+    document.getElementById('error-message').textContent = 'No link token found. Check the link you were sent and try again.';
+    showStage('stage-error');
+    return;
+  }
+
+  const { data, error } = await supabase.rpc('get_task_update_by_token', { p_token: token });
+  if(error || !data || data.error){
+    document.getElementById('error-message').textContent = (data && data.error) || 'We couldn\u2019t find this — the link may be incorrect.';
+    showStage('stage-error');
+    return;
+  }
+
+  document.getElementById('brand-row').innerHTML = data.org_logo_url
+    ? `<img src="${data.org_logo_url}" alt="${data.org_name}">`
+    : `<span class="fallback">${data.org_name || 'QaSHE Watchman'}</span>`;
+  document.getElementById('task-title').textContent = data.task_title;
+  document.getElementById('task-description').textContent = data.task_description || '';
+  document.getElementById('task-due').textContent = `Due: ${fmtDate(data.task_due_date)}`;
+  document.getElementById('f-status').value = data.task_status;
+
+  showStage('stage-form');
+}
+
+window.submitUpdate = async function(){
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true; btn.textContent = 'Submitting…';
+
+  const status = document.getElementById('f-status').value;
+  const comment = document.getElementById('f-comment').value.trim();
+
+  const { data, error } = await supabase.rpc('submit_task_update_by_token', {
+    p_token: getToken(), p_status: status, p_comment: comment || null,
+  });
+
+  if(error || !data || data.error){
+    btn.disabled = false; btn.textContent = 'Submit';
+    document.getElementById('error-message').textContent = (data && data.error) || 'Something went wrong submitting this. Please try again.';
+    showStage('stage-error');
+    return;
+  }
+
+  showStage('stage-done');
+};
+
+init();
+</script>
+</body>
+</html>
