@@ -4635,6 +4635,7 @@ function renderFindingRow(f){
           <p style="font-size:13.5px; margin-top:8px; color:var(--text-dim); line-height:1.5;">${f.description}</p>
         </div>
       </div>
+      ${f.response ? `<div style="margin-top:10px; padding:10px 12px; background:var(--grey-tint); border-radius:8px;"><div class="l" style="font-family:'JetBrains Mono'; font-size:9.5px; color:var(--text-faint); text-transform:uppercase; margin-bottom:4px;">Response${f.responded_at ? ' — ' + fmtDate(f.responded_at.slice(0,10)) : ''}</div><p style="font-size:13px; color:var(--text-dim); margin:0;">${f.response}</p></div>` : (!f.nonconformance_id ? `<div style="margin-top:10px;"><button class="btn-small" onclick="openFindingUpdateLinkModal('${f.id}')">Send response link</button></div><div id="finding-update-link-modal-${f.id}"></div>` : '')}
       ${linkedNc
         ? `<div style="margin-top:10px;"><span class="linked-task-chip"><svg viewBox="0 0 24 24"><path d="M12 3l10 18H2L12 3z"/><line x1="12" y1="10" x2="12" y2="14"/><line x1="12" y1="17" x2="12" y2="17.01"/></svg>Raised as ${linkedNc.ref_code} — ${pill(linkedNc.status)}</span></div>`
         : (canPromote ? `<div style="margin-top:10px;"><button class="btn-small primary" onclick="togglePromoteForm('${f.id}','${f.finding_type}')">Promote to Nonconformance</button></div><div id="promote-form-${f.id}"></div>` : '')}
@@ -4643,6 +4644,48 @@ function renderFindingRow(f){
 }
 
 window.toggleFindingForm = function(){ document.getElementById('finding-form').classList.toggle('open'); };
+
+window.openFindingUpdateLinkModal = function(findingId){
+  const slot = document.getElementById('finding-update-link-modal-'+findingId);
+  if(!slot) return;
+  if(slot.innerHTML.trim()){ slot.innerHTML = ''; return; }
+  slot.innerHTML = `
+    <div class="form-panel open" style="margin-top:8px;">
+      <div class="form-grid" style="margin-bottom:0;">
+        <div class="field span3"><label>Recipient email</label><input type="email" id="fulm-${findingId}-email" placeholder="name@example.com"></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-cancel" onclick="openFindingUpdateLinkModal('${findingId}')">Cancel</button>
+        <button class="btn-primary" onclick="sendFindingUpdateLink('${findingId}')">Send link</button>
+      </div>
+    </div>
+  `;
+};
+
+window.sendFindingUpdateLink = async function(findingId){
+  const email = document.getElementById(`fulm-${findingId}-email`).value.trim();
+  if(!email){ toast('An email address is required.', 'error'); return; }
+
+  showLoader('Sending link…');
+  try {
+    const { data: finding } = await STATE.supabase.from('audit_findings').select('*, audits(audit_ref, title)').eq('id', findingId).single();
+    const { data: newLink, error } = await STATE.supabase.from('finding_update_links').insert({
+      organisation_id: STATE.org.id, finding_id: findingId, recipient_email: email, created_by: STATE.user.id,
+    }).select().single();
+    if(error){ toast('Could not create link: ' + error.message, 'error'); return; }
+
+    const publicUrl = `${window.location.origin}${window.location.pathname.replace(/index\.html$/,'')}qashe-watchman-finding-update-link.html?token=${newLink.token}`;
+    const sent = await sendEmailToAddress(
+      email,
+      `Response needed: audit finding on ${finding.audits ? finding.audits.audit_ref : 'audit'}`,
+      `You've been asked to respond to an audit finding in QaSHE Watchman.\n\nClick the link below to respond — no login needed:\n\n${publicUrl}`
+    );
+    openFindingUpdateLinkModal(findingId);
+    toast(sent ? `Response link emailed to ${email}.` : `Could not email it automatically — copy this link and send it yourself: ${publicUrl}`, sent ? 'success' : 'error');
+  } finally {
+    hideLoader();
+  }
+};
 
 window.submitFinding = async function(auditId){
   const description = document.getElementById('ff-desc').value.trim();
