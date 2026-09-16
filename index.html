@@ -4017,7 +4017,19 @@ async function openTaskDetail(id){
         <div><span class="ref">${linkedRefCode ? 'Linked to '+linkedRefCode : 'Standalone task'} · Created ${fmtDate(t.created_at ? t.created_at.slice(0,10) : todayISO())} by ${memberName(t.created_by)}</span><h3>${t.title}</h3></div>
         <div style="display:flex; gap:8px;">
           <button class="btn-small" onclick="printTask('${t.id}')">Print / PDF</button>
+          <button class="btn-small" onclick="openTaskUpdateLinkModal('${t.id}')">Send update link</button>
           <button class="close-btn" onclick="closeTaskDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+      </div>
+      <div id="task-update-link-modal-${t.id}" class="form-panel" style="display:none;">
+        <h3 style="font-family:'Poppins'; font-size:14px; font-weight:600; margin-bottom:6px;">Send an update link by email</h3>
+        <p style="font-size:12px; color:var(--text-faint); margin-bottom:12px;">They can update the status and leave a progress note — no login needed.</p>
+        <div class="form-grid" style="margin-bottom:0;">
+          <div class="field span3"><label>Recipient email</label><input type="email" id="tulm-${t.id}-email" placeholder="name@example.com"></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn-cancel" onclick="openTaskUpdateLinkModal('${t.id}')">Cancel</button>
+          <button class="btn-primary" onclick="sendTaskUpdateLink('${t.id}')">Send link</button>
         </div>
       </div>
       <div class="detail-meta">
@@ -4053,6 +4065,36 @@ async function openTaskDetail(id){
   `;
 }
 window.openTaskDetail = openTaskDetail;
+
+window.openTaskUpdateLinkModal = function(taskId){
+  const modal = document.getElementById('task-update-link-modal-'+taskId);
+  modal.style.display = modal.style.display === 'block' ? 'none' : 'block';
+};
+
+window.sendTaskUpdateLink = async function(taskId){
+  const email = document.getElementById(`tulm-${taskId}-email`).value.trim();
+  if(!email){ toast('An email address is required.', 'error'); return; }
+
+  showLoader('Sending link…');
+  try {
+    const t = STATE.tasks.find(x=>x.id===taskId);
+    const { data: newLink, error } = await STATE.supabase.from('task_update_links').insert({
+      organisation_id: STATE.org.id, task_id: taskId, recipient_email: email, created_by: STATE.user.id,
+    }).select().single();
+    if(error){ toast('Could not create link: ' + error.message, 'error'); return; }
+
+    const publicUrl = `${window.location.origin}${window.location.pathname.replace(/index\.html$/,'')}qashe-watchman-task-update-link.html?token=${newLink.token}`;
+    const sent = await sendEmailToAddress(
+      email,
+      `Update needed: ${t.title}`,
+      `You've been asked to update the task "${t.title}" in QaSHE Watchman.\n\nClick the link below to update it — no login needed:\n\n${publicUrl}`
+    );
+    openTaskUpdateLinkModal(taskId);
+    toast(sent ? `Update link emailed to ${email}.` : `Could not email it automatically — copy this link and send it yourself: ${publicUrl}`, sent ? 'success' : 'error');
+  } finally {
+    hideLoader();
+  }
+};
 function closeTaskDetail(){ document.getElementById('task-detail-slot').innerHTML = ''; }
 window.closeTaskDetail = closeTaskDetail;
 
@@ -10836,9 +10878,21 @@ async function openFiveSDetail(id){
         <div><span class="ref">${insp.ref_code}</span><h3>${insp.area}</h3></div>
         <div style="display:flex; gap:8px;">
           <button class="btn-small" onclick="printFiveS('${insp.id}')">Print / PDF</button>
+          ${!isComplete ? `<button class="btn-small" onclick="openFiveSUpdateLinkModal('${insp.id}')">Send update link</button>` : ''}
           <button class="close-btn" onclick="closeFiveSDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
       </div>
+      ${!isComplete ? `<div id="fives-update-link-modal-${insp.id}" class="form-panel" style="display:none;">
+        <h3 style="font-family:'Poppins'; font-size:14px; font-weight:600; margin-bottom:6px;">Send this inspection by email</h3>
+        <p style="font-size:12px; color:var(--text-faint); margin-bottom:12px;">The inspector can complete the full checklist from their phone — no login needed.</p>
+        <div class="form-grid" style="margin-bottom:0;">
+          <div class="field span3"><label>Recipient email</label><input type="email" id="fsulm-${insp.id}-email" placeholder="name@example.com"></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn-cancel" onclick="openFiveSUpdateLinkModal('${insp.id}')">Cancel</button>
+          <button class="btn-primary" onclick="sendFiveSUpdateLink('${insp.id}')">Send link</button>
+        </div>
+      </div>` : ''}
       <div class="detail-meta">
         <div class="dm-item"><div class="l">Inspector</div><div class="v">${memberName(insp.inspector_id)}</div></div>
         <div class="dm-item"><div class="l">Scheduled</div><div class="v">${fmtDate(insp.scheduled_date)}</div></div>
@@ -10883,6 +10937,36 @@ async function openFiveSDetail(id){
   `;
 }
 window.openFiveSDetail = openFiveSDetail;
+
+window.openFiveSUpdateLinkModal = function(inspId){
+  const modal = document.getElementById('fives-update-link-modal-'+inspId);
+  modal.style.display = modal.style.display === 'block' ? 'none' : 'block';
+};
+
+window.sendFiveSUpdateLink = async function(inspId){
+  const email = document.getElementById(`fsulm-${inspId}-email`).value.trim();
+  if(!email){ toast('An email address is required.', 'error'); return; }
+
+  showLoader('Sending link…');
+  try {
+    const insp = STATE.fiveSInspections.find(x=>x.id===inspId);
+    const { data: updated, error } = await STATE.supabase.from('five_s_inspections')
+      .update({ token_expires_at: new Date(Date.now() + 30*24*60*60*1000).toISOString() })
+      .eq('id', inspId).select('token').single();
+    if(error){ toast('Could not prepare link: ' + error.message, 'error'); return; }
+
+    const publicUrl = `${window.location.origin}${window.location.pathname.replace(/index\.html$/,'')}qashe-watchman-5s-update-link.html?token=${updated.token}`;
+    const sent = await sendEmailToAddress(
+      email,
+      `5S inspection to complete: ${insp.ref_code} — ${insp.area}`,
+      `You've been asked to complete the 5S inspection for ${insp.area} in QaSHE Watchman.\n\nClick the link below to complete it — no login needed:\n\n${publicUrl}`
+    );
+    openFiveSUpdateLinkModal(inspId);
+    toast(sent ? `Inspection link emailed to ${email}.` : `Could not email it automatically — copy this link and send it yourself: ${publicUrl}`, sent ? 'success' : 'error');
+  } finally {
+    hideLoader();
+  }
+};
 
 window.closeFiveSDetail = function(){ document.getElementById('fives-detail-slot').innerHTML = ''; };
 
