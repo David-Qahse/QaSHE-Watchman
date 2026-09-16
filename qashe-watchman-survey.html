@@ -181,9 +181,11 @@ window.submitSurvey = async function(){
   const ratingsPayload = questions.map(q => ({ id: q.id, rating: ratings[q.id] }));
   const comments = document.getElementById('comments').value.trim();
 
+  console.log('Submitting survey response:', { p_token: token, p_ratings: ratingsPayload, p_comments: comments });
   const { data, error } = await supabase.rpc('submit_survey_response', {
     p_token: token, p_ratings: ratingsPayload, p_comments: comments
   });
+  console.log('submit_survey_response result:', { data, error });
 
   if(error || !data || data.error){
     btn.disabled = false; btn.textContent = 'Submit feedback';
