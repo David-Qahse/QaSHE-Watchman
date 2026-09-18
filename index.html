@@ -875,6 +875,7 @@
       <div class="nav-item" data-mod="appraisals" onclick="showModule('appraisals')"><svg viewBox="0 0 24 24"><path d="M12 20V10M18 20V4M6 20v-4"/></svg> KPIs &amp; Appraisals <span class="nd amber" id="nd-appraisal"></span></div>
       <div class="nav-item" data-mod="assets" onclick="showModule('assets')"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg> Assets &amp; Maintenance <span class="nd amber" id="nd-asset"></span></div>
       <div class="nav-item" data-mod="bulletins" onclick="showModule('bulletins')"><svg viewBox="0 0 24 24"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a2 2 0 11-3.2 2.4"/></svg> Bulletins &amp; Toolbox Talks</div>
+      <div class="nav-item" data-mod="hr" onclick="showModule('hr')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> HR: Attendance &amp; Leave</div>
       <div class="nav-item" data-mod="all_documents" onclick="showModule('all_documents')"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg> All Documents</div>
       <div class="nav-item" data-mod="five_s" onclick="showModule('five_s')"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg> 5S Inspections</div>
       <div class="nav-item" data-mod="processes" onclick="showModule('processes')"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.1-2.8-2.8L7 14"/></svg> Process Performance</div>
@@ -988,7 +989,7 @@ const STATE = {
   members:[], memberMap:{},
   ncs:[], tasks:[], audits:[], risks:[], documents:[], suppliers:[], customers:[], satisfactionQuestions:[], objectives:[], legalRegister:[],
   positions:[], personnel:[], competence:[], training:[], positionKpis:[], appraisals:[],
-  assetChecklistTemplates:[], assetChecklistItems:[], assets:[], bulletins:[],
+  assetChecklistTemplates:[], assetChecklistItems:[], assets:[], bulletins:[], attendance:[],
   checklistTemplates:[],
   docDepartments:[], docTypes:[], formIdentifications:[], ncTypes:[],
   assessmentTemplates:[], assessmentItems:[], assessmentRecords:[], customerSurveys:[], bulkDocuments:[], fiveSInspections:[],
@@ -1003,6 +1004,7 @@ let pendingModule = 'overview';
 function todayISO(){ return new Date().toISOString().slice(0,10); }
 function threeMonthsFromToday(){ const d = new Date(); d.setMonth(d.getMonth()+3); return d.toISOString().slice(0,10); }
 function fmtDate(d){ if(!d) return '—'; const dt=new Date(d+'T00:00:00'); return dt.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); }
+function fmtDateTime(ts){ if(!ts) return '—'; const dt=new Date(ts); return dt.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) + ' ' + dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); }
 function label(s){ return (s||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()); }
 const RISK_CATEGORY_LABELS = {
   business: 'Business',
@@ -1203,7 +1205,7 @@ async function afterSignIn(user){
 
   const { data: memberships, error: memErr } = await STATE.supabase
     .from('organisation_members')
-    .select('organisation_id, role, module_access, can_download, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color, all_documents_enabled, document_control_enabled, administration_enabled, raga_enabled, nc_enabled, ebitda, subscription_status)')
+    .select('organisation_id, role, module_access, can_download, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color, all_documents_enabled, document_control_enabled, administration_enabled, raga_enabled, hr_enabled, nc_enabled, ebitda, subscription_status)')
     .eq('user_id', user.id).eq('status','active');
 
   if(memErr){ toast('Could not load your organisations: ' + memErr.message, 'error'); return; }
@@ -1298,6 +1300,7 @@ window.selectOrg = async function(orgId){
   await loadAssets();
   await loadAssetInspectionsSummary();
   await loadBulletins();
+  await loadAttendance();
 
   hideAllGates();
   document.getElementById('view-landing').classList.remove('active');
@@ -1561,6 +1564,12 @@ async function loadBulletins(){
   if(error){ toast('Could not load bulletins: ' + error.message, 'error'); return; }
   STATE.bulletins = data || [];
 }
+async function loadAttendance(){
+  if(!STATE.org.hr_enabled) return; // module off for this client — nothing to load
+  const { data, error } = await STATE.supabase.from('attendance_records').select('*').eq('organisation_id', STATE.org.id).order('clock_in_at', {ascending:false}).limit(500);
+  if(error){ toast('Could not load attendance: ' + error.message, 'error'); return; }
+  STATE.attendance = data || [];
+}
 
 const MODULE_META = {
   overview:{title:'Overview', sub:() => `${STATE.org.name} — ${STATE.org.ref_prefix}`},
@@ -1581,6 +1590,7 @@ const MODULE_META = {
   appraisals:{title:'KPIs & Appraisals', sub:() => 'MOD-13 · Position KPIs, self-assessment, and manager review'},
   assets:{title:'Assets Management & Maintenance', sub:() => 'MOD-14 · Register, inspection checklists, certificates'},
   bulletins:{title:'Bulletins & Toolbox Talks', sub:() => 'MOD-15 · Notices with downloadable material'},
+  hr:{title:'HR: Attendance & Leave', sub:() => 'Bespoke module · GPS clock-in/out, attendance register, and the employee mobile link'},
   all_documents:{title:'All Documents', sub:() => 'Emergency bulk document register — enabled by Group QaSHE CG per client'},
   five_s:{title:'5S Inspections', sub:() => 'Open participation inspections across Health, Safety, Environment, Quality, Info Security, Risk, Opportunity, Legal Compliance & Governance'},
   processes:{title:'Process Performance', sub:() => 'A process register with weighted KPIs, monitored and measured over time — linked to objectives and nonconformances'},
@@ -1588,7 +1598,7 @@ const MODULE_META = {
   administration:{title:'Administration', sub:() => 'Departments, people, and team access — one control centre, enabled by Group QaSHE CG per client'},
 };
 
-const GATED_MODULES = ['nonconformances','tasks','documents','audits','risks','suppliers','customers','objectives','legal','personnel','training','appraisals','assets','bulletins','all_documents','five_s','processes','management_review','administration','raga'];
+const GATED_MODULES = ['nonconformances','tasks','documents','audits','risks','suppliers','customers','objectives','legal','personnel','training','appraisals','assets','bulletins','all_documents','five_s','processes','management_review','administration','raga','hr'];
 
 function personTitleFor(personId){
   const primary = primaryCompetenceFor(personId);
@@ -1766,6 +1776,7 @@ function canAccessModule(mod){
   if(mod === 'documents') return !!STATE.org.document_control_enabled; // same mechanism — org-level switch only
   if(mod === 'administration') return !!STATE.org.administration_enabled; // same mechanism — org-level switch only
   if(mod === 'raga') return !!STATE.org.raga_enabled; // same mechanism — org-level switch only
+  if(mod === 'hr') return !!STATE.org.hr_enabled; // same mechanism — org-level switch only
   if(mod === 'nonconformances') return STATE.org.nc_enabled !== false; // org-level switch — defaults true so no existing client loses access
   if(STATE.myRole === 'admin') return true;
   return (STATE.myModuleAccess || []).includes(mod);
@@ -1816,6 +1827,7 @@ function showModule(mod){
   if(mod === 'appraisals') renderAppraisalsTable();
   if(mod === 'assets') renderAssetsTable();
   if(mod === 'bulletins') renderBulletinsTable();
+  if(mod === 'hr') renderHrAttendanceTable();
   if(mod === 'compliance') renderComplianceDashboard();
   if(mod === 'all_documents') renderBulkDocumentsRegister();
   if(mod === 'five_s') renderFiveSTable();
@@ -2890,6 +2902,34 @@ const RENDERERS = {
 
     <div class="panel" style="padding:0; overflow:hidden;">
       <div id="bulletin-table-wrap"></div>
+    </div>
+  `,
+
+  hr: () => `
+    <div class="detail-card" style="margin-bottom:18px;">
+      <div class="panel-head"><h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600;">Employee mobile clock-in link</h3></div>
+      <p style="font-size:12.5px; color:var(--text-dim); margin-bottom:14px; line-height:1.55;">One link for everyone at ${STATE.org.name} — share it as a QR code on the wall at the entrance, or send it directly. Each person opens it on their own phone and signs in with their employee code (shown on their Personnel record) and their PIN. No Watchman login is needed, and no app to install.</p>
+      <div id="hr-link-box"></div>
+    </div>
+
+    <div class="toolbar">
+      <div class="filters">
+        <select id="hr-filter-person" onchange="renderHrAttendanceTable()">
+          <option value="">All personnel</option>
+          ${STATE.personnel.map(p=>`<option value="${p.id}">${p.full_name}</option>`).join('')}
+        </select>
+        <select id="hr-filter-status" onchange="renderHrAttendanceTable()">
+          <option value="">Any status</option>
+          <option value="clocked_in">Currently clocked in</option>
+          <option value="clocked_out">Clocked out</option>
+        </select>
+      </div>
+      <button class="btn-small" onclick="exportModuleExcel('attendance')">Export Excel</button>
+      <button class="btn-small" onclick="printCurrentRegister('attendance','Attendance Register')">Print Register</button>
+    </div>
+
+    <div class="panel" style="padding:0; overflow:hidden;">
+      <div id="hr-attendance-table-wrap"></div>
     </div>
   `,
 
@@ -9249,6 +9289,18 @@ async function openPersonDetail(id){
       </div>
       <p style="font-size:11px; color:var(--text-faint); margin-bottom:16px;">Only relevant if this person also has a Watchman login — linking it is what lets their nonconformances show up below.</p>
 
+      ${STATE.org.hr_enabled ? `
+      <div class="status-row">
+        <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase;">Mobile clock-in PIN</label>
+        <span style="font-size:12.5px; color:var(--text-dim);">Employee code for the mobile clock-in page: <b class="mono-cell">${p.ref_code}</b> &nbsp;·&nbsp; PIN status: ${p.pin_hash ? `<b style="color:var(--green);">Set</b> (${fmtDate((p.pin_set_at||'').slice(0,10))})` : '<b style="color:var(--text-faint);">Not set yet</b>'}</span>
+      </div>
+      <div class="status-row">
+        <input type="text" id="pd-new-pin" placeholder="New 4–6 digit PIN" maxlength="6" inputmode="numeric" style="max-width:180px;">
+        <button class="btn-small primary" onclick="setPersonnelPin('${p.id}')">${p.pin_hash ? 'Reset PIN' : 'Set PIN'}</button>
+      </div>
+      <p style="font-size:11px; color:var(--text-faint); margin-bottom:16px;">Give this PIN to ${p.full_name.split(' ')[0]} directly — together with their employee code above, it's what they use to clock in and out and see their own profile on the mobile link. Only an admin or manager can set or reset it here; the mobile page itself can never do this without the current PIN.</p>
+      ` : ''}
+
       <div id="person-training-list" style="margin-bottom:16px;"></div>
 
       ${p.linked_profile_id ? `
@@ -9496,6 +9548,18 @@ window.savePersonStatus = async function(personId){
   await loadPersonnel();
   openPersonDetail(personId);
   renderPersonnelView();
+};
+
+window.setPersonnelPin = async function(personId){
+  const pinInput = document.getElementById('pd-new-pin');
+  const pin = (pinInput.value || '').trim();
+  if(!/^[0-9]{4,6}$/.test(pin)){ toast('PIN must be 4 to 6 digits.', 'error'); return; }
+  const { data, error } = await STATE.supabase.rpc('admin_set_personnel_pin', { p_personnel_id: personId, p_new_pin: pin });
+  if(error || (data && data.error)){ toast('Could not set PIN: ' + (error?.message || data.error), 'error'); return; }
+  pinInput.value = '';
+  await loadPersonnel();
+  openPersonDetail(personId);
+  toast('PIN saved — give it to them directly, it is not shown anywhere in Watchman once set.', 'success');
 };
 
 window.savePersonLink = async function(personId){
@@ -10790,6 +10854,79 @@ function renderBulletinsTable(){
   </table>`;
 }
 window.renderBulletinsTable = renderBulletinsTable;
+
+/* ============================================================================
+   HR: Attendance, Time & Leave — Stage 1
+   Toggle already gates this whole module (canAccessModule / hr_enabled).
+   The workforce clocking in has no Watchman login — see the migration's
+   design notes — so everything here is either (a) the management-facing
+   attendance register, an ordinary org-scoped table like any other, or
+   (b) a link the admin hands out, pointing at the separate public mobile
+   page (qashe-watchman-hr-clock.html) that does the actual PIN-verified
+   clock-in/out and "My Profile" work.
+============================================================================ */
+
+function hrClockLinkUrl(){
+  return `${window.location.origin}${window.location.pathname.replace(/index\.html$/,'')}qashe-watchman-hr-clock.html?org=${STATE.org.id}`;
+}
+function hrClockQrUrl(sizePx){
+  return `https://api.qrserver.com/v1/create-qr-code/?size=${sizePx}x${sizePx}&data=${encodeURIComponent(hrClockLinkUrl())}`;
+}
+function renderHrLinkBox(){
+  const box = document.getElementById('hr-link-box');
+  if(!box) return;
+  const link = hrClockLinkUrl();
+  box.innerHTML = `
+    <div style="display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start;">
+      <img src="${hrClockQrUrl(150)}" alt="QR code" style="width:150px; height:150px; border:1px solid var(--border-soft); border-radius:8px;">
+      <div style="flex:1; min-width:240px;">
+        <div style="display:flex; gap:8px; margin-bottom:8px;">
+          <input type="text" readonly id="hr-link-input" value="${link}" style="flex:1; font-size:12px; padding:8px 10px; border:1px solid var(--border); border-radius:6px;">
+          <button class="btn-small primary" onclick="copyHrClockLink()">Copy link</button>
+        </div>
+        <p style="font-size:11.5px; color:var(--text-faint); line-height:1.5;">Print the QR code and stick it at the entrance, or copy the link into a WhatsApp broadcast or notice. Anyone using it still needs their own employee code and PIN — the link on its own doesn't identify a person, only the organisation.</p>
+      </div>
+    </div>
+  `;
+}
+window.copyHrClockLink = function(){
+  const input = document.getElementById('hr-link-input');
+  input.select();
+  navigator.clipboard.writeText(input.value).then(()=>toast('Link copied.', 'success')).catch(()=>toast('Could not copy — select and copy manually.', 'error'));
+};
+
+function renderHrAttendanceTable(){
+  renderHrLinkBox();
+  const wrap = document.getElementById('hr-attendance-table-wrap');
+  if(!wrap) return;
+  const fPerson = document.getElementById('hr-filter-person').value;
+  const fStatus = document.getElementById('hr-filter-status').value;
+  const rows = STATE.attendance
+    .filter(a => !fPerson || a.personnel_id === fPerson)
+    .filter(a => !fStatus || a.status === fStatus);
+  if(!rows.length){
+    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><p>No attendance recorded yet — share the mobile clock-in link above to get started.</p></div>`;
+    return;
+  }
+  const mapLink = (lat,lng) => lat!=null ? `<a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" rel="noopener" style="font-size:10.5px;">map</a>` : '';
+  wrap.innerHTML = `<table>
+    <tr><th>Employee</th><th>Code</th><th>Clock In</th><th>Clock Out</th><th>Duration</th><th>Status</th></tr>
+    ${rows.map(a=>{
+      const p = personById(a.personnel_id);
+      const durationMs = a.clock_out_at ? (new Date(a.clock_out_at) - new Date(a.clock_in_at)) : null;
+      const duration = durationMs!=null ? `${Math.floor(durationMs/3600000)}h ${Math.round((durationMs%3600000)/60000)}m` : '—';
+      return `<tr>
+        <td class="strong">${p ? p.full_name : 'Unknown'}</td>
+        <td class="mono-cell">${p ? p.ref_code : '—'}</td>
+        <td>${fmtDateTime(a.clock_in_at)} ${mapLink(a.clock_in_lat, a.clock_in_lng)}</td>
+        <td>${a.clock_out_at ? fmtDateTime(a.clock_out_at) + ' ' + mapLink(a.clock_out_lat, a.clock_out_lng) : '—'}</td>
+        <td>${duration}</td>
+        <td>${a.status === 'clocked_in' ? '<b style="color:var(--green);">Clocked In</b>' : '<span style="color:var(--text-faint);">Clocked Out</span>'}</td>
+      </tr>`;
+    }).join('')}
+  </table>`;
+}
+window.renderHrAttendanceTable = renderHrAttendanceTable;
 
 /* Full-page display — the entire content shown in full, not truncated. */
 async function openBulletinDetail(id){
@@ -12989,6 +13126,15 @@ function getModuleExportConfig(moduleKey){
     bulletins: { rows: STATE.bulletins, filename: `bulletins-${orgSlug}.xlsx`, columns: [
       {header:'Ref', get:r=>r.ref_code}, {header:'Type', get:r=>r.type}, {header:'Title', get:r=>r.title},
       {header:'Published', get:r=>r.published_date},
+    ]},
+    attendance: { rows: STATE.attendance, filename: `attendance-${orgSlug}.xlsx`, columns: [
+      {header:'Employee', get:r=>{ const p = personById(r.personnel_id); return p ? p.full_name : ''; }},
+      {header:'Employee Code', get:r=>{ const p = personById(r.personnel_id); return p ? p.ref_code : ''; }},
+      {header:'Clock In', get:r=>fmtDateTime(r.clock_in_at)},
+      {header:'Clock In Location', get:r=>r.clock_in_lat!=null ? `${r.clock_in_lat}, ${r.clock_in_lng}` : ''},
+      {header:'Clock Out', get:r=>r.clock_out_at ? fmtDateTime(r.clock_out_at) : ''},
+      {header:'Clock Out Location', get:r=>r.clock_out_lat!=null ? `${r.clock_out_lat}, ${r.clock_out_lng}` : ''},
+      {header:'Status', get:r=>r.status},
     ]},
     all_documents: { rows: STATE.bulkDocuments, filename: `all-documents-${orgSlug}.xlsx`, columns: [
       {header:'Document Number', get:r=>r.doc_number},
