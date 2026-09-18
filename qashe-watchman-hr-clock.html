@@ -114,8 +114,77 @@
     <div class="nav-links">
       <button class="btn-link" id="main-profile-link">My Profile</button>
       <button class="btn-link" id="main-leave-link">Leave</button>
+      <button class="btn-link" id="main-expenses-link">Expenses</button>
+      <button class="btn-link" id="main-requests-link">Requests &amp; Suggestions</button>
       <button class="btn-link" id="main-changepin-link">Change PIN</button>
       <button class="btn-link" id="main-logout-link">Sign out</button>
+    </div>
+  </div>
+
+  <div id="stage-requests" class="stage">
+    <button class="back-btn" id="requests-back-btn"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg> Back</button>
+    <h1>Requests &amp; Suggestions</h1>
+    <p class="sub">Anything you'd like to ask for, flag, or suggest to management.</p>
+    <div id="requests-error"></div>
+    <button class="btn-main" id="request-new-btn">+ New</button>
+    <div class="profile-section" style="margin-top:22px;">
+      <h2>Yours</h2>
+      <div id="requests-list"></div>
+    </div>
+  </div>
+
+  <div id="stage-request-new" class="stage">
+    <button class="back-btn" id="requestnew-back-btn"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg> Back</button>
+    <h1>New request or suggestion</h1>
+    <div id="requestnew-error"></div>
+    <div id="requestnew-success"></div>
+    <div class="field">
+      <label>Type</label>
+      <select id="rn-type" style="width:100%; border:1.5px solid var(--border); border-radius:8px; padding:12px; font-size:15px;">
+        <option value="special_request">Special Request</option>
+        <option value="suggestion">Suggestion</option>
+      </select>
+    </div>
+    <div class="field"><label>Subject</label><input type="text" id="rn-subject" placeholder="Brief subject line"></div>
+    <div class="field"><label>Details (optional)</label><input type="text" id="rn-description" placeholder="Say a bit more, if useful"></div>
+    <button class="btn-main" id="rn-submit-btn">Submit</button>
+  </div>
+
+  <div id="stage-expenses" class="stage">
+    <button class="back-btn" id="expenses-back-btn"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg> Back</button>
+    <h1>Expense Claims</h1>
+    <p class="sub">Record-keeping only — approval happens here, but any actual payment still goes through your office's usual process.</p>
+    <div id="expenses-error"></div>
+    <button class="btn-main" id="expense-new-btn">+ New expense claim</button>
+    <div class="profile-section" style="margin-top:22px;">
+      <h2>Your claims</h2>
+      <div id="expenses-list"></div>
+    </div>
+  </div>
+
+  <div id="stage-expense-new" class="stage">
+    <button class="back-btn" id="expensenew-back-btn"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg> Back</button>
+    <h1>New expense claim</h1>
+    <p class="sub" id="expensenew-step-hint">Step 1 of 2 — add a photo of your receipt.</p>
+    <div id="expensenew-error"></div>
+    <div id="expensenew-success"></div>
+
+    <div id="expensenew-photo-stage">
+      <div class="field">
+        <label>Receipt photo</label>
+        <input type="file" id="en-photo-input" accept="image/*" capture="environment" multiple>
+        <div class="hint">You can add more than one photo — front and back of a receipt, for example. Optional, but strongly recommended.</div>
+      </div>
+      <div id="en-photo-thumbs" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;"></div>
+      <button class="btn-main" id="en-continue-btn">Continue</button>
+    </div>
+
+    <div id="expensenew-details-stage" style="display:none;">
+      <div class="field"><label>Amount spent (ZAR)</label><input type="number" step="0.01" min="0" id="en-amount" inputmode="decimal"></div>
+      <div class="field"><label>Date</label><input type="date" id="en-date"></div>
+      <div class="field"><label>Category (optional)</label><input type="text" id="en-category" placeholder="e.g. Travel, Fuel, Materials"></div>
+      <div class="field"><label>What was this for?</label><input type="text" id="en-description" placeholder="Brief description"></div>
+      <button class="btn-main" id="en-submit-btn">Submit claim</button>
     </div>
   </div>
 
@@ -510,6 +579,256 @@ document.getElementById('leaveapply-submit-btn').addEventListener('click', async
   okEl.innerHTML = `<div class="success-box">Application ${data.ref_code} submitted (${data.days_requested} day${data.days_requested>1?'s':''})${data.routed_to_manager ? ' — sent to your line manager for a decision.' : ' — your office will pick it up for a decision.'}${data.requires_attachment ? ' Remember to hand in your supporting document.' : ''}</div>`;
 
   setTimeout(() => loadLeave(), 1200);
+});
+
+/* ---- Expense Claims ---- */
+document.getElementById('main-expenses-link').addEventListener('click', loadExpenses);
+document.getElementById('expenses-back-btn').addEventListener('click', () => showStage('stage-main'));
+
+let expenseDraftClaimId = null;
+let expenseSelectedFiles = [];
+
+async function loadExpenses(){
+  const { data, error } = await supabase.rpc('hr_get_my_profile', { p_org_id: orgId, p_employee_code: session.employeeCode, p_pin: session.pin });
+  if(error || !data || data.error){
+    document.getElementById('main-error').innerHTML = `<div class="error-box">${escapeHtml((data && data.error) || error?.message || 'Could not load your expense claims.')}</div>`;
+    return;
+  }
+  lastProfile = data;
+  const claims = data.expense_claims || [];
+  document.getElementById('expenses-list').innerHTML = claims.length ? claims.map(c => `
+    <div class="profile-row">
+      <div class="t1">R${Number(c.amount||0).toFixed(2)} — ${escapeHtml(c.category || 'Uncategorised')} <span class="badge ${c.status === 'approved' ? 'completed' : (c.status === 'pending' ? 'required' : 'cancelled')}">${c.status}</span></div>
+      <div class="t2">${fmtDate(c.claim_date)} · ${escapeHtml(c.description || '')}${c.receipt_count ? ` · ${c.receipt_count} photo${c.receipt_count>1?'s':''}` : ' · no photo attached'}${c.decision_note ? ' · ' + escapeHtml(c.decision_note) : ''}${c.status==='approved' ? (c.reimbursed ? ' · Reimbursed' : ' · Not yet reimbursed') : ''}</div>
+      ${c.status === 'pending' ? `<button class="btn-link" style="padding-top:4px;" onclick="window.__cancelExpense('${c.id}')">Cancel this claim</button>` : ''}
+    </div>
+  `).join('') : '<div class="empty-note">No expense claims yet.</div>';
+  showStage('stage-expenses');
+}
+
+window.__cancelExpense = async function(claimId){
+  if(!confirm('Cancel this expense claim?')) return;
+  const { data, error } = await supabase.rpc('hr_cancel_expense_claim', {
+    p_org_id: orgId, p_employee_code: session.employeeCode, p_pin: session.pin, p_claim_id: claimId,
+  });
+  if(error || !data || data.error){
+    document.getElementById('expenses-error').innerHTML = `<div class="error-box">${escapeHtml((data && data.error) || error?.message || 'Could not cancel — please try again.')}</div>`;
+    return;
+  }
+  loadExpenses();
+};
+
+document.getElementById('expense-new-btn').addEventListener('click', async () => {
+  const errEl = document.getElementById('expensenew-error');
+  errEl.innerHTML = '';
+  document.getElementById('expensenew-success').innerHTML = '';
+  expenseSelectedFiles = [];
+  document.getElementById('en-photo-thumbs').innerHTML = '';
+  document.getElementById('en-photo-input').value = '';
+  document.getElementById('en-amount').value = '';
+  document.getElementById('en-date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('en-category').value = '';
+  document.getElementById('en-description').value = '';
+  document.getElementById('expensenew-photo-stage').style.display = 'block';
+  document.getElementById('expensenew-details-stage').style.display = 'none';
+  document.getElementById('expensenew-step-hint').textContent = 'Step 1 of 2 — add a photo of your receipt.';
+
+  const btn = document.getElementById('expense-new-btn');
+  btn.disabled = true;
+  const { data, error } = await supabase.rpc('hr_start_expense_claim', { p_org_id: orgId, p_employee_code: session.employeeCode, p_pin: session.pin });
+  btn.disabled = false;
+
+  if(error || !data || data.error){
+    document.getElementById('expenses-error').innerHTML = `<div class="error-box">${escapeHtml((data && data.error) || error?.message || 'Could not start a new claim — please try again.')}</div>`;
+    return;
+  }
+  expenseDraftClaimId = data.claim_id;
+  showStage('stage-expense-new');
+});
+
+document.getElementById('en-photo-input').addEventListener('change', (e) => {
+  expenseSelectedFiles = Array.from(e.target.files || []);
+  const thumbs = document.getElementById('en-photo-thumbs');
+  thumbs.innerHTML = '';
+  expenseSelectedFiles.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = document.createElement('img');
+      img.src = ev.target.result;
+      img.style.cssText = 'width:64px; height:64px; object-fit:cover; border-radius:6px; border:1px solid var(--border);';
+      thumbs.appendChild(img);
+    };
+    reader.readAsDataURL(file);
+  });
+});
+
+function resizeReceiptImage(file, maxDim = 1600, quality = 0.82){
+  return new Promise((resolve) => {
+    if(!file.type.startsWith('image/')){ resolve(file); return; }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if(width > maxDim || height > maxDim){
+          const scale = maxDim / Math.max(width, height);
+          width = Math.round(width * scale); height = Math.round(height * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        canvas.toBlob((blob) => {
+          if(!blob){ resolve(file); return; }
+          resolve(new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }));
+        }, 'image/jpeg', quality);
+      };
+      img.onerror = () => resolve(file);
+      img.src = e.target.result;
+    };
+    reader.onerror = () => resolve(file);
+    reader.readAsDataURL(file);
+  });
+}
+
+document.getElementById('en-continue-btn').addEventListener('click', async () => {
+  const errEl = document.getElementById('expensenew-error');
+  errEl.innerHTML = '';
+  const btn = document.getElementById('en-continue-btn');
+  btn.disabled = true; btn.textContent = 'Uploading…';
+
+  for(const originalFile of expenseSelectedFiles){
+    try {
+      const resized = await resizeReceiptImage(originalFile);
+      const path = `expense-receipt-public/${expenseDraftClaimId}/${Date.now()}-${resized.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+      const { error: upErr } = await supabase.storage.from('evidence').upload(path, resized);
+      if(upErr){ console.error('Receipt upload failed:', upErr.message); continue; }
+      await supabase.rpc('hr_submit_expense_receipt_evidence', {
+        p_claim_id: expenseDraftClaimId, p_file_name: resized.name, p_storage_path: path,
+        p_file_type: resized.type, p_file_size: resized.size,
+      });
+    } catch(photoErr){
+      console.error('Receipt processing failed:', photoErr);
+    }
+  }
+
+  btn.disabled = false; btn.textContent = 'Continue';
+  document.getElementById('expensenew-photo-stage').style.display = 'none';
+  document.getElementById('expensenew-details-stage').style.display = 'block';
+  document.getElementById('expensenew-step-hint').textContent = 'Step 2 of 2 — how much, and what for.';
+});
+
+document.getElementById('expensenew-back-btn').addEventListener('click', () => {
+  expenseDraftClaimId = null;
+  showStage('stage-expenses');
+});
+
+document.getElementById('en-submit-btn').addEventListener('click', async () => {
+  const errEl = document.getElementById('expensenew-error');
+  const okEl = document.getElementById('expensenew-success');
+  errEl.innerHTML = ''; okEl.innerHTML = '';
+
+  const amount = parseFloat(document.getElementById('en-amount').value);
+  const date = document.getElementById('en-date').value;
+  const category = document.getElementById('en-category').value.trim();
+  const description = document.getElementById('en-description').value.trim();
+
+  if(!amount || amount <= 0){ errEl.innerHTML = '<div class="error-box">Enter how much you spent.</div>'; return; }
+  if(!description){ errEl.innerHTML = '<div class="error-box">Add a short description of what this was for.</div>'; return; }
+
+  const btn = document.getElementById('en-submit-btn');
+  btn.disabled = true; btn.textContent = 'Submitting…';
+
+  const { data, error } = await supabase.rpc('hr_finalize_expense_claim', {
+    p_org_id: orgId, p_employee_code: session.employeeCode, p_pin: session.pin, p_claim_id: expenseDraftClaimId,
+    p_amount: amount, p_category: category || null, p_claim_date: date || null, p_description: description,
+  });
+
+  btn.disabled = false; btn.textContent = 'Submit claim';
+
+  if(error || !data || data.error){
+    errEl.innerHTML = `<div class="error-box">${escapeHtml((data && data.error) || error?.message || 'Something went wrong. Please try again.')}</div>`;
+    return;
+  }
+
+  okEl.innerHTML = `<div class="success-box">Claim ${data.ref_code} submitted.</div>`;
+  expenseDraftClaimId = null;
+  setTimeout(() => loadExpenses(), 1200);
+});
+
+/* ---- Requests & Suggestions ---- */
+const REQUEST_TYPE_LABELS = { special_request: 'Special Request', suggestion: 'Suggestion' };
+
+document.getElementById('main-requests-link').addEventListener('click', loadRequests);
+document.getElementById('requests-back-btn').addEventListener('click', () => showStage('stage-main'));
+document.getElementById('requestnew-back-btn').addEventListener('click', () => showStage('stage-requests'));
+
+async function loadRequests(){
+  const { data, error } = await supabase.rpc('hr_get_my_profile', { p_org_id: orgId, p_employee_code: session.employeeCode, p_pin: session.pin });
+  if(error || !data || data.error){
+    document.getElementById('main-error').innerHTML = `<div class="error-box">${escapeHtml((data && data.error) || error?.message || 'Could not load your requests.')}</div>`;
+    return;
+  }
+  lastProfile = data;
+  const items = data.requests || [];
+  document.getElementById('requests-list').innerHTML = items.length ? items.map(r => `
+    <div class="profile-row">
+      <div class="t1">${escapeHtml(r.subject)} <span class="badge ${r.status === 'resolved' ? 'completed' : (r.status === 'open' ? 'required' : 'cancelled')}">${r.status.replace('_',' ')}</span></div>
+      <div class="t2">${REQUEST_TYPE_LABELS[r.type] || r.type} · ${fmtDate((r.created_at||'').slice(0,10))}${r.response_note ? ' · ' + escapeHtml(r.response_note) : ''}</div>
+      ${r.status === 'open' ? `<button class="btn-link" style="padding-top:4px;" onclick="window.__withdrawRequest('${r.id}')">Withdraw</button>` : ''}
+    </div>
+  `).join('') : '<div class="empty-note">Nothing raised yet.</div>';
+  showStage('stage-requests');
+}
+
+window.__withdrawRequest = async function(requestId){
+  if(!confirm('Withdraw this?')) return;
+  const { data, error } = await supabase.rpc('hr_withdraw_request', {
+    p_org_id: orgId, p_employee_code: session.employeeCode, p_pin: session.pin, p_request_id: requestId,
+  });
+  if(error || !data || data.error){
+    document.getElementById('requests-error').innerHTML = `<div class="error-box">${escapeHtml((data && data.error) || error?.message || 'Could not withdraw — please try again.')}</div>`;
+    return;
+  }
+  loadRequests();
+};
+
+document.getElementById('request-new-btn').addEventListener('click', () => {
+  document.getElementById('rn-type').value = 'special_request';
+  document.getElementById('rn-subject').value = '';
+  document.getElementById('rn-description').value = '';
+  document.getElementById('requestnew-error').innerHTML = '';
+  document.getElementById('requestnew-success').innerHTML = '';
+  showStage('stage-request-new');
+});
+
+document.getElementById('rn-submit-btn').addEventListener('click', async () => {
+  const errEl = document.getElementById('requestnew-error');
+  const okEl = document.getElementById('requestnew-success');
+  errEl.innerHTML = ''; okEl.innerHTML = '';
+
+  const type = document.getElementById('rn-type').value;
+  const subject = document.getElementById('rn-subject').value.trim();
+  const description = document.getElementById('rn-description').value.trim();
+
+  if(!subject){ errEl.innerHTML = '<div class="error-box">Add a short subject line.</div>'; return; }
+
+  const btn = document.getElementById('rn-submit-btn');
+  btn.disabled = true; btn.textContent = 'Submitting…';
+
+  const { data, error } = await supabase.rpc('hr_submit_request', {
+    p_org_id: orgId, p_employee_code: session.employeeCode, p_pin: session.pin,
+    p_type: type, p_subject: subject, p_description: description || null,
+  });
+
+  btn.disabled = false; btn.textContent = 'Submit';
+
+  if(error || !data || data.error){
+    errEl.innerHTML = `<div class="error-box">${escapeHtml((data && data.error) || error?.message || 'Something went wrong. Please try again.')}</div>`;
+    return;
+  }
+
+  okEl.innerHTML = `<div class="success-box">${data.ref_code} submitted — thank you.</div>`;
+  setTimeout(() => loadRequests(), 1200);
 });
 
 document.getElementById('main-changepin-link').addEventListener('click', () => {
