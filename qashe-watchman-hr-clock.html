@@ -113,9 +113,45 @@
     <div class="hint" id="main-gps-hint" style="margin-top:10px; text-align:center;"></div>
     <div class="nav-links">
       <button class="btn-link" id="main-profile-link">My Profile</button>
+      <button class="btn-link" id="main-leave-link">Leave</button>
       <button class="btn-link" id="main-changepin-link">Change PIN</button>
       <button class="btn-link" id="main-logout-link">Sign out</button>
     </div>
+  </div>
+
+  <div id="stage-leave" class="stage">
+    <button class="back-btn" id="leave-back-btn"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg> Back</button>
+    <h1>Leave</h1>
+    <p class="sub">Your balance is your full annual entitlement minus days already approved this year — it doesn't yet account for carry-over from previous years.</p>
+    <div id="leave-error"></div>
+
+    <div class="profile-section">
+      <h2>Your balances</h2>
+      <div id="leave-balances"></div>
+    </div>
+
+    <button class="btn-main" id="leave-apply-btn">Apply for leave</button>
+
+    <div class="profile-section" style="margin-top:22px;">
+      <h2>Your applications</h2>
+      <div id="leave-applications-list"></div>
+    </div>
+  </div>
+
+  <div id="stage-leave-apply" class="stage">
+    <button class="back-btn" id="leaveapply-back-btn"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg> Back</button>
+    <h1>Apply for leave</h1>
+    <div id="leaveapply-error"></div>
+    <div id="leaveapply-success"></div>
+    <div class="field">
+      <label>Leave type</label>
+      <select id="la-type" style="width:100%; border:1.5px solid var(--border); border-radius:8px; padding:12px; font-size:15px;"></select>
+      <div class="hint" id="la-type-hint"></div>
+    </div>
+    <div class="field"><label>Start date</label><input type="date" id="la-start"></div>
+    <div class="field"><label>End date</label><input type="date" id="la-end"></div>
+    <div class="field"><label>Reason (optional)</label><input type="text" id="la-reason" placeholder="Brief reason"></div>
+    <button class="btn-main" id="leaveapply-submit-btn">Submit application</button>
   </div>
 
   <div id="stage-profile" class="stage">
@@ -317,12 +353,15 @@ document.getElementById('main-logout-link').addEventListener('click', () => {
 document.getElementById('main-profile-link').addEventListener('click', loadProfile);
 document.getElementById('profile-back-btn').addEventListener('click', () => showStage('stage-main'));
 
+let lastProfile = null; // refreshed each time Profile or Leave is opened
+
 async function loadProfile(){
   const { data, error } = await supabase.rpc('hr_get_my_profile', { p_org_id: orgId, p_employee_code: session.employeeCode, p_pin: session.pin });
   if(error || !data || data.error){
     document.getElementById('main-error').innerHTML = `<div class="error-box">${escapeHtml((data && data.error) || error?.message || 'Could not load your profile.')}</div>`;
     return;
   }
+  lastProfile = data;
 
   document.getElementById('profile-person-name').textContent = data.full_name;
   document.getElementById('profile-person-role').textContent = [data.ref_code, data.position_title].filter(Boolean).join(' · ');
@@ -361,6 +400,117 @@ async function loadProfile(){
 
   showStage('stage-profile');
 }
+
+/* ---- Leave ---- */
+document.getElementById('main-leave-link').addEventListener('click', loadLeave);
+document.getElementById('leave-back-btn').addEventListener('click', () => showStage('stage-main'));
+document.getElementById('leaveapply-back-btn').addEventListener('click', () => showStage('stage-leave'));
+
+async function loadLeave(){
+  const errEl = document.getElementById('leave-error');
+  errEl.innerHTML = '';
+  const { data, error } = await supabase.rpc('hr_get_my_profile', { p_org_id: orgId, p_employee_code: session.employeeCode, p_pin: session.pin });
+  if(error || !data || data.error){
+    document.getElementById('main-error').innerHTML = `<div class="error-box">${escapeHtml((data && data.error) || error?.message || 'Could not load your leave information.')}</div>`;
+    return;
+  }
+  lastProfile = data;
+  renderLeaveStage(data);
+  showStage('stage-leave');
+}
+
+function renderLeaveStage(data){
+  const balances = data.leave_balances || [];
+  document.getElementById('leave-balances').innerHTML = balances.length ? balances.map(b => {
+    const remaining = (b.annual_entitlement_days || 0) - (b.days_taken || 0);
+    return `
+      <div class="profile-row">
+        <div class="t1">${escapeHtml(b.name)}</div>
+        <div class="t2">${remaining} of ${b.annual_entitlement_days} days remaining${b.days_pending ? ` · ${b.days_pending} day${b.days_pending>1?'s':''} pending decision` : ''}</div>
+      </div>
+    `;
+  }).join('') : '<div class="empty-note">No leave types have been set up yet — ask your office.</div>';
+
+  const apps = data.leave_applications || [];
+  document.getElementById('leave-applications-list').innerHTML = apps.length ? apps.map(a => `
+    <div class="profile-row">
+      <div class="t1">${escapeHtml(a.leave_type_name)} <span class="badge ${a.status === 'approved' ? 'completed' : (a.status === 'pending' ? 'required' : 'cancelled')}">${a.status}</span></div>
+      <div class="t2">${fmtDate(a.start_date)} – ${fmtDate(a.end_date)} · ${a.days_requested} day${a.days_requested>1?'s':''}${a.decision_note ? ' · ' + escapeHtml(a.decision_note) : ''}</div>
+      ${a.status === 'pending' ? `<button class="btn-link" style="padding-top:4px;" onclick="window.__cancelLeave('${a.id}')">Cancel this application</button>` : ''}
+    </div>
+  `).join('') : '<div class="empty-note">No leave applications yet.</div>';
+}
+
+window.__cancelLeave = async function(applicationId){
+  if(!confirm('Cancel this leave application?')) return;
+  const { data, error } = await supabase.rpc('hr_cancel_leave_application', {
+    p_org_id: orgId, p_employee_code: session.employeeCode, p_pin: session.pin, p_application_id: applicationId,
+  });
+  if(error || !data || data.error){
+    document.getElementById('leave-error').innerHTML = `<div class="error-box">${escapeHtml((data && data.error) || error?.message || 'Could not cancel — please try again.')}</div>`;
+    return;
+  }
+  loadLeave();
+};
+
+document.getElementById('leave-apply-btn').addEventListener('click', () => {
+  const typeSelect = document.getElementById('la-type');
+  const types = (lastProfile && lastProfile.leave_types) || [];
+  typeSelect.innerHTML = types.length
+    ? types.map(t => `<option value="${t.id}" data-attachment="${t.requires_attachment}">${escapeHtml(t.name)}${t.is_paid ? '' : ' (unpaid)'}</option>`).join('')
+    : '<option value="">No leave types available — ask your office</option>';
+  document.getElementById('la-start').value = '';
+  document.getElementById('la-end').value = '';
+  document.getElementById('la-reason').value = '';
+  document.getElementById('leaveapply-error').innerHTML = '';
+  document.getElementById('leaveapply-success').innerHTML = '';
+  updateLeaveTypeHint();
+  showStage('stage-leave-apply');
+});
+
+document.getElementById('la-type').addEventListener('change', updateLeaveTypeHint);
+function updateLeaveTypeHint(){
+  const sel = document.getElementById('la-type');
+  const opt = sel.options[sel.selectedIndex];
+  const hint = document.getElementById('la-type-hint');
+  hint.textContent = (opt && opt.dataset.attachment === 'true')
+    ? 'This leave type usually needs a supporting document (e.g. a medical certificate) — hand that to your office; it can\'t be attached from this page.'
+    : '';
+}
+
+document.getElementById('leaveapply-submit-btn').addEventListener('click', async () => {
+  const errEl = document.getElementById('leaveapply-error');
+  const okEl = document.getElementById('leaveapply-success');
+  errEl.innerHTML = ''; okEl.innerHTML = '';
+
+  const leaveTypeId = document.getElementById('la-type').value;
+  const start = document.getElementById('la-start').value;
+  const end = document.getElementById('la-end').value;
+  const reason = document.getElementById('la-reason').value.trim();
+
+  if(!leaveTypeId){ errEl.innerHTML = '<div class="error-box">Choose a leave type.</div>'; return; }
+  if(!start || !end){ errEl.innerHTML = '<div class="error-box">Choose both a start and end date.</div>'; return; }
+  if(end < start){ errEl.innerHTML = '<div class="error-box">The end date cannot be before the start date.</div>'; return; }
+
+  const btn = document.getElementById('leaveapply-submit-btn');
+  btn.disabled = true; btn.textContent = 'Submitting…';
+
+  const { data, error } = await supabase.rpc('hr_submit_leave_application', {
+    p_org_id: orgId, p_employee_code: session.employeeCode, p_pin: session.pin,
+    p_leave_type_id: leaveTypeId, p_start_date: start, p_end_date: end, p_reason: reason || null,
+  });
+
+  btn.disabled = false; btn.textContent = 'Submit application';
+
+  if(error || !data || data.error){
+    errEl.innerHTML = `<div class="error-box">${escapeHtml((data && data.error) || error?.message || 'Something went wrong. Please try again.')}</div>`;
+    return;
+  }
+
+  okEl.innerHTML = `<div class="success-box">Application ${data.ref_code} submitted (${data.days_requested} day${data.days_requested>1?'s':''})${data.routed_to_manager ? ' — sent to your line manager for a decision.' : ' — your office will pick it up for a decision.'}${data.requires_attachment ? ' Remember to hand in your supporting document.' : ''}</div>`;
+
+  setTimeout(() => loadLeave(), 1200);
+});
 
 document.getElementById('main-changepin-link').addEventListener('click', () => {
   document.getElementById('cp-old-pin').value = '';
