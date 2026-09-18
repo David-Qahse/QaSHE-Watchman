@@ -875,7 +875,7 @@
       <div class="nav-item" data-mod="appraisals" onclick="showModule('appraisals')"><svg viewBox="0 0 24 24"><path d="M12 20V10M18 20V4M6 20v-4"/></svg> KPIs &amp; Appraisals <span class="nd amber" id="nd-appraisal"></span></div>
       <div class="nav-item" data-mod="assets" onclick="showModule('assets')"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg> Assets &amp; Maintenance <span class="nd amber" id="nd-asset"></span></div>
       <div class="nav-item" data-mod="bulletins" onclick="showModule('bulletins')"><svg viewBox="0 0 24 24"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a2 2 0 11-3.2 2.4"/></svg> Bulletins &amp; Toolbox Talks</div>
-      <div class="nav-item" data-mod="hr" onclick="showModule('hr')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> HR: Attendance &amp; Leave</div>
+      <div class="nav-item" data-mod="hr" onclick="showModule('hr')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> HR: Attendance &amp; Leave <span class="nd amber" id="nd-hr"></span></div>
       <div class="nav-item" data-mod="all_documents" onclick="showModule('all_documents')"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg> All Documents</div>
       <div class="nav-item" data-mod="five_s" onclick="showModule('five_s')"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg> 5S Inspections</div>
       <div class="nav-item" data-mod="processes" onclick="showModule('processes')"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.1-2.8-2.8L7 14"/></svg> Process Performance</div>
@@ -989,7 +989,7 @@ const STATE = {
   members:[], memberMap:{},
   ncs:[], tasks:[], audits:[], risks:[], documents:[], suppliers:[], customers:[], satisfactionQuestions:[], objectives:[], legalRegister:[],
   positions:[], personnel:[], competence:[], training:[], positionKpis:[], appraisals:[],
-  assetChecklistTemplates:[], assetChecklistItems:[], assets:[], bulletins:[], attendance:[],
+  assetChecklistTemplates:[], assetChecklistItems:[], assets:[], bulletins:[], attendance:[], leaveTypes:[], leaveApplications:[],
   checklistTemplates:[],
   docDepartments:[], docTypes:[], formIdentifications:[], ncTypes:[],
   assessmentTemplates:[], assessmentItems:[], assessmentRecords:[], customerSurveys:[], bulkDocuments:[], fiveSInspections:[],
@@ -1057,6 +1057,7 @@ function hideLoader(){
 // — should ever need to know these exist.
 const SUPABASE_URL = "https://uzywxhptwavnvpfzbhkb.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_8XxT0I-Qdmswhd2I-TT_jg_CuI8a24f";
+
 
 function initSupabase(url, key){
   STATE.supabase = supabaseLib.createClient(url, key);
@@ -1301,6 +1302,8 @@ window.selectOrg = async function(orgId){
   await loadAssetInspectionsSummary();
   await loadBulletins();
   await loadAttendance();
+  await loadLeaveTypes();
+  await loadLeaveApplications();
 
   hideAllGates();
   document.getElementById('view-landing').classList.remove('active');
@@ -1570,6 +1573,18 @@ async function loadAttendance(){
   if(error){ toast('Could not load attendance: ' + error.message, 'error'); return; }
   STATE.attendance = data || [];
 }
+async function loadLeaveTypes(){
+  if(!STATE.org.hr_enabled) return;
+  const { data, error } = await STATE.supabase.from('leave_types').select('*').eq('organisation_id', STATE.org.id).order('sort_order', {ascending:true});
+  if(error){ toast('Could not load leave types: ' + error.message, 'error'); return; }
+  STATE.leaveTypes = data || [];
+}
+async function loadLeaveApplications(){
+  if(!STATE.org.hr_enabled) return;
+  const { data, error } = await STATE.supabase.from('leave_applications').select('*').eq('organisation_id', STATE.org.id).order('created_at', {ascending:false}).limit(500);
+  if(error){ toast('Could not load leave applications: ' + error.message, 'error'); return; }
+  STATE.leaveApplications = data || [];
+}
 
 const MODULE_META = {
   overview:{title:'Overview', sub:() => `${STATE.org.name} — ${STATE.org.ref_prefix}`},
@@ -1827,7 +1842,7 @@ function showModule(mod){
   if(mod === 'appraisals') renderAppraisalsTable();
   if(mod === 'assets') renderAssetsTable();
   if(mod === 'bulletins') renderBulletinsTable();
-  if(mod === 'hr') renderHrAttendanceTable();
+  if(mod === 'hr') switchHrSubtab(STATE._hrSubtab || 'attendance');
   if(mod === 'compliance') renderComplianceDashboard();
   if(mod === 'all_documents') renderBulkDocumentsRegister();
   if(mod === 'five_s') renderFiveSTable();
@@ -1849,6 +1864,7 @@ function updateNavBadges(){
   const openTraining = STATE.training.filter(t=>t.status==='required' || t.status==='planned').length;
   const openAppraisals = STATE.appraisals.filter(a=>a.status!=='finalized').length;
   const quarantinedAssets = STATE.assets.filter(a=>a.current_status==='quarantine').length;
+  const pendingLeave = STATE.leaveApplications.filter(l=>l.status==='pending').length;
   document.getElementById('nd-nc').style.display = openNC?'block':'none';
   document.getElementById('nd-task').style.display = openTasks?'block':'none';
   document.getElementById('nd-audit').style.display = openAudits?'block':'none';
@@ -1861,6 +1877,7 @@ function updateNavBadges(){
   document.getElementById('nd-training').style.display = openTraining?'block':'none';
   document.getElementById('nd-appraisal').style.display = openAppraisals?'block':'none';
   document.getElementById('nd-asset').style.display = quarantinedAssets?'block':'none';
+  document.getElementById('nd-hr').style.display = pendingLeave?'block':'none';
 }
 
 /* ============ SHARED UI HELPERS ============ */
@@ -2906,31 +2923,15 @@ const RENDERERS = {
   `,
 
   hr: () => `
-    <div class="detail-card" style="margin-bottom:18px;">
-      <div class="panel-head"><h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600;">Employee mobile clock-in link</h3></div>
-      <p style="font-size:12.5px; color:var(--text-dim); margin-bottom:14px; line-height:1.55;">One link for everyone at ${STATE.org.name} — share it as a QR code on the wall at the entrance, or send it directly. Each person opens it on their own phone and signs in with their employee code (shown on their Personnel record) and their PIN. No Watchman login is needed, and no app to install.</p>
-      <div id="hr-link-box"></div>
-    </div>
-
     <div class="toolbar">
       <div class="filters">
-        <select id="hr-filter-person" onchange="renderHrAttendanceTable()">
-          <option value="">All personnel</option>
-          ${STATE.personnel.map(p=>`<option value="${p.id}">${p.full_name}</option>`).join('')}
-        </select>
-        <select id="hr-filter-status" onchange="renderHrAttendanceTable()">
-          <option value="">Any status</option>
-          <option value="clocked_in">Currently clocked in</option>
-          <option value="clocked_out">Clocked out</option>
-        </select>
+        <button class="btn-small ${STATE._hrSubtab==='attendance'||!STATE._hrSubtab?'primary':''}" onclick="switchHrSubtab('attendance')">Attendance</button>
+        <button class="btn-small ${STATE._hrSubtab==='leave_applications'?'primary':''}" onclick="switchHrSubtab('leave_applications')">Leave Applications <span id="hr-tab-pending-badge"></span></button>
+        <button class="btn-small ${STATE._hrSubtab==='leave_types'?'primary':''}" onclick="switchHrSubtab('leave_types')">Leave Types</button>
       </div>
-      <button class="btn-small" onclick="exportModuleExcel('attendance')">Export Excel</button>
-      <button class="btn-small" onclick="printCurrentRegister('attendance','Attendance Register')">Print Register</button>
+      <div></div>
     </div>
-
-    <div class="panel" style="padding:0; overflow:hidden;">
-      <div id="hr-attendance-table-wrap"></div>
-    </div>
+    <div id="hr-subtab-content"></div>
   `,
 
   all_documents: () => `
@@ -10856,15 +10857,129 @@ function renderBulletinsTable(){
 window.renderBulletinsTable = renderBulletinsTable;
 
 /* ============================================================================
-   HR: Attendance, Time & Leave — Stage 1
+   HR: Attendance, Time & Leave — Stage 1 (Attendance) + Stage 2 (Leave)
    Toggle already gates this whole module (canAccessModule / hr_enabled).
-   The workforce clocking in has no Watchman login — see the migration's
-   design notes — so everything here is either (a) the management-facing
-   attendance register, an ordinary org-scoped table like any other, or
-   (b) a link the admin hands out, pointing at the separate public mobile
-   page (qashe-watchman-hr-clock.html) that does the actual PIN-verified
-   clock-in/out and "My Profile" work.
+   The workforce clocking in/applying for leave has no Watchman login — see
+   the migrations' design notes — so everything here is either (a) the
+   management-facing registers, ordinary org-scoped tables like any other,
+   or (b) a link the admin hands out, pointing at the separate public
+   mobile page (qashe-watchman-hr-clock.html) that does the actual
+   PIN-verified clock-in/out, leave application, and "My Profile" work.
 ============================================================================ */
+
+window.switchHrSubtab = function(tab){
+  STATE._hrSubtab = tab;
+  document.querySelectorAll('#content-root .toolbar .btn-small').forEach(b => b.classList.remove('primary'));
+  const activeBtn = document.querySelector(`#content-root .toolbar .btn-small[onclick="switchHrSubtab('${tab}')"]`);
+  if(activeBtn) activeBtn.classList.add('primary');
+  renderHrSubtabContent(tab);
+};
+
+function renderHrSubtabContent(tab){
+  const pendingCount = STATE.leaveApplications.filter(l=>l.status==='pending').length;
+  const badgeEl = document.getElementById('hr-tab-pending-badge');
+  if(badgeEl) badgeEl.textContent = pendingCount ? `(${pendingCount})` : '';
+
+  const root = document.getElementById('hr-subtab-content');
+  if(!root) return;
+
+  if(tab === 'attendance'){
+    root.innerHTML = `
+      <div class="detail-card" style="margin:16px 0 18px;">
+        <div class="panel-head"><h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600;">Employee mobile link</h3></div>
+        <p style="font-size:12.5px; color:var(--text-dim); margin-bottom:14px; line-height:1.55;">One link for everyone at ${STATE.org.name} — share it as a QR code on the wall at the entrance, or send it directly. Each person opens it on their own phone and signs in with their employee code (shown on their Personnel record) and their PIN. From there they can clock in/out, apply for leave, and see their own profile. No Watchman login is needed, and no app to install.</p>
+        <div id="hr-link-box"></div>
+      </div>
+      <div class="toolbar">
+        <div class="filters">
+          <select id="hr-filter-person" onchange="renderHrAttendanceTable()">
+            <option value="">All personnel</option>
+            ${STATE.personnel.map(p=>`<option value="${p.id}">${p.full_name}</option>`).join('')}
+          </select>
+          <select id="hr-filter-status" onchange="renderHrAttendanceTable()">
+            <option value="">Any status</option>
+            <option value="clocked_in">Currently clocked in</option>
+            <option value="clocked_out">Clocked out</option>
+          </select>
+        </div>
+        <button class="btn-small" onclick="exportModuleExcel('attendance')">Export Excel</button>
+        <button class="btn-small" onclick="printCurrentRegister('attendance','Attendance Register')">Print Register</button>
+      </div>
+      <div class="panel" style="padding:0; overflow:hidden;">
+        <div id="hr-attendance-table-wrap"></div>
+      </div>
+    `;
+    renderHrAttendanceTable();
+  }
+
+  if(tab === 'leave_applications'){
+    root.innerHTML = `
+      <div class="toolbar">
+        <div class="filters">
+          <select id="lva-filter-person" onchange="renderLeaveApplicationsTable()">
+            <option value="">All personnel</option>
+            ${STATE.personnel.map(p=>`<option value="${p.id}">${p.full_name}</option>`).join('')}
+          </select>
+          <select id="lva-filter-status" onchange="renderLeaveApplicationsTable()">
+            <option value="">Any status</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+        <button class="btn-small" onclick="exportModuleExcel('leave_applications')">Export Excel</button>
+        <button class="btn-small" onclick="printCurrentRegister('leave_applications','Leave Applications Register')">Print Register</button>
+        <button class="btn-primary btn-add" onclick="toggleOfficeLeaveForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Log Leave Application</button>
+      </div>
+      <div class="form-panel" id="office-leave-form">
+        <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:14px;">Log a leave application (paper form, phone call, etc.)</h3>
+        ${!STATE.leaveTypes.filter(t=>t.is_active).length ? '<p style="font-size:12.5px; color:var(--text-faint); margin-bottom:10px;">No active leave types yet — add one under the Leave Types tab first.</p>' : `
+        <div class="form-grid">
+          <div class="field"><label>Person</label><select id="olf-person">${STATE.personnel.filter(p=>p.status==='active').map(p=>`<option value="${p.id}">${p.full_name}</option>`).join('')}</select></div>
+          <div class="field"><label>Leave type</label><select id="olf-leave-type">${STATE.leaveTypes.filter(t=>t.is_active).map(t=>`<option value="${t.id}">${t.name}</option>`).join('')}</select></div>
+          <div class="field"><label>Start date</label><input type="date" id="olf-start" value="${todayISO()}"></div>
+          <div class="field"><label>End date</label><input type="date" id="olf-end" value="${todayISO()}"></div>
+          <div class="field span3"><label>Reason (optional)</label><textarea id="olf-reason"></textarea></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn-cancel" onclick="toggleOfficeLeaveForm()">Cancel</button>
+          <button class="btn-small primary" onclick="submitOfficeLeaveApplication()">Log application</button>
+        </div>`}
+      </div>
+      <div class="panel" style="padding:0; overflow:hidden;">
+        <div id="leave-applications-table-wrap"></div>
+      </div>
+    `;
+    renderLeaveApplicationsTable();
+  }
+
+  if(tab === 'leave_types'){
+    root.innerHTML = `
+      <div class="toolbar">
+        <div></div>
+        <button class="btn-primary btn-add" onclick="toggleLeaveTypeForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Leave Type</button>
+      </div>
+      <div class="form-panel" id="leave-type-form">
+        <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:14px;">New leave type</h3>
+        <div class="form-grid">
+          <div class="field"><label>Name</label><input id="ltf-name" placeholder="e.g. Annual Leave, Sick Leave, Family Responsibility"></div>
+          <div class="field"><label>Annual entitlement (days)</label><input type="number" step="0.5" min="0" id="ltf-entitlement" value="0"></div>
+          <div class="field"><label>Paid?</label><select id="ltf-paid"><option value="true">Paid</option><option value="false">Unpaid</option></select></div>
+          <div class="field"><label>Requires a supporting document?</label><select id="ltf-attachment"><option value="false">No</option><option value="true">Yes (e.g. medical certificate)</option></select></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn-cancel" onclick="toggleLeaveTypeForm()">Cancel</button>
+          <button class="btn-small primary" onclick="submitLeaveType()">Save leave type</button>
+        </div>
+      </div>
+      <div class="panel" style="padding:0; overflow:hidden;">
+        <div id="leave-types-table-wrap"></div>
+      </div>
+    `;
+    renderLeaveTypesTable();
+  }
+}
 
 function hrClockLinkUrl(){
   return `${window.location.origin}${window.location.pathname.replace(/index\.html$/,'')}qashe-watchman-hr-clock.html?org=${STATE.org.id}`;
@@ -10927,6 +11042,160 @@ function renderHrAttendanceTable(){
   </table>`;
 }
 window.renderHrAttendanceTable = renderHrAttendanceTable;
+
+/* ---- Leave Types (configurable per client) ---- */
+function leaveTypeById(id){ return STATE.leaveTypes.find(t=>t.id===id); }
+
+window.toggleLeaveTypeForm = function(){
+  const el = document.getElementById('leave-type-form');
+  if(el) el.classList.toggle('open');
+};
+
+window.submitLeaveType = async function(){
+  const name = document.getElementById('ltf-name').value.trim();
+  if(!name){ toast('Give the leave type a name.', 'error'); return; }
+  const payload = {
+    organisation_id: STATE.org.id,
+    name,
+    annual_entitlement_days: parseFloat(document.getElementById('ltf-entitlement').value) || 0,
+    is_paid: document.getElementById('ltf-paid').value === 'true',
+    requires_attachment: document.getElementById('ltf-attachment').value === 'true',
+    created_by: STATE.user.id,
+  };
+  const { error } = await STATE.supabase.from('leave_types').insert(payload);
+  if(error){ toast('Could not save leave type: ' + error.message, 'error'); return; }
+  await loadLeaveTypes();
+  toggleLeaveTypeForm();
+  renderLeaveTypesTable();
+  toast('Leave type saved.', 'success');
+};
+
+window.toggleLeaveTypeActive = async function(id, newVal){
+  const { error } = await STATE.supabase.from('leave_types').update({ is_active: newVal }).eq('id', id);
+  if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+  await loadLeaveTypes();
+  renderLeaveTypesTable();
+};
+
+window.deleteLeaveType = async function(id){
+  if(!confirm('Delete this leave type? Existing applications that used it are kept, but it will no longer be offered for new ones.')) return;
+  const { error } = await STATE.supabase.from('leave_types').delete().eq('id', id);
+  if(error){ toast('Could not delete: ' + error.message, 'error'); return; }
+  await loadLeaveTypes();
+  renderLeaveTypesTable();
+  toast('Leave type deleted.', 'success');
+};
+
+function renderLeaveTypesTable(){
+  const wrap = document.getElementById('leave-types-table-wrap');
+  if(!wrap) return;
+  if(!STATE.leaveTypes.length){
+    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/></svg><p>No leave types configured yet — add Annual Leave, Sick Leave, and any others this client uses.</p></div>`;
+    return;
+  }
+  wrap.innerHTML = `<table>
+    <tr><th>Name</th><th>Annual Entitlement</th><th>Paid</th><th>Requires Document</th><th>Active</th><th></th></tr>
+    ${STATE.leaveTypes.map(t=>`<tr>
+      <td class="strong">${t.name}</td>
+      <td>${t.annual_entitlement_days} days</td>
+      <td>${t.is_paid ? 'Paid' : 'Unpaid'}</td>
+      <td>${t.requires_attachment ? 'Yes' : 'No'}</td>
+      <td>${t.is_active ? '<b style="color:var(--green);">Active</b>' : '<span style="color:var(--text-faint);">Inactive</span>'}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn-small" onclick="toggleLeaveTypeActive('${t.id}', ${!t.is_active})">${t.is_active ? 'Deactivate' : 'Activate'}</button>
+        <button class="btn-small" onclick="deleteLeaveType('${t.id}')">Delete</button>
+      </td>
+    </tr>`).join('')}
+  </table>`;
+}
+window.renderLeaveTypesTable = renderLeaveTypesTable;
+
+/* ---- Leave Applications ---- */
+window.toggleOfficeLeaveForm = function(){
+  const el = document.getElementById('office-leave-form');
+  if(el) el.classList.toggle('open');
+};
+
+window.submitOfficeLeaveApplication = async function(){
+  const personId = document.getElementById('olf-person').value;
+  const leaveTypeId = document.getElementById('olf-leave-type').value;
+  const start = document.getElementById('olf-start').value;
+  const end = document.getElementById('olf-end').value;
+  const reason = document.getElementById('olf-reason').value.trim();
+  if(!personId || !leaveTypeId || !start || !end){ toast('Person, leave type, and both dates are required.', 'error'); return; }
+  if(end < start){ toast('End date cannot be before the start date.', 'error'); return; }
+
+  const days = (new Date(end+'T00:00:00') - new Date(start+'T00:00:00')) / 86400000 + 1;
+  const person = personById(personId);
+  const manager = person && person.line_manager_id ? personById(person.line_manager_id) : null;
+
+  const { error } = await STATE.supabase.from('leave_applications').insert({
+    organisation_id: STATE.org.id, personnel_id: personId, leave_type_id: leaveTypeId,
+    start_date: start, end_date: end, days_requested: days, reason: reason || null,
+    assigned_approver_profile_id: manager ? manager.linked_profile_id : null,
+    submitted_via: 'office', created_by: STATE.user.id,
+  });
+  if(error){ toast('Could not log application: ' + error.message, 'error'); return; }
+  await loadLeaveApplications();
+  toggleOfficeLeaveForm();
+  renderLeaveApplicationsTable();
+  toast('Leave application logged.', 'success');
+};
+
+window.decideLeaveApplication = async function(id, decision){
+  const note = prompt(decision === 'approved' ? 'Any note with this approval? (optional)' : 'Reason for rejecting? (optional, but helpful for the record)');
+  if(note === null) return; // cancelled the prompt
+  const { error } = await STATE.supabase.from('leave_applications').update({
+    status: decision, decided_by: STATE.user.id, decided_at: new Date().toISOString(), decision_note: note || null,
+  }).eq('id', id);
+  if(error){ toast('Could not record the decision: ' + error.message, 'error'); return; }
+  await loadLeaveApplications();
+  renderLeaveApplicationsTable();
+  updateNavBadges();
+  toast(decision === 'approved' ? 'Leave application approved.' : 'Leave application rejected.', 'success');
+};
+
+function canDecideLeave(app){
+  return STATE.myRole === 'admin' || STATE.myRole === 'manager' || app.assigned_approver_profile_id === STATE.user.id;
+}
+
+function renderLeaveApplicationsTable(){
+  const wrap = document.getElementById('leave-applications-table-wrap');
+  if(!wrap) return;
+  const fPerson = document.getElementById('lva-filter-person').value;
+  const fStatus = document.getElementById('lva-filter-status').value;
+  const rows = STATE.leaveApplications
+    .filter(l => !fPerson || l.personnel_id === fPerson)
+    .filter(l => !fStatus || l.status === fStatus);
+  if(!rows.length){
+    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/></svg><p>No leave applications yet.</p></div>`;
+    return;
+  }
+  const statusColor = { pending:'var(--amber)', approved:'var(--green)', rejected:'var(--red)', cancelled:'var(--text-faint)' };
+  wrap.innerHTML = `<table>
+    <tr><th>Ref</th><th>Employee</th><th>Type</th><th>Dates</th><th>Days</th><th>Status</th><th>Source</th><th></th></tr>
+    ${rows.map(l=>{
+      const p = personById(l.personnel_id);
+      const lt = leaveTypeById(l.leave_type_id);
+      return `<tr>
+        <td class="mono-cell">${l.ref_code}</td>
+        <td class="strong">${p ? p.full_name : 'Unknown'}</td>
+        <td>${lt ? lt.name : '—'}</td>
+        <td>${fmtDate(l.start_date)} – ${fmtDate(l.end_date)}</td>
+        <td>${l.days_requested}</td>
+        <td><b style="color:${statusColor[l.status]};text-transform:capitalize;">${l.status}</b>${l.decision_note ? `<div style="font-size:10.5px; color:var(--text-faint);">${l.decision_note}</div>` : ''}</td>
+        <td style="font-size:11px; color:var(--text-faint); text-transform:capitalize;">${l.submitted_via}</td>
+        <td style="white-space:nowrap;">
+          ${l.status === 'pending' && canDecideLeave(l) ? `
+            <button class="btn-small primary" onclick="decideLeaveApplication('${l.id}','approved')">Approve</button>
+            <button class="btn-small" onclick="decideLeaveApplication('${l.id}','rejected')">Reject</button>
+          ` : ''}
+        </td>
+      </tr>`;
+    }).join('')}
+  </table>`;
+}
+window.renderLeaveApplicationsTable = renderLeaveApplicationsTable;
 
 /* Full-page display — the entire content shown in full, not truncated. */
 async function openBulletinDetail(id){
@@ -13126,6 +13395,15 @@ function getModuleExportConfig(moduleKey){
     bulletins: { rows: STATE.bulletins, filename: `bulletins-${orgSlug}.xlsx`, columns: [
       {header:'Ref', get:r=>r.ref_code}, {header:'Type', get:r=>r.type}, {header:'Title', get:r=>r.title},
       {header:'Published', get:r=>r.published_date},
+    ]},
+    leave_applications: { rows: STATE.leaveApplications, filename: `leave-applications-${orgSlug}.xlsx`, columns: [
+      {header:'Ref', get:r=>r.ref_code},
+      {header:'Employee', get:r=>{ const p = personById(r.personnel_id); return p ? p.full_name : ''; }},
+      {header:'Leave Type', get:r=>{ const t = leaveTypeById(r.leave_type_id); return t ? t.name : ''; }},
+      {header:'Start Date', get:r=>r.start_date}, {header:'End Date', get:r=>r.end_date},
+      {header:'Days', get:r=>r.days_requested}, {header:'Status', get:r=>r.status},
+      {header:'Reason', get:r=>r.reason||''}, {header:'Decision Note', get:r=>r.decision_note||''},
+      {header:'Submitted Via', get:r=>r.submitted_via},
     ]},
     attendance: { rows: STATE.attendance, filename: `attendance-${orgSlug}.xlsx`, columns: [
       {header:'Employee', get:r=>{ const p = personById(r.personnel_id); return p ? p.full_name : ''; }},
