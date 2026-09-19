@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log a Reading — Asset Watchman</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --red:#B21616; --red-dark:#7E0F0F; --red-tint:#FCEAEA;
+    --bg:#F7F6F5; --panel:#FFFFFF; --border:#E3E1DF;
+    --text:#1E1C1B; --text-dim:#615C59; --text-faint:#9C9895;
+    --green:#2E7D4F; --green-tint:#E9F5EE;
+    --amber:#B2790F; --amber-tint:#FCF3E3;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--text); font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased; min-height:100vh; display:flex; align-items:flex-start; justify-content:center; padding:32px 16px;}
+  button{font-family:inherit; cursor:pointer;}
+  input, select{font-family:'Inter',sans-serif;}
+
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:30px 26px; width:100%; max-width:460px;}
+  .brand-row{display:flex; align-items:center; gap:12px; margin-bottom:20px;}
+  .brand-row img{max-height:34px; max-width:150px; object-fit:contain;}
+  .brand-row .fallback{font-family:'Poppins'; font-weight:700; font-size:17px;}
+
+  h1{font-family:'Poppins'; font-weight:700; font-size:20px; margin-bottom:6px;}
+  p.sub{font-size:13.5px; color:var(--text-dim); line-height:1.55; margin-bottom:22px;}
+
+  .field{margin-bottom:18px;}
+  .field label{font-size:13px; font-weight:600; display:block; margin-bottom:7px;}
+  .field input, .field select{width:100%; border:1.5px solid var(--border); border-radius:8px; padding:12px; font-size:15.5px;}
+  .field input:focus, .field select:focus{outline:none; border-color:var(--red);}
+  .field .hint{font-size:11.5px; color:var(--text-faint); margin-top:6px;}
+
+  .btn-main{width:100%; background:var(--red); color:#fff; font-weight:700; font-size:15px; padding:14px; border-radius:8px; border:none; margin-top:4px;}
+  .btn-main:hover{background:var(--red-dark);}
+  .btn-main:disabled{opacity:.5;}
+  .btn-secondary{width:100%; background:none; color:var(--text-dim); font-weight:600; font-size:13.5px; padding:11px; border-radius:8px; border:1.5px solid var(--border); margin-top:10px;}
+  .btn-secondary:hover{border-color:var(--red); color:var(--red);}
+
+  .stage{display:none;}
+  .stage.active{display:block;}
+  .loading{text-align:center; padding:50px 0; color:var(--text-faint); font-size:13.5px;}
+  .error-box{background:var(--red-tint); color:var(--red); padding:14px 16px; border-radius:8px; font-size:13.5px; line-height:1.5; margin-bottom:16px;}
+  .success-box{background:var(--green-tint); color:var(--green); padding:14px 16px; border-radius:8px; font-size:13.5px; line-height:1.5; margin-bottom:16px;}
+
+  .asset-photo{width:100%; max-height:220px; object-fit:cover; border-radius:8px; border:1px solid var(--border); margin-bottom:16px;}
+  .asset-ref{font-family:'JetBrains Mono', monospace; font-size:11.5px; color:var(--text-faint); margin-bottom:2px;}
+  .asset-desc{font-family:'Poppins'; font-weight:700; font-size:18px; margin-bottom:4px;}
+  .asset-meta{font-size:12.5px; color:var(--text-dim); margin-bottom:20px;}
+  .back-btn{background:none; border:none; color:var(--text-dim); font-size:13px; font-weight:600; margin-bottom:14px; padding:0; display:flex; align-items:center; gap:6px;}
+  .back-btn svg{width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:2;}
+</style>
+</head>
+<body>
+
+<div class="card">
+
+  <div id="stage-loading" class="stage active"><div class="loading">Loading…</div></div>
+
+  <div id="stage-linkerror" class="stage">
+    <div class="brand-row"><span class="fallback">QaSHE Watchman</span></div>
+    <div class="error-box" id="linkerror-message"></div>
+  </div>
+
+  <div id="stage-main" class="stage">
+    <div class="brand-row" id="main-brand-row"><span class="fallback">Asset Watchman</span></div>
+    <img id="main-photo" class="asset-photo" style="display:none;">
+    <div class="asset-ref" id="main-ref"></div>
+    <div class="asset-desc" id="main-desc"></div>
+    <div class="asset-meta" id="main-meta"></div>
+    <button class="btn-main" id="main-log-btn">Log a reading</button>
+  </div>
+
+  <div id="stage-log" class="stage">
+    <button class="back-btn" id="log-back-btn"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg> Back</button>
+    <h1>Log a reading</h1>
+    <p class="sub" id="log-asset-line"></p>
+    <div id="log-error"></div>
+    <div class="field">
+      <label>Where is this reading from?</label>
+      <select id="log-scope"></select>
+    </div>
+    <div class="field">
+      <label>Reading type</label>
+      <select id="log-type"></select>
+    </div>
+    <div class="field">
+      <label>Value</label>
+      <input type="number" step="any" inputmode="decimal" id="log-value">
+    </div>
+    <div class="field">
+      <label>Your name</label>
+      <input type="text" id="log-name" placeholder="So the office knows who logged this" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Notes (optional)</label>
+      <input type="text" id="log-notes" placeholder="Anything worth flagging">
+    </div>
+    <button class="btn-main" id="log-submit-btn">Submit reading</button>
+  </div>
+
+  <div id="stage-success" class="stage">
+    <div class="brand-row" id="success-brand-row"><span class="fallback">Asset Watchman</span></div>
+    <div class="success-box" id="success-message"></div>
+    <button class="btn-main" id="success-log-another-btn">Log another reading</button>
+    <button class="btn-secondary" id="success-done-btn">Done</button>
+  </div>
+
+</div>
+
+<script type="module">
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const SUPABASE_URL = 'https://uzywxhptwavnvpfzbhkb.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_8XxT0I-Qdmswhd2I-TT_jg_CuI8a24f';
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+function showStage(id){
+  document.querySelectorAll('.stage').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function escapeHtml(s){
+  return (s==null?'':String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+const assetToken = new URLSearchParams(window.location.search).get('asset_token');
+
+// Loaded once on page open and kept only in memory for this visit — the
+// technician's name is typed fresh into every reading, never stored.
+let assetData = null;
+
+function applyBrand(data){
+  const rows = document.querySelectorAll('#main-brand-row, #success-brand-row');
+  rows.forEach(row => {
+    row.innerHTML = data && data.org_logo_url
+      ? `<img src="${data.org_logo_url}" alt="${escapeHtml(data.org_name||'')}">`
+      : `<span class="fallback">${escapeHtml((data && data.org_name) || 'Asset Watchman')}</span>`;
+  });
+  if(data && data.org_primary_color){
+    document.querySelectorAll('.btn-main').forEach(b => b.style.background = data.org_primary_color);
+  }
+}
+
+function renderMain(){
+  const a = assetData;
+  const photoEl = document.getElementById('main-photo');
+  if(a.photo_path){
+    const { data } = supabase.storage.from('avatars').getPublicUrl(a.photo_path);
+    if(data && data.publicUrl){ photoEl.src = data.publicUrl; photoEl.style.display = 'block'; }
+  }
+  document.getElementById('main-ref').textContent = a.tag_number ? `${a.ref_code} · Tag ${a.tag_number}` : a.ref_code;
+  document.getElementById('main-desc').textContent = a.description;
+  const metaParts = [a.customer_name, [a.location_plant, a.location_site].filter(Boolean).join(', ')].filter(Boolean);
+  document.getElementById('main-meta').textContent = metaParts.join(' — ');
+}
+
+function populateLogForm(){
+  const a = assetData;
+  document.getElementById('log-asset-line').textContent = `${a.description}${a.tag_number ? ' — Tag ' + a.tag_number : ''}`;
+
+  const scopeSelect = document.getElementById('log-scope');
+  scopeSelect.innerHTML = `<option value="">Asset overall — ${escapeHtml(a.description)}</option>` +
+    a.components.map(c => `<option value="${c.id}">${escapeHtml(componentLabel(c))}</option>`).join('');
+  scopeSelect.onchange = () => populateTypeOptions();
+  populateTypeOptions();
+}
+
+const COMPONENT_TYPE_LABELS = {
+  mechanical_seal:'Mechanical Seal', labyrinth_seal:'Labyrinth Seal', gland_packing:'Gland Packing',
+  bearing:'Bearing', impeller:'Impeller', shaft:'Shaft', coupling:'Coupling',
+  wear_ring_sleeve:'Wear Ring / Sleeve', gasket_oring:'Gasket / O-Ring', other:'Other',
+};
+function componentLabel(c){
+  const type = COMPONENT_TYPE_LABELS[c.component_type] || c.component_type;
+  return c.label ? `${type} — ${c.label}` : type;
+}
+
+function populateTypeOptions(){
+  const scope = document.getElementById('log-scope').value ? 'component' : 'asset';
+  const typeSelect = document.getElementById('log-type');
+  const applicable = assetData.reading_types.filter(t => t.applies_to === 'both' || t.applies_to === scope);
+  typeSelect.innerHTML = applicable.length
+    ? applicable.map(t => `<option value="${t.id}">${escapeHtml(t.name)}${t.unit ? ' (' + escapeHtml(t.unit) + ')' : ''}</option>`).join('')
+    : '<option value="">No reading types set up yet — ask your office</option>';
+}
+
+async function init(){
+  if(!assetToken){
+    document.getElementById('linkerror-message').textContent = 'No asset link found. Check the QR code or link you scanned and try again.';
+    showStage('stage-linkerror');
+    return;
+  }
+  const { data, error } = await supabase.rpc('aw_lookup_asset_for_reading', { p_asset_token: assetToken });
+  if(error || !data || data.error){
+    document.getElementById('linkerror-message').textContent = (data && data.error) || 'Could not load this asset. Check the QR code or link and try again.';
+    showStage('stage-linkerror');
+    return;
+  }
+  assetData = data;
+  applyBrand(data);
+  renderMain();
+  showStage('stage-main');
+}
+
+document.getElementById('main-log-btn').addEventListener('click', () => {
+  document.getElementById('log-error').innerHTML = '';
+  document.getElementById('log-value').value = '';
+  document.getElementById('log-notes').value = '';
+  populateLogForm();
+  showStage('stage-log');
+});
+
+document.getElementById('log-back-btn').addEventListener('click', () => showStage('stage-main'));
+
+document.getElementById('log-submit-btn').addEventListener('click', async () => {
+  const errEl = document.getElementById('log-error');
+  errEl.innerHTML = '';
+
+  const componentId = document.getElementById('log-scope').value || null;
+  const readingTypeId = document.getElementById('log-type').value;
+  const valueRaw = document.getElementById('log-value').value;
+  const name = document.getElementById('log-name').value.trim();
+  const notes = document.getElementById('log-notes').value.trim();
+
+  if(!readingTypeId){ errEl.innerHTML = '<div class="error-box">Choose a reading type.</div>'; return; }
+  if(valueRaw === ''){ errEl.innerHTML = '<div class="error-box">Enter a value.</div>'; return; }
+  if(!name){ errEl.innerHTML = '<div class="error-box">Enter your name so the office knows who logged this.</div>'; return; }
+
+  const btn = document.getElementById('log-submit-btn');
+  btn.disabled = true; btn.textContent = 'Submitting…';
+
+  const { data, error } = await supabase.rpc('aw_submit_reading', {
+    p_asset_token: assetToken,
+    p_component_id: componentId,
+    p_reading_type_id: readingTypeId,
+    p_value: Number(valueRaw),
+    p_notes: notes,
+    p_recorded_by_name: name,
+  });
+
+  btn.disabled = false; btn.textContent = 'Submit reading';
+
+  if(error || !data || data.error){
+    errEl.innerHTML = `<div class="error-box">${escapeHtml((data && data.error) || 'Could not submit this reading. Check your connection and try again.')}</div>`;
+    return;
+  }
+
+  document.getElementById('success-message').textContent = `${data.reading_type_name} reading logged for ${data.asset_description}.`;
+  showStage('stage-success');
+});
+
+document.getElementById('success-log-another-btn').addEventListener('click', () => {
+  document.getElementById('log-error').innerHTML = '';
+  document.getElementById('log-value').value = '';
+  document.getElementById('log-notes').value = '';
+  populateLogForm();
+  showStage('stage-log');
+});
+document.getElementById('success-done-btn').addEventListener('click', () => {
+  renderMain();
+  showStage('stage-main');
+});
+
+init();
+</script>
+</body>
+</html>
