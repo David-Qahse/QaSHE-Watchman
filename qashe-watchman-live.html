@@ -192,6 +192,14 @@
   .kpi-card .k-val small{font-size:13px; color:var(--text-dim); font-weight:500;}
   .kpi-card .k-val.red{color:var(--red);} .kpi-card .k-val.amber{color:var(--amber);} .kpi-card .k-val.green{color:var(--green);}
 
+  /* ---- Compliance Dashboard hero (health score + trends) ---- */
+  .chs-hero{display:grid; grid-template-columns:260px 1fr; gap:16px; margin-bottom:20px;}
+  @media (max-width:900px){.chs-hero{grid-template-columns:1fr;}}
+  .chs-gauge-card{background:#fff; border:1px solid var(--border); border-radius:12px; padding:20px; text-align:center;}
+  .chs-trend-card{background:#fff; border:1px solid var(--border); border-radius:12px; padding:18px 20px;}
+  .trend-legend{display:flex; gap:16px; font-size:11px; color:var(--text-dim); margin-top:4px;}
+  .trend-dot{display:inline-block; width:8px; height:2px; border-radius:1px; margin-right:5px; vertical-align:middle;}
+
   .panel{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:16px;}
   .panel h3{font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:3px;}
   .panel .sub{font-size:12px; color:var(--text-faint); margin-bottom:16px;}
@@ -877,6 +885,9 @@
       <div class="nav-item" data-mod="bulletins" onclick="showModule('bulletins')"><svg viewBox="0 0 24 24"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a2 2 0 11-3.2 2.4"/></svg> Bulletins &amp; Toolbox Talks</div>
       <div class="nav-item" data-mod="hr" onclick="showModule('hr')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> HR: Attendance &amp; Leave <span class="nd amber" id="nd-hr"></span></div>
       <div class="nav-item" data-mod="asset_watchman" onclick="showModule('asset_watchman')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/><path d="M4.2 8.5l1.6.9M18.2 8.5l-1.6.9M4.2 15.5l1.6-.9M18.2 15.5l-1.6-.9"/></svg> Asset Watchman <span class="nd red" id="nd-aw"></span></div>
+      <div class="nav-item" data-mod="process_flowcharts" onclick="showModule('process_flowcharts')"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M12 7v4"/><rect x="4" y="11" width="7" height="4" rx="1"/><rect x="13" y="11" width="7" height="4" rx="1"/><path d="M7.5 15v3M16.5 15v3"/><rect x="4" y="18" width="7" height="4" rx="1"/><rect x="13" y="18" width="7" height="4" rx="1"/></svg> Process Flowcharts</div>
+      <div class="nav-item" data-mod="checklists" onclick="showModule('checklists')"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 9l2 2 4-4"/><line x1="7" y1="16" x2="17" y2="16"/></svg> Checklists</div>
+      <div class="nav-item" data-mod="policies" onclick="showModule('policies')"><svg viewBox="0 0 24 24"><path d="M6 2h9l3 3v17H6z"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg> Policies &amp; Procedures</div>
       <div class="nav-item" data-mod="all_documents" onclick="showModule('all_documents')"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg> All Documents</div>
       <div class="nav-item" data-mod="five_s" onclick="showModule('five_s')"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg> 5S Inspections</div>
       <div class="nav-item" data-mod="processes" onclick="showModule('processes')"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.1-2.8-2.8L7 14"/></svg> Process Performance</div>
@@ -990,7 +1001,11 @@ const STATE = {
   members:[], memberMap:{},
   ncs:[], tasks:[], audits:[], risks:[], documents:[], suppliers:[], customers:[], satisfactionQuestions:[], objectives:[], legalRegister:[],
   positions:[], personnel:[], competence:[], training:[], positionKpis:[], appraisals:[],
-  assetChecklistTemplates:[], assetChecklistItems:[], assets:[], bulletins:[], attendance:[], leaveTypes:[], leaveApplications:[], expenseClaims:[], personnelRequests:[], awAssets:[], awComponents:[], awReadingTypes:[], awReadings:[],
+  assetChecklistTemplates:[], assetChecklistItems:[], assets:[], bulletins:[], attendance:[], leaveTypes:[], leaveApplications:[], expenseClaims:[], personnelRequests:[], overtimeRequests:[], awAssets:[], awComponents:[], awReadingTypes:[], awReadings:[],
+  contentTemplates:[], contentTemplateSteps:[], contentTemplateKpis:[], orgFlowcharts:[], orgFlowchartSteps:[], orgFlowchartKpis:[],
+  contentTemplateChecklistItems:[], contentTemplatePolicySections:[],
+  orgChecklists:[], orgChecklistItems:[], orgChecklistRuns:[], orgChecklistRunItems:[],
+  orgPolicies:[], orgPolicySections:[],
   _awView:'clients', _awCustomerId:null,
   checklistTemplates:[],
   docDepartments:[], docTypes:[], formIdentifications:[], ncTypes:[],
@@ -1007,6 +1022,7 @@ function todayISO(){ return new Date().toISOString().slice(0,10); }
 function threeMonthsFromToday(){ const d = new Date(); d.setMonth(d.getMonth()+3); return d.toISOString().slice(0,10); }
 function fmtDate(d){ if(!d) return '—'; const dt=new Date(d+'T00:00:00'); return dt.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); }
 function fmtDateTime(ts){ if(!ts) return '—'; const dt=new Date(ts); return dt.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) + ' ' + dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); }
+function fmtTime(t){ if(!t) return '—'; return String(t).slice(0,5); }
 function label(s){ return (s||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()); }
 const RISK_CATEGORY_LABELS = {
   business: 'Business',
@@ -1207,7 +1223,7 @@ async function afterSignIn(user){
 
   const { data: memberships, error: memErr } = await STATE.supabase
     .from('organisation_members')
-    .select('organisation_id, role, module_access, can_download, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color, all_documents_enabled, document_control_enabled, administration_enabled, raga_enabled, hr_enabled, asset_watchman_enabled, nc_enabled, ebitda, subscription_status)')
+    .select('organisation_id, role, module_access, can_download, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color, all_documents_enabled, document_control_enabled, administration_enabled, raga_enabled, hr_enabled, asset_watchman_enabled, nc_enabled, process_flowcharts_enabled, checklists_enabled, policies_enabled, ebitda, subscription_status)')
     .eq('user_id', user.id).eq('status','active');
 
   if(memErr){ toast('Could not load your organisations: ' + memErr.message, 'error'); return; }
@@ -1307,6 +1323,11 @@ window.selectOrg = async function(orgId){
   await loadLeaveApplications();
   await loadExpenseClaims();
   await loadPersonnelRequests();
+  await loadOvertimeRequests();
+  await loadContentTemplates();
+  await loadOrgFlowcharts();
+  await loadOrgChecklists();
+  await loadOrgPolicies();
   await loadAwAssets();
   await loadAwComponents();
   await loadAwReadingTypes();
@@ -1606,6 +1627,61 @@ async function loadPersonnelRequests(){
   if(error){ toast('Could not load requests & suggestions: ' + error.message, 'error'); return; }
   STATE.personnelRequests = data || [];
 }
+async function loadOvertimeRequests(){
+  if(!STATE.org.hr_enabled) return;
+  const { data, error } = await STATE.supabase.from('overtime_requests').select('*').eq('organisation_id', STATE.org.id).order('created_at', {ascending:false}).limit(500);
+  if(error){ toast('Could not load overtime requests: ' + error.message, 'error'); return; }
+  STATE.overtimeRequests = data || [];
+}
+
+/* ---- Template Library (global) + Process Flowcharts (per org) ---- */
+// The master library is global reference data — same "load once per
+// session" treatment as checklist_templates, since it never changes
+// within a session and isn't organisation-scoped.
+async function loadContentTemplates(){
+  if(STATE.contentTemplates.length) return;
+  const { data, error } = await STATE.supabase.from('content_templates').select('*').eq('is_active', true).order('module_key', {ascending:true});
+  if(error){ toast('Could not load the template library: ' + error.message, 'error'); return; }
+  STATE.contentTemplates = data || [];
+  const { data: steps } = await STATE.supabase.from('content_template_steps').select('*').order('sort_order', {ascending:true});
+  STATE.contentTemplateSteps = steps || [];
+  const { data: kpis } = await STATE.supabase.from('content_template_kpis').select('*').order('sort_order', {ascending:true});
+  STATE.contentTemplateKpis = kpis || [];
+  const { data: clItems } = await STATE.supabase.from('content_template_checklist_items').select('*').order('sort_order', {ascending:true});
+  STATE.contentTemplateChecklistItems = clItems || [];
+  const { data: polSections } = await STATE.supabase.from('content_template_policy_sections').select('*').order('sort_order', {ascending:true});
+  STATE.contentTemplatePolicySections = polSections || [];
+}
+async function loadOrgFlowcharts(){
+  if(!STATE.org.process_flowcharts_enabled) return;
+  const { data, error } = await STATE.supabase.from('org_process_flowcharts').select('*').eq('organisation_id', STATE.org.id).order('created_at', {ascending:true});
+  if(error){ toast('Could not load process flowcharts: ' + error.message, 'error'); return; }
+  STATE.orgFlowcharts = data || [];
+  const { data: steps } = await STATE.supabase.from('org_process_flowchart_steps').select('*').eq('organisation_id', STATE.org.id).order('sort_order', {ascending:true});
+  STATE.orgFlowchartSteps = steps || [];
+  const { data: kpis } = await STATE.supabase.from('org_process_flowchart_kpis').select('*').eq('organisation_id', STATE.org.id).order('sort_order', {ascending:true});
+  STATE.orgFlowchartKpis = kpis || [];
+}
+async function loadOrgChecklists(){
+  if(!STATE.org.checklists_enabled) return;
+  const { data, error } = await STATE.supabase.from('org_checklists').select('*').eq('organisation_id', STATE.org.id).order('created_at', {ascending:true});
+  if(error){ toast('Could not load checklists: ' + error.message, 'error'); return; }
+  STATE.orgChecklists = data || [];
+  const { data: items } = await STATE.supabase.from('org_checklist_items').select('*').eq('organisation_id', STATE.org.id).order('sort_order', {ascending:true});
+  STATE.orgChecklistItems = items || [];
+  const { data: runs } = await STATE.supabase.from('org_checklist_runs').select('*').eq('organisation_id', STATE.org.id).order('run_date', {ascending:false});
+  STATE.orgChecklistRuns = runs || [];
+  const { data: runItems } = await STATE.supabase.from('org_checklist_run_items').select('*').eq('organisation_id', STATE.org.id).order('sort_order', {ascending:true});
+  STATE.orgChecklistRunItems = runItems || [];
+}
+async function loadOrgPolicies(){
+  if(!STATE.org.policies_enabled) return;
+  const { data, error } = await STATE.supabase.from('org_policies').select('*').eq('organisation_id', STATE.org.id).order('created_at', {ascending:true});
+  if(error){ toast('Could not load policies & procedures: ' + error.message, 'error'); return; }
+  STATE.orgPolicies = data || [];
+  const { data: sections } = await STATE.supabase.from('org_policy_sections').select('*').eq('organisation_id', STATE.org.id).order('sort_order', {ascending:true});
+  STATE.orgPolicySections = sections || [];
+}
 
 async function loadAwAssets(){
   if(!STATE.org.asset_watchman_enabled) return; // module off for this client — nothing to load
@@ -1634,7 +1710,7 @@ async function loadAwReadings(){
 
 const MODULE_META = {
   overview:{title:'Overview', sub:() => `${STATE.org.name} — ${STATE.org.ref_prefix}`},
-  compliance:{title:'Compliance Dashboard', sub:() => 'A snapshot of every register\'s status, at a glance'},
+  compliance:{title:'Compliance Dashboard', sub:() => 'A live compliance health score, trends, and every register\'s status, at a glance'},
   nonconformances:{title:'Nonconformances', sub:() => 'MOD-01 · Opportunities for Improvement register'},
   raga:{title:'RAGA', sub:() => 'Red Alert · Orange Alert · Green Alert register'},
   tasks:{title:'Task Management', sub:() => 'MOD-02 · Every action, linked back to its source'},
@@ -1658,9 +1734,12 @@ const MODULE_META = {
   processes:{title:'Process Performance', sub:() => 'A process register with weighted KPIs, monitored and measured over time — linked to objectives and nonconformances'},
   management_review:{title:'Management Review', sub:() => 'ISO 9.3.2 aligned — quarterly, per Section 19 of the OHS Act — linking data from every module into one agenda'},
   administration:{title:'Administration', sub:() => 'Departments, people, and team access — one control centre, enabled by Group QaSHE CG per client'},
+  process_flowcharts:{title:'Process Flowcharts', sub:() => 'Step-by-step process maps, mapped to ISO clauses, with live KPIs — applied from the Group QaSHE CG template library and yours to adapt'},
+  checklists:{title:'Checklists', sub:() => 'Pass/fail and weighted-score checklists — applied from the Group QaSHE CG template library, run as often as needed, and yours to adapt'},
+  policies:{title:'Policies & Procedures', sub:() => 'Signable, audit-ready policy and procedure documents — applied from the Group QaSHE CG template library and yours to adapt'},
 };
 
-const GATED_MODULES = ['nonconformances','tasks','documents','audits','risks','suppliers','customers','objectives','legal','personnel','training','appraisals','assets','bulletins','all_documents','five_s','processes','management_review','administration','raga','hr','asset_watchman'];
+const GATED_MODULES = ['nonconformances','tasks','documents','audits','risks','suppliers','customers','objectives','legal','personnel','training','appraisals','assets','bulletins','all_documents','five_s','processes','management_review','administration','raga','hr','asset_watchman','process_flowcharts','checklists','policies'];
 
 function personTitleFor(personId){
   const primary = primaryCompetenceFor(personId);
@@ -1840,6 +1919,9 @@ function canAccessModule(mod){
   if(mod === 'raga') return !!STATE.org.raga_enabled; // same mechanism — org-level switch only
   if(mod === 'hr') return !!STATE.org.hr_enabled; // same mechanism — org-level switch only
   if(mod === 'asset_watchman') return !!STATE.org.asset_watchman_enabled; // same mechanism — org-level switch only
+  if(mod === 'process_flowcharts') return !!STATE.org.process_flowcharts_enabled; // same mechanism — org-level switch only
+  if(mod === 'checklists') return !!STATE.org.checklists_enabled;
+  if(mod === 'policies') return !!STATE.org.policies_enabled;
   if(mod === 'nonconformances') return STATE.org.nc_enabled !== false; // org-level switch — defaults true so no existing client loses access
   if(STATE.myRole === 'admin') return true;
   return (STATE.myModuleAccess || []).includes(mod);
@@ -1892,6 +1974,9 @@ function showModule(mod){
   if(mod === 'bulletins') renderBulletinsTable();
   if(mod === 'hr') switchHrSubtab(STATE._hrSubtab || 'dashboard');
   if(mod === 'asset_watchman') renderAwView();
+  if(mod === 'process_flowcharts') renderProcessFlowchartsList();
+  if(mod === 'checklists') renderChecklistsList();
+  if(mod === 'policies') renderPoliciesList();
   if(mod === 'compliance') renderComplianceDashboard();
   if(mod === 'all_documents') renderBulkDocumentsRegister();
   if(mod === 'five_s') renderFiveSTable();
@@ -1916,6 +2001,7 @@ function updateNavBadges(){
   const pendingLeave = STATE.leaveApplications.filter(l=>l.status==='pending').length;
   const pendingExpenses = STATE.expenseClaims.filter(e=>e.status==='pending').length;
   const openRequests = STATE.personnelRequests.filter(r=>r.status==='open').length;
+  const pendingOvertime = STATE.overtimeRequests.filter(o=>o.status==='pending').length;
   document.getElementById('nd-nc').style.display = openNC?'block':'none';
   document.getElementById('nd-task').style.display = openTasks?'block':'none';
   document.getElementById('nd-audit').style.display = openAudits?'block':'none';
@@ -1928,7 +2014,7 @@ function updateNavBadges(){
   document.getElementById('nd-training').style.display = openTraining?'block':'none';
   document.getElementById('nd-appraisal').style.display = openAppraisals?'block':'none';
   document.getElementById('nd-asset').style.display = quarantinedAssets?'block':'none';
-  document.getElementById('nd-hr').style.display = (pendingLeave||pendingExpenses||openRequests)?'block':'none';
+  document.getElementById('nd-hr').style.display = (pendingLeave||pendingExpenses||openRequests||pendingOvertime)?'block':'none';
   const awAttention = STATE.awAssets.filter(a => a.active && (awHealthStatusInfo(a).state==='red' || awDataStatusInfo(a).state==='red')).length;
   document.getElementById('nd-aw').style.display = awAttention?'block':'none';
 }
@@ -2074,6 +2160,16 @@ function applyBranding(org){
   });
 }
 function kpi(l,val,cls,unit){ return `<div class="kpi-card"><div class="k-label">${l}</div><div class="k-val ${cls||''}">${val}${unit?'<small> '+unit+'</small>':''}</div></div>`; }
+// Escapes free-text before it's interpolated into innerHTML — used for the
+// Checklists/Policies free-text fields (item text, guidance notes, run
+// comments, policy section bodies), which editors enter via prompt()/textarea
+// and every other org member then sees rendered. Without this, an editor
+// entering something like <img src=x onerror=...> as a comment would run
+// arbitrary script for anyone who opens that record.
+function escapeHtml(s){
+  if(s == null) return '';
+  return String(s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
 function optionList(arr, selected){ return arr.map(v=>`<option value="${v}" ${v===selected?'selected':''}>${label(v)}</option>`).join(''); }
 function memberOptions(selected){ return STATE.members.map(m=>`<option value="${m.user_id}" ${m.user_id===selected?'selected':''}>${(m.profiles&&m.profiles.name)||'Unknown'}</option>`).join(''); }
 
@@ -2185,7 +2281,7 @@ const RENDERERS = {
   compliance: () => `
     <div class="toolbar">
       <div>
-        <div style="font-size:12.5px; color:var(--text-dim);">A live statistical snapshot across every module — built to be read straight into a management review, not just browsed.</div>
+        <div style="font-size:12.5px; color:var(--text-dim);">A live compliance health score, trend charts, and a statistical snapshot across every module — built to be read straight into a management review, not just browsed.</div>
       </div>
       <button class="btn-small primary" onclick="printComplianceDashboard()">Print / PDF</button>
     </div>
@@ -2982,6 +3078,7 @@ const RENDERERS = {
         <button class="btn-small ${STATE._hrSubtab==='attendance'?'primary':''}" onclick="switchHrSubtab('attendance')">Attendance</button>
         <button class="btn-small ${STATE._hrSubtab==='leave_applications'?'primary':''}" onclick="switchHrSubtab('leave_applications')">Leave Applications <span id="hr-tab-pending-badge"></span></button>
         <button class="btn-small ${STATE._hrSubtab==='leave_types'?'primary':''}" onclick="switchHrSubtab('leave_types')">Leave Types</button>
+        <button class="btn-small ${STATE._hrSubtab==='overtime_requests'?'primary':''}" onclick="switchHrSubtab('overtime_requests')">Overtime Requests <span id="hr-tab-overtime-pending-badge"></span></button>
         <button class="btn-small ${STATE._hrSubtab==='expenses'?'primary':''}" onclick="switchHrSubtab('expenses')">Expense Claims <span id="hr-tab-expense-pending-badge"></span></button>
         <button class="btn-small ${STATE._hrSubtab==='requests'?'primary':''}" onclick="switchHrSubtab('requests')">Requests &amp; Suggestions <span id="hr-tab-request-pending-badge"></span></button>
       </div>
@@ -2992,6 +3089,18 @@ const RENDERERS = {
 
   asset_watchman: () => `
     <div id="aw-root"></div>
+  `,
+
+  process_flowcharts: () => `
+    <div id="pf-root"></div>
+  `,
+
+  checklists: () => `
+    <div id="cl-root"></div>
+  `,
+
+  policies: () => `
+    <div id="pol-root"></div>
   `,
 
   all_documents: () => `
@@ -3138,6 +3247,7 @@ const RENDERERS = {
         <button class="btn-small ${STATE._adminSubtab==='team'?'primary':''}" onclick="switchAdminSubtab('team')">Team &amp; Access</button>
         <button class="btn-small ${STATE._adminSubtab==='processes'?'primary':''}" onclick="switchAdminSubtab('processes')">Processes</button>
         <button class="btn-small ${STATE._adminSubtab==='moduleinfo'?'primary':''}" onclick="switchAdminSubtab('moduleinfo')">Module Info</button>
+        ${STATE.profile.is_platform_staff ? `<button class="btn-small ${STATE._adminSubtab==='templatelibrary'?'primary':''}" onclick="switchAdminSubtab('templatelibrary')">Template Library</button>` : ''}
       </div>
     </div>
     <div id="admin-subtab-content"></div>
@@ -4351,27 +4461,34 @@ window.submitAuditPlan = async function(){
   if(error){ toast('Could not schedule audit: ' + error.message, 'error'); return; }
 
   const team = getCheckedValues('af-team');
+  let teamWarning = '';
   if(team.length){
     const teamRows = team.map(userId => ({ organisation_id: STATE.org.id, audit_id: newAudit.id, user_id: userId }));
-    await STATE.supabase.from('audit_team_members').insert(teamRows);
+    const { error: teamErr } = await STATE.supabase.from('audit_team_members').insert(teamRows);
+    if(teamErr) teamWarning = ' The audit team could not be saved: ' + teamErr.message;
   }
 
   // A task tied to the plan, so it shows up in reminders and can be
   // used to start the audit when its date comes round — exactly the
   // link between the plan and the actual audit that was asked for.
-  await STATE.supabase.from('tasks').insert({
+  const { error: taskErr } = await STATE.supabase.from('tasks').insert({
     organisation_id: STATE.org.id, title: `Conduct audit — ${title}`,
     description: `Scheduled internal audit. Open this task, then start the audit from the Audits module.`,
     linked_type: 'audit', linked_id: newAudit.id,
     assignee_id: payload.auditor_id || STATE.user.id, due_date: planned_date, created_by: STATE.user.id,
   });
+  const taskWarning = taskErr ? ' The follow-up task could not be created: ' + taskErr.message : '';
 
   await loadAudits();
   await loadAuditTeamMembers();
   await loadTasks();
   renderAuditPlan();
   updateNavBadges();
-  toast(`${newAudit.audit_ref} scheduled, with a task to start it on the day.`, 'success');
+  if(teamWarning || taskWarning){
+    toast(`${newAudit.audit_ref} scheduled.${teamWarning}${taskWarning}`, teamWarning||taskWarning ? 'error' : 'success');
+  } else {
+    toast(`${newAudit.audit_ref} scheduled, with a task to start it on the day.`, 'success');
+  }
 };
 
 function renderAuditsBoard(){
@@ -10946,6 +11063,9 @@ function renderHrSubtabContent(tab){
   const pendingExpenseCount = STATE.expenseClaims.filter(e=>e.status==='pending').length;
   const expenseBadgeEl = document.getElementById('hr-tab-expense-pending-badge');
   if(expenseBadgeEl) expenseBadgeEl.textContent = pendingExpenseCount ? `(${pendingExpenseCount})` : '';
+  const pendingOvertimeCount = STATE.overtimeRequests.filter(o=>o.status==='pending').length;
+  const overtimeBadgeEl = document.getElementById('hr-tab-overtime-pending-badge');
+  if(overtimeBadgeEl) overtimeBadgeEl.textContent = pendingOvertimeCount ? `(${pendingOvertimeCount})` : '';
   const openRequestCount = STATE.personnelRequests.filter(r=>r.status==='open').length;
   const requestBadgeEl = document.getElementById('hr-tab-request-pending-badge');
   if(requestBadgeEl) requestBadgeEl.textContent = openRequestCount ? `(${openRequestCount})` : '';
@@ -11055,6 +11175,47 @@ function renderHrSubtabContent(tab){
     renderLeaveTypesTable();
   }
 
+  if(tab === 'overtime_requests'){
+    root.innerHTML = `
+      <div class="toolbar">
+        <div class="filters">
+          <select id="ovt-filter-person" onchange="renderOvertimeRequestsTable()">
+            <option value="">All personnel</option>
+            ${STATE.personnel.map(p=>`<option value="${p.id}">${p.full_name}</option>`).join('')}
+          </select>
+          <select id="ovt-filter-status" onchange="renderOvertimeRequestsTable()">
+            <option value="">Any status</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="declined">Declined</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+        <button class="btn-small" onclick="exportModuleExcel('overtime_requests')">Export Excel</button>
+        <button class="btn-small" onclick="printCurrentRegister('overtime_requests','Overtime Requests Register')">Print Register</button>
+        <button class="btn-primary btn-add" onclick="toggleOfficeOvertimeForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Log Overtime Request</button>
+      </div>
+      <div class="form-panel" id="office-overtime-form">
+        <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:14px;">Log an overtime request (verbal, phoned in, etc.)</h3>
+        <div class="form-grid">
+          <div class="field"><label>Person</label><select id="oof-person">${STATE.personnel.filter(p=>p.status==='active').map(p=>`<option value="${p.id}">${p.full_name}</option>`).join('')}</select></div>
+          <div class="field"><label>Date</label><input type="date" id="oof-date" value="${todayISO()}"></div>
+          <div class="field"><label>Start time</label><input type="time" id="oof-start"></div>
+          <div class="field"><label>End time</label><input type="time" id="oof-end"></div>
+          <div class="field span3"><label>Reason (optional)</label><textarea id="oof-reason"></textarea></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn-cancel" onclick="toggleOfficeOvertimeForm()">Cancel</button>
+          <button class="btn-small primary" onclick="submitOfficeOvertimeRequest()">Log request</button>
+        </div>
+      </div>
+      <div class="panel" style="padding:0; overflow:hidden;">
+        <div id="overtime-requests-table-wrap"></div>
+      </div>
+    `;
+    renderOvertimeRequestsTable();
+  }
+
   if(tab === 'expenses'){
     root.innerHTML = `
       <div class="toolbar">
@@ -11158,8 +11319,9 @@ function renderHrDashboard(){
   const onLeaveToday = STATE.leaveApplications.filter(l=>l.status==='approved' && l.start_date<=today && l.end_date>=today);
   const pendingLeaveForMe = STATE.leaveApplications.filter(l=>l.status==='pending' && canDecideLeave(l));
   const pendingExpenseForMe = STATE.expenseClaims.filter(e=>e.status==='pending' && canDecideExpense(e));
+  const pendingOvertimeForMe = STATE.overtimeRequests.filter(o=>o.status==='pending' && canDecideOvertime(o));
   const openRequests = STATE.personnelRequests.filter(r=>r.status==='open');
-  const needsDecisionCount = pendingLeaveForMe.length + pendingExpenseForMe.length;
+  const needsDecisionCount = pendingLeaveForMe.length + pendingExpenseForMe.length + pendingOvertimeForMe.length;
 
   const myPersonnel = STATE.personnel.find(p=>p.linked_profile_id===STATE.user.id);
   const myTeam = myPersonnel ? STATE.personnel.filter(p=>p.line_manager_id===myPersonnel.id) : [];
@@ -11193,6 +11355,16 @@ function renderHrDashboard(){
           </div>
           <button class="btn-small primary" onclick="decideExpenseClaim('${e.id}','approved')">Approve</button>
           <button class="btn-small" onclick="decideExpenseClaim('${e.id}','rejected')">Reject</button>
+          </div>`;
+        }).join('')}
+        ${pendingOvertimeForMe.map(o=>{
+          const p = personById(o.personnel_id);
+          return `<div class="evidence-row"><div style="flex:1;">
+            <div style="font-size:13px; font-weight:600;">${p?p.full_name:'Unknown'} — Overtime, ${o.hours_requested!=null?Number(o.hours_requested).toFixed(2):'?'}h</div>
+            <div style="font-size:11px; color:var(--text-faint);">${fmtDate(o.requested_date)} · ${fmtTime(o.start_time)}–${fmtTime(o.end_time)} · ${o.ref_code||''}</div>
+          </div>
+          <button class="btn-small primary" onclick="decideOvertimeRequest('${o.id}','approved')">Approve</button>
+          <button class="btn-small" onclick="decideOvertimeRequest('${o.id}','declined')">Decline</button>
           </div>`;
         }).join('')}
       ` : '<p style="font-size:12.5px; color:var(--text-faint);">Nothing waiting on you right now.</p>'}
@@ -11454,6 +11626,97 @@ function renderLeaveApplicationsTable(){
   </table>`;
 }
 window.renderLeaveApplicationsTable = renderLeaveApplicationsTable;
+
+/* ---- Overtime Requests ---- */
+// One register, one routing rule, for everyone — a manager submitting
+// their own overtime request and a staff member submitting theirs go
+// through exactly the same table and the same line-manager approval
+// chain (personnel.line_manager_id), because a manager is still just a
+// personnel record with their own line manager above them. The database
+// trigger (assign_overtime_defaults, Migration 036) is what actually
+// works out who the request is routed to and how many hours it covers —
+// this office-capture form only needs to say who, when, and why.
+window.toggleOfficeOvertimeForm = function(){
+  const el = document.getElementById('office-overtime-form');
+  if(el) el.classList.toggle('open');
+};
+
+window.submitOfficeOvertimeRequest = async function(){
+  const personId = document.getElementById('oof-person').value;
+  const date = document.getElementById('oof-date').value;
+  const start = document.getElementById('oof-start').value;
+  const end = document.getElementById('oof-end').value;
+  const reason = document.getElementById('oof-reason').value.trim();
+  if(!personId || !date || !start || !end){ toast('Person, date, and both times are required.', 'error'); return; }
+  if(start === end){ toast('Start and end time cannot be the same.', 'error'); return; }
+
+  const { error } = await STATE.supabase.from('overtime_requests').insert({
+    organisation_id: STATE.org.id, personnel_id: personId, requested_date: date,
+    start_time: start, end_time: end, reason: reason || null,
+    submitted_via: 'office', created_by: STATE.user.id,
+  });
+  if(error){ toast('Could not log request: ' + error.message, 'error'); return; }
+  await loadOvertimeRequests();
+  toggleOfficeOvertimeForm();
+  renderOvertimeRequestsTable();
+  updateNavBadges();
+  toast('Overtime request logged.', 'success');
+};
+
+window.decideOvertimeRequest = async function(id, decision){
+  const note = prompt(decision === 'approved' ? 'Any note with this approval? (optional)' : 'Reason for declining? (optional, but helpful for the record)');
+  if(note === null) return; // cancelled the prompt
+  const { error } = await STATE.supabase.from('overtime_requests').update({
+    status: decision, decided_by: STATE.user.id, decided_at: new Date().toISOString(), decision_note: note || null,
+  }).eq('id', id);
+  if(error){ toast('Could not record the decision: ' + error.message, 'error'); return; }
+  await loadOvertimeRequests();
+  renderOvertimeRequestsTable();
+  renderHrDashboard();
+  updateNavBadges();
+  toast(decision === 'approved' ? 'Overtime request approved.' : 'Overtime request declined.', 'success');
+};
+
+function canDecideOvertime(req){
+  return STATE.myRole === 'admin' || STATE.myRole === 'manager' || req.assigned_approver_profile_id === STATE.user.id;
+}
+
+function renderOvertimeRequestsTable(){
+  const wrap = document.getElementById('overtime-requests-table-wrap');
+  if(!wrap) return;
+  const fPerson = document.getElementById('ovt-filter-person').value;
+  const fStatus = document.getElementById('ovt-filter-status').value;
+  const rows = STATE.overtimeRequests
+    .filter(o => !fPerson || o.personnel_id === fPerson)
+    .filter(o => !fStatus || o.status === fStatus);
+  if(!rows.length){
+    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><p>No overtime requests yet.</p></div>`;
+    return;
+  }
+  const statusColor = { pending:'var(--amber)', approved:'var(--green)', declined:'var(--red)', cancelled:'var(--text-faint)' };
+  wrap.innerHTML = `<table>
+    <tr><th>Ref</th><th>Employee</th><th>Date</th><th>Time</th><th>Hours</th><th>Status</th><th>Source</th><th></th></tr>
+    ${rows.map(o=>{
+      const p = personById(o.personnel_id);
+      return `<tr>
+        <td class="mono-cell">${o.ref_code}</td>
+        <td class="strong">${p ? p.full_name : 'Unknown'}</td>
+        <td>${fmtDate(o.requested_date)}</td>
+        <td>${fmtTime(o.start_time)} – ${fmtTime(o.end_time)}</td>
+        <td>${o.hours_requested!=null ? Number(o.hours_requested).toFixed(2) : '—'}</td>
+        <td><b style="color:${statusColor[o.status]};text-transform:capitalize;">${o.status}</b>${o.decision_note ? `<div style="font-size:10.5px; color:var(--text-faint);">${o.decision_note}</div>` : ''}${o.reason ? `<div style="font-size:10.5px; color:var(--text-faint);">${o.reason}</div>` : ''}</td>
+        <td style="font-size:11px; color:var(--text-faint); text-transform:capitalize;">${o.submitted_via}</td>
+        <td style="white-space:nowrap;">
+          ${o.status === 'pending' && canDecideOvertime(o) ? `
+            <button class="btn-small primary" onclick="decideOvertimeRequest('${o.id}','approved')">Approve</button>
+            <button class="btn-small" onclick="decideOvertimeRequest('${o.id}','declined')">Decline</button>
+          ` : ''}
+        </td>
+      </tr>`;
+    }).join('')}
+  </table>`;
+}
+window.renderOvertimeRequestsTable = renderOvertimeRequestsTable;
 
 /* ---- Expense Claims ---- */
 function expenseClaimById(id){ return STATE.expenseClaims.find(e=>e.id===id); }
@@ -11853,6 +12116,973 @@ function renderAwView(){
   }
 }
 window.renderAwView = renderAwView;
+
+/* ============ Process Flowcharts (applied from the Template Library) ============ */
+// One org copy per master template (org_process_flowcharts), each with its
+// own editable steps and KPIs. Editing here never touches the master in
+// content_templates — see Migration 037's design notes for why.
+const FLOWCHART_STEP_KIND_LABEL = { start:'Start', step:'Step', decision:'Decision', end:'End' };
+const FLOWCHART_STEP_KIND_COLOR = { start:'var(--green)', step:'var(--blue,#3B6FA0)', decision:'var(--amber)', end:'var(--red)' };
+
+function flowchartById(id){ return STATE.orgFlowcharts.find(f=>f.id===id); }
+function canEditFlowchart(){ return STATE.myRole === 'admin' || STATE.myRole === 'manager' || (STATE.profile && STATE.profile.is_platform_staff); }
+
+function renderProcessFlowchartsList(){
+  const root = document.getElementById('pf-root');
+  if(!root) return;
+  if(STATE._pfOpenId && flowchartById(STATE._pfOpenId)){
+    renderProcessFlowchartDetail(STATE._pfOpenId);
+    return;
+  }
+  root.innerHTML = `
+    <div class="toolbar">
+      <div></div>
+      <div></div>
+    </div>
+    <div class="panel" style="padding:0; overflow:hidden;">
+      ${STATE.orgFlowcharts.length ? `<table>
+        <tr><th>Title</th><th>Module</th><th>Standards</th><th>Steps</th><th>KPIs</th><th></th></tr>
+        ${STATE.orgFlowcharts.map(f=>{
+          const stepCount = STATE.orgFlowchartSteps.filter(s=>s.flowchart_id===f.id).length;
+          const kpiCount = STATE.orgFlowchartKpis.filter(k=>k.flowchart_id===f.id).length;
+          return `<tr>
+            <td class="strong">${f.title}${f.is_stale ? ` <span style="color:var(--amber); font-size:10.5px; font-weight:600;">· Newer version available</span>` : ''}</td>
+            <td style="text-transform:capitalize;">${(f.module_key||'').replace(/_/g,' ')}</td>
+            <td style="font-size:11px; color:var(--text-faint);">${(f.standard_refs||[]).join(', ')}</td>
+            <td>${stepCount}</td>
+            <td>${kpiCount}</td>
+            <td><button class="btn-small primary" onclick="openProcessFlowchart('${f.id}')">Open</button></td>
+          </tr>`;
+        }).join('')}
+      </table>` : `<div class="empty-state"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M12 7v4"/><rect x="4" y="11" width="7" height="4" rx="1"/><rect x="13" y="11" width="7" height="4" rx="1"/></svg><p>No process flowcharts applied yet. Group QaSHE CG applies these from the Template Library once they're ready for your organisation.</p></div>`}
+    </div>
+  `;
+}
+window.renderProcessFlowchartsList = renderProcessFlowchartsList;
+
+window.openProcessFlowchart = function(id){
+  STATE._pfOpenId = id;
+  renderProcessFlowchartDetail(id);
+};
+window.closeProcessFlowchart = function(){
+  STATE._pfOpenId = null;
+  renderProcessFlowchartsList();
+};
+
+// Live KPI computation straight from this organisation's own real data —
+// see design note 5 in Migration 037. Add a case here for every new
+// watchman_metric_key a future template introduces.
+function computeFlowchartKpiValue(key){
+  const ncs = STATE.ncs || [];
+  const today = todayISO();
+  if(key === 'nc_avg_days_to_close'){
+    const closed = ncs.filter(n=>n.status==='closed' && n.closed_date && n.raised_date);
+    if(!closed.length) return '—';
+    const totalDays = closed.reduce((sum,n)=> sum + Math.max(0,(new Date(n.closed_date) - new Date(n.raised_date)) / 86400000), 0);
+    return (totalDays / closed.length).toFixed(1) + ' days';
+  }
+  if(key === 'nc_overdue_count'){
+    return String(ncs.filter(n=>n.status!=='closed' && n.target_close_date && n.target_close_date < today).length);
+  }
+  if(key === 'nc_repeat_rate_pct'){
+    if(!ncs.length) return '—';
+    return ((ncs.filter(n=>n.is_repeated).length / ncs.length) * 100).toFixed(0) + '%';
+  }
+  if(key === 'nc_effectiveness_verified_pct'){
+    const closed = ncs.filter(n=>n.status==='closed');
+    if(!closed.length) return '—';
+    return ((closed.filter(n=>n.preventive_action_effectiveness && n.preventive_action_effectiveness.trim()).length / closed.length) * 100).toFixed(0) + '%';
+  }
+  if(key === 'nc_late_detection_pct'){
+    if(!ncs.length) return '—';
+    return ((ncs.filter(n=>n.could_identify_earlier===true).length / ncs.length) * 100).toFixed(0) + '%';
+  }
+  if(key === 'nc_severity_split'){
+    if(!ncs.length) return '—';
+    const counts = { minor:0, major:0, critical:0 };
+    ncs.forEach(n=>{ if(counts[n.severity]!=null) counts[n.severity]++; });
+    return `Minor ${counts.minor} · Major ${counts.major} · Critical ${counts.critical}`;
+  }
+  if(key === 'audits_open_count'){
+    return String((STATE.audits||[]).filter(a=>a.status!=='report_issued').length);
+  }
+  if(key === 'audits_completion_rate_pct'){
+    const audits = STATE.audits||[];
+    if(!audits.length) return '—';
+    return ((audits.filter(a=>['completed','report_issued'].includes(a.status)).length / audits.length) * 100).toFixed(0) + '%';
+  }
+  if(key === 'audits_avg_cycle_days'){
+    const issued = (STATE.audits||[]).filter(a=>a.status==='report_issued' && a.approved_at && a.planned_date);
+    if(!issued.length) return '—';
+    const totalDays = issued.reduce((sum,a)=> sum + Math.max(0,(new Date(a.approved_at) - new Date(a.planned_date)) / 86400000), 0);
+    return (totalDays / issued.length).toFixed(1) + ' days';
+  }
+  if(key === 'audits_type_split'){
+    const audits = STATE.audits||[];
+    if(!audits.length) return '—';
+    const counts = {};
+    audits.forEach(a=>{ counts[a.audit_type] = (counts[a.audit_type]||0) + 1; });
+    return Object.entries(counts).map(([k,v])=>`${label(k)} ${v}`).join(' · ');
+  }
+  if(key === 'risk_avg_residual_score'){
+    const withResidual = (STATE.risks||[]).filter(r=>r.residual_score!=null);
+    if(!withResidual.length) return '—';
+    return (withResidual.reduce((s,r)=>s+Number(r.residual_score),0) / withResidual.length).toFixed(1);
+  }
+  if(key === 'risk_open_critical_count'){
+    return String((STATE.risks||[]).filter(r=>r.status!=='closed' && ((r.residual_score!=null && r.residual_score>=8) || (r.residual_score==null && r.inherent_score>=8))).length);
+  }
+  if(key === 'risk_treatment_plan_pct'){
+    const inScope = (STATE.risks||[]).filter(r=>['treating','monitoring','closed'].includes(r.status));
+    if(!inScope.length) return '—';
+    return ((inScope.filter(r=>r.treatment_plan && r.treatment_plan.trim()).length / inScope.length) * 100).toFixed(0) + '%';
+  }
+  if(key === 'risk_overdue_review_count'){
+    return String((STATE.risks||[]).filter(r=>r.status!=='closed' && r.review_date && r.review_date < today).length);
+  }
+  if(key === 'legal_noncompliant_count'){
+    return String((STATE.legalRegister||[]).filter(l=>l.current_status==='non_compliant').length);
+  }
+  if(key === 'legal_not_reviewed_count'){
+    return String((STATE.legalRegister||[]).filter(l=>!l.current_status).length);
+  }
+  if(key === 'legal_overdue_review_count'){
+    return String((STATE.legalRegister||[]).filter(l=>l.next_review_due_date && l.next_review_due_date < today).length);
+  }
+  if(key === 'legal_compliance_rate_pct'){
+    const reviewed = (STATE.legalRegister||[]).filter(l=>l.current_status);
+    if(!reviewed.length) return '—';
+    return ((reviewed.filter(l=>l.current_status==='compliant').length / reviewed.length) * 100).toFixed(0) + '%';
+  }
+  if(key === 'documents_draft_count'){
+    return String((STATE.documents||[]).filter(d=>d.status==='draft').length);
+  }
+  if(key === 'documents_overdue_review_count'){
+    return String((STATE.documents||[]).filter(d=>d.next_review_date && d.next_review_date < today && !['withdrawn','superseded'].includes(d.status)).length);
+  }
+  if(key === 'documents_pending_signoff_count'){
+    return String((STATE.documents||[]).filter(d=>!d.approver_signed_off_at && !['withdrawn','superseded'].includes(d.status)).length);
+  }
+  if(key === 'documents_approved_pct'){
+    const inScope = (STATE.documents||[]).filter(d=>!['withdrawn','superseded'].includes(d.status));
+    if(!inScope.length) return '—';
+    return ((inScope.filter(d=>d.approver_signed_off_at).length / inScope.length) * 100).toFixed(0) + '%';
+  }
+  if(key === 'suppliers_pending_count'){
+    return String((STATE.suppliers||[]).filter(s=>s.status==='pending_qualification').length);
+  }
+  if(key === 'suppliers_approved_pct'){
+    const suppliers = STATE.suppliers||[];
+    if(!suppliers.length) return '—';
+    return ((suppliers.filter(s=>s.status==='approved').length / suppliers.length) * 100).toFixed(0) + '%';
+  }
+  if(key === 'suppliers_avg_performance_score'){
+    // Same calculation as the Management Review supplier-performance card:
+    // base 100 per supplier scored, minus a penalty per NC raised against
+    // them scaled by supplier_impact_severity (1=worst .. 5=best), averaged
+    // across suppliers that actually have a scored NC.
+    const penaltyBySeverity = { 1:25, 2:20, 3:15, 4:10, 5:0 };
+    const scores = {};
+    (STATE.ncs||[]).forEach(n=>{
+      if(!n.supplier_id || !n.supplier_impact_severity) return;
+      if(scores[n.supplier_id]==null) scores[n.supplier_id] = 100;
+      scores[n.supplier_id] = Math.max(0, scores[n.supplier_id] - (penaltyBySeverity[n.supplier_impact_severity]||0));
+    });
+    const vals = Object.values(scores);
+    if(!vals.length) return '—';
+    return (vals.reduce((a,b)=>a+b,0) / vals.length).toFixed(0) + '%';
+  }
+  if(key === 'suppliers_at_risk_count'){
+    return String((STATE.suppliers||[]).filter(s=>['conditional','suspended'].includes(s.status)).length);
+  }
+  if(key === 'training_outstanding_count'){
+    return String((STATE.training||[]).filter(t=>['required','planned'].includes(t.status)).length);
+  }
+  if(key === 'training_completion_rate_pct'){
+    const training = STATE.training||[];
+    if(!training.length) return '—';
+    return ((training.filter(t=>t.status==='completed').length / training.length) * 100).toFixed(0) + '%';
+  }
+  if(key === 'training_overdue_count'){
+    return String((STATE.training||[]).filter(t=>!['completed','cancelled'].includes(t.status) && t.due_date && t.due_date < today).length);
+  }
+  if(key === 'training_delivery_split'){
+    const training = STATE.training||[];
+    if(!training.length) return '—';
+    const counts = { internal:0, external:0, undecided:0 };
+    training.forEach(t=>{ if(t.delivery_type==='internal') counts.internal++; else if(t.delivery_type==='external') counts.external++; else counts.undecided++; });
+    return `Internal ${counts.internal} · External ${counts.external} · Not yet decided ${counts.undecided}`;
+  }
+  if(key === 'objectives_active_count'){
+    return String((STATE.objectives||[]).filter(o=>['draft','active'].includes(o.status)).length);
+  }
+  if(key === 'objectives_achieved_pct'){
+    const resolved = (STATE.objectives||[]).filter(o=>['achieved','not_achieved','discontinued'].includes(o.status));
+    if(!resolved.length) return '—';
+    return ((resolved.filter(o=>o.status==='achieved').length / resolved.length) * 100).toFixed(0) + '%';
+  }
+  if(key === 'objectives_overdue_count'){
+    return String((STATE.objectives||[]).filter(o=>['draft','active'].includes(o.status) && o.target_date && o.target_date < today).length);
+  }
+  if(key === 'objectives_draft_count'){
+    return String((STATE.objectives||[]).filter(o=>o.status==='draft').length);
+  }
+  if(key === 'customers_avg_satisfaction_pct'){
+    const surveys = (STATE.customerSurveys||[]).filter(s=>s.status==='completed' || s.overall_rating!=null);
+    if(!surveys.length) return '—';
+    const avg = surveys.reduce((s,x)=>s+Number(x.overall_rating||0),0) / surveys.length;
+    return ((avg/5)*100).toFixed(0) + '%';
+  }
+  if(key === 'customers_survey_response_rate_pct'){
+    const all = STATE.customerSurveys||[];
+    if(!all.length) return '—';
+    const completed = all.filter(s=>s.status==='completed' || s.overall_rating!=null);
+    return ((completed.length / all.length) * 100).toFixed(0) + '%';
+  }
+  if(key === 'customers_not_surveyed_count'){
+    const surveyedIds = new Set((STATE.customerSurveys||[]).map(s=>s.customer_id));
+    return String((STATE.customers||[]).filter(c=>!surveyedIds.has(c.id)).length);
+  }
+  if(key === 'customers_active_count'){
+    return String((STATE.customers||[]).filter(c=>c.status==='active').length);
+  }
+  if(key === 'personnel_active_count'){
+    return String((STATE.personnel||[]).length);
+  }
+  if(key === 'personnel_vacant_positions_count'){
+    const primaryPositionIds = new Set((STATE.competence||[]).filter(c=>c.is_primary).map(c=>c.position_id));
+    return String((STATE.positions||[]).filter(p=>!primaryPositionIds.has(p.id)).length);
+  }
+  if(key === 'personnel_fully_competent_pct'){
+    const primary = (STATE.competence||[]).filter(c=>c.is_primary);
+    if(!primary.length) return '—';
+    const good = primary.filter(c=>c.level==='A' || c.level==='B').length;
+    return ((good / primary.length) * 100).toFixed(0) + '%';
+  }
+  if(key === 'personnel_under_probation_count'){
+    return String((STATE.competence||[]).filter(c=>c.is_primary && c.level==='D').length);
+  }
+  if(key === 'appraisals_not_finalized_count'){
+    return String((STATE.appraisals||[]).filter(a=>a.status!=='finalized').length);
+  }
+  if(key === 'appraisals_avg_achievement_pct'){
+    const finalized = (STATE.appraisals||[]).filter(a=>a.status==='finalized' && a.overall_achievement_pct!==null && a.overall_achievement_pct!==undefined);
+    if(!finalized.length) return '—';
+    return (finalized.reduce((s,a)=>s+Number(a.overall_achievement_pct),0) / finalized.length).toFixed(1) + '%';
+  }
+  if(key === 'appraisals_below_expectation_pct'){
+    const finalized = (STATE.appraisals||[]).filter(a=>a.status==='finalized' && a.overall_achievement_pct!==null && a.overall_achievement_pct!==undefined);
+    if(!finalized.length) return '—';
+    const below = finalized.filter(a=>Number(a.overall_achievement_pct) < 100).length;
+    return ((below / finalized.length) * 100).toFixed(0) + '%';
+  }
+  if(key === 'appraisals_awaiting_self_assessment_count'){
+    return String((STATE.appraisals||[]).filter(a=>a.status==='awaiting_self_assessment').length);
+  }
+  if(key === 'raga_open_issue_count'){
+    return String((STATE.ragaAlerts||[]).filter(r=>(r.alert_type==='red' || r.alert_type==='orange') && r.status!=='closed').length);
+  }
+  if(key === 'raga_overdue_count'){
+    return String((STATE.ragaAlerts||[]).filter(r=>(r.alert_type==='red' || r.alert_type==='orange') && r.status!=='closed' && r.target_close_date && r.target_close_date < today).length);
+  }
+  if(key === 'raga_type_split'){
+    const all = STATE.ragaAlerts||[];
+    const red = all.filter(r=>r.alert_type==='red').length;
+    const orange = all.filter(r=>r.alert_type==='orange').length;
+    const green = all.filter(r=>r.alert_type==='green').length;
+    return `Red ${red} / Orange ${orange} / Green ${green}`;
+  }
+  if(key === 'raga_green_count'){
+    return String((STATE.ragaAlerts||[]).filter(r=>r.alert_type==='green').length);
+  }
+  if(key === 'five_s_completed_count'){
+    return String((STATE.fiveSInspections||[]).filter(i=>i.status==='completed').length);
+  }
+  if(key === 'five_s_scheduled_count'){
+    return String((STATE.fiveSInspections||[]).filter(i=>i.status==='scheduled').length);
+  }
+  if(key === 'bulletins_published_count'){
+    return String((STATE.bulletins||[]).length);
+  }
+  if(key === 'bulletins_type_split'){
+    const all = STATE.bulletins||[];
+    const bulletin = all.filter(b=>b.type==='bulletin').length;
+    const toolbox = all.filter(b=>b.type==='toolbox_talk').length;
+    return `Bulletin ${bulletin} / Toolbox Talk ${toolbox}`;
+  }
+  if(key === 'bulletins_days_since_last'){
+    const all = (STATE.bulletins||[]).filter(b=>b.published_date);
+    if(!all.length) return '—';
+    const latest = all.reduce((a,b)=> a.published_date > b.published_date ? a : b);
+    return String(Math.floor((new Date(today) - new Date(latest.published_date)) / 86400000)) + ' days';
+  }
+  if(key === 'mgmt_review_open_actions_count'){
+    return String((STATE.managementReviewActions||[]).filter(a=>a.status==='open').length);
+  }
+  if(key === 'mgmt_review_overdue_actions_count'){
+    return String((STATE.managementReviewActions||[]).filter(a=>a.status==='open' && a.target_date && a.target_date < today).length);
+  }
+  if(key === 'mgmt_review_avg_process_achievement_pct'){
+    const latestByProcess = {};
+    (STATE.processReviews||[]).forEach(r => { if(!latestByProcess[r.process_id] || r.review_date > latestByProcess[r.process_id].review_date) latestByProcess[r.process_id] = r; });
+    const scores = Object.values(latestByProcess).map(r=>Number(r.overall_achievement_pct)).filter(n=>!isNaN(n));
+    if(!scores.length) return '—';
+    return (scores.reduce((s,x)=>s+x,0) / scores.length).toFixed(1) + '%';
+  }
+  if(key === 'mgmt_review_days_since_last'){
+    const reviews = STATE.managementReviews||[];
+    if(!reviews.length) return '—';
+    const latest = reviews.reduce((a,b)=> new Date(a.meeting_date) > new Date(b.meeting_date) ? a : b);
+    return String(Math.floor((new Date(today) - new Date(latest.meeting_date)) / 86400000)) + ' days';
+  }
+  if(key === 'aw_monitored_clients_count'){
+    return String((STATE.customers||[]).filter(c=>c.aw_monitored).length);
+  }
+  if(key === 'aw_assets_active_count'){
+    return String((STATE.awAssets||[]).filter(a=>a.active).length);
+  }
+  if(key === 'aw_critical_health_count'){
+    return String((STATE.awAssets||[]).filter(a=>a.active && typeof awHealthStatusInfo==='function' && awHealthStatusInfo(a).state==='red').length);
+  }
+  if(key === 'aw_data_overdue_count'){
+    return String((STATE.awAssets||[]).filter(a=>a.active && typeof awDataStatusInfo==='function' && awDataStatusInfo(a).state==='red').length);
+  }
+  if(key === 'hr_clocked_in_now_count'){
+    return String((STATE.attendance||[]).filter(a=>a.status==='clocked_in').length);
+  }
+  if(key === 'hr_on_leave_today_count'){
+    return String((STATE.leaveApplications||[]).filter(l=>l.status==='approved' && l.start_date<=today && l.end_date>=today).length);
+  }
+  if(key === 'hr_pending_leave_count'){
+    return String((STATE.leaveApplications||[]).filter(l=>l.status==='pending').length);
+  }
+  if(key === 'hr_pending_overtime_count'){
+    return String((STATE.overtimeRequests||[]).filter(o=>o.status==='pending').length);
+  }
+  if(key === 'checklists_completion_rate_pct'){
+    const cs = checklistStats();
+    if(!cs.total) return '—';
+    return Math.round(cs.ranAtLeastOnce/cs.total*100) + '%';
+  }
+  if(key === 'checklists_never_run_count'){
+    return String(checklistStats().neverRun);
+  }
+  if(key === 'checklists_avg_score_pct'){
+    const cs = checklistStats();
+    return cs.blendedScorePct!=null ? cs.blendedScorePct.toFixed(0)+'%' : '—';
+  }
+  if(key === 'checklists_open_nonconformance_count'){
+    return String(checklistStats().nonconformanceCount);
+  }
+  if(key === 'checklists_runs_last_30d_count'){
+    return String(checklistStats().runsLast30d);
+  }
+  if(key === 'policies_published_pct'){
+    const ps = policyStats();
+    if(!ps.total) return '—';
+    return Math.round(ps.published/ps.total*100) + '%';
+  }
+  if(key === 'policies_draft_count'){
+    return String(policyStats().draft);
+  }
+  if(key === 'policies_overdue_review_count'){
+    return String(policyStats().overdueReview);
+  }
+  if(key === 'policies_currency_pct'){
+    const ps = policyStats();
+    return ps.currencyPct!=null ? ps.currencyPct.toFixed(0)+'%' : '—';
+  }
+  return null; // no live computation defined for this key yet — shown as "manually tracked"
+}
+
+function renderProcessFlowchartDetail(id){
+  const root = document.getElementById('pf-root');
+  if(!root) return;
+  const f = flowchartById(id);
+  if(!f){ renderProcessFlowchartsList(); return; }
+  const steps = STATE.orgFlowchartSteps.filter(s=>s.flowchart_id===id).sort((a,b)=>a.sort_order-b.sort_order);
+  const kpis = STATE.orgFlowchartKpis.filter(k=>k.flowchart_id===id).sort((a,b)=>a.sort_order-b.sort_order);
+  const editable = canEditFlowchart();
+
+  root.innerHTML = `
+    <button class="btn-small" onclick="closeProcessFlowchart()">&larr; All flowcharts</button>
+    <div class="detail-card" style="margin:14px 0 18px;">
+      <div class="panel-head"><h3 style="font-family:'Poppins'; font-size:17px; font-weight:600;">${f.title}</h3></div>
+      ${f.description ? `<p style="font-size:12.5px; color:var(--text-dim); margin-bottom:8px;">${f.description}</p>` : ''}
+      <div style="font-size:11px; color:var(--text-faint);">${(f.standard_refs||[]).join(' · ')}</div>
+      ${f.is_stale ? `<div style="margin-top:10px; padding:8px 12px; background:var(--amber-tint,#FBF2DE); border-radius:6px; font-size:12px; color:var(--text-dim);">A newer version of this template has been published in the library. Your edits here are untouched — ask Group QaSHE CG if you'd like the improvements brought across.</div>` : ''}
+    </div>
+
+    <div class="detail-card" style="margin-bottom:18px;">
+      <div class="panel-head"><h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600;">KPIs</h3></div>
+      <div class="kpi-grid">
+        ${kpis.map(k=>{
+          const live = k.watchman_metric_key ? computeFlowchartKpiValue(k.watchman_metric_key) : null;
+          return `<div class="detail-card" style="padding:14px;">
+            <div style="font-size:11px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.03em;">${k.name}</div>
+            <div style="font-size:22px; font-weight:700; font-family:'Poppins'; margin:4px 0;">${live!=null ? live : '<span style="font-size:13px; color:var(--text-faint); font-weight:400;">Manually tracked</span>'}</div>
+            <div style="font-size:11px; color:var(--text-faint);">Target: <b>${k.target_value||'—'}</b> ${editable ? `<button class="btn-link" style="font-size:10.5px;" onclick="editFlowchartKpiTarget('${k.id}')">Edit</button>` : ''}</div>
+            ${k.description ? `<div style="font-size:10.5px; color:var(--text-faint); margin-top:4px;">${k.description}</div>` : ''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+
+    <div class="detail-card">
+      <div class="panel-head"><h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600;">Process Flow</h3></div>
+      <div style="display:flex; flex-direction:column; gap:0;">
+        ${steps.map((s,i)=>{
+          const branch = s.step_kind === 'decision' ? `
+            <div style="display:flex; gap:18px; margin-top:6px; font-size:11.5px;">
+              <div style="color:var(--green);"><b>${s.decision_yes_label||'Yes'}</b> → ${goToStepLabel(steps, s.on_yes_goto_sort_order)}</div>
+              <div style="color:var(--red);"><b>${s.decision_no_label||'No'}</b> → ${goToStepLabel(steps, s.on_no_goto_sort_order)}</div>
+            </div>` : '';
+          return `
+          <div style="display:flex; gap:14px;">
+            <div style="display:flex; flex-direction:column; align-items:center; width:28px;">
+              <div style="width:22px; height:22px; border-radius:${s.step_kind==='decision'?'4px':'50%'}; ${s.step_kind==='decision'?'transform:rotate(45deg);':''} background:${FLOWCHART_STEP_KIND_COLOR[s.step_kind]||'var(--border)'}; flex-shrink:0;"></div>
+              ${i < steps.length-1 ? `<div style="flex:1; width:2px; background:var(--border-soft); min-height:24px;"></div>` : ''}
+            </div>
+            <div style="flex:1; padding-bottom:22px;">
+              <div style="font-size:10px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.04em;">${FLOWCHART_STEP_KIND_LABEL[s.step_kind]||'Step'}${s.responsible_role ? ' · ' + s.responsible_role : ''}</div>
+              <div style="font-size:14px; font-weight:600; font-family:'Poppins';">${s.title}</div>
+              ${s.description ? `<div style="font-size:12.5px; color:var(--text-dim); margin-top:2px; line-height:1.5;">${s.description}</div>` : ''}
+              ${s.standard_ref ? `<div style="font-size:10.5px; color:var(--text-faint); margin-top:4px;">${s.standard_ref}</div>` : ''}
+              ${branch}
+              ${editable ? `<button class="btn-link" style="font-size:10.5px; margin-top:4px;" onclick="editFlowchartStep('${s.id}')">Edit this step</button>` : ''}
+              ${s.linked_module_key && canAccessModule(s.linked_module_key) ? `<button class="btn-link" style="font-size:10.5px; margin-top:4px; margin-left:10px;" onclick="showModule('${s.linked_module_key}')">Go to ${MODULE_META[s.linked_module_key] ? MODULE_META[s.linked_module_key].title : s.linked_module_key}</button>` : ''}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+function goToStepLabel(steps, sortOrder){
+  if(sortOrder==null) return '—';
+  const target = steps.find(s=>s.sort_order===sortOrder);
+  return target ? `"${target.title}"` : '—';
+}
+
+window.editFlowchartStep = async function(stepId){
+  const s = STATE.orgFlowchartSteps.find(x=>x.id===stepId);
+  if(!s) return;
+  const newTitle = prompt('Step title', s.title);
+  if(newTitle === null) return;
+  const newDescription = prompt('Step description', s.description || '');
+  if(newDescription === null) return;
+  const newRole = prompt('Responsible role', s.responsible_role || '');
+  if(newRole === null) return;
+  const { error } = await STATE.supabase.from('org_process_flowchart_steps').update({
+    title: newTitle.trim() || s.title, description: newDescription.trim() || null, responsible_role: newRole.trim() || null,
+  }).eq('id', stepId);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  await loadOrgFlowcharts();
+  renderProcessFlowchartDetail(s.flowchart_id);
+  toast('Step updated.', 'success');
+};
+
+window.editFlowchartKpiTarget = async function(kpiId){
+  const k = STATE.orgFlowchartKpis.find(x=>x.id===kpiId);
+  if(!k) return;
+  const newTarget = prompt(`New target for "${k.name}" (${k.unit||''})`, k.target_value || '');
+  if(newTarget === null) return;
+  const { error } = await STATE.supabase.from('org_process_flowchart_kpis').update({ target_value: newTarget.trim() || null }).eq('id', kpiId);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  await loadOrgFlowcharts();
+  renderProcessFlowchartDetail(k.flowchart_id);
+  toast('KPI target updated.', 'success');
+};
+
+/* ============ Checklists (applied from the Template Library) ============ */
+// One org copy per master checklist template (org_checklists), each with its
+// own editable items (org_checklist_items). Running the checklist creates a
+// separate org_checklist_runs record with its own snapshot of item text at
+// score-time (org_checklist_run_items.item_text_snapshot), so a later edit
+// to the checklist definition never rewrites what an already-scored run
+// says it scored someone against — see Migration 042's design notes.
+const CHECKLIST_RESULT_LABEL = { conforms:'Conforms', observation:'Observation', nonconformance:'Nonconformance', not_applicable:'Not Applicable' };
+
+function checklistById(id){ return STATE.orgChecklists.find(c=>c.id===id); }
+function checklistItemsFor(checklistId){ return STATE.orgChecklistItems.filter(i=>i.checklist_id===checklistId && i.is_active).sort((a,b)=>a.sort_order-b.sort_order); }
+function checklistRunsFor(checklistId){ return STATE.orgChecklistRuns.filter(r=>r.checklist_id===checklistId).sort((a,b)=> new Date(b.run_date)-new Date(a.run_date)); }
+function checklistRunItemsFor(runId){ return STATE.orgChecklistRunItems.filter(i=>i.run_id===runId).sort((a,b)=>a.sort_order-b.sort_order); }
+function canEditChecklist(){ return STATE.myRole === 'admin' || STATE.myRole === 'manager' || (STATE.profile && STATE.profile.is_platform_staff); }
+
+function renderChecklistsList(){
+  const root = document.getElementById('cl-root');
+  if(!root) return;
+  if(STATE._clOpenRunId && STATE.orgChecklistRuns.find(r=>r.id===STATE._clOpenRunId)){
+    renderChecklistRunDetail(STATE._clOpenRunId);
+    return;
+  }
+  if(STATE._clOpenId && checklistById(STATE._clOpenId)){
+    renderChecklistDetail(STATE._clOpenId);
+    return;
+  }
+  root.innerHTML = `
+    <div class="toolbar"><div></div><div></div></div>
+    <div class="panel" style="padding:0; overflow:hidden;">
+      ${STATE.orgChecklists.length ? `<table>
+        <tr><th>Title</th><th>Module</th><th>Scoring</th><th>Items</th><th>Runs</th><th></th></tr>
+        ${STATE.orgChecklists.map(c=>{
+          const itemCount = checklistItemsFor(c.id).length;
+          const runCount = checklistRunsFor(c.id).length;
+          return `<tr>
+            <td class="strong">${c.title}${c.is_stale ? ` <span style="color:var(--amber); font-size:10.5px; font-weight:600;">· Newer version available</span>` : ''}</td>
+            <td style="text-transform:capitalize;">${(c.module_key||'').replace(/_/g,' ')}</td>
+            <td>${c.scoring_method === 'weighted_score' ? 'Weighted score' : 'Pass / fail'}</td>
+            <td>${itemCount}</td>
+            <td>${runCount}</td>
+            <td><button class="btn-small primary" onclick="openChecklist('${c.id}')">Open</button></td>
+          </tr>`;
+        }).join('')}
+      </table>` : `<div class="empty-state"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 9l2 2 4-4"/></svg><p>No checklists applied yet. Group QaSHE CG applies these from the Template Library once they're ready for your organisation.</p></div>`}
+    </div>
+  `;
+}
+window.renderChecklistsList = renderChecklistsList;
+
+window.openChecklist = function(id){ STATE._clOpenId = id; STATE._clOpenRunId = null; renderChecklistDetail(id); };
+window.closeChecklist = function(){ STATE._clOpenId = null; renderChecklistsList(); };
+
+function renderChecklistDetail(id){
+  const root = document.getElementById('cl-root');
+  if(!root) return;
+  const c = checklistById(id);
+  if(!c){ renderChecklistsList(); return; }
+  const items = checklistItemsFor(id);
+  const runs = checklistRunsFor(id);
+  const editable = canEditChecklist();
+  const byCategory = {};
+  items.forEach(i => { const cat = i.category || 'General'; (byCategory[cat] = byCategory[cat]||[]).push(i); });
+
+  root.innerHTML = `
+    <div class="toolbar">
+      <div><button class="btn-small" onclick="closeChecklist()">&larr; All Checklists</button></div>
+      <div><button class="btn-primary" onclick="startChecklistRun('${c.id}')">Start new run</button></div>
+    </div>
+    <div class="panel" style="margin-bottom:16px;">
+      <h2 style="font-family:'Poppins'; font-size:18px; font-weight:600; margin-bottom:4px;">${c.title}</h2>
+      <div style="font-size:11.5px; color:var(--text-faint); margin-bottom:8px;">${(c.standard_refs||[]).join(' · ')} — ${c.scoring_method === 'weighted_score' ? 'Weighted score' : 'Pass / fail'} checklist</div>
+      ${c.description ? `<p style="font-size:13px; color:var(--text-dim);">${escapeHtml(c.description)}</p>` : ''}
+    </div>
+
+    <div class="panel" style="margin-bottom:16px;">
+      <div class="panel-head" style="margin-bottom:10px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Checklist items</h3></div>
+      ${Object.keys(byCategory).map(cat => `
+        <div class="mr-subhead" style="margin-top:10px;">${escapeHtml(cat)}</div>
+        ${byCategory[cat].map(i => `
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; padding:8px 0; border-bottom:1px solid var(--border);">
+            <div style="flex:1;">
+              <div style="font-size:13px;">${escapeHtml(i.item_text)}${c.scoring_method==='weighted_score' && i.weight!=null ? ` <span style="color:var(--text-faint); font-size:11px;">(weight ${i.weight})</span>` : ''}</div>
+              ${i.guidance_note ? `<div style="font-size:11.5px; color:var(--text-faint); margin-top:2px;">${escapeHtml(i.guidance_note)}</div>` : ''}
+              ${i.standard_ref ? `<div style="font-size:10.5px; color:var(--text-faint); margin-top:2px;">${escapeHtml(i.standard_ref)}</div>` : ''}
+            </div>
+            ${editable ? `<button class="btn-link" style="font-size:10.5px;" onclick="editChecklistItem('${i.id}')">Edit</button>` : ''}
+          </div>
+        `).join('')}
+      `).join('') || '<p style="font-size:12.5px; color:var(--text-faint);">No items.</p>'}
+    </div>
+
+    <div class="panel">
+      <div class="panel-head" style="margin-bottom:10px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Runs</h3></div>
+      ${runs.length ? `<table>
+        <tr><th>Ref</th><th>Date</th><th>Area</th><th>Status</th><th>Score</th><th></th></tr>
+        ${runs.map(r => `<tr>
+          <td class="mono">${r.ref_code||'—'}</td>
+          <td>${fmtDate(r.run_date)}</td>
+          <td>${r.area||'—'}</td>
+          <td>${pill(r.status)}</td>
+          <td>${r.overall_score_pct!=null ? Number(r.overall_score_pct).toFixed(1)+'%' : '—'}</td>
+          <td><button class="btn-small" onclick="openChecklistRun('${r.id}')">Open</button></td>
+        </tr>`).join('')}
+      </table>` : '<p style="font-size:12.5px; color:var(--text-faint);">No runs yet — start one above.</p>'}
+    </div>
+  `;
+}
+window.renderChecklistDetail = renderChecklistDetail;
+
+window.editChecklistItem = async function(itemId){
+  const i = STATE.orgChecklistItems.find(x=>x.id===itemId);
+  if(!i) return;
+  const newText = prompt('Item text', i.item_text);
+  if(newText === null) return;
+  const newGuidance = prompt('Guidance note', i.guidance_note || '');
+  if(newGuidance === null) return;
+  const patch = { item_text: newText.trim() || i.item_text, guidance_note: newGuidance.trim() || null };
+  const c = checklistById(i.checklist_id);
+  if(c && c.scoring_method === 'weighted_score'){
+    const newWeight = prompt('Weight', i.weight != null ? String(i.weight) : '');
+    if(newWeight === null) return;
+    patch.weight = newWeight.trim() ? Number(newWeight.trim()) : null;
+  }
+  const { error } = await STATE.supabase.from('org_checklist_items').update(patch).eq('id', itemId);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  await loadOrgChecklists();
+  renderChecklistDetail(i.checklist_id);
+  toast('Item updated.', 'success');
+};
+
+window.startChecklistRun = async function(checklistId){
+  const c = checklistById(checklistId);
+  if(!c) return;
+  const area = prompt('Area / scope for this run (e.g. site, department, process)', '') || null;
+  const { data: run, error } = await STATE.supabase.from('org_checklist_runs').insert({
+    organisation_id: STATE.org.id, checklist_id: checklistId, area, conducted_by: STATE.user.id, created_by: STATE.user.id,
+  }).select().single();
+  if(error){ toast('Could not start the run: ' + error.message, 'error'); return; }
+
+  const items = checklistItemsFor(checklistId);
+  const rows = items.map(i => ({
+    run_id: run.id, organisation_id: STATE.org.id, checklist_item_id: i.id, sort_order: i.sort_order,
+    item_text_snapshot: i.item_text, category: i.category, weight: i.weight,
+  }));
+  if(rows.length){
+    const { error: itemsErr } = await STATE.supabase.from('org_checklist_run_items').insert(rows);
+    if(itemsErr){ toast('Run created, but items could not be attached: ' + itemsErr.message, 'error'); }
+  }
+  await loadOrgChecklists();
+  STATE._clOpenRunId = run.id;
+  renderChecklistRunDetail(run.id);
+  toast('Run started.', 'success');
+};
+
+window.openChecklistRun = function(runId){ STATE._clOpenRunId = runId; renderChecklistRunDetail(runId); };
+window.closeChecklistRun = function(){ const run = STATE.orgChecklistRuns.find(r=>r.id===STATE._clOpenRunId); STATE._clOpenRunId = null; if(run) renderChecklistDetail(run.checklist_id); else renderChecklistsList(); };
+
+function renderChecklistRunDetail(runId){
+  const root = document.getElementById('cl-root');
+  if(!root) return;
+  const run = STATE.orgChecklistRuns.find(r=>r.id===runId);
+  if(!run){ renderChecklistsList(); return; }
+  const c = checklistById(run.checklist_id);
+  const items = checklistRunItemsFor(runId);
+  const isComplete = run.status === 'completed';
+  const isWeighted = c && c.scoring_method === 'weighted_score';
+  const byCategory = {};
+  items.forEach(i => { const cat = i.category || 'General'; (byCategory[cat] = byCategory[cat]||[]).push(i); });
+
+  root.innerHTML = `
+    <div class="toolbar">
+      <div><button class="btn-small" onclick="closeChecklistRun()">&larr; ${c ? c.title : 'Checklist'}</button></div>
+      <div></div>
+    </div>
+    <div class="panel" style="margin-bottom:16px;">
+      <h2 style="font-family:'Poppins'; font-size:18px; font-weight:600; margin-bottom:4px;">${c ? c.title : ''} — ${run.ref_code||''}</h2>
+      <div style="font-size:11.5px; color:var(--text-faint); margin-bottom:8px;">${fmtDate(run.run_date)} · ${run.area||'No area recorded'} · ${pill(run.status)}${run.overall_score_pct!=null ? ` · ${Number(run.overall_score_pct).toFixed(1)}%` : ''}</div>
+    </div>
+
+    ${Object.keys(byCategory).map(cat => `
+      <div class="mr-subhead" style="margin-top:16px;">${cat}</div>
+      ${byCategory[cat].map(it => `
+        <div class="detail-card" style="padding:12px 14px; margin-bottom:6px;">
+          <div style="font-size:13px; color:var(--text); margin-bottom:8px;">${escapeHtml(it.item_text_snapshot)}${isWeighted && it.weight!=null ? ` <span style="color:var(--text-faint); font-size:11px;">(weight ${it.weight})</span>` : ''}</div>
+          ${isComplete ? `
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+              ${isWeighted ? (it.score!=null ? `<span style="font-size:13px; font-weight:600;">${it.score}</span>` : '<span style="color:var(--text-faint); font-size:12px;">Not scored</span>')
+                           : (it.result ? pill(it.result) : '<span style="color:var(--text-faint); font-size:12px;">Not scored</span>')}
+              ${it.comments ? `<span style="font-size:12px; color:var(--text-dim);">${escapeHtml(it.comments)}</span>` : ''}
+            </div>
+          ` : `
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+              ${isWeighted
+                ? `<input type="number" step="any" min="0" max="100" id="clr-score-${it.id}" placeholder="Score (0-100)" value="${it.score!=null?it.score:''}" style="width:110px; border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12.5px;">`
+                : `<select id="clr-result-${it.id}" style="border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12.5px;">
+                     <option value="">Not scored</option>
+                     <option value="conforms" ${it.result==='conforms'?'selected':''}>Conforms</option>
+                     <option value="observation" ${it.result==='observation'?'selected':''}>Observation</option>
+                     <option value="nonconformance" ${it.result==='nonconformance'?'selected':''}>Nonconformance</option>
+                     <option value="not_applicable" ${it.result==='not_applicable'?'selected':''}>Not Applicable</option>
+                   </select>`}
+              <input type="text" id="clr-comments-${it.id}" placeholder="Comments" value="${(it.comments||'').replace(/"/g,'&quot;')}" style="flex:1; min-width:160px; border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12.5px;">
+              <button class="btn-small" onclick="saveChecklistRunItem('${it.id}', ${isWeighted})">Save</button>
+            </div>
+          `}
+        </div>
+      `).join('')}
+    `).join('')}
+
+    ${!isComplete ? `<div class="form-actions" style="margin-top:16px;"><button class="btn-primary" onclick="completeChecklistRun('${run.id}')">Complete run</button></div>` : ''}
+  `;
+}
+window.renderChecklistRunDetail = renderChecklistRunDetail;
+
+window.saveChecklistRunItem = async function(itemId, isWeighted){
+  const patch = { comments: document.getElementById('clr-comments-'+itemId).value.trim() || null };
+  if(isWeighted){
+    const scoreVal = document.getElementById('clr-score-'+itemId).value;
+    patch.score = scoreVal !== '' ? Math.max(0, Math.min(100, Number(scoreVal))) : null;
+  } else {
+    patch.result = document.getElementById('clr-result-'+itemId).value || null;
+  }
+  const { error } = await STATE.supabase.from('org_checklist_run_items').update(patch).eq('id', itemId);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  toast('Saved.', 'success');
+};
+
+window.completeChecklistRun = async function(runId){
+  await loadOrgChecklists();
+  const run = STATE.orgChecklistRuns.find(r=>r.id===runId);
+  const c = run ? checklistById(run.checklist_id) : null;
+  const items = checklistRunItemsFor(runId);
+  const patch = { status: 'completed' };
+  if(c && c.scoring_method === 'weighted_score'){
+    const scored = items.filter(i => i.score != null && i.weight != null);
+    const totalWeight = scored.reduce((s,i)=>s+Number(i.weight), 0);
+    if(totalWeight > 0){
+      const weightedAvg = scored.reduce((s,i)=> s + (Number(i.score)*Number(i.weight)), 0) / totalWeight;
+      patch.overall_score_pct = Math.max(0, Math.min(100, weightedAvg)); // scores are entered 0-100; clamp defensively so a stray value can't push the health score or gauge past its scale
+    }
+  }
+  const { error } = await STATE.supabase.from('org_checklist_runs').update(patch).eq('id', runId);
+  if(error){ toast('Could not complete the run: ' + error.message, 'error'); return; }
+  await loadOrgChecklists();
+  renderChecklistRunDetail(runId);
+  toast('Run completed.', 'success');
+};
+
+/* ============ Policies & Procedures (applied from the Template Library) ============ */
+// One org copy per master policy/procedure template (org_policies), each
+// with its own editable sections (org_policy_sections). Carries its own
+// draft -> approved -> published workflow with an approver, an approval
+// date and a review date, since a policy without a recorded approval and
+// review cycle is exactly what an LRQA/SANAS auditor tests for first —
+// see Migration 042's design notes.
+function policyById(id){ return STATE.orgPolicies.find(p=>p.id===id); }
+function policySectionsFor(policyId){ return STATE.orgPolicySections.filter(s=>s.policy_id===policyId).sort((a,b)=>a.sort_order-b.sort_order); }
+function canEditPolicy(){ return STATE.myRole === 'admin' || STATE.myRole === 'manager' || (STATE.profile && STATE.profile.is_platform_staff); }
+
+function renderPoliciesList(){
+  const root = document.getElementById('pol-root');
+  if(!root) return;
+  if(STATE._polOpenId && policyById(STATE._polOpenId)){
+    renderPolicyDetail(STATE._polOpenId);
+    return;
+  }
+  root.innerHTML = `
+    <div class="toolbar"><div></div><div></div></div>
+    <div class="panel" style="padding:0; overflow:hidden;">
+      ${STATE.orgPolicies.length ? `<table>
+        <tr><th>Title</th><th>Type</th><th>Module</th><th>Status</th><th>Review date</th><th></th></tr>
+        ${STATE.orgPolicies.map(p=>`<tr>
+          <td class="strong">${p.title}${p.is_stale ? ` <span style="color:var(--amber); font-size:10.5px; font-weight:600;">· Newer version available</span>` : ''}</td>
+          <td style="text-transform:capitalize;">${p.type}</td>
+          <td style="text-transform:capitalize;">${(p.module_key||'').replace(/_/g,' ')}</td>
+          <td>${pill(p.status)}</td>
+          <td>${p.review_date ? fmtDate(p.review_date) : '—'}</td>
+          <td><button class="btn-small primary" onclick="openPolicy('${p.id}')">Open</button></td>
+        </tr>`).join('')}
+      </table>` : `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M6 2h9l3 3v17H6z"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/></svg><p>No policies or procedures applied yet. Group QaSHE CG applies these from the Template Library once they're ready for your organisation.</p></div>`}
+    </div>
+  `;
+}
+window.renderPoliciesList = renderPoliciesList;
+
+window.openPolicy = function(id){ STATE._polOpenId = id; renderPolicyDetail(id); };
+window.closePolicy = function(){ STATE._polOpenId = null; renderPoliciesList(); };
+
+function renderPolicyDetail(id){
+  const root = document.getElementById('pol-root');
+  if(!root) return;
+  const p = policyById(id);
+  if(!p){ renderPoliciesList(); return; }
+  const sections = policySectionsFor(id);
+  const editable = canEditPolicy();
+  const isDraft = p.status === 'draft';
+  const isApproved = p.status === 'approved';
+
+  root.innerHTML = `
+    <div class="toolbar">
+      <div><button class="btn-small" onclick="closePolicy()">&larr; All Policies &amp; Procedures</button></div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn-small" onclick="printCurrentPolicy('${p.id}')">Print</button>
+        ${editable && isDraft ? `<button class="btn-primary" onclick="approvePolicy('${p.id}')">Approve</button>` : ''}
+        ${editable && isApproved ? `<button class="btn-primary" onclick="publishPolicy('${p.id}')">Publish</button>` : ''}
+        ${editable ? `<button class="btn-small" onclick="editPolicyReviewDate('${p.id}')">Set review date</button>` : ''}
+      </div>
+    </div>
+    <div class="panel" style="margin-bottom:16px;">
+      <h2 style="font-family:'Poppins'; font-size:18px; font-weight:600; margin-bottom:4px;">${p.title}</h2>
+      <div style="font-size:11.5px; color:var(--text-faint); margin-bottom:8px;">${(p.standard_refs||[]).join(' · ')} — <span style="text-transform:capitalize;">${p.type}</span></div>
+      <div style="display:flex; gap:16px; flex-wrap:wrap; font-size:12.5px; color:var(--text-dim); margin-bottom:8px;">
+        <div>Status: ${pill(p.status)}</div>
+        ${p.approved_by ? `<div>Approved by: ${memberName(p.approved_by)}</div>` : ''}
+        ${p.approved_date ? `<div>Approved: ${fmtDate(p.approved_date)}</div>` : ''}
+        <div>Review date: ${p.review_date ? fmtDate(p.review_date) : 'Not set'}</div>
+      </div>
+      ${p.description ? `<p style="font-size:13px; color:var(--text-dim);">${escapeHtml(p.description)}</p>` : ''}
+    </div>
+
+    ${sections.map(s => `
+      <div class="panel" style="margin-bottom:14px;">
+        <div class="panel-head" style="margin-bottom:8px;">
+          <h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">${escapeHtml(s.heading)}</h3>
+          ${editable ? `<button class="btn-link" style="font-size:10.5px;" onclick="editPolicySection('${s.id}')">Edit</button>` : ''}
+        </div>
+        <div style="font-size:13px; color:var(--text-dim); white-space:pre-wrap; line-height:1.6;">${escapeHtml(s.body_text)}</div>
+        ${s.standard_ref ? `<div style="font-size:10.5px; color:var(--text-faint); margin-top:8px;">${escapeHtml(s.standard_ref)}</div>` : ''}
+      </div>
+    `).join('')}
+  `;
+}
+window.renderPolicyDetail = renderPolicyDetail;
+
+window.editPolicySection = async function(sectionId){
+  const s = STATE.orgPolicySections.find(x=>x.id===sectionId);
+  if(!s) return;
+  const newHeading = prompt('Section heading', s.heading);
+  if(newHeading === null) return;
+  const newBody = prompt('Section text', s.body_text);
+  if(newBody === null) return;
+  const { error } = await STATE.supabase.from('org_policy_sections').update({
+    heading: newHeading.trim() || s.heading, body_text: newBody.trim() || s.body_text,
+  }).eq('id', sectionId);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  await loadOrgPolicies();
+  renderPolicyDetail(s.policy_id);
+  toast('Section updated.', 'success');
+};
+
+window.editPolicyReviewDate = async function(policyId){
+  const p = policyById(policyId);
+  if(!p) return;
+  const newDate = prompt('Review date (YYYY-MM-DD)', p.review_date || '');
+  if(newDate === null) return;
+  const { error } = await STATE.supabase.from('org_policies').update({ review_date: newDate.trim() || null }).eq('id', policyId);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  await loadOrgPolicies();
+  renderPolicyDetail(policyId);
+  toast('Review date updated.', 'success');
+};
+
+window.approvePolicy = async function(policyId){
+  if(!confirm('Approve this policy? It will be recorded as approved by you, today.')) return;
+  const { error } = await STATE.supabase.from('org_policies').update({
+    status: 'approved', approved_by: STATE.user.id, approved_date: todayISO(),
+  }).eq('id', policyId);
+  if(error){ toast('Could not approve: ' + error.message, 'error'); return; }
+  await loadOrgPolicies();
+  renderPolicyDetail(policyId);
+  toast('Policy approved.', 'success');
+};
+
+window.publishPolicy = async function(policyId){
+  if(!confirm("Publish this policy? It becomes the organisation's official current version.")) return;
+  const { error } = await STATE.supabase.from('org_policies').update({ status: 'published' }).eq('id', policyId);
+  if(error){ toast('Could not publish: ' + error.message, 'error'); return; }
+  await loadOrgPolicies();
+  renderPolicyDetail(policyId);
+  toast('Policy published.', 'success');
+};
+
+window.printCurrentPolicy = async function(policyId){
+  const p = policyById(policyId);
+  if(!p) return;
+  const sections = policySectionsFor(policyId);
+  const meta = [['Status', p.status], ['Approved by', p.approved_by ? memberName(p.approved_by) : '—'], ['Approved date', fmtDate(p.approved_date)], ['Review date', fmtDate(p.review_date)]];
+  const bodyHtml = sections.map(s => `<h3>${escapeHtml(s.heading)}</h3><p style="white-space:pre-wrap;">${escapeHtml(s.body_text)}</p>`).join('');
+  await printRecord(p.title, p.description || '', meta, bodyHtml, null, null);
+};
+
+/* ---- Template Library (Administration, platform-staff only) ---- */
+function renderTemplateLibrary(){
+  const wrap = document.getElementById('admin-subtab-content');
+  if(!wrap) return;
+  const flowchartTemplates = STATE.contentTemplates.filter(t=>t.type==='process_flowchart');
+  const checklistTemplates = STATE.contentTemplates.filter(t=>t.type==='checklist');
+  const policyTemplates = STATE.contentTemplates.filter(t=>t.type==='policy' || t.type==='procedure');
+  const appliedFlowchartIds = new Set(STATE.orgFlowcharts.map(f=>f.source_template_id));
+  const appliedChecklistIds = new Set(STATE.orgChecklists.map(c=>c.source_template_id));
+  const appliedPolicyIds = new Set(STATE.orgPolicies.map(p=>p.source_template_id));
+
+  const flowchartCard = t => {
+    const stepCount = STATE.contentTemplateSteps.filter(s=>s.template_id===t.id).length;
+    const kpiCount = STATE.contentTemplateKpis.filter(k=>k.template_id===t.id).length;
+    const applied = appliedFlowchartIds.has(t.id);
+    return `<div class="detail-card" style="margin-bottom:14px;">
+      <div class="panel-head" style="margin-bottom:4px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">${t.title} <span style="font-size:11px; color:var(--text-faint); font-weight:400;">v${t.version}</span></h3></div>
+      <div style="font-size:11px; color:var(--text-faint); margin-bottom:6px;">${(t.standard_refs||[]).join(' · ')}</div>
+      ${t.description ? `<p style="font-size:12.5px; color:var(--text-dim); margin-bottom:8px;">${t.description}</p>` : ''}
+      <div style="font-size:11.5px; color:var(--text-faint); margin-bottom:10px;">${stepCount} steps · ${kpiCount} KPIs</div>
+      ${applied
+        ? `<span style="font-size:12px; color:var(--green); font-weight:600;">Already applied to ${STATE.org.name}</span>`
+        : `<button class="btn-small primary" onclick="applyTemplateToCurrentOrg('${t.id}')">Apply to ${STATE.org.name}</button>`}
+    </div>`;
+  };
+
+  const checklistCard = t => {
+    const itemCount = STATE.contentTemplateChecklistItems.filter(i=>i.template_id===t.id).length;
+    const applied = appliedChecklistIds.has(t.id);
+    return `<div class="detail-card" style="margin-bottom:14px;">
+      <div class="panel-head" style="margin-bottom:4px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">${t.title} <span style="font-size:11px; color:var(--text-faint); font-weight:400;">v${t.version}</span></h3></div>
+      <div style="font-size:11px; color:var(--text-faint); margin-bottom:6px;">${(t.standard_refs||[]).join(' · ')} — ${t.checklist_scoring_method === 'weighted_score' ? 'Weighted score' : 'Pass / fail'}</div>
+      ${t.description ? `<p style="font-size:12.5px; color:var(--text-dim); margin-bottom:8px;">${t.description}</p>` : ''}
+      <div style="font-size:11.5px; color:var(--text-faint); margin-bottom:10px;">${itemCount} items</div>
+      ${applied
+        ? `<span style="font-size:12px; color:var(--green); font-weight:600;">Already applied to ${STATE.org.name}</span>`
+        : `<button class="btn-small primary" onclick="applyChecklistTemplateToCurrentOrg('${t.id}')">Apply to ${STATE.org.name}</button>`}
+    </div>`;
+  };
+
+  const policyCard = t => {
+    const sectionCount = STATE.contentTemplatePolicySections.filter(s=>s.template_id===t.id).length;
+    const applied = appliedPolicyIds.has(t.id);
+    return `<div class="detail-card" style="margin-bottom:14px;">
+      <div class="panel-head" style="margin-bottom:4px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">${t.title} <span style="font-size:11px; color:var(--text-faint); font-weight:400;">v${t.version}</span></h3></div>
+      <div style="font-size:11px; color:var(--text-faint); margin-bottom:6px;">${(t.standard_refs||[]).join(' · ')} — <span style="text-transform:capitalize;">${t.type}</span></div>
+      ${t.description ? `<p style="font-size:12.5px; color:var(--text-dim); margin-bottom:8px;">${t.description}</p>` : ''}
+      <div style="font-size:11.5px; color:var(--text-faint); margin-bottom:10px;">${sectionCount} sections</div>
+      ${applied
+        ? `<span style="font-size:12px; color:var(--green); font-weight:600;">Already applied to ${STATE.org.name}</span>`
+        : `<button class="btn-small primary" onclick="applyPolicyTemplateToCurrentOrg('${t.id}')">Apply to ${STATE.org.name}</button>`}
+    </div>`;
+  };
+
+  wrap.innerHTML = `
+    <p style="font-size:12.5px; color:var(--text-dim); margin-bottom:16px; line-height:1.55;">The master library — authored and version-controlled by Group QaSHE CG, applied to whichever clients need it. Applying a template copies it into ${STATE.org.name}'s own module, ready for them to adapt — it never edits the master, and the master never edits an applied copy back.</p>
+
+    <div class="mr-subhead" style="margin-bottom:10px;">Process Flowcharts</div>
+    ${flowchartTemplates.map(flowchartCard).join('') || '<p style="font-size:12.5px; color:var(--text-faint); margin-bottom:16px;">No process flowchart templates in the library yet.</p>'}
+
+    <div class="mr-subhead" style="margin-top:20px; margin-bottom:10px;">Checklists</div>
+    ${checklistTemplates.map(checklistCard).join('') || '<p style="font-size:12.5px; color:var(--text-faint); margin-bottom:16px;">No checklist templates in the library yet.</p>'}
+
+    <div class="mr-subhead" style="margin-top:20px; margin-bottom:10px;">Policies &amp; Procedures</div>
+    ${policyTemplates.map(policyCard).join('') || '<p style="font-size:12.5px; color:var(--text-faint);">No policy/procedure templates in the library yet.</p>'}
+  `;
+}
+window.renderTemplateLibrary = renderTemplateLibrary;
+
+window.applyTemplateToCurrentOrg = async function(templateId){
+  const { data, error } = await STATE.supabase.rpc('apply_content_template_to_org', {
+    p_template_id: templateId, p_organisation_id: STATE.org.id,
+  });
+  if(error || !data || data.error){ toast('Could not apply template: ' + ((data&&data.error)||error?.message), 'error'); return; }
+  await loadOrgFlowcharts();
+  renderTemplateLibrary();
+  toast('Template applied — find it under Process Flowcharts.', 'success');
+};
+
+window.applyChecklistTemplateToCurrentOrg = async function(templateId){
+  const { data, error } = await STATE.supabase.rpc('apply_checklist_template_to_org', {
+    p_template_id: templateId, p_organisation_id: STATE.org.id,
+  });
+  if(error || !data || data.error){ toast('Could not apply checklist: ' + ((data&&data.error)||error?.message), 'error'); return; }
+  await loadOrgChecklists();
+  renderTemplateLibrary();
+  toast('Checklist applied — find it under Checklists.', 'success');
+};
+
+window.applyPolicyTemplateToCurrentOrg = async function(templateId){
+  const { data, error } = await STATE.supabase.rpc('apply_policy_template_to_org', {
+    p_template_id: templateId, p_organisation_id: STATE.org.id,
+  });
+  if(error || !data || data.error){ toast('Could not apply policy/procedure: ' + ((data&&data.error)||error?.message), 'error'); return; }
+  await loadOrgPolicies();
+  renderTemplateLibrary();
+  toast('Policy/procedure applied — find it under Policies & Procedures.', 'success');
+};
 
 function renderAwClientsShell(){
   const eligible = STATE.customers.filter(c=>!c.aw_monitored);
@@ -13829,6 +15059,7 @@ function renderAdminSubtabContent(tab){
   if(tab === 'team') renderAdminTeam();
   if(tab === 'processes') renderAdminProcesses();
   if(tab === 'moduleinfo') renderAdminModuleInfo();
+  if(tab === 'templatelibrary') renderTemplateLibrary();
 }
 
 function renderAdminModuleInfo(){
@@ -14365,6 +15596,195 @@ function renderDonutSVG(counts, size=100){
   </svg>`;
 }
 
+/* ============ Compliance Dashboard — health score, trends, checklist/policy stats ============ */
+
+// Shared by computeFlowchartKpiValue() (so any flowchart KPI card can pull
+// a live checklist metric) and the Compliance Dashboard hero. Computed once
+// per call rather than cached — the underlying arrays are small (org-scoped)
+// and this keeps it trivially correct whenever a run is saved.
+function checklistStats(){
+  const checklists = STATE.orgChecklists || [];
+  const runs = STATE.orgChecklistRuns || [];
+  const runItems = STATE.orgChecklistRunItems || [];
+  const completedRuns = runs.filter(r=>r.status==='completed');
+  const latestByChecklist = {};
+  completedRuns.forEach(r => {
+    const cur = latestByChecklist[r.checklist_id];
+    if(!cur || new Date(r.run_date) > new Date(cur.run_date)) latestByChecklist[r.checklist_id] = r;
+  });
+  const neverRunCount = checklists.filter(c => !latestByChecklist[c.id]).length;
+  let conformCount = 0, scoredItemCount = 0, nonconformanceCount = 0;
+  const weightedScores = [];
+  Object.values(latestByChecklist).forEach(run => {
+    const checklist = checklists.find(c=>c.id===run.checklist_id);
+    if(!checklist) return;
+    if(checklist.scoring_method === 'weighted_score'){
+      if(run.overall_score_pct!=null) weightedScores.push(Number(run.overall_score_pct));
+    } else {
+      runItems.filter(i=>i.run_id===run.id).forEach(i => {
+        if(i.result==='conforms' || i.result==='nonconformance'){
+          scoredItemCount++;
+          if(i.result==='conforms') conformCount++;
+          if(i.result==='nonconformance') nonconformanceCount++;
+        }
+      });
+    }
+  });
+  const passFailPct = scoredItemCount ? (conformCount/scoredItemCount*100) : null;
+  const weightedAvgPct = weightedScores.length ? (weightedScores.reduce((a,b)=>a+b,0)/weightedScores.length) : null;
+  const blendedParts = [passFailPct, weightedAvgPct].filter(v=>v!=null);
+  const blendedScorePct = blendedParts.length ? (blendedParts.reduce((a,b)=>a+b,0)/blendedParts.length) : null;
+  const thirtyAgo = new Date(); thirtyAgo.setDate(thirtyAgo.getDate()-30);
+  const runsLast30d = completedRuns.filter(r => r.run_date && new Date(r.run_date) >= thirtyAgo).length;
+  return {
+    total: checklists.length,
+    ranAtLeastOnce: checklists.length - neverRunCount,
+    neverRun: neverRunCount,
+    passFailPct, weightedAvgPct, blendedScorePct,
+    nonconformanceCount,
+    runsLast30d,
+    totalCompletedRuns: completedRuns.length,
+  };
+}
+
+function policyStats(){
+  const policies = STATE.orgPolicies || [];
+  const today = todayISO();
+  const published = policies.filter(p=>p.status==='published').length;
+  const draft = policies.filter(p=>p.status==='draft').length;
+  const approved = policies.filter(p=>p.status==='approved').length;
+  const overdueReview = policies.filter(p=>p.review_date && p.review_date < today).length;
+  const current = policies.filter(p=>p.status==='published' && (!p.review_date || p.review_date >= today)).length;
+  return {
+    total: policies.length,
+    published, draft, approved, overdueReview, current,
+    currencyPct: policies.length ? (current/policies.length*100) : null,
+  };
+}
+
+// A single blended 0-100 "at a glance" figure for the whole compliance
+// landscape. Deliberately averages only the components that actually have
+// data — a client who hasn't started using, say, Risk & Opportunity yet
+// shouldn't have that silently drag their score to zero. As soon as they
+// have even one record in a register, that register starts pulling its
+// weight in the score, which nudges toward actually using the platform.
+function computeComplianceHealthScore(){
+  const today = todayISO();
+  const components = [];
+  {
+    const ncs = STATE.ncs||[];
+    if(ncs.length){
+      const closed = ncs.filter(n=>n.status==='closed').length;
+      const overdue = ncs.filter(n=>n.status!=='closed' && n.target_close_date && n.target_close_date<today).length;
+      components.push({ label:'Nonconformance closure', value: Math.max(0, Math.min(100, (closed/ncs.length*100) - Math.min(20, overdue*5))) });
+    }
+  }
+  {
+    const audits = STATE.audits||[];
+    if(audits.length) components.push({ label:'Audit completion', value: audits.filter(a=>['completed','report_issued'].includes(a.status)).length/audits.length*100 });
+  }
+  {
+    const legal = (STATE.legalRegister||[]).filter(l=>l.current_status);
+    if(legal.length) components.push({ label:'Legal compliance', value: legal.filter(l=>l.current_status==='compliant').length/legal.length*100 });
+  }
+  {
+    const training = STATE.training||[];
+    if(training.length) components.push({ label:'Training completion', value: training.filter(t=>t.status==='completed').length/training.length*100 });
+  }
+  {
+    const objs = (STATE.objectives||[]).filter(o=>['achieved','not_achieved','discontinued'].includes(o.status));
+    if(objs.length) components.push({ label:'Objectives achieved', value: objs.filter(o=>o.status==='achieved').length/objs.length*100 });
+  }
+  {
+    const cs = checklistStats();
+    if(cs.blendedScorePct!=null) components.push({ label:'Checklist conformance', value: cs.blendedScorePct });
+  }
+  {
+    const ps = policyStats();
+    if(ps.total) components.push({ label:'Policy currency', value: ps.currencyPct || 0 });
+  }
+  {
+    const risks = STATE.risks||[];
+    if(risks.length){
+      const openCritical = risks.filter(r=>r.status!=='closed' && ((r.residual_score!=null && r.residual_score>=8) || (r.residual_score==null && r.inherent_score>=8))).length;
+      components.push({ label:'Risk control', value: Math.max(0, 100 - Math.min(100, openCritical*15)) });
+    }
+  }
+  if(!components.length) return { score:null, color:'grey', components:[] };
+  const rawScore = components.reduce((s,c)=>s+(Number.isFinite(c.value)?c.value:0), 0) / components.length;
+  const score = Math.round(Math.max(0, Math.min(100, rawScore)));
+  const color = score>=85 ? 'green' : score>=60 ? 'amber' : 'red';
+  return { score, color, components };
+}
+
+function renderGaugeSVG(score, color, size=180){
+  const strokeWidth = size*0.13;
+  const radius = (size - strokeWidth)/2;
+  const cy = size*0.56;
+  const colorHex = { red:'#B21616', amber:'#B8791C', green:'#2E7D4F', grey:'#A6A6A6' }[color] || '#A6A6A6';
+  const circumference = Math.PI * radius;
+  const pct = score==null ? 0 : Math.max(0, Math.min(100, score))/100;
+  const dash = circumference*pct;
+  return `<svg viewBox="0 0 ${size} ${size*0.62}" width="${size}" height="${size*0.62}">
+    <path d="M ${strokeWidth/2} ${cy} A ${radius} ${radius} 0 0 1 ${size-strokeWidth/2} ${cy}" fill="none" stroke="#EDEBE9" stroke-width="${strokeWidth}" stroke-linecap="round"/>
+    <path d="M ${strokeWidth/2} ${cy} A ${radius} ${radius} 0 0 1 ${size-strokeWidth/2} ${cy}" fill="none" stroke="${colorHex}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-dasharray="${dash} ${Math.max(0,circumference-dash)}"/>
+    <text x="${size/2}" y="${cy-radius*0.15}" text-anchor="middle" font-family="Poppins" font-weight="700" font-size="${size*0.22}" fill="#1E1C1B">${score==null?'—':score}</text>
+    ${score!=null ? `<text x="${size/2}" y="${cy-radius*0.15+size*0.09}" text-anchor="middle" font-family="Inter" font-size="${size*0.062}" fill="#9C9895">out of 100</text>` : ''}
+  </svg>`;
+}
+
+function lastNMonths(n){
+  const out = [];
+  const now = new Date();
+  for(let i=n-1; i>=0; i--){
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    out.push({ key: d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'), label: d.toLocaleDateString('en-GB',{month:'short'}) });
+  }
+  return out;
+}
+function countByMonth(items, dateField, months){
+  return months.map(m => items.filter(it => it[dateField] && String(it[dateField]).slice(0,7) === m.key).length);
+}
+
+// A small, dependency-free line chart: thin 2px lines, rounded joins, one
+// shared axis (never dual-axis — everything plotted here is a plain count),
+// >=8px hit circles carrying a native tooltip per point so a value is
+// always a hover away without a bespoke tooltip layer.
+function renderTrendLineChart(months, series, opts={}){
+  const w = opts.width || 520, h = opts.height || 160;
+  const padL = 22, padR = 10, padT = 12, padB = 20;
+  const plotW = w - padL - padR, plotH = h - padT - padB;
+  const maxVal = Math.max(1, ...series.flatMap(s=>s.values));
+  const stepX = months.length>1 ? plotW/(months.length-1) : 0;
+  const yFor = v => padT + plotH - (v/maxVal*plotH);
+  const xFor = i => padL + i*stepX;
+  const gridLines = [0,0.5,1].map(f => `<line x1="${padL}" x2="${w-padR}" y1="${(padT+plotH*(1-f)).toFixed(1)}" y2="${(padT+plotH*(1-f)).toFixed(1)}" stroke="#EDEBE9" stroke-width="1"/>`).join('');
+  const lines = series.map(s => {
+    const pts = s.values.map((v,i)=>`${xFor(i).toFixed(1)},${yFor(v).toFixed(1)}`).join(' ');
+    const dots = s.values.map((v,i)=>`<circle cx="${xFor(i).toFixed(1)}" cy="${yFor(v).toFixed(1)}" r="4" fill="${s.color}"><title>${months[i].label}: ${s.label} — ${v}</title></circle>`).join('');
+    return `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>${dots}`;
+  }).join('');
+  const xLabels = months.map((m,i)=>`<text x="${xFor(i).toFixed(1)}" y="${h-4}" text-anchor="middle" font-size="9.5" fill="#9C9895" font-family="Inter">${m.label}</text>`).join('');
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" style="overflow:visible;">${gridLines}${lines}${xLabels}</svg>`;
+}
+
+// One card in the module health grid — reuses the existing donut-plus-legend
+// pattern (renderDonutSVG / DONUT_COLORS) so it reads as the same visual
+// system as the rest of the app, not a bolted-on new widget.
+function complianceCard(title, moduleKey, segments, footerText){
+  const total = segments.reduce((s,x)=>s+x.count, 0);
+  return `<div class="compliance-card" onclick="showModule('${moduleKey}')">
+    <h4>${title}</h4>
+    <div class="cc-total">${total} total${footerText ? ' · '+footerText : ''}</div>
+    <div class="cc-body">
+      ${renderDonutSVG(segments, 72)}
+      <div class="compliance-legend">
+        ${segments.map(s=>`<div class="cl-row"><span class="cl-dot" style="background:${DONUT_COLORS[s.color]};"></span>${s.label}<span class="cl-count">${s.count}</span></div>`).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+
 /* ============ Compliance Dashboard — Management Review Report ============ */
 
 function mrStatCard(value, label, sub, color){
@@ -14409,6 +15829,138 @@ function renderComplianceDashboard(){
   if(!wrap) return;
 
   let html = '';
+  const today = todayISO();
+
+  // ---- Hero: Compliance Health Score + trend charts ------------------------
+  {
+    const health = computeComplianceHealthScore();
+    const months = lastNMonths(6);
+    const ncs = STATE.ncs||[];
+    const raisedSeries = countByMonth(ncs, 'raised_date', months);
+    const closedSeries = countByMonth(ncs.filter(n=>n.status==='closed'), 'closed_date', months);
+    const cs = checklistStats();
+    const runsSeries = countByMonth((STATE.orgChecklistRuns||[]).filter(r=>r.status==='completed'), 'run_date', months);
+
+    html += `<div class="chs-hero">
+      <div class="chs-gauge-card">
+        <div style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px;">Compliance Health Score</div>
+        ${renderGaugeSVG(health.score, health.color)}
+        <div style="font-size:11px; color:var(--text-dim); margin-top:2px;">${health.components.length ? 'Blended across '+health.components.length+' live indicator'+(health.components.length===1?'':'s') : 'Not enough live data yet — add records to any register to start scoring'}</div>
+        ${health.components.length ? `<div style="text-align:left; margin-top:12px; font-size:11px; color:var(--text-dim);">
+          ${health.components.map(c=>`<div style="display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid var(--border-soft);"><span>${c.label}</span><b style="color:var(--text);">${c.value.toFixed(0)}%</b></div>`).join('')}
+        </div>` : ''}
+      </div>
+      <div class="chs-trend-card">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:2px;">
+          <h3 style="font-family:'Poppins'; font-size:14.5px; font-weight:600;">Nonconformances — raised vs. closed</h3>
+          <span style="font-size:10.5px; color:var(--text-faint);">Last 6 months</span>
+        </div>
+        ${renderTrendLineChart(months, [
+          { label:'Raised', color:'#B8791C', values: raisedSeries },
+          { label:'Closed', color:'#2E7D4F', values: closedSeries },
+        ])}
+        <div class="trend-legend"><span><span class="trend-dot" style="background:#B8791C;"></span>Raised</span><span><span class="trend-dot" style="background:#2E7D4F;"></span>Closed</span></div>
+
+        ${canAccessModule('checklists') ? `
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin:18px 0 2px;">
+          <h3 style="font-family:'Poppins'; font-size:14.5px; font-weight:600;">Checklist runs completed</h3>
+          <span style="font-size:10.5px; color:var(--text-faint);">Last 6 months · ${cs.total} checklist${cs.total===1?'':'s'} applied</span>
+        </div>
+        ${renderTrendLineChart(months, [{ label:'Runs completed', color:'#3B6EA5', values: runsSeries }], {height:110})}
+        ` : ''}
+      </div>
+    </div>`;
+  }
+
+  // ---- Module Health Grid — every register, at a glance --------------------
+  {
+    const tiles = [];
+    {
+      const ncs = STATE.ncs||[];
+      const overdue = ncs.filter(n=>n.status!=='closed' && n.target_close_date && n.target_close_date<today).length;
+      const open = ncs.filter(n=>n.status!=='closed').length - overdue;
+      const closed = ncs.filter(n=>n.status==='closed').length;
+      tiles.push(complianceCard('Nonconformances', 'nonconformances', [
+        { label:'Closed', count:closed, color:'green' }, { label:'Open', count:open, color:'amber' }, { label:'Overdue', count:overdue, color:'red' },
+      ]));
+    }
+    {
+      const audits = STATE.audits||[];
+      const done = audits.filter(a=>['completed','report_issued'].includes(a.status)).length;
+      const inProgress = audits.filter(a=>a.status==='in_progress').length;
+      const planned = audits.filter(a=>a.status==='planned').length;
+      tiles.push(complianceCard('Audits', 'audits', [
+        { label:'Completed', count:done, color:'green' }, { label:'In progress', count:inProgress, color:'amber' }, { label:'Planned', count:planned, color:'grey' },
+      ]));
+    }
+    {
+      const risks = STATE.risks||[];
+      const openCritical = risks.filter(r=>r.status!=='closed' && ((r.residual_score!=null && r.residual_score>=8)||(r.residual_score==null && r.inherent_score>=8))).length;
+      const openOther = risks.filter(r=>r.status!=='closed').length - openCritical;
+      const closed = risks.filter(r=>r.status==='closed').length;
+      tiles.push(complianceCard('Risk & Opportunity', 'risks', [
+        { label:'Closed', count:closed, color:'green' }, { label:'Open', count:openOther, color:'amber' }, { label:'Open, critical', count:openCritical, color:'red' },
+      ]));
+    }
+    {
+      const legal = STATE.legalRegister||[];
+      tiles.push(complianceCard('Legal Compliance', 'legal', [
+        { label:'Compliant', count: legal.filter(l=>l.current_status==='compliant').length, color:'green' },
+        { label:'Semi-compliant', count: legal.filter(l=>l.current_status==='semi_compliant').length, color:'amber' },
+        { label:'Non-compliant', count: legal.filter(l=>l.current_status==='non_compliant').length, color:'red' },
+        { label:'Not yet reviewed', count: legal.filter(l=>!l.current_status).length, color:'grey' },
+      ]));
+    }
+    {
+      const training = STATE.training||[];
+      const overdue = training.filter(t=>t.status!=='completed' && t.status!=='cancelled' && t.due_date && t.due_date<today).length;
+      const completed = training.filter(t=>t.status==='completed').length;
+      const outstanding = training.filter(t=>['required','planned'].includes(t.status)).length - overdue;
+      tiles.push(complianceCard('Training', 'training', [
+        { label:'Completed', count:completed, color:'green' }, { label:'Outstanding', count:Math.max(0,outstanding), color:'amber' }, { label:'Overdue', count:overdue, color:'red' },
+      ]));
+    }
+    {
+      const objs = STATE.objectives||[];
+      tiles.push(complianceCard('Objectives & Targets', 'objectives', [
+        { label:'Achieved', count: objs.filter(o=>o.status==='achieved').length, color:'green' },
+        { label:'On track', count: objs.filter(o=>['draft','active'].includes(o.status)).length, color:'amber' },
+        { label:'Not achieved / discontinued', count: objs.filter(o=>['not_achieved','discontinued'].includes(o.status)).length, color:'red' },
+      ]));
+    }
+    if(canAccessModule('checklists')){
+      const cs = checklistStats();
+      tiles.push(complianceCard('Checklists', 'checklists', [
+        { label:'Assessed at least once', count: cs.ranAtLeastOnce, color:'green' }, { label:'Never run', count: cs.neverRun, color:'amber' }, { label:'Nonconformances (latest runs)', count: cs.nonconformanceCount, color:'red' },
+      ], cs.blendedScorePct!=null ? 'avg conformance '+cs.blendedScorePct.toFixed(0)+'%' : null));
+    }
+    if(canAccessModule('policies')){
+      const ps = policyStats();
+      tiles.push(complianceCard('Policies & Procedures', 'policies', [
+        { label:'Published, current', count: ps.current, color:'green' }, { label:'Draft / approved', count: ps.draft + ps.approved, color:'amber' }, { label:'Overdue for review', count: ps.overdueReview, color:'red' },
+      ]));
+    }
+    {
+      const suppliers = STATE.suppliers||[];
+      tiles.push(complianceCard('Suppliers', 'suppliers', [
+        { label:'Approved', count: suppliers.filter(s=>s.status==='approved').length, color:'green' },
+        { label:'Pending / conditional', count: suppliers.filter(s=>['pending_qualification','conditional'].includes(s.status)).length, color:'amber' },
+        { label:'Suspended / removed', count: suppliers.filter(s=>['suspended','removed'].includes(s.status)).length, color:'red' },
+      ]));
+    }
+    {
+      const surveys = STATE.customerSurveys||[];
+      const completed = surveys.filter(s=>s.status==='completed' || s.overall_rating!==null);
+      const avgRating = completed.length ? completed.reduce((s,x)=>s+Number(x.overall_rating||0),0)/completed.length : null;
+      const avgPct = avgRating!==null ? (avgRating/5*100) : null;
+      tiles.push(complianceCard('Customers', 'customers', [
+        { label:'Active', count: (STATE.customers||[]).filter(c=>c.status==='active').length, color:'green' },
+        { label:'Surveyed', count: completed.length, color:'amber' },
+        { label:'Not yet surveyed', count: (STATE.customers||[]).length - completed.length, color:'grey' },
+      ], avgPct!==null ? 'avg satisfaction '+avgPct.toFixed(0)+'%' : null));
+    }
+    html += `<div class="compliance-grid" style="margin-bottom:22px;">${tiles.join('')}</div>`;
+  }
 
   // ---- Customer Satisfaction ---------------------------------------------
   {
@@ -14615,6 +16167,45 @@ function renderComplianceDashboard(){
         ${mrStatCard(avgProcessScore!==null ? avgProcessScore.toFixed(1)+'%' : '—', 'Average latest score', 'target 100%', avgProcessScore!==null ? (avgProcessScore>=100?'var(--green)':avgProcessScore>=80?'var(--amber)':'var(--red)') : null)}
         ${mrStatCard(belowTarget, 'Below target', null, belowTarget>0?'var(--amber)':'var(--green)')}
       </div>
+    `);
+  }
+
+  // ---- Checklists -------------------------------------------------------------
+  if(canAccessModule('checklists')){
+    const cs = checklistStats();
+    const byMethodBar = [
+      { label:'Assessed at least once', count: cs.ranAtLeastOnce, color:'#2E7D4F' },
+      { label:'Never run', count: cs.neverRun, color:'#B8791C' },
+    ];
+    html += mrSection('Checklists', 'checklists', `
+      <div class="mr-stat-row">
+        ${mrStatCard(cs.total, 'Checklists applied', null, null)}
+        ${mrStatCard(cs.blendedScorePct!=null ? cs.blendedScorePct.toFixed(0)+'%' : '—', 'Average conformance, latest runs', 'blended pass/fail + weighted score', cs.blendedScorePct!=null ? (cs.blendedScorePct>=95?'var(--green)':cs.blendedScorePct>=80?'var(--amber)':'var(--red)') : null)}
+        ${mrStatCard(cs.nonconformanceCount, 'Nonconformances, latest runs', null, cs.nonconformanceCount>0?'var(--red)':'var(--green)')}
+        ${mrStatCard(cs.runsLast30d, 'Runs completed, last 30 days', cs.totalCompletedRuns+' all-time', null)}
+      </div>
+      <div class="mr-subhead">Coverage — assessed vs. never run</div>
+      ${mrBar(byMethodBar, cs.total)}
+    `);
+  }
+
+  // ---- Policies & Procedures ----------------------------------------------------
+  if(canAccessModule('policies')){
+    const ps = policyStats();
+    const byStatus = [
+      { label:'Published', count: ps.published, color:'#2E7D4F' },
+      { label:'Approved (not yet published)', count: ps.approved, color:'#B8791C' },
+      { label:'Draft', count: ps.draft, color:'#A6A6A6' },
+    ];
+    html += mrSection('Policies & Procedures', 'policies', `
+      <div class="mr-stat-row">
+        ${mrStatCard(ps.total, 'Policies & procedures applied', null, null)}
+        ${mrStatCard(ps.total ? Math.round(ps.published/ps.total*100)+'%' : '—', 'Published', null, null)}
+        ${mrStatCard(ps.currencyPct!=null ? ps.currencyPct.toFixed(0)+'%' : '—', 'Current (published, review not overdue)', null, ps.currencyPct!=null ? (ps.currencyPct>=95?'var(--green)':ps.currencyPct>=80?'var(--amber)':'var(--red)') : null)}
+        ${mrStatCard(ps.overdueReview, 'Overdue for review', null, ps.overdueReview>0?'var(--red)':'var(--green)')}
+      </div>
+      <div class="mr-subhead">By status</div>
+      ${mrBar(byStatus, ps.total)}
     `);
   }
 
@@ -14902,6 +16493,15 @@ function getModuleExportConfig(moduleKey){
       {header:'Leave Type', get:r=>{ const t = leaveTypeById(r.leave_type_id); return t ? t.name : ''; }},
       {header:'Start Date', get:r=>r.start_date}, {header:'End Date', get:r=>r.end_date},
       {header:'Days', get:r=>r.days_requested}, {header:'Status', get:r=>r.status},
+      {header:'Reason', get:r=>r.reason||''}, {header:'Decision Note', get:r=>r.decision_note||''},
+      {header:'Submitted Via', get:r=>r.submitted_via},
+    ]},
+    overtime_requests: { rows: STATE.overtimeRequests, filename: `overtime-requests-${orgSlug}.xlsx`, columns: [
+      {header:'Ref', get:r=>r.ref_code},
+      {header:'Employee', get:r=>{ const p = personById(r.personnel_id); return p ? p.full_name : ''; }},
+      {header:'Date', get:r=>r.requested_date},
+      {header:'Start Time', get:r=>fmtTime(r.start_time)}, {header:'End Time', get:r=>fmtTime(r.end_time)},
+      {header:'Hours', get:r=>r.hours_requested}, {header:'Status', get:r=>r.status},
       {header:'Reason', get:r=>r.reason||''}, {header:'Decision Note', get:r=>r.decision_note||''},
       {header:'Submitted Via', get:r=>r.submitted_via},
     ]},
