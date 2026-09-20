@@ -1179,6 +1179,28 @@ async function enterApp(){
   await afterSignIn(session.user);
 }
 
+// Auto sign-in on load: if this browser already holds a valid, unexpired
+// Supabase session — the normal case for someone reopening the app icon
+// after a previous sign-in, since the client persists the session in
+// localStorage by default — skip straight past the marketing landing page
+// and the sign-in gate and go directly into their organisation. First-time
+// visitors with no session are left exactly where they are today (the
+// landing page), so this only ever shortens the path for someone who has
+// already signed in on this device.
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    await ensureSupabaseLib();
+    if(!STATE.supabase) initSupabase(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const { data:{ session } } = await STATE.supabase.auth.getSession();
+    if(session && session.user){
+      document.getElementById('view-landing').classList.remove('active');
+      showBootLoading();
+      await afterSignIn(session.user);
+      hideBootLoading();
+    }
+  } catch(e){ /* leave the landing page showing as normal — nothing lost here */ }
+});
+
 window.doSignIn = async function(){
   const email = document.getElementById('auth-email').value.trim();
   const password = document.getElementById('auth-password').value;
