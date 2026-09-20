@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Log a Reading — Asset Watchman</title>
+<title>Site Assessment — Asset Watchman</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -71,7 +71,36 @@
     <div class="asset-ref" id="main-ref"></div>
     <div class="asset-desc" id="main-desc"></div>
     <div class="asset-meta" id="main-meta"></div>
-    <button class="btn-main" id="main-log-btn">Log a reading</button>
+    <button class="btn-main" id="main-assessment-btn">Log a site assessment</button>
+    <button class="btn-secondary" id="main-log-btn" style="display:none;">Log a detailed reading</button>
+  </div>
+
+  <div id="stage-assessment" class="stage">
+    <button class="back-btn" id="assessment-back-btn"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg> Back</button>
+    <h1>Log a site assessment</h1>
+    <p class="sub" id="assessment-asset-line"></p>
+    <div id="assessment-error"></div>
+    <div class="field">
+      <label>Site assessment date</label>
+      <input type="date" id="assessment-date">
+    </div>
+    <div class="field">
+      <label>Assessor</label>
+      <input type="text" id="assessment-assessor" placeholder="Your name" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Condition</label>
+      <select id="assessment-condition">
+        <option value="good">Good</option>
+        <option value="monitor">Monitor — keep an eye on it</option>
+        <option value="critical">Critical — needs attention</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Notes</label>
+      <input type="text" id="assessment-notes" placeholder="What did you observe on site?">
+    </div>
+    <button class="btn-main" id="assessment-submit-btn">Submit assessment</button>
   </div>
 
   <div id="stage-log" class="stage">
@@ -105,7 +134,7 @@
   <div id="stage-success" class="stage">
     <div class="brand-row" id="success-brand-row"><span class="fallback">Asset Watchman</span></div>
     <div class="success-box" id="success-message"></div>
-    <button class="btn-main" id="success-log-another-btn">Log another reading</button>
+    <button class="btn-main" id="success-log-another-btn">Log another assessment</button>
     <button class="btn-secondary" id="success-done-btn">Done</button>
   </div>
 
@@ -155,6 +184,21 @@ function renderMain(){
   document.getElementById('main-desc').textContent = a.description;
   const metaParts = [a.customer_name, [a.location_plant, a.location_site].filter(Boolean).join(', ')].filter(Boolean);
   document.getElementById('main-meta').textContent = metaParts.join(' — ');
+  // The detailed numeric-reading path is only offered once the office has
+  // actually configured reading types — otherwise it's a dead end (see
+  // populateTypeOptions), so it stays hidden and the site assessment above
+  // is the one path that always works.
+  document.getElementById('main-log-btn').style.display = (a.reading_types && a.reading_types.length) ? 'block' : 'none';
+}
+
+function populateAssessmentForm(){
+  const a = assetData;
+  document.getElementById('assessment-asset-line').textContent = `${a.description}${a.tag_number ? ' — Tag ' + a.tag_number : ''}`;
+  document.getElementById('assessment-date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('assessment-assessor').value = '';
+  document.getElementById('assessment-condition').value = 'good';
+  document.getElementById('assessment-notes').value = '';
+  document.getElementById('assessment-error').innerHTML = '';
 }
 
 function populateLogForm(){
@@ -205,6 +249,14 @@ async function init(){
   showStage('stage-main');
 }
 
+let lastFlow = 'assessment'; // 'assessment' or 'reading' — drives the "Log another…" button on success
+
+document.getElementById('main-assessment-btn').addEventListener('click', () => {
+  populateAssessmentForm();
+  showStage('stage-assessment');
+});
+document.getElementById('assessment-back-btn').addEventListener('click', () => showStage('stage-main'));
+
 document.getElementById('main-log-btn').addEventListener('click', () => {
   document.getElementById('log-error').innerHTML = '';
   document.getElementById('log-value').value = '';
@@ -214,6 +266,41 @@ document.getElementById('main-log-btn').addEventListener('click', () => {
 });
 
 document.getElementById('log-back-btn').addEventListener('click', () => showStage('stage-main'));
+
+document.getElementById('assessment-submit-btn').addEventListener('click', async () => {
+  const errEl = document.getElementById('assessment-error');
+  errEl.innerHTML = '';
+
+  const assessmentDate = document.getElementById('assessment-date').value || null;
+  const assessor = document.getElementById('assessment-assessor').value.trim();
+  const condition = document.getElementById('assessment-condition').value;
+  const notes = document.getElementById('assessment-notes').value.trim();
+
+  if(!assessor){ errEl.innerHTML = '<div class="error-box">Enter your name.</div>'; return; }
+
+  const btn = document.getElementById('assessment-submit-btn');
+  btn.disabled = true; btn.textContent = 'Submitting…';
+
+  const { data, error } = await supabase.rpc('aw_submit_site_assessment', {
+    p_asset_token: assetToken,
+    p_assessment_date: assessmentDate,
+    p_assessor_name: assessor,
+    p_condition: condition,
+    p_notes: notes,
+  });
+
+  btn.disabled = false; btn.textContent = 'Submit assessment';
+
+  if(error || !data || data.error){
+    errEl.innerHTML = `<div class="error-box">${escapeHtml((data && data.error) || 'Could not submit this assessment. Check your connection and try again.')}</div>`;
+    return;
+  }
+
+  lastFlow = 'assessment';
+  document.getElementById('success-log-another-btn').textContent = 'Log another assessment';
+  document.getElementById('success-message').textContent = `Site assessment logged for ${data.asset_description} (${data.ref_code}). The asset profile has been updated.`;
+  showStage('stage-success');
+});
 
 document.getElementById('log-submit-btn').addEventListener('click', async () => {
   const errEl = document.getElementById('log-error');
@@ -248,16 +335,23 @@ document.getElementById('log-submit-btn').addEventListener('click', async () => 
     return;
   }
 
+  lastFlow = 'reading';
+  document.getElementById('success-log-another-btn').textContent = 'Log another reading';
   document.getElementById('success-message').textContent = `${data.reading_type_name} reading logged for ${data.asset_description}.`;
   showStage('stage-success');
 });
 
 document.getElementById('success-log-another-btn').addEventListener('click', () => {
-  document.getElementById('log-error').innerHTML = '';
-  document.getElementById('log-value').value = '';
-  document.getElementById('log-notes').value = '';
-  populateLogForm();
-  showStage('stage-log');
+  if(lastFlow === 'reading'){
+    document.getElementById('log-error').innerHTML = '';
+    document.getElementById('log-value').value = '';
+    document.getElementById('log-notes').value = '';
+    populateLogForm();
+    showStage('stage-log');
+  } else {
+    populateAssessmentForm();
+    showStage('stage-assessment');
+  }
 });
 document.getElementById('success-done-btn').addEventListener('click', () => {
   renderMain();
