@@ -1042,7 +1042,7 @@ const STATE = {
   members:[], memberMap:{},
   ncs:[], tasks:[], audits:[], risks:[], documents:[], suppliers:[], customers:[], satisfactionQuestions:[], objectives:[], legalRegister:[],
   positions:[], personnel:[], competence:[], training:[], positionKpis:[], appraisals:[],
-  assetChecklistTemplates:[], assetChecklistItems:[], assets:[], bulletins:[], attendance:[], leaveTypes:[], leaveApplications:[], expenseClaims:[], personnelRequests:[], overtimeRequests:[], awAssets:[], awComponents:[], awReadingTypes:[], awReadings:[],
+  assetChecklistTemplates:[], assetChecklistItems:[], assets:[], bulletins:[], attendance:[], leaveTypes:[], leaveApplications:[], expenseClaims:[], personnelRequests:[], overtimeRequests:[], awAssets:[], awComponents:[], awReadingTypes:[], awReadings:[], awSiteAssessments:[],
   contentTemplates:[], contentTemplateSteps:[], contentTemplateKpis:[], orgFlowcharts:[], orgFlowchartSteps:[], orgFlowchartKpis:[],
   contentTemplateChecklistItems:[], contentTemplatePolicySections:[],
   orgChecklists:[], orgChecklistItems:[], orgChecklistRuns:[], orgChecklistRunItems:[],
@@ -1396,6 +1396,7 @@ window.selectOrg = async function(orgId){
   await loadAwComponents();
   await loadAwReadingTypes();
   await loadAwReadings();
+  await loadAwSiteAssessments();
 
   hideAllGates();
   document.getElementById('view-landing').classList.remove('active');
@@ -1771,6 +1772,12 @@ async function loadAwReadings(){
   if(error){ toast('Could not load Asset Watchman readings: ' + error.message, 'error'); return; }
   STATE.awReadings = data || [];
 }
+async function loadAwSiteAssessments(){
+  if(!STATE.org.asset_watchman_enabled) return;
+  const { data, error } = await STATE.supabase.from('aw_site_assessments').select('*').eq('organisation_id', STATE.org.id).order('assessment_date', {ascending:false});
+  if(error){ toast('Could not load Asset Watchman site assessments: ' + error.message, 'error'); return; }
+  STATE.awSiteAssessments = data || [];
+}
 
 const MODULE_META = {
   overview:{title:'Overview', sub:() => `${STATE.org.name} — ${STATE.org.ref_prefix}`},
@@ -2079,7 +2086,8 @@ function updateNavBadges(){
   document.getElementById('nd-appraisal').style.display = openAppraisals?'block':'none';
   document.getElementById('nd-asset').style.display = quarantinedAssets?'block':'none';
   document.getElementById('nd-hr').style.display = (pendingLeave||pendingExpenses||openRequests||pendingOvertime)?'block':'none';
-  const awAttention = STATE.awAssets.filter(a => a.active && (awHealthStatusInfo(a).state==='red' || awDataStatusInfo(a).state==='red')).length;
+  const pendingAssessments = STATE.awSiteAssessments.filter(sa=>!sa.acknowledged).length;
+  const awAttention = STATE.awAssets.filter(a => a.active && (awHealthStatusInfo(a).state==='red' || awDataStatusInfo(a).state==='red')).length + pendingAssessments;
   document.getElementById('nd-aw').style.display = awAttention?'block':'none';
 }
 
@@ -12292,6 +12300,26 @@ function awHealthStatusBadge(entity, isComponent){
 function awAssetById(id){ return STATE.awAssets.find(a=>a.id===id); }
 function customerAwAssets(customerId){ return STATE.awAssets.filter(a=>a.customer_id===customerId && a.active); }
 
+/* ---- Site assessments (Stage 6) — submitted from the QR mobile page,
+   see qashe-watchman-aw-reading-link.html. Submitting one already writes
+   straight through to the asset's own health_status/health_notes/
+   data_reviewed_at (server-side, in aw_submit_site_assessment), so the
+   traffic lights above are already current the moment it lands; what's
+   tracked here is purely "has the office actually looked at it yet". ---- */
+const AW_CONDITION_LABELS = { good:'Good', monitor:'Monitor', critical:'Critical' };
+function assessmentsForAsset(assetId){
+  return STATE.awSiteAssessments.filter(sa=>sa.asset_id===assetId)
+    .slice().sort((x,y)=> new Date(y.assessment_date) - new Date(x.assessment_date));
+}
+function awPendingAssessmentCount(assetId){
+  return STATE.awSiteAssessments.filter(sa=>sa.asset_id===assetId && !sa.acknowledged).length;
+}
+function awAssessmentBadge(assetId){
+  const pending = awPendingAssessmentCount(assetId);
+  if(!pending) return '';
+  return `<span class="date-badge red" style="margin-left:6px;"><span class="dd"></span>${pending} new site assessment${pending>1?'s':''}</span>`;
+}
+
 // The client-level traffic light is the worst state across its monitored
 // assets — one asset needing attention is enough to flag the whole client.
 const AW_STATE_RANK = { red:3, yellow:2, blue:1, green:0 };
@@ -13526,7 +13554,7 @@ function renderAwAssetsTable(customerId){
         <td class="strong">${a.description}</td>
         <td>${location}</td>
         <td>${awDataStatusBadge(a)}</td>
-        <td>${awHealthStatusBadge(a)}</td>
+        <td>${awHealthStatusBadge(a)}${awAssessmentBadge(a.id)}</td>
       </tr>`;
     }).join('')}
   </table>`;
@@ -13748,6 +13776,8 @@ window.openAwAssetDetail = async function(id){
         <button class="btn-small primary" onclick="awSaveHealthStatus('${a.id}')">Save assessment</button>
       </div>
 
+      ${renderAwSiteAssessmentsSection(a.id)}
+
       ${renderAwReadingsSection(a.id, null)}
 
       ${renderEvidenceSection('aw_asset', a.id, evidenceFiles)}
@@ -13825,6 +13855,14 @@ window.printAwAsset = async function(id){
     }));
   }
 
+  const assessments = assessmentsForAsset(a.id);
+  if(assessments.length){
+    body += printSectionTitle('Site Assessments');
+    body += printTable(['Date','Assessor','Condition','Notes'], assessments.map(sa => [
+      fmtDate(sa.assessment_date), sa.assessor_name, AW_CONDITION_LABELS[sa.condition] || sa.condition, sa.notes || '—',
+    ]));
+  }
+
   const photoGallery = await buildPrintPhotoGallery(evidenceFiles);
   if(photoGallery){
     body += printSectionTitle('Condition / Inspection Photos');
@@ -13843,6 +13881,41 @@ window.awMarkDataReviewed = async function(id){
   toast('Marked as reviewed today.', 'success');
   openAwAssetDetail(id);
   renderAwAssetsTable(STATE._awCustomerId);
+};
+
+function renderAwSiteAssessmentsSection(assetId){
+  const rows = assessmentsForAsset(assetId);
+  return `
+    <div class="detail-card" style="padding:16px; margin-bottom:16px;">
+      <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Site Assessments</h3></div>
+      <p style="font-size:12px; color:var(--text-faint); margin-bottom:10px;">Submitted from the field by scanning this asset's QR code. Each one already updated the Condition / Health Status and Data Currency above — mark it reviewed here once your office has looked it over.</p>
+      ${!rows.length ? `<p style="font-size:12.5px; color:var(--text-dim);">No site assessments submitted yet.</p>` : `
+      <table>
+        <tr><th>Date</th><th>Assessor</th><th>Condition</th><th>Notes</th><th>Status</th><th></th></tr>
+        ${rows.map(sa => `<tr>
+          <td>${fmtDate(sa.assessment_date)}</td>
+          <td>${escapeHtml(sa.assessor_name)}${sa.submitted_via==='qr_mobile' ? ' <span style="color:var(--text-faint); font-size:11px;">(QR / field)</span>' : ''}</td>
+          <td>${escapeHtml(AW_CONDITION_LABELS[sa.condition] || sa.condition)}</td>
+          <td>${escapeHtml(sa.notes || '—')}</td>
+          <td>${sa.acknowledged ? '<span class="date-badge green"><span class="dd"></span>Reviewed</span>' : '<span class="date-badge red"><span class="dd"></span>New</span>'}</td>
+          <td>${sa.acknowledged ? '' : `<button class="btn-small" onclick="awAcknowledgeAssessment('${sa.id}')">Mark reviewed</button>`}</td>
+        </tr>`).join('')}
+      </table>`}
+    </div>
+  `;
+}
+
+window.awAcknowledgeAssessment = async function(id){
+  const { error } = await STATE.supabase.from('aw_site_assessments').update({
+    acknowledged: true, acknowledged_by: STATE.user.id, acknowledged_at: new Date().toISOString(),
+  }).eq('id', id);
+  if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+  await loadAwSiteAssessments();
+  toast('Assessment marked reviewed.', 'success');
+  const sa = STATE.awSiteAssessments.find(s=>s.id===id);
+  if(sa) openAwAssetDetail(sa.asset_id);
+  renderAwAssetsTable(STATE._awCustomerId);
+  if(typeof updateNavBadges==='function') updateNavBadges();
 };
 
 window.awSaveHealthStatus = async function(id){
