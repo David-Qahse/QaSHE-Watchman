@@ -13496,7 +13496,10 @@ window.openAwAssetDetail = async function(id){
     <div class="detail-panel">
       <div class="detail-head">
         <div><span class="ref">${a.ref_code}${a.serial_number ? ' · S/N '+a.serial_number : ''}</span><h3>${a.description}</h3></div>
-        <button class="close-btn" onclick="closeAwAssetDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="btn-small" onclick="printAwAsset('${a.id}')">Print / PDF</button>
+          <button class="close-btn" onclick="closeAwAssetDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
       </div>
       <div class="detail-meta">
         <div class="dm-item"><div class="l">Client</div><div class="v">${c ? c.name : '—'}</div></div>
@@ -13588,13 +13591,70 @@ window.openAwAssetDetail = async function(id){
       ${renderEvidenceSection('aw_asset', a.id, evidenceFiles)}
 
       <div class="detail-card" style="padding:14px 16px; background:var(--grey-tint); border:none;">
-        <p style="font-size:12px; color:var(--text-dim);">Performance graphs and the printable per-asset report are coming in the next stage of Asset Watchman.</p>
+        <p style="font-size:12px; color:var(--text-dim);">Performance graphs are coming in the next stage of Asset Watchman. A printable asset profile report is available now via "Print / PDF" above.</p>
       </div>
     </div>
   `;
 };
 function closeAwAssetDetail(){ document.getElementById('aw-asset-detail-slot').innerHTML = ''; }
 window.closeAwAssetDetail = closeAwAssetDetail;
+
+window.printAwAsset = async function(id){
+  const a = awAssetById(id);
+  if(!a) return;
+  const c = customerById(a.customer_id);
+  const { files: evidenceFiles } = await loadEvidence('aw_asset', id);
+  const components = componentsForAsset(a.id);
+  const health = awHealthStatusInfo(a);
+  const dataStatus = awDataStatusInfo(a);
+
+  const meta = [
+    ['Client', c ? c.name : '—'], ['Tag number', a.tag_number || '—'], ['Asset / equipment type', a.asset_type || '—'],
+    ['Location', [a.location_plant, a.location_site].filter(Boolean).join(', ') || '—'],
+    ['Serial number', a.serial_number || '—'], ['Condition / Health Status', health.text], ['Data Currency', dataStatus.text],
+  ];
+
+  let body = '';
+  body += printSectionTitle('Application & Process Data');
+  body += printTable(['Field','Value'], [
+    ['Application', a.application || '—'],
+    ['Medium pumped', a.medium_pumped || '—'],
+    ['Operating temperature (°C)', a.operating_temperature_c ?? '—'],
+    ['Environment', a.environment || '—'],
+    ['Viscosity', a.viscosity || '—'],
+    ['Mechanical seal type', a.mechanical_seal_type || '—'],
+    ['Mechanical seal faces', a.mechanical_seal_faces || '—'],
+    ['Elastomers', a.elastomers || '—'],
+    ['API configuration', a.api_configuration || '—'],
+    ['Support system', a.support_system || '—'],
+    ['Other components / notes', a.other_component_notes || '—'],
+  ]);
+
+  if(components.length){
+    body += printSectionTitle('Components');
+    body += printTable(['Type','Label','Manufacturer','Model','Material','Fitted date'], components.map(comp => [
+      AW_COMPONENT_TYPE_LABELS[comp.component_type] || comp.component_type, comp.label || '—', comp.manufacturer || '—',
+      comp.model_number || '—', comp.material || '—', comp.fitted_date ? fmtDate(comp.fitted_date.slice(0,10)) : '—',
+    ]));
+  }
+
+  const readings = STATE.awReadings.filter(r => r.asset_id === a.id && !r.component_id)
+    .slice().sort((x,y)=> new Date(y.reading_date) - new Date(x.reading_date));
+  if(readings.length){
+    body += printSectionTitle('Condition Readings');
+    body += printTable(['Date','Type','Value','Recorded by','Notes'], readings.map(r => {
+      const rt = awReadingTypeById(r.reading_type_id);
+      return [
+        fmtDate(r.reading_date.slice(0,10)), rt ? rt.name : '—', `${r.value}${rt && rt.unit ? ' '+rt.unit : ''}`,
+        r.recorded_by ? memberName(r.recorded_by) : (r.recorded_by_name ? `${r.recorded_by_name} (field)` : '—'), r.notes || '—',
+      ];
+    }));
+  }
+
+  body += buildPrintSupportingDocsList(evidenceFiles);
+
+  await printRecord('Asset Watchman — Asset Profile Report', a.ref_code, meta, body, null, 'asset_watchman');
+};
 
 window.awMarkDataReviewed = async function(id){
   const { error } = await STATE.supabase.from('aw_assets').update({ data_reviewed_at: new Date().toISOString() }).eq('id', id);
