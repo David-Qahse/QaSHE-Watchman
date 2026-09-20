@@ -2152,7 +2152,7 @@ function showReminderPopup(){
       <div class="reminder-group-label" onclick="closeReminderPopup(); showModule('${m.key}');">${m.label}</div>
       ${m.items.map(({item, state}) => `
         <div class="reminder-row" onclick="closeReminderPopup(); showModule('${m.key}');">
-          <span class="rr-label">${m.titleField ? (item[m.titleField] || 'Untitled') : (item.ref_code || '')} <span class="rr-person">— ${m.getPerson(item)}</span></span>
+          <span class="rr-label">${m.titleField ? (item[m.titleField] || 'Untitled') : (item.ref_code || '')} <span class="rr-person">: ${m.getPerson(item)}</span></span>
           <span class="date-badge ${state==='red'?'red':'yellow'}"><span class="dd"></span>${fmtDate(item[m.dateField])}</span>
         </div>
       `).join('')}
@@ -2315,7 +2315,7 @@ const RENDERERS = {
       <div class="panel-head"><h3 style="margin-bottom:0;">Bulletins &amp; Toolbox Talks</h3><button class="btn-small" onclick="showModule('bulletins')">View all</button></div>
       <div class="sub">Latest notices</div>
       ${latestBulletins.length ? latestBulletins.map(b=>`<div class="linked-task-chip" style="cursor:pointer; display:block; margin-bottom:6px;" onclick="showModule('bulletins'); setTimeout(()=>openBulletinDetail('${b.id}'),0);">
-        <span class="mono" style="font-size:10px; text-transform:uppercase; color:var(--text-faint);">${BULLETIN_TYPE_LABELS[b.type]}</span> — ${b.title} <span style="color:var(--text-faint);">· ${fmtDate(b.published_date)}</span>
+        <span class="mono" style="font-size:10px; text-transform:uppercase; color:var(--text-faint);">${BULLETIN_TYPE_LABELS[b.type]}</span> — ${escapeHtml(b.title)} <span style="color:var(--text-faint);">· ${fmtDate(b.published_date)}</span>
       </div>`).join('') : '<p style="font-size:12.5px; color:var(--text-faint);">Nothing published yet.</p>'}
     </div>
     <div class="panel">
@@ -3121,6 +3121,11 @@ const RENDERERS = {
         <div class="field"><label>Published date</label><input type="date" id="bf-date" value="${todayISO()}"></div>
         <div class="field span3"><label>Title</label><input id="bf-title" placeholder="e.g. Working at Heights — Weekly Toolbox Talk"></div>
         <div class="field span3"><label>Full content</label><textarea id="bf-content" style="min-height:160px;" placeholder="The complete text of the bulletin or toolbox talk, shown in full on its own page"></textarea></div>
+        <div class="field span3">
+          <label>Illustration image (optional)</label>
+          <input type="file" id="bf-image" accept="image/*">
+          <p style="font-size:11.5px; color:var(--text-faint); margin-top:6px; line-height:1.5;">To control exactly where the image appears among your text, type <code>[IMAGE]</code> on its own line at that point. If you don't add that, the image is placed above the text automatically.</p>
+        </div>
       </div>
       <div class="form-actions">
         <button class="btn-cancel" onclick="toggleBulletinForm()">Cancel</button>
@@ -11067,15 +11072,52 @@ function bulletinById(id){ return STATE.bulletins.find(b=>b.id===id); }
 function toggleBulletinForm(){ document.getElementById('bulletin-form').classList.toggle('open'); }
 window.toggleBulletinForm = toggleBulletinForm;
 
+function bulletinImageUrl(b){
+  if(!b || !b.image_path) return null;
+  const { data } = STATE.supabase.storage.from('avatars').getPublicUrl(b.image_path);
+  return data ? data.publicUrl : null;
+}
+
+// Inserts the image at the [IMAGE] token if the (already-escaped) text
+// contains one, otherwise places it above the text — see the migration's
+// design note for why a token beats a rigid position dropdown.
+function renderBulletinBodyHtml(b, escapedText){
+  const imgUrl = bulletinImageUrl(b);
+  if(!imgUrl) return escapedText;
+  const imgTag = `<img src="${imgUrl}" style="max-width:100%; border-radius:8px; margin:14px 0; display:block;">`;
+  const tokenRe = /\[image\]/i;
+  return tokenRe.test(escapedText) ? escapedText.replace(tokenRe, imgTag) : imgTag + escapedText;
+}
+
 window.submitBulletin = async function(){
   const title = document.getElementById('bf-title').value.trim();
   const content = document.getElementById('bf-content').value.trim();
   if(!title || !content){ alert('Title and content are both required.'); return; }
+  const imageFile = document.getElementById('bf-image').files[0];
+  if(imageFile && !imageFile.type.startsWith('image/')){ alert('Please choose an image file.'); return; }
+
   const { data: newBulletin, error } = await STATE.supabase.from('bulletins').insert({
     organisation_id: STATE.org.id, type: document.getElementById('bf-type').value, title, content,
     published_date: document.getElementById('bf-date').value || todayISO(), created_by: STATE.user.id,
   }).select().single();
   if(error){ toast('Could not publish: ' + error.message, 'error'); return; }
+
+  if(imageFile){
+    const resizeResult = await resizeImageFile(imageFile, 1200, 0.85);
+    if(!resizeResult.ok){
+      toast('Published, but the image could not be processed — try uploading it from the bulletin\'s own page (some phone photo formats like HEIC aren\'t readable by the browser).', 'error');
+    } else {
+      const path = `${STATE.org.id}/bulletin-images/${newBulletin.id}/${Date.now()}-${sanitizeFileName(resizeResult.file.name)}`;
+      const { error: uploadErr } = await STATE.supabase.storage.from('avatars').upload(path, resizeResult.file);
+      if(uploadErr){
+        toast('Published, but the image could not be uploaded: ' + uploadErr.message, 'error');
+      } else {
+        const { error: imgErr } = await STATE.supabase.from('bulletins').update({ image_path: path }).eq('id', newBulletin.id);
+        if(imgErr) toast('Image uploaded, but could not be saved to this record: ' + imgErr.message, 'error');
+      }
+    }
+  }
+
   toggleBulletinForm();
   document.querySelectorAll('#bulletin-form input, #bulletin-form textarea').forEach(el=>el.value='');
   await loadBulletins();
@@ -11097,7 +11139,7 @@ function renderBulletinsTable(){
     ${rows.map(b=>`<tr class="clickable" onclick="openBulletinDetail('${b.id}')">
       <td class="mono-cell">${b.ref_code}</td>
       <td><span class="sev-badge ${b.type==='toolbox_talk'?'minor':'major'}">${BULLETIN_TYPE_LABELS[b.type]}</span></td>
-      <td class="strong">${b.title}</td>
+      <td class="strong">${escapeHtml(b.title)}</td>
       <td>${fmtDate(b.published_date)}</td>
     </tr>`).join('')}
   </table>`;
@@ -12022,17 +12064,31 @@ async function openBulletinDetail(id){
   const b = bulletinById(id);
   if(!b) return;
   const { files: evidenceFiles } = await loadEvidence('bulletin', id);
+  const imgUrl = bulletinImageUrl(b);
+  const bodyHtml = renderBulletinBodyHtml(b, escapeHtml(b.content));
 
   document.getElementById('bulletin-detail-slot').innerHTML = `
     <div class="detail-panel">
       <div class="detail-head">
-        <div><span class="ref">${b.ref_code} · ${BULLETIN_TYPE_LABELS[b.type]} · ${fmtDate(b.published_date)}</span><h3>${b.title}</h3></div>
+        <div><span class="ref">${b.ref_code} · ${BULLETIN_TYPE_LABELS[b.type]} · ${fmtDate(b.published_date)}</span><h3>${escapeHtml(b.title)}</h3></div>
         <div style="display:flex; gap:8px;">
           <button class="btn-small" onclick="printBulletin('${b.id}')">Print / PDF</button>
           <button class="close-btn" onclick="closeBulletinDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
       </div>
-      <div style="font-size:14px; color:var(--text); line-height:1.7; white-space:pre-wrap; margin-bottom:20px;">${b.content}</div>
+
+      <div class="detail-card" style="padding:14px 16px; margin-bottom:16px;">
+        <div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Illustration Image</div>
+        ${imgUrl ? `<img src="${imgUrl}" style="max-width:280px; max-height:180px; object-fit:cover; border:1px solid var(--border); border-radius:8px; display:block; margin-bottom:8px;">` : `<p style="font-size:12px; color:var(--text-faint); margin-bottom:8px;">No image added yet.</p>`}
+        <input type="file" id="bul-image-input-${b.id}" accept="image/*" style="max-width:260px; font-size:10.5px;">
+        <div style="display:flex; gap:6px; margin-top:6px;">
+          <button class="btn-small primary" onclick="uploadBulletinImage('${b.id}')">${imgUrl ? 'Replace' : 'Upload'}</button>
+          ${imgUrl ? `<button class="btn-small" onclick="removeBulletinImage('${b.id}')">Remove</button>` : ''}
+        </div>
+        <p style="font-size:11px; color:var(--text-faint); margin-top:8px; line-height:1.5;">Positioned wherever <code>[IMAGE]</code> appears in the text below — otherwise shown above it.</p>
+      </div>
+
+      <div style="font-size:14px; color:var(--text); line-height:1.7; white-space:pre-wrap; margin-bottom:20px;">${bodyHtml}</div>
       ${renderEvidenceSection('bulletin', b.id, evidenceFiles)}
     </div>
   `;
@@ -12041,11 +12097,46 @@ window.openBulletinDetail = openBulletinDetail;
 function closeBulletinDetail(){ document.getElementById('bulletin-detail-slot').innerHTML = ''; }
 window.closeBulletinDetail = closeBulletinDetail;
 
+window.uploadBulletinImage = async function(id){
+  const input = document.getElementById(`bul-image-input-${id}`);
+  const file = input.files[0];
+  if(!file){ alert('Choose an image first.'); return; }
+  if(!file.type.startsWith('image/')){ alert('Please choose an image file.'); return; }
+
+  const resizeResult = await resizeImageFile(file, 1200, 0.85);
+  if(!resizeResult.ok){ toast('That image could not be processed — try a different photo (some phone photo formats like HEIC aren\'t readable by the browser).', 'error'); return; }
+  const path = `${STATE.org.id}/bulletin-images/${id}/${Date.now()}-${sanitizeFileName(resizeResult.file.name)}`;
+  const { error: uploadErr } = await STATE.supabase.storage.from('avatars').upload(path, resizeResult.file);
+  if(uploadErr){ toast('Could not upload the image: ' + uploadErr.message, 'error'); return; }
+
+  const b = bulletinById(id);
+  const oldPath = b ? b.image_path : null;
+  const { error } = await STATE.supabase.from('bulletins').update({ image_path: path }).eq('id', id);
+  if(error){ toast('Image uploaded, but could not be saved to this record: ' + error.message, 'error'); return; }
+  if(oldPath) await STATE.supabase.storage.from('avatars').remove([oldPath]);
+
+  await loadBulletins();
+  openBulletinDetail(id);
+  toast('Image saved.', 'success');
+};
+
+window.removeBulletinImage = async function(id){
+  const b = bulletinById(id);
+  if(!b || !b.image_path) return;
+  if(!confirm('Remove this image?')) return;
+  await STATE.supabase.storage.from('avatars').remove([b.image_path]);
+  const { error } = await STATE.supabase.from('bulletins').update({ image_path: null }).eq('id', id);
+  if(error){ toast('Could not remove: ' + error.message, 'error'); return; }
+  await loadBulletins();
+  openBulletinDetail(id);
+  toast('Image removed.', 'success');
+};
+
 window.printBulletin = function(id){
   const b = bulletinById(id);
   if(!b) return;
   const meta = [['Type', BULLETIN_TYPE_LABELS[b.type]], ['Published', fmtDate(b.published_date)]];
-  const body = `<p style="white-space:pre-wrap;">${b.content}</p>`;
+  const body = `<div style="white-space:pre-wrap;">${renderBulletinBodyHtml(b, escapeHtml(b.content))}</div>`;
   printRecord(BULLETIN_TYPE_LABELS[b.type], b.ref_code, meta, body, null, 'bulletins');
 };
 
@@ -15664,11 +15755,12 @@ window.deleteBulkDocument = async function(id, storagePath){
 function showLatestBulletinPopup(){
   const latest = STATE.bulletins.filter(b=>b.is_published).sort((a,b)=> new Date(b.published_date)-new Date(a.published_date))[0];
   if(!latest){ showReminderPopup(); return; }
-  const preview = latest.content.length > 220 ? latest.content.slice(0,220)+'…' : latest.content;
+  const rawPreview = latest.content.length > 220 ? latest.content.slice(0,220)+'…' : latest.content;
+  const bodyHtml = renderBulletinBodyHtml(latest, escapeHtml(rawPreview));
   document.getElementById('reminder-modal-content').innerHTML = `
-    <h3>${BULLETIN_TYPE_LABELS[latest.type]}: ${latest.title}</h3>
+    <h3>${BULLETIN_TYPE_LABELS[latest.type]}: ${escapeHtml(latest.title)}</h3>
     <p class="sub">Published ${fmtDate(latest.published_date)}</p>
-    <p style="font-size:13.5px; color:var(--text-dim); line-height:1.6; margin-bottom:18px; white-space:pre-wrap;">${preview}</p>
+    <div style="font-size:13.5px; color:var(--text-dim); line-height:1.6; margin-bottom:18px; white-space:pre-wrap;">${bodyHtml}</div>
     <div class="form-actions">
       <button class="btn-primary" onclick="dismissBulletinPopup()">Dismiss</button>
     </div>
