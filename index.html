@@ -3126,6 +3126,14 @@ const RENDERERS = {
           <input type="file" id="bf-image" accept="image/*">
           <p style="font-size:11.5px; color:var(--text-faint); margin-top:6px; line-height:1.5;">To control exactly where the image appears among your text, type <code>[IMAGE]</code> on its own line at that point. If you don't add that, the image is placed above the text automatically.</p>
         </div>
+        <div class="field"><label>Illustration size</label>
+          <select id="bf-image-size">
+            <option value="400">Small (400 × 400)</option>
+            <option value="700" selected>Medium (700 × 700)</option>
+            <option value="1000">Large (1000 × 1000)</option>
+          </select>
+        </div>
+        <div class="field span2"><label>Illustration note (optional)</label><input id="bf-image-caption" placeholder="Caption shown below the image"></div>
       </div>
       <div class="form-actions">
         <button class="btn-cancel" onclick="toggleBulletinForm()">Cancel</button>
@@ -9691,8 +9699,15 @@ window.toggleEditCompetence = function(competenceId){
   if(slot.innerHTML.trim()){ slot.innerHTML = ''; return; }
   const c = STATE.competence.find(x=>x.id===competenceId);
   if(!c) return;
+  // Every OTHER position this person already holds a record for is excluded
+  // (can't have two rows pointing at the same position) — but the position
+  // this record currently holds always stays in the list so it shows as
+  // selected even if nothing else changes.
+  const otherRecords = competenceFor(c.personnel_id).filter(r=>r.id!==c.id);
+  const availablePositions = STATE.positions.filter(pos => pos.id===c.position_id || !otherRecords.some(r=>r.position_id===pos.id));
   slot.innerHTML = `
     <div class="form-grid" style="margin-top:12px;">
+      <div class="field"><label>Position</label><select id="ec-position-${c.id}">${availablePositions.map(pos=>`<option value="${pos.id}" ${pos.id===c.position_id?'selected':''}>${pos.title}</option>`).join('')}</select></div>
       <div class="field"><label>Level of competence</label><select id="ec-level-${c.id}">${COMPETENCE_LEVELS.map(l=>`<option value="${l}" ${l===c.level?'selected':''}>${COMPETENCE_LEVEL_LABELS[l]}</option>`).join('')}</select></div>
       <div class="field"><label>Date (re-)validated</label><input type="date" id="ec-date-${c.id}" value="${c.date_validated||todayISO()}"></div>
       <div class="field"><label>Validated by — full name</label><input id="ec-valname-${c.id}" value="${(c.validated_by_name||'').replace(/"/g,'&quot;')}"></div>
@@ -9711,6 +9726,7 @@ window.saveEditCompetence = async function(competenceId){
   const c = STATE.competence.find(x=>x.id===competenceId);
   if(!c) return;
   const patch = {
+    position_id: document.getElementById('ec-position-'+competenceId).value,
     level: document.getElementById('ec-level-'+competenceId).value,
     date_validated: document.getElementById('ec-date-'+competenceId).value || null,
     validated_by_name: document.getElementById('ec-valname-'+competenceId).value.trim(),
@@ -11078,15 +11094,28 @@ function bulletinImageUrl(b){
   return data ? data.publicUrl : null;
 }
 
-// Inserts the image at the [IMAGE] token if the (already-escaped) text
+// The image sits in a light-grey square box at the admin's chosen size
+// (400/700/1000px), with an optional caption ("illustration note") shown
+// underneath, inside the box.
+function bulletinImageBoxHtml(b){
+  const imgUrl = bulletinImageUrl(b);
+  if(!imgUrl) return '';
+  const size = b.image_size || 700;
+  const caption = (b.image_caption || '').trim();
+  return `<div style="display:inline-block; background:var(--grey-tint,#F5F5F5); border:1px solid var(--border,#E3E1DF); border-radius:8px; padding:14px; margin:14px 0; text-align:center; max-width:100%; box-sizing:border-box;">
+    <img src="${imgUrl}" style="width:${size}px; height:${size}px; max-width:100%; object-fit:contain; border-radius:4px; display:block; margin:0 auto;">
+    ${caption ? `<div style="font-size:12px; color:var(--text-dim,#545454); margin-top:10px; max-width:${size}px;">${escapeHtml(caption)}</div>` : ''}
+  </div>`;
+}
+
+// Inserts the image box at the [IMAGE] token if the (already-escaped) text
 // contains one, otherwise places it above the text — see the migration's
 // design note for why a token beats a rigid position dropdown.
 function renderBulletinBodyHtml(b, escapedText){
-  const imgUrl = bulletinImageUrl(b);
-  if(!imgUrl) return escapedText;
-  const imgTag = `<img src="${imgUrl}" style="max-width:100%; border-radius:8px; margin:14px 0; display:block;">`;
+  const imgBox = bulletinImageBoxHtml(b);
+  if(!imgBox) return escapedText;
   const tokenRe = /\[image\]/i;
-  return tokenRe.test(escapedText) ? escapedText.replace(tokenRe, imgTag) : imgTag + escapedText;
+  return tokenRe.test(escapedText) ? escapedText.replace(tokenRe, imgBox) : imgBox + escapedText;
 }
 
 window.submitBulletin = async function(){
@@ -11099,6 +11128,8 @@ window.submitBulletin = async function(){
   const { data: newBulletin, error } = await STATE.supabase.from('bulletins').insert({
     organisation_id: STATE.org.id, type: document.getElementById('bf-type').value, title, content,
     published_date: document.getElementById('bf-date').value || todayISO(), created_by: STATE.user.id,
+    image_size: Number(document.getElementById('bf-image-size').value) || 700,
+    image_caption: document.getElementById('bf-image-caption').value.trim() || null,
   }).select().single();
   if(error){ toast('Could not publish: ' + error.message, 'error'); return; }
 
@@ -11120,6 +11151,7 @@ window.submitBulletin = async function(){
 
   toggleBulletinForm();
   document.querySelectorAll('#bulletin-form input, #bulletin-form textarea').forEach(el=>el.value='');
+  document.getElementById('bf-image-size').value = '700';
   await loadBulletins();
   renderBulletinsTable();
   toast(`${newBulletin.ref_code} published.`, 'success');
@@ -12079,13 +12111,23 @@ async function openBulletinDetail(id){
 
       <div class="detail-card" style="padding:14px 16px; margin-bottom:16px;">
         <div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Illustration Image</div>
-        ${imgUrl ? `<img src="${imgUrl}" style="max-width:280px; max-height:180px; object-fit:cover; border:1px solid var(--border); border-radius:8px; display:block; margin-bottom:8px;">` : `<p style="font-size:12px; color:var(--text-faint); margin-bottom:8px;">No image added yet.</p>`}
-        <input type="file" id="bul-image-input-${b.id}" accept="image/*" style="max-width:260px; font-size:10.5px;">
-        <div style="display:flex; gap:6px; margin-top:6px;">
-          <button class="btn-small primary" onclick="uploadBulletinImage('${b.id}')">${imgUrl ? 'Replace' : 'Upload'}</button>
-          ${imgUrl ? `<button class="btn-small" onclick="removeBulletinImage('${b.id}')">Remove</button>` : ''}
+        ${imgUrl ? `<img src="${imgUrl}" style="max-width:200px; max-height:150px; object-fit:cover; border:1px solid var(--border); border-radius:8px; display:block; margin-bottom:10px;">` : `<p style="font-size:12px; color:var(--text-faint); margin-bottom:10px;">No image added yet.</p>`}
+        <div class="form-grid" style="margin-bottom:8px;">
+          <div class="field"><label>${imgUrl ? 'Replace with' : 'Choose file'}</label><input type="file" id="bul-image-input-${b.id}" accept="image/*"></div>
+          <div class="field"><label>Size</label>
+            <select id="bul-image-size-${b.id}">
+              <option value="400" ${b.image_size===400?'selected':''}>Small (400 × 400)</option>
+              <option value="700" ${!b.image_size||b.image_size===700?'selected':''}>Medium (700 × 700)</option>
+              <option value="1000" ${b.image_size===1000?'selected':''}>Large (1000 × 1000)</option>
+            </select>
+          </div>
+          <div class="field"><label>Illustration note</label><input id="bul-image-caption-${b.id}" value="${(b.image_caption||'').replace(/"/g,'&quot;')}" placeholder="Caption shown below the image"></div>
         </div>
-        <p style="font-size:11px; color:var(--text-faint); margin-top:8px; line-height:1.5;">Positioned wherever <code>[IMAGE]</code> appears in the text below — otherwise shown above it.</p>
+        <div style="display:flex; gap:6px;">
+          <button class="btn-small primary" onclick="saveBulletinImage('${b.id}')">Save</button>
+          ${imgUrl ? `<button class="btn-small" onclick="removeBulletinImage('${b.id}')">Remove image</button>` : ''}
+        </div>
+        <p style="font-size:11px; color:var(--text-faint); margin-top:8px; line-height:1.5;">Positioned wherever <code>[IMAGE]</code> appears in the text below — otherwise shown above it. Size and note apply even without choosing a new file.</p>
       </div>
 
       <div style="font-size:14px; color:var(--text); line-height:1.7; white-space:pre-wrap; margin-bottom:20px;">${bodyHtml}</div>
@@ -12097,27 +12139,34 @@ window.openBulletinDetail = openBulletinDetail;
 function closeBulletinDetail(){ document.getElementById('bulletin-detail-slot').innerHTML = ''; }
 window.closeBulletinDetail = closeBulletinDetail;
 
-window.uploadBulletinImage = async function(id){
+window.saveBulletinImage = async function(id){
   const input = document.getElementById(`bul-image-input-${id}`);
   const file = input.files[0];
-  if(!file){ alert('Choose an image first.'); return; }
-  if(!file.type.startsWith('image/')){ alert('Please choose an image file.'); return; }
-
-  const resizeResult = await resizeImageFile(file, 1200, 0.85);
-  if(!resizeResult.ok){ toast('That image could not be processed — try a different photo (some phone photo formats like HEIC aren\'t readable by the browser).', 'error'); return; }
-  const path = `${STATE.org.id}/bulletin-images/${id}/${Date.now()}-${sanitizeFileName(resizeResult.file.name)}`;
-  const { error: uploadErr } = await STATE.supabase.storage.from('avatars').upload(path, resizeResult.file);
-  if(uploadErr){ toast('Could not upload the image: ' + uploadErr.message, 'error'); return; }
-
+  const size = Number(document.getElementById(`bul-image-size-${id}`).value) || 700;
+  const caption = document.getElementById(`bul-image-caption-${id}`).value.trim() || null;
   const b = bulletinById(id);
   const oldPath = b ? b.image_path : null;
-  const { error } = await STATE.supabase.from('bulletins').update({ image_path: path }).eq('id', id);
-  if(error){ toast('Image uploaded, but could not be saved to this record: ' + error.message, 'error'); return; }
-  if(oldPath) await STATE.supabase.storage.from('avatars').remove([oldPath]);
+  let newPath = oldPath;
+
+  if(file){
+    if(!file.type.startsWith('image/')){ alert('Please choose an image file.'); return; }
+    const resizeResult = await resizeImageFile(file, 1200, 0.85);
+    if(!resizeResult.ok){ toast('That image could not be processed — try a different photo (some phone photo formats like HEIC aren\'t readable by the browser).', 'error'); return; }
+    const path = `${STATE.org.id}/bulletin-images/${id}/${Date.now()}-${sanitizeFileName(resizeResult.file.name)}`;
+    const { error: uploadErr } = await STATE.supabase.storage.from('avatars').upload(path, resizeResult.file);
+    if(uploadErr){ toast('Could not upload the image: ' + uploadErr.message, 'error'); return; }
+    newPath = path;
+  } else if(!oldPath){
+    alert('Choose an image first.'); return;
+  }
+
+  const { error } = await STATE.supabase.from('bulletins').update({ image_path: newPath, image_size: size, image_caption: caption }).eq('id', id);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  if(file && oldPath) await STATE.supabase.storage.from('avatars').remove([oldPath]);
 
   await loadBulletins();
   openBulletinDetail(id);
-  toast('Image saved.', 'success');
+  toast('Image settings saved.', 'success');
 };
 
 window.removeBulletinImage = async function(id){
@@ -13727,7 +13776,19 @@ window.printAwAsset = async function(id){
     ['Serial number', a.serial_number || '—'], ['Condition / Health Status', health.text], ['Data Currency', dataStatus.text],
   ];
 
+  const photoUrl = awAssetPhotoUrl(a);
   let body = '';
+  body += `<div style="display:flex; gap:16px; margin-bottom:18px;">
+    ${photoUrl ? `<div style="text-align:center; background:#FAFAF9; border:1px solid #E3E1DF; border-radius:8px; padding:10px;">
+      <img src="${photoUrl}" style="width:150px; height:150px; object-fit:cover; border-radius:4px; display:block;">
+      <div style="font-size:10.5px; color:#615C59; margin-top:8px; font-weight:600;">Asset Photo</div>
+    </div>` : ''}
+    <div style="text-align:center; background:#FAFAF9; border:1px solid #E3E1DF; border-radius:8px; padding:10px;">
+      <img src="${awQrCodeUrl(a, 150)}" style="width:150px; height:150px; display:block;">
+      <div style="font-size:10.5px; color:#615C59; margin-top:8px; font-weight:600;">Asset QR Code</div>
+    </div>
+  </div>`;
+
   body += printSectionTitle('Application & Process Data');
   body += printTable(['Field','Value'], [
     ['Application', a.application || '—'],
@@ -13762,6 +13823,12 @@ window.printAwAsset = async function(id){
         r.recorded_by ? memberName(r.recorded_by) : (r.recorded_by_name ? `${r.recorded_by_name} (field)` : '—'), r.notes || '—',
       ];
     }));
+  }
+
+  const photoGallery = await buildPrintPhotoGallery(evidenceFiles);
+  if(photoGallery){
+    body += printSectionTitle('Condition / Inspection Photos');
+    body += photoGallery;
   }
 
   body += buildPrintSupportingDocsList(evidenceFiles);
