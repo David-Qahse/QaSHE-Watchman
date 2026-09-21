@@ -37,6 +37,8 @@
     --green-tint:#E9F5EE;
     --blue:#3B6EA5;
     --blue-tint:#EAF1F8;
+    --purple:#7B3FA0;
+    --purple-tint:#F3EAFB;
     --radius:10px;
   }
   *{box-sizing:border-box; margin:0; padding:0;}
@@ -405,6 +407,7 @@
   .date-badge.blue{background:var(--blue-tint); color:var(--blue);}
   .date-badge.yellow{background:var(--amber-tint); color:var(--amber);}
   .date-badge.red{background:var(--red-tint); color:var(--red);}
+  .date-badge.purple{background:var(--purple-tint); color:var(--purple);}
 
   .qw-modal-lg{width:75vw; max-width:1200px; height:75vh; max-height:820px;}
   .reminder-overlay{position:fixed; inset:0; background:rgba(30,28,27,.45); z-index:110; display:none; align-items:center; justify-content:center; padding:20px;}
@@ -1042,7 +1045,7 @@ const STATE = {
   members:[], memberMap:{},
   ncs:[], tasks:[], audits:[], risks:[], documents:[], suppliers:[], customers:[], satisfactionQuestions:[], objectives:[], legalRegister:[],
   positions:[], personnel:[], competence:[], training:[], positionKpis:[], appraisals:[],
-  assetChecklistTemplates:[], assetChecklistItems:[], assets:[], bulletins:[], attendance:[], leaveTypes:[], leaveApplications:[], expenseClaims:[], personnelRequests:[], overtimeRequests:[], awAssets:[], awComponents:[], awReadingTypes:[], awReadings:[], awSiteAssessments:[],
+  assetChecklistTemplates:[], assetChecklistItems:[], assets:[], bulletins:[], attendance:[], leaveTypes:[], leaveApplications:[], expenseClaims:[], personnelRequests:[], overtimeRequests:[], awAssets:[], awComponents:[], awReadingTypes:[], awReadings:[], awSiteAssessments:[], awSealReplacements:[],
   contentTemplates:[], contentTemplateSteps:[], contentTemplateKpis:[], orgFlowcharts:[], orgFlowchartSteps:[], orgFlowchartKpis:[],
   contentTemplateChecklistItems:[], contentTemplatePolicySections:[],
   orgChecklists:[], orgChecklistItems:[], orgChecklistRuns:[], orgChecklistRunItems:[],
@@ -1397,6 +1400,7 @@ window.selectOrg = async function(orgId){
   await loadAwReadingTypes();
   await loadAwReadings();
   await loadAwSiteAssessments();
+  await loadAwSealReplacements();
 
   hideAllGates();
   document.getElementById('view-landing').classList.remove('active');
@@ -1777,6 +1781,12 @@ async function loadAwSiteAssessments(){
   const { data, error } = await STATE.supabase.from('aw_site_assessments').select('*').eq('organisation_id', STATE.org.id).order('assessment_date', {ascending:false});
   if(error){ toast('Could not load Asset Watchman site assessments: ' + error.message, 'error'); return; }
   STATE.awSiteAssessments = data || [];
+}
+async function loadAwSealReplacements(){
+  if(!STATE.org.asset_watchman_enabled) return;
+  const { data, error } = await STATE.supabase.from('aw_seal_replacements').select('*').eq('organisation_id', STATE.org.id).order('replacement_date', {ascending:false});
+  if(error){ toast('Could not load Asset Watchman seal replacement history: ' + error.message, 'error'); return; }
+  STATE.awSealReplacements = data || [];
 }
 
 const MODULE_META = {
@@ -12320,6 +12330,113 @@ function awAssessmentBadge(assetId){
   return `<span class="date-badge red" style="margin-left:6px;"><span class="dd"></span>${pending} new site assessment${pending>1?'s':''}</span>`;
 }
 
+/* ---- Mechanical seal MTBF / ROI (Stage 7) — MRS supplies and monitors
+   mechanical seals, not whole-pump performance, so "MTBF" here is measured
+   from the CURRENT seal's own install date (original_date_installed),
+   which is reset every time a replacement is logged below — see Migration
+   037 design notes 1-2. Hours = leak-free calendar days x 24 (the client
+   confirmed there's no running-hours meter to draw on, so continuous
+   operation is assumed). ---- */
+function sealReplacementsForAsset(assetId){
+  return STATE.awSealReplacements.filter(r=>r.asset_id===assetId)
+    .slice().sort((x,y)=> new Date(y.replacement_date) - new Date(x.replacement_date));
+}
+function awLeakFreeDays(asset){
+  if(!asset.original_date_installed) return null;
+  const days = Math.floor((new Date(todayISO()+'T00:00:00') - new Date(asset.original_date_installed+'T00:00:00')) / 86400000);
+  return Math.max(0, days);
+}
+function awMtbfHours(asset){
+  const days = awLeakFreeDays(asset);
+  return days == null ? null : days * 24;
+}
+const AW_PERFORMANCE_BANDS = [
+  { upTo:500,      key:'poor',      label:'Poor',      state:'red' },
+  { upTo:1000,     key:'healthy',   label:'Healthy',   state:'yellow' },
+  { upTo:2000,     key:'good',      label:'Good',      state:'blue' },
+  { upTo:4000,     key:'very_good', label:'Very Good',  state:'green' },
+  { upTo:Infinity, key:'excellent', label:'Excellent', state:'purple' },
+];
+// Returns null when there's no install date to measure from yet (nothing
+// logged on the datasheet), so the report can say "Not yet installed"
+// instead of a misleading 0.
+function awPerformanceRating(asset){
+  const hours = awMtbfHours(asset);
+  if(hours == null) return null;
+  const band = AW_PERFORMANCE_BANDS.find(b => hours < b.upTo);
+  return { hours, days: awLeakFreeDays(asset), key:band.key, label:band.label, state:band.state };
+}
+function awPerformanceBadge(asset){
+  const r = awPerformanceRating(asset);
+  if(!r) return `<span class="date-badge blue"><span class="dd"></span>Seal not yet installed</span>`;
+  return `<span class="date-badge ${r.state}"><span class="dd"></span>${r.label} · ${r.days}d leak-free (${r.hours}h)</span>`;
+}
+// Health % — driven directly by the same manual Condition/Health Status
+// field the site-assessment QR flow writes to (Stage 6), i.e. "the
+// dropdown selection showing condition" the client asked for.
+const AW_HEALTH_PERCENT = { not_assessed:null, green:100, amber:60, red:25 };
+function awHealthPercent(asset){
+  const pct = AW_HEALTH_PERCENT[asset.health_status];
+  return pct == null ? null : pct;
+}
+const AW_FAILURE_MODES = [
+  'Dry running / lack of lubrication', 'Face wear / scoring', 'O-ring / elastomer degradation',
+  'Spring failure', 'Excessive vibration / misalignment', 'Thermal shock / cracking',
+  'Chemical attack / incompatibility', 'Incorrect fitment / installation damage',
+  'Abrasive wear (solids in medium)', 'Over-pressurisation', 'Other',
+];
+// ROI — a fixed commitment from the quotation (typically 25% of the
+// client's total annual pump-running cost), NOT derived from MTBF; MRS
+// track it here purely to keep the promise on record against the asset.
+function awRoiCommittedSaving(asset){
+  if(asset.roi_baseline_annual_cost == null) return null;
+  return asset.roi_baseline_annual_cost * (asset.roi_committed_savings_pct || 0) / 100;
+}
+function fmtCurrencyZAR(n){
+  if(n == null || isNaN(n)) return '—';
+  return 'R ' + Number(n).toLocaleString('en-ZA', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+// Simple inline-SVG bar chart: assessment dates (oldest->newest, left to
+// right) against condition level, colour-matched to the same green/amber/
+// red the rest of the module already uses. Self-contained so it prints
+// identically to how it renders on screen.
+const AW_CONDITION_BAR = {
+  good:{ h:1, color:'#2E7D4F', label:'Good' },
+  monitor:{ h:0.6, color:'#B8791C', label:'Monitor' },
+  critical:{ h:0.28, color:'#B21616', label:'Critical' },
+};
+function awAssessmentTrendChartSvg(assetId, widthPx, heightPx){
+  const rows = assessmentsForAsset(assetId).slice().reverse(); // oldest -> newest
+  widthPx = widthPx || 480; heightPx = heightPx || 160;
+  if(!rows.length){
+    return `<div style="font-size:12.5px; color:var(--text-faint); padding:20px 0; text-align:center;">No site assessments logged yet — the trend chart appears once the first one lands.</div>`;
+  }
+  const padL = 4, padR = 4, padTop = 10, padBottom = 28;
+  const chartH = heightPx - padTop - padBottom;
+  const n = rows.length;
+  const barGap = 6;
+  const barW = Math.max(6, Math.min(34, (widthPx - padL - padR - barGap*(n-1)) / n));
+  const totalBarsW = barW*n + barGap*(n-1);
+  const startX = padL + Math.max(0, (widthPx - padL - padR - totalBarsW) / 2);
+  let bars = '';
+  rows.forEach((sa, i) => {
+    const spec = AW_CONDITION_BAR[sa.condition] || AW_CONDITION_BAR.monitor;
+    const x = startX + i*(barW+barGap);
+    const h = Math.max(4, chartH * spec.h);
+    const y = padTop + (chartH - h);
+    const dateLabel = fmtDate(sa.assessment_date).replace(/ \d{4}$/,'');
+    bars += `<g>
+      <rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="3" style="fill:${spec.color}; stroke:none;"><title>${escapeHtml(fmtDate(sa.assessment_date))} — ${spec.label}${sa.assessor_name ? ' (assessed by '+escapeHtml(sa.assessor_name)+')' : ''}</title></rect>
+      <text x="${(x+barW/2).toFixed(1)}" y="${(padTop+chartH+16).toFixed(1)}" text-anchor="middle" style="font-family:'JetBrains Mono',monospace; font-size:8.5px; fill:#9C9895; stroke:none;">${escapeHtml(dateLabel)}</text>
+    </g>`;
+  });
+  return `<svg viewBox="0 0 ${widthPx} ${heightPx}" style="width:100%; height:${heightPx}px; stroke:none;" preserveAspectRatio="xMidYMid meet">
+    <line x1="${padL}" y1="${padTop+chartH}" x2="${widthPx-padR}" y2="${padTop+chartH}" style="stroke:#E3E1DF; stroke-width:1;"/>
+    ${bars}
+  </svg>`;
+}
+
 // The client-level traffic light is the worst state across its monitored
 // assets — one asset needing attention is enough to flag the whole client.
 const AW_STATE_RANK = { red:3, yellow:2, blue:1, green:0 };
@@ -13646,6 +13763,9 @@ window.awSaveDatasheet = async function(assetId){
   const val = fieldId => { const el = document.getElementById(fieldId); return el ? el.value.trim() : ''; };
   const lat = val(`awd-lat-${assetId}`), lng = val(`awd-lng-${assetId}`);
   const temp = val(`awd-temp-${assetId}`);
+  const installed = val(`awd-installed-${assetId}`);
+  const roiBaseline = val(`awd-roi-baseline-${assetId}`);
+  const roiPct = val(`awd-roi-pct-${assetId}`);
   const payload = {
     asset_type: val(`awd-type-${assetId}`),
     tag_number: val(`awd-tag-${assetId}`),
@@ -13658,13 +13778,16 @@ window.awSaveDatasheet = async function(assetId){
     medium_pumped: val(`awd-medium-${assetId}`),
     operating_temperature_c: temp ? Number(temp) : null,
     environment: val(`awd-environment-${assetId}`),
-    viscosity: val(`awd-viscosity-${assetId}`),
+    specific_gravity: val(`awd-specgrav-${assetId}`),
     mechanical_seal_type: val(`awd-sealtype-${assetId}`),
     mechanical_seal_faces: val(`awd-sealfaces-${assetId}`),
     elastomers: val(`awd-elastomers-${assetId}`),
-    api_configuration: val(`awd-apiconfig-${assetId}`),
-    support_system: val(`awd-support-${assetId}`),
+    seal_support_configuration: val(`awd-sealsupport-${assetId}`),
+    system_support_fluid: val(`awd-supportfluid-${assetId}`) === 'Other' ? val(`awd-supportfluid-other-${assetId}`) : val(`awd-supportfluid-${assetId}`),
     other_component_notes: val(`awd-othernotes-${assetId}`),
+    original_date_installed: installed || null,
+    roi_baseline_annual_cost: roiBaseline ? Number(roiBaseline) : null,
+    roi_committed_savings_pct: roiPct ? Number(roiPct) : 25,
   };
   const { error } = await STATE.supabase.from('aw_assets').update(payload).eq('id', assetId);
   if(error){ toast('Could not save the datasheet: ' + error.message, 'error'); return; }
@@ -13734,14 +13857,33 @@ window.openAwAssetDetail = async function(id){
           <div class="field span2"><label>Medium pumped</label><input id="awd-medium-${a.id}" value="${esc(a.medium_pumped)}" placeholder="e.g. Slurry, 45% solids"></div>
           <div class="field"><label>Operating temperature (°C)</label><input id="awd-temp-${a.id}" value="${a.operating_temperature_c ?? ''}"></div>
           <div class="field"><label>Environment</label><input id="awd-environment-${a.id}" value="${esc(a.environment)}" placeholder="e.g. Outdoor, corrosive atmosphere"></div>
-          <div class="field span2"><label>Viscosity</label><input id="awd-viscosity-${a.id}" value="${esc(a.viscosity)}" placeholder="e.g. 120 cSt @ 40°C"></div>
+          <div class="field span2"><label>Specific Gravity</label><input id="awd-specgrav-${a.id}" value="${esc(a.specific_gravity)}" placeholder="e.g. 0.98"></div>
           <div class="field span3"><label>Mechanical seal type</label><input id="awd-sealtype-${a.id}" value="${esc(a.mechanical_seal_type)}" placeholder="e.g. AESSEAL CDSA, single cartridge"></div>
           <div class="field span2"><label>Mechanical seal faces</label><input id="awd-sealfaces-${a.id}" value="${esc(a.mechanical_seal_faces)}" placeholder="e.g. Silicon carbide vs. carbon"></div>
           <div class="field"><label>Elastomers</label><input id="awd-elastomers-${a.id}" value="${esc(a.elastomers)}" placeholder="e.g. Viton"></div>
-          <div class="field span2"><label>API configuration</label><input id="awd-apiconfig-${a.id}" value="${esc(a.api_configuration)}" placeholder="e.g. API Plan 32"></div>
-          <div class="field"><label>Support system</label><input id="awd-support-${a.id}" value="${esc(a.support_system)}" placeholder="e.g. Barrier fluid reservoir"></div>
+          <div class="field span2"><label>Seal Support Configuration</label><input id="awd-sealsupport-${a.id}" value="${esc(a.seal_support_configuration)}" placeholder="e.g. API Plan 32"></div>
+          <div class="field"><label>System Support Fluid</label>
+            <select id="awd-supportfluid-${a.id}" onchange="document.getElementById('awd-supportfluid-other-${a.id}').style.display = this.value==='Other' ? 'block' : 'none';">
+              <option value="" ${!a.system_support_fluid?'selected':''}>—</option>
+              <option value="Oil" ${a.system_support_fluid==='Oil'?'selected':''}>Oil</option>
+              <option value="Water" ${a.system_support_fluid==='Water'?'selected':''}>Water</option>
+              <option value="Other" ${a.system_support_fluid && !['Oil','Water'].includes(a.system_support_fluid)?'selected':''}>Other</option>
+            </select>
+            <input id="awd-supportfluid-other-${a.id}" value="${esc(a.system_support_fluid && !['Oil','Water'].includes(a.system_support_fluid) ? a.system_support_fluid : '')}" placeholder="Specify fluid" style="margin-top:6px; display:${a.system_support_fluid && !['Oil','Water'].includes(a.system_support_fluid) ? 'block' : 'none'};">
+          </div>
           <div class="field span3"><label>Other components / notes</label><input id="awd-othernotes-${a.id}" value="${esc(a.other_component_notes)}" placeholder="Labyrinth seal, gland packing, bearings, impeller, shaft, coupling…"></div>
         </div>
+        <button class="btn-small primary" onclick="awSaveDatasheet('${a.id}')">Save datasheet</button>
+      </div>
+
+      <div class="detail-card" style="padding:16px; margin-bottom:16px;">
+        <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Mechanical Seal — Install &amp; ROI</h3></div>
+        <div class="form-grid" style="margin-bottom:10px;">
+          <div class="field"><label>Original date installed (current seal)</label><input type="date" id="awd-installed-${a.id}" value="${a.original_date_installed || ''}"></div>
+          <div class="field"><label>ROI baseline — annual pump running cost</label><input type="number" step="0.01" id="awd-roi-baseline-${a.id}" value="${a.roi_baseline_annual_cost ?? ''}" placeholder="e.g. 180000"></div>
+          <div class="field"><label>ROI committed saving (%)</label><input type="number" step="0.1" id="awd-roi-pct-${a.id}" value="${a.roi_committed_savings_pct ?? 25}"></div>
+        </div>
+        <p style="font-size:12px; color:var(--text-faint); margin-bottom:10px;">Baseline cost is the client's total cost of running this pump per year (water, electricity, etc.), from the quotation. Committed saving is what MRS promised — typically 25%. Committed annual saving: <b>${fmtCurrencyZAR(awRoiCommittedSaving(a))}</b>. This is the promise on record — MRS is building the actual-savings measurement as a future stage.</p>
         <button class="btn-small primary" onclick="awSaveDatasheet('${a.id}')">Save datasheet</button>
       </div>
 
@@ -13776,7 +13918,19 @@ window.openAwAssetDetail = async function(id){
         <button class="btn-small primary" onclick="awSaveHealthStatus('${a.id}')">Save assessment</button>
       </div>
 
+      <div class="detail-card" style="padding:16px; margin-bottom:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
+          <div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase;">Mechanical Seal Performance (MTBF)</div>
+          ${awPerformanceBadge(a)}
+        </div>
+        <p style="font-size:12px; color:var(--text-faint); margin-bottom:2px;">Measured from the current seal's install date — resets to zero each time a replacement is logged below. Health: <b>${awHealthPercent(a)==null?'—':awHealthPercent(a)+'%'}</b> (from the Condition / Health Status above).</p>
+      </div>
+
       ${renderAwSiteAssessmentsSection(a.id)}
+
+      ${renderAwConditionTrendSection(a.id)}
+
+      ${renderAwSealReplacementsSection(a)}
 
       ${renderAwReadingsSection(a.id, null)}
 
@@ -13807,8 +13961,12 @@ window.printAwAsset = async function(id){
   ];
 
   const photoUrl = awAssetPhotoUrl(a);
+  const healthPct = awHealthPercent(a);
+  const perf = awPerformanceRating(a);
+  const perfColorMap = { red:'#B21616', yellow:'#B8791C', blue:'#3B6EA5', green:'#2E7D4F', purple:'#7B3FA0' };
+  const perfColor = perf ? perfColorMap[perf.state] : '#9C9895';
   let body = '';
-  body += `<div style="display:flex; gap:16px; margin-bottom:18px;">
+  body += `<div style="display:flex; gap:16px; margin-bottom:18px; flex-wrap:wrap;">
     ${photoUrl ? `<div style="text-align:center; background:#FAFAF9; border:1px solid #E3E1DF; border-radius:8px; padding:10px;">
       <img src="${photoUrl}" style="width:150px; height:150px; object-fit:cover; border-radius:4px; display:block;">
       <div style="font-size:10.5px; color:#615C59; margin-top:8px; font-weight:600;">Asset Photo</div>
@@ -13816,6 +13974,15 @@ window.printAwAsset = async function(id){
     <div style="text-align:center; background:#FAFAF9; border:1px solid #E3E1DF; border-radius:8px; padding:10px;">
       <img src="${awQrCodeUrl(a, 150)}" style="width:150px; height:150px; display:block;">
       <div style="font-size:10.5px; color:#615C59; margin-top:8px; font-weight:600;">Asset QR Code</div>
+    </div>
+    <div style="text-align:center; background:#FAFAF9; border:1px solid #E3E1DF; border-radius:8px; padding:10px; width:150px; display:flex; flex-direction:column; justify-content:center;">
+      <div style="font-size:26px; font-weight:800; color:${healthPct==null?'#9C9895':'#333'};">${healthPct==null?'—':healthPct+'%'}</div>
+      <div style="font-size:10.5px; color:#615C59; margin-top:4px; font-weight:600;">Mechanical Seal Health</div>
+    </div>
+    <div style="text-align:center; background:#FAFAF9; border:1px solid #E3E1DF; border-radius:8px; padding:10px; width:150px; display:flex; flex-direction:column; justify-content:center;">
+      <div style="font-size:14px; font-weight:800; color:${perfColor};">${perf ? perf.label : 'Not installed'}</div>
+      <div style="font-size:10.5px; color:#615C59; margin-top:4px;">${perf ? perf.days+'d leak-free ('+perf.hours+'h)' : 'No install date on record'}</div>
+      <div style="font-size:9.5px; color:#9C9895; margin-top:6px; font-weight:600;">Seal Performance Rating</div>
     </div>
   </div>`;
 
@@ -13825,12 +13992,12 @@ window.printAwAsset = async function(id){
     ['Medium pumped', a.medium_pumped || '—'],
     ['Operating temperature (°C)', a.operating_temperature_c ?? '—'],
     ['Environment', a.environment || '—'],
-    ['Viscosity', a.viscosity || '—'],
+    ['Specific Gravity', a.specific_gravity || '—'],
     ['Mechanical seal type', a.mechanical_seal_type || '—'],
     ['Mechanical seal faces', a.mechanical_seal_faces || '—'],
     ['Elastomers', a.elastomers || '—'],
-    ['API configuration', a.api_configuration || '—'],
-    ['Support system', a.support_system || '—'],
+    ['Seal Support Configuration', a.seal_support_configuration || '—'],
+    ['System Support Fluid', a.system_support_fluid || '—'],
     ['Other components / notes', a.other_component_notes || '—'],
   ]);
 
@@ -13858,10 +14025,27 @@ window.printAwAsset = async function(id){
   const assessments = assessmentsForAsset(a.id);
   if(assessments.length){
     body += printSectionTitle('Site Assessments');
+    body += `<div style="background:#FAFAF9; border:1px solid #E3E1DF; border-radius:8px; padding:12px; margin-bottom:14px;">${awAssessmentTrendChartSvg(a.id, 700, 150)}</div>`;
     body += printTable(['Date','Assessor','Condition','Notes'], assessments.map(sa => [
       fmtDate(sa.assessment_date), sa.assessor_name, AW_CONDITION_LABELS[sa.condition] || sa.condition, sa.notes || '—',
     ]));
   }
+
+  const replacements = sealReplacementsForAsset(a.id);
+  if(replacements.length){
+    body += printSectionTitle('Seal Replacement History');
+    body += printTable(['Replaced','Previous install date','Leak-free days achieved','Failure mode','Notes'], replacements.map(r => [
+      fmtDate(r.replacement_date), r.previous_install_date ? fmtDate(r.previous_install_date) : '—',
+      r.leak_free_days ?? '—', r.failure_mode || '—', r.notes || '—',
+    ]));
+  }
+
+  body += printSectionTitle('ROI Commitment');
+  body += printTable(['Field','Value'], [
+    ['Baseline annual pump running cost', a.roi_baseline_annual_cost != null ? fmtCurrencyZAR(a.roi_baseline_annual_cost) : '—'],
+    ['Committed saving', (a.roi_committed_savings_pct || 25) + '%'],
+    ['Committed annual saving', fmtCurrencyZAR(awRoiCommittedSaving(a))],
+  ]);
 
   const photoGallery = await buildPrintPhotoGallery(evidenceFiles);
   if(photoGallery){
@@ -13904,6 +14088,94 @@ function renderAwSiteAssessmentsSection(assetId){
     </div>
   `;
 }
+
+function renderAwConditionTrendSection(assetId){
+  return `
+    <div class="detail-card" style="padding:16px; margin-bottom:16px;">
+      <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Condition Trend</h3></div>
+      <p style="font-size:12px; color:var(--text-faint); margin-bottom:8px;">Every site assessment, oldest to newest, colour-matched to its condition rating.</p>
+      ${awAssessmentTrendChartSvg(assetId, 640, 160)}
+    </div>
+  `;
+}
+
+function renderAwSealReplacementsSection(asset){
+  const rows = sealReplacementsForAsset(asset.id);
+  const esc = v => (v||'').toString().replace(/"/g,'&quot;');
+  return `
+    <div class="detail-card" style="padding:16px; margin-bottom:16px;">
+      <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Seal Replacement</h3></div>
+      <p style="font-size:12px; color:var(--text-faint); margin-bottom:10px;">Logging a replacement here freezes the current seal's leak-free run (for MTBF trending) and resets the "Original date installed" above to today's date, ready for the new seal.</p>
+      <div class="form-grid" style="margin-bottom:10px;">
+        <div class="field"><label>Replacement date</label><input type="date" id="awsr-date-${asset.id}" value="${todayISO()}"></div>
+        <div class="field span2"><label>Failure mode (leave blank if scheduled/preventive)</label>
+          <select id="awsr-failuremode-${asset.id}">
+            <option value="">— Scheduled / preventive replacement, not a failure —</option>
+            ${AW_FAILURE_MODES.map(f=>`<option value="${esc(f)}">${escapeHtml(f)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field span3"><label>Notes</label><input id="awsr-notes-${asset.id}" placeholder="Anything worth recording about this replacement"></div>
+      </div>
+      <button class="btn-small primary" onclick="awLogSealReplacement('${asset.id}')">Log replacement</button>
+      ${!rows.length ? `<p style="font-size:12.5px; color:var(--text-dim); margin-top:12px;">No replacements logged yet.</p>` : `
+      <table style="margin-top:14px;">
+        <tr><th>Replaced</th><th>Previous install date</th><th>Leak-free days achieved</th><th>Failure mode</th><th>Notes</th><th></th></tr>
+        ${rows.map(r => `<tr>
+          <td>${fmtDate(r.replacement_date)}</td>
+          <td>${r.previous_install_date ? fmtDate(r.previous_install_date) : '—'}</td>
+          <td>${r.leak_free_days ?? '—'}</td>
+          <td>${escapeHtml(r.failure_mode || 'Scheduled / preventive')}</td>
+          <td>${escapeHtml(r.notes || '—')}</td>
+          <td><button class="btn-small" onclick="awDeleteSealReplacement('${r.id}')">Delete</button></td>
+        </tr>`).join('')}
+      </table>`}
+    </div>
+  `;
+}
+
+window.awLogSealReplacement = async function(assetId){
+  const a = awAssetById(assetId);
+  if(!a) return;
+  const replacementDate = document.getElementById(`awsr-date-${assetId}`).value;
+  const failureMode = document.getElementById(`awsr-failuremode-${assetId}`).value || null;
+  const notes = document.getElementById(`awsr-notes-${assetId}`).value.trim();
+  if(!replacementDate){ toast('Choose a replacement date.', 'error'); return; }
+
+  const previousInstallDate = a.original_date_installed || null;
+  const leakFreeDays = previousInstallDate
+    ? Math.max(0, Math.floor((new Date(replacementDate+'T00:00:00') - new Date(previousInstallDate+'T00:00:00')) / 86400000))
+    : null;
+
+  const { error: insErr } = await STATE.supabase.from('aw_seal_replacements').insert({
+    organisation_id: STATE.org.id, asset_id: assetId, replacement_date: replacementDate,
+    previous_install_date: previousInstallDate, leak_free_days: leakFreeDays,
+    failure_mode: failureMode, notes: notes || null, recorded_by: STATE.user.id,
+  });
+  if(insErr){ toast('Could not log replacement: ' + insErr.message, 'error'); return; }
+
+  // A new seal just went in — reset the clock and give it a clean bill of
+  // health rather than carrying over the old seal's manual override.
+  const { error: updErr } = await STATE.supabase.from('aw_assets').update({
+    original_date_installed: replacementDate, health_status: 'not_assessed', health_notes: null,
+  }).eq('id', assetId);
+  if(updErr){ toast('Replacement logged, but could not reset the asset record: ' + updErr.message, 'error'); }
+
+  await loadAwSealReplacements();
+  await loadAwAssets();
+  toast('Seal replacement logged.', 'success');
+  openAwAssetDetail(assetId);
+  renderAwAssetsTable(STATE._awCustomerId);
+};
+
+window.awDeleteSealReplacement = async function(id){
+  if(!confirm('Delete this replacement record? This cannot be undone.')) return;
+  const rec = STATE.awSealReplacements.find(r=>r.id===id);
+  const { error } = await STATE.supabase.from('aw_seal_replacements').delete().eq('id', id);
+  if(error){ toast('Could not delete: ' + error.message, 'error'); return; }
+  await loadAwSealReplacements();
+  toast('Replacement record deleted.', 'success');
+  if(rec) openAwAssetDetail(rec.asset_id);
+};
 
 window.awAcknowledgeAssessment = async function(id){
   const { error } = await STATE.supabase.from('aw_site_assessments').update({
