@@ -1051,6 +1051,7 @@ const STATE = {
   orgChecklists:[], orgChecklistItems:[], orgChecklistRuns:[], orgChecklistRunItems:[],
   orgPolicies:[], orgPolicySections:[],
   _awView:'clients', _awCustomerId:null,
+  _allDocsDeptId:null, _allDocsTypeId:null,
   checklistTemplates:[],
   docDepartments:[], docTypes:[], formIdentifications:[], ncTypes:[],
   assessmentTemplates:[], assessmentItems:[], assessmentRecords:[], customerSurveys:[], bulkDocuments:[], fiveSInspections:[],
@@ -3198,28 +3199,7 @@ const RENDERERS = {
     <div id="pol-root"></div>
   `,
 
-  all_documents: () => `
-    <div class="toolbar">
-      <div></div>
-      <button class="btn-small" onclick="toggleBulkUploadPanel()">+ Upload Documents</button>
-      <button class="btn-small" onclick="exportModuleExcel('all_documents')">Export Excel</button>
-      <button class="btn-small" onclick="printCurrentRegister('all_documents','All Documents Register')">Print Register</button>
-    </div>
-    <div class="form-panel" id="bulkdoc-upload-panel">
-      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:10px;">Bulk upload</h3>
-      <input type="file" id="bulkdoc-files" multiple>
-      <div class="field" style="max-width:320px; margin:10px 0;"><label>Department (optional, applies to this whole upload)</label><select id="bulkdoc-department"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}</select></div>
-      <p style="font-size:11px; color:var(--text-faint); margin:8px 0 12px;">Select as many files as you need at once — accepted formats: PDF, Word, Excel, JPG, PNG. Maximum ${EVIDENCE_MAX_SIZE_MB}MB per file. Name files as <b>DocNumber_Description.ext</b> to have the document number read automatically.</p>
-      <button class="btn-primary" onclick="uploadBulkDocuments()" id="bulkdoc-upload-btn">Upload</button>
-      <div id="bulkdoc-progress" style="margin-top:12px;"></div>
-    </div>
-    <div class="field" style="max-width:380px; margin-bottom:14px;">
-      <input type="text" id="bulkdoc-search" placeholder="Search by document number or name…" oninput="filterBulkDocuments(this.value)">
-    </div>
-    <div class="panel" style="padding:0; overflow:hidden;">
-      <div id="bulkdoc-table-wrap"></div>
-    </div>
-  `,
+  all_documents: () => `<div id="alldocs-root"></div>`,
 
   five_s: () => `
     <div class="toolbar">
@@ -13661,13 +13641,14 @@ function renderAwAssetsTable(customerId){
     return;
   }
   wrap.innerHTML = `<table>
-    <tr><th>Ref</th><th>Tag</th><th>Serial</th><th>Description</th><th>Location</th><th>Data Status</th><th>Health</th></tr>
+    <tr><th>Ref</th><th>Tag</th><th>Serial</th><th>MRS Job No.</th><th>Description</th><th>Location</th><th>Data Status</th><th>Health</th></tr>
     ${rows.map(a=>{
       const location = [a.location_plant, a.location_site].filter(Boolean).join(', ') || '—';
       return `<tr class="clickable" onclick="openAwAssetDetail('${a.id}')">
         <td class="mono-cell">${a.ref_code}</td>
         <td>${a.tag_number || '—'}</td>
         <td>${a.serial_number || '—'}</td>
+        <td>${a.mrs_job_number || '—'}</td>
         <td class="strong">${a.description}</td>
         <td>${location}</td>
         <td>${awDataStatusBadge(a)}</td>
@@ -13770,6 +13751,7 @@ window.awSaveDatasheet = async function(assetId){
     asset_type: val(`awd-type-${assetId}`),
     tag_number: val(`awd-tag-${assetId}`),
     serial_number: val(`awd-serial-${assetId}`),
+    mrs_job_number: val(`awd-jobnumber-${assetId}`),
     location_site: val(`awd-site-${assetId}`),
     location_plant: val(`awd-plant-${assetId}`),
     location_lat: lat ? Number(lat) : null,
@@ -13817,6 +13799,7 @@ window.openAwAssetDetail = async function(id){
       <div class="detail-meta">
         <div class="dm-item"><div class="l">Client</div><div class="v">${c ? c.name : '—'}</div></div>
         <div class="dm-item"><div class="l">Tag number</div><div class="v">${a.tag_number || '—'}</div></div>
+        <div class="dm-item"><div class="l">MRS Job Number</div><div class="v">${a.mrs_job_number || '—'}</div></div>
         <div class="dm-item"><div class="l">Type</div><div class="v">${a.asset_type || '—'}</div></div>
         <div class="dm-item"><div class="l">Location</div><div class="v">${[a.location_plant, a.location_site].filter(Boolean).join(', ') || '—'}</div></div>
       </div>
@@ -13849,6 +13832,7 @@ window.openAwAssetDetail = async function(id){
           <div class="field"><label>Asset / equipment type</label><input id="awd-type-${a.id}" value="${esc(a.asset_type)}" placeholder="e.g. Centrifugal Pump"></div>
           <div class="field"><label>Tag number</label><input id="awd-tag-${a.id}" value="${esc(a.tag_number)}"></div>
           <div class="field"><label>Serial number</label><input id="awd-serial-${a.id}" value="${esc(a.serial_number)}"></div>
+          <div class="field"><label>MRS Job Number</label><input id="awd-jobnumber-${a.id}" value="${esc(a.mrs_job_number)}" placeholder="Traceability to the sales/job record"></div>
           <div class="field"><label>Site</label><input id="awd-site-${a.id}" value="${esc(a.location_site)}"></div>
           <div class="field"><label>Plant / area</label><input id="awd-plant-${a.id}" value="${esc(a.location_plant)}"></div>
           <div class="field"><label>GPS latitude</label><input id="awd-lat-${a.id}" value="${a.location_lat ?? ''}" placeholder="e.g. -26.204100"></div>
@@ -13957,7 +13941,8 @@ window.printAwAsset = async function(id){
   const meta = [
     ['Client', c ? c.name : '—'], ['Tag number', a.tag_number || '—'], ['Asset / equipment type', a.asset_type || '—'],
     ['Location', [a.location_plant, a.location_site].filter(Boolean).join(', ') || '—'],
-    ['Serial number', a.serial_number || '—'], ['Condition / Health Status', health.text], ['Data Currency', dataStatus.text],
+    ['Serial number', a.serial_number || '—'], ['MRS Job Number', a.mrs_job_number || '—'],
+    ['Condition / Health Status', health.text], ['Data Currency', dataStatus.text],
   ];
 
   const photoUrl = awAssetPhotoUrl(a);
@@ -16032,17 +16017,212 @@ window.saveAdminMemberAccess = async function(userId){
   renderAdminTeam();
 };
 
+/* ============================================================================
+   All Documents — Department -> Document Type -> Register drill-down.
+   Departments and document types are org-configurable lists shared with
+   the Document Control module (document_departments / document_types) —
+   nothing new to maintain twice. Landing on Departments first, then
+   Types, then the actual register mirrors the Asset Watchman
+   Clients -> Assets pattern already used elsewhere in the app.
+   ============================================================================ */
 async function renderBulkDocumentsRegister(){
-  const wrap = document.getElementById('bulkdoc-table-wrap');
-  if(!wrap) return;
-  wrap.innerHTML = '<div class="empty-state"><p>Loading…</p></div>';
+  const root = document.getElementById('alldocs-root');
+  if(!root) return;
+  root.innerHTML = '<div class="empty-state"><p>Loading…</p></div>';
   const { data, error } = await STATE.supabase.from('bulk_documents').select('*').eq('organisation_id', STATE.org.id).order('doc_number', {ascending:true});
   if(error){ toast('Could not load documents: ' + error.message, 'error'); return; }
   STATE.bulkDocuments = data || [];
-  const searchInput = document.getElementById('bulkdoc-search');
-  renderBulkDocumentsTable(searchInput ? searchInput.value : '');
+  renderAllDocsView();
 }
 window.renderBulkDocumentsRegister = renderBulkDocumentsRegister;
+
+function renderAllDocsView(){
+  const root = document.getElementById('alldocs-root');
+  if(!root) return;
+  if(STATE._allDocsDeptId !== null && STATE._allDocsTypeId !== null){
+    root.innerHTML = renderAllDocsRegisterShell(STATE._allDocsDeptId, STATE._allDocsTypeId);
+    renderBulkDocumentsTable('');
+  } else if(STATE._allDocsDeptId !== null){
+    root.innerHTML = renderAllDocsTypesShell(STATE._allDocsDeptId);
+  } else {
+    root.innerHTML = renderAllDocsDepartmentsShell();
+  }
+}
+window.renderAllDocsView = renderAllDocsView;
+
+function allDocsDeptDocs(deptId){
+  return deptId === '' ? STATE.bulkDocuments.filter(d=>!d.department_id) : STATE.bulkDocuments.filter(d=>d.department_id===deptId);
+}
+function allDocsTypeDocs(deptId, typeId){
+  const deptDocs = allDocsDeptDocs(deptId);
+  return typeId === '' ? deptDocs.filter(d=>!d.document_type_id) : deptDocs.filter(d=>d.document_type_id===typeId);
+}
+
+/* ---- Level 1: Departments ---- */
+function renderAllDocsDepartmentsShell(){
+  const depts = STATE.docDepartments.filter(d=>d.is_active);
+  const unfiledCount = allDocsDeptDocs('').length;
+  return `
+    <div class="toolbar">
+      <div class="filters"><div></div></div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn-small" onclick="exportModuleExcel('all_documents')">Export Excel</button>
+        <button class="btn-small" onclick="printCurrentRegister('all_documents','All Documents Register')">Print Register</button>
+        <button class="btn-primary btn-add" onclick="toggleAllDocsAddDeptForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Department</button>
+      </div>
+    </div>
+    <div class="form-panel" id="alldocs-add-dept-form">
+      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:10px;">Add a department</h3>
+      <div class="form-grid">
+        <div class="field"><label>Code</label><input id="alldocs-dept-code" maxlength="8" placeholder="e.g. OPS" style="text-transform:uppercase;"></div>
+        <div class="field span2"><label>Name</label><input id="alldocs-dept-name" placeholder="e.g. Operations"></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-cancel" onclick="toggleAllDocsAddDeptForm()">Cancel</button>
+        <button class="btn-primary" onclick="submitAllDocsAddDept()">Add department</button>
+      </div>
+    </div>
+    ${!depts.length ? `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg><p>No departments set up yet — add one above (e.g. Operations, Quality, HR) to start organising documents by department and type.</p></div>` : `
+    <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px;">
+      ${depts.map(d => {
+        const count = allDocsDeptDocs(d.id).length;
+        return `<div class="oc-card" onclick="allDocsOpenDept('${d.id}')">
+          <div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:4px;">${escapeHtml(d.code)}</div>
+          <div style="font-family:'Poppins'; font-weight:600; font-size:15px; margin-bottom:6px;">${escapeHtml(d.name)}</div>
+          <div style="font-size:12px; color:var(--text-dim);">${count} document${count===1?'':'s'}</div>
+        </div>`;
+      }).join('')}
+    </div>`}
+    ${unfiledCount ? `<p style="margin-top:16px;"><button class="btn-small" onclick="allDocsOpenDept('')">${unfiledCount} document${unfiledCount===1?'':'s'} not yet filed under a department →</button></p>` : ''}
+  `;
+}
+
+window.toggleAllDocsAddDeptForm = function(){ document.getElementById('alldocs-add-dept-form').classList.toggle('open'); };
+
+window.submitAllDocsAddDept = async function(){
+  const code = document.getElementById('alldocs-dept-code').value.trim().toUpperCase();
+  const name = document.getElementById('alldocs-dept-name').value.trim();
+  if(!code || !name){ alert('Both a code and a name are required.'); return; }
+  const { error } = await STATE.supabase.from('document_departments').insert({ organisation_id: STATE.org.id, code, name, created_by: STATE.user.id });
+  if(error){ toast('Could not add department: ' + error.message, 'error'); return; }
+  await loadDocDepartments();
+  toast('Department added.', 'success');
+  renderAllDocsView();
+};
+
+/* ---- Level 2: Document Types within a department ---- */
+window.allDocsOpenDept = function(deptId){
+  STATE._allDocsDeptId = deptId;
+  STATE._allDocsTypeId = null;
+  renderAllDocsView();
+};
+window.allDocsBackToDepts = function(){
+  STATE._allDocsDeptId = null;
+  STATE._allDocsTypeId = null;
+  renderAllDocsView();
+};
+
+function renderAllDocsTypesShell(deptId){
+  const dept = deptId === '' ? null : STATE.docDepartments.find(d=>d.id===deptId);
+  if(deptId !== '' && !dept) return '<div class="empty-state"><p>Department not found.</p></div>';
+  const deptLabel = deptId === '' ? 'Unfiled documents' : dept.name;
+  const types = STATE.docTypes.filter(t=>t.is_active);
+  const unfiledCount = allDocsTypeDocs(deptId, '').length;
+  return `
+    <div class="toolbar">
+      <div class="filters">
+        <button class="btn-small" onclick="allDocsBackToDepts()">← All Departments</button>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn-primary btn-add" onclick="toggleAllDocsAddTypeForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Document Type</button>
+      </div>
+    </div>
+    <h3 style="font-family:'Poppins'; font-size:17px; font-weight:600; margin-bottom:14px;">${escapeHtml(deptLabel)}</h3>
+    <div class="form-panel" id="alldocs-add-type-form">
+      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:10px;">Add a document type</h3>
+      <div class="form-grid">
+        <div class="field"><label>Code</label><input id="alldocs-type-code" maxlength="8" placeholder="e.g. POL" style="text-transform:uppercase;"></div>
+        <div class="field span2"><label>Name</label><input id="alldocs-type-name" placeholder="e.g. Policies"></div>
+      </div>
+      <p style="font-size:11px; color:var(--text-faint); margin:6px 0 10px;">e.g. Policies, Procedures, Forms, Registers, Checklists. Document types apply across all departments.</p>
+      <div class="form-actions">
+        <button class="btn-cancel" onclick="toggleAllDocsAddTypeForm()">Cancel</button>
+        <button class="btn-primary" onclick="submitAllDocsAddType()">Add document type</button>
+      </div>
+    </div>
+    ${!types.length ? `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg><p>No document types set up yet — add one above (e.g. Policies, Procedures, Forms, Registers, Checklists).</p></div>` : `
+    <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px;">
+      ${types.map(t => {
+        const count = allDocsTypeDocs(deptId, t.id).length;
+        return `<div class="oc-card" onclick="allDocsOpenType('${t.id}')">
+          <div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:4px;">${escapeHtml(t.code)}</div>
+          <div style="font-family:'Poppins'; font-weight:600; font-size:15px; margin-bottom:6px;">${escapeHtml(t.name)}</div>
+          <div style="font-size:12px; color:var(--text-dim);">${count} document${count===1?'':'s'}</div>
+        </div>`;
+      }).join('')}
+    </div>`}
+    ${unfiledCount ? `<p style="margin-top:16px;"><button class="btn-small" onclick="allDocsOpenType('')">${unfiledCount} document${unfiledCount===1?'':'s'} in this department not yet assigned a type →</button></p>` : ''}
+  `;
+}
+
+window.toggleAllDocsAddTypeForm = function(){ document.getElementById('alldocs-add-type-form').classList.toggle('open'); };
+
+window.submitAllDocsAddType = async function(){
+  const code = document.getElementById('alldocs-type-code').value.trim().toUpperCase();
+  const name = document.getElementById('alldocs-type-name').value.trim();
+  if(!code || !name){ alert('Both a code and a name are required.'); return; }
+  const { error } = await STATE.supabase.from('document_types').insert({ organisation_id: STATE.org.id, code, name, created_by: STATE.user.id });
+  if(error){ toast('Could not add document type: ' + error.message, 'error'); return; }
+  await loadDocTypes();
+  toast('Document type added.', 'success');
+  renderAllDocsView();
+};
+
+/* ---- Level 3: The register — the actual documents for this
+   department + type, where bulk upload happens (already tagged with
+   both, no picker needed) ---- */
+window.allDocsOpenType = function(typeId){
+  STATE._allDocsTypeId = typeId;
+  renderAllDocsView();
+};
+window.allDocsBackToTypes = function(){
+  STATE._allDocsTypeId = null;
+  renderAllDocsView();
+};
+
+function renderAllDocsRegisterShell(deptId, typeId){
+  const dept = deptId === '' ? null : STATE.docDepartments.find(d=>d.id===deptId);
+  const type = typeId === '' ? null : STATE.docTypes.find(t=>t.id===typeId);
+  const deptLabel = deptId === '' ? 'Unfiled documents' : (dept ? dept.name : 'Department not found');
+  const typeLabel = typeId === '' ? 'No type assigned' : (type ? type.name : 'Type not found');
+  return `
+    <div class="toolbar">
+      <div class="filters">
+        <button class="btn-small" onclick="allDocsBackToDepts()">← All Departments</button>
+        <button class="btn-small" onclick="allDocsBackToTypes()">← ${escapeHtml(deptLabel)}</button>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn-small" onclick="toggleBulkUploadPanel()">+ Upload Documents</button>
+        <button class="btn-small" onclick="exportModuleExcel('all_documents')">Export Excel</button>
+        <button class="btn-small" onclick="printCurrentRegister('all_documents','All Documents Register')">Print Register</button>
+      </div>
+    </div>
+    <h3 style="font-family:'Poppins'; font-size:17px; font-weight:600; margin-bottom:14px;">${escapeHtml(deptLabel)} · ${escapeHtml(typeLabel)}</h3>
+    <div class="form-panel" id="bulkdoc-upload-panel">
+      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:10px;">Bulk upload into ${escapeHtml(deptLabel)} · ${escapeHtml(typeLabel)}</h3>
+      <input type="file" id="bulkdoc-files" multiple>
+      <p style="font-size:11px; color:var(--text-faint); margin:8px 0 12px;">Select as many files as you need at once — accepted formats: PDF, Word, Excel, JPG, PNG. Maximum ${EVIDENCE_MAX_SIZE_MB}MB per file. Every file lands here, already filed under ${escapeHtml(deptLabel)} · ${escapeHtml(typeLabel)}. Name files as <b>DocNumber_Description.ext</b> to have the document number read automatically.</p>
+      <button class="btn-primary" onclick="uploadBulkDocuments()" id="bulkdoc-upload-btn">Upload</button>
+      <div id="bulkdoc-progress" style="margin-top:12px;"></div>
+    </div>
+    <div class="field" style="max-width:380px; margin-bottom:14px;">
+      <input type="text" id="bulkdoc-search" placeholder="Search by document number or name…" oninput="filterBulkDocuments(this.value)">
+    </div>
+    <div class="panel" style="padding:0; overflow:hidden;">
+      <div id="bulkdoc-table-wrap"></div>
+    </div>
+  `;
+}
 
 // Filters what's already loaded in memory rather than re-querying the
 // database on every keystroke — instant, and the search stays responsive
@@ -16054,15 +16234,16 @@ window.filterBulkDocuments = function(term){
 function renderBulkDocumentsTable(searchTerm){
   const wrap = document.getElementById('bulkdoc-table-wrap');
   if(!wrap) return;
+  const scoped = allDocsTypeDocs(STATE._allDocsDeptId, STATE._allDocsTypeId);
   const term = (searchTerm || '').trim().toLowerCase();
   const data = term
-    ? STATE.bulkDocuments.filter(d =>
+    ? scoped.filter(d =>
         (d.doc_number || '').toLowerCase().includes(term) ||
         (d.file_name || '').toLowerCase().includes(term))
-    : STATE.bulkDocuments;
+    : scoped;
 
-  if(!STATE.bulkDocuments.length){
-    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg><p>No documents uploaded yet.</p></div>`;
+  if(!scoped.length){
+    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg><p>No documents uploaded here yet — use "+ Upload Documents" above.</p></div>`;
     return;
   }
   if(!data.length){
@@ -16070,10 +16251,10 @@ function renderBulkDocumentsTable(searchTerm){
     return;
   }
   wrap.innerHTML = `<table>
-    <tr><th>Document Number</th><th>Department</th><th>Current</th><th>Approved</th><th></th></tr>
-    ${data.map(d=>{ const dept = STATE.docDepartments.find(x=>x.id===d.department_id); return `<tr>
+    <tr><th>Document Number</th><th>File</th><th>Current</th><th>Approved</th><th></th></tr>
+    ${data.map(d=>{ return `<tr>
       <td class="mono-cell strong" id="bulkdoc-num-${d.id}">${d.doc_number || '—'}</td>
-      <td>${dept ? dept.name : '—'}</td>
+      <td>${escapeHtml(d.file_name || '—')}</td>
       <td>${d.current_status ? pill('yes') : pill('no')}</td>
       <td>${d.approved_status ? pill('yes') : pill('no')}</td>
       <td style="text-align:right; white-space:nowrap;">
@@ -16086,6 +16267,7 @@ function renderBulkDocumentsTable(searchTerm){
       <div class="form-grid" style="margin-bottom:8px;">
         <div class="field span2"><label>Document Number</label><input id="bulkdoc-edit-num-${d.id}" value="${(d.doc_number||'').replace(/"/g,'&quot;')}"></div>
         <div class="field"><label>Department</label><select id="bulkdoc-edit-dept-${d.id}"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}" ${d.department_id===x.id?'selected':''}>${x.name}</option>`).join('')}</select></div>
+        <div class="field"><label>Document Type</label><select id="bulkdoc-edit-type-${d.id}"><option value="">None</option>${STATE.docTypes.filter(x=>x.is_active).map(x=>`<option value="${x.id}" ${d.document_type_id===x.id?'selected':''}>${x.name}</option>`).join('')}</select></div>
       </div>
       <label style="font-size:12px; margin-right:16px;"><input type="checkbox" id="bulkdoc-edit-current-${d.id}" ${d.current_status?'checked':''} style="width:auto; margin-right:6px;">Current</label>
       <label style="font-size:12px; margin-right:16px;"><input type="checkbox" id="bulkdoc-edit-approved-${d.id}" ${d.approved_status?'checked':''} style="width:auto; margin-right:6px;">Approved</label>
@@ -16104,12 +16286,13 @@ window.saveBulkDocEdit = async function(id){
   const patch = {
     doc_number: document.getElementById('bulkdoc-edit-num-'+id).value.trim(),
     department_id: document.getElementById('bulkdoc-edit-dept-'+id).value || null,
+    document_type_id: document.getElementById('bulkdoc-edit-type-'+id).value || null,
     current_status: document.getElementById('bulkdoc-edit-current-'+id).checked,
     approved_status: document.getElementById('bulkdoc-edit-approved-'+id).checked,
   };
   const { error } = await STATE.supabase.from('bulk_documents').update(patch).eq('id', id);
   if(error){ toast('Could not save: ' + error.message, 'error'); return; }
-  renderBulkDocumentsRegister();
+  await renderBulkDocumentsRegister();
   toast('Updated.', 'success');
 };
 
@@ -16127,7 +16310,10 @@ window.uploadBulkDocuments = async function(){
 
   const btn = document.getElementById('bulkdoc-upload-btn');
   const progressEl = document.getElementById('bulkdoc-progress');
-  const departmentId = document.getElementById('bulkdoc-department').value || null;
+  // Already scoped by which department/type register we're inside — '' means
+  // deliberately unfiled at that level, so it's kept as null on the row.
+  const departmentId = STATE._allDocsDeptId || null;
+  const documentTypeId = STATE._allDocsTypeId || null;
   btn.disabled = true;
   let successCount = 0, failCount = 0;
 
@@ -16142,6 +16328,7 @@ window.uploadBulkDocuments = async function(){
       organisation_id: STATE.org.id, file_name: file.name, storage_path: path,
       file_type: file.type, file_size: file.size, uploaded_by: STATE.user.id,
       doc_number: docNumber, doc_description: description, department_id: departmentId,
+      document_type_id: documentTypeId,
     });
     if(rowErr){ failCount++; } else { successCount++; }
   }
@@ -16158,7 +16345,7 @@ window.deleteBulkDocument = async function(id, storagePath){
   await STATE.supabase.storage.from('documents').remove([storagePath]);
   const { error } = await STATE.supabase.from('bulk_documents').delete().eq('id', id);
   if(error){ toast('Could not delete: ' + error.message, 'error'); return; }
-  renderBulkDocumentsRegister();
+  await renderBulkDocumentsRegister();
   toast('Document deleted.', 'success');
 };
 
@@ -17151,6 +17338,7 @@ function getModuleExportConfig(moduleKey){
       {header:'Client', get:r=>{ const c = customerById(r.customer_id); return c ? c.name : ''; }},
       {header:'Region', get:r=>{ const c = customerById(r.customer_id); return (c && c.region) || ''; }},
       {header:'Tag Number', get:r=>r.tag_number||''}, {header:'Serial Number', get:r=>r.serial_number||''},
+      {header:'MRS Job Number', get:r=>r.mrs_job_number||''},
       {header:'Description', get:r=>r.description}, {header:'Asset Type', get:r=>r.asset_type||''},
       {header:'Site', get:r=>r.location_site||''}, {header:'Plant/Area', get:r=>r.location_plant||''},
       {header:'Data Status', get:r=>awDataStatusInfo(r).text},
@@ -17158,8 +17346,9 @@ function getModuleExportConfig(moduleKey){
       {header:'Health Status', get:r=>awHealthStatusInfo(r).text}, {header:'Health Notes', get:r=>r.health_notes||''},
     ]},
     all_documents: { rows: STATE.bulkDocuments, filename: `all-documents-${orgSlug}.xlsx`, columns: [
-      {header:'Document Number', get:r=>r.doc_number},
+      {header:'Document Number', get:r=>r.doc_number}, {header:'File', get:r=>r.file_name||''},
       {header:'Department', get:r=>{ const d = STATE.docDepartments.find(x=>x.id===r.department_id); return d ? d.name : ''; }},
+      {header:'Document Type', get:r=>{ const t = STATE.docTypes.find(x=>x.id===r.document_type_id); return t ? t.name : ''; }},
       {header:'Current', get:r=>r.current_status ? 'Yes' : 'No'}, {header:'Approved', get:r=>r.approved_status ? 'Yes' : 'No'},
     ]},
     five_s: { rows: STATE.fiveSInspections, filename: `5s-inspections-${orgSlug}.xlsx`, columns: [
