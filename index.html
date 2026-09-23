@@ -2417,6 +2417,7 @@ const RENDERERS = {
         <div class="field span3"><label>Contact details of all involved people or organisations</label><textarea id="f-contact-details" placeholder="Names, roles, phone numbers, email addresses"></textarea></div>
         <div class="field"><label>Severity</label><select id="f-severity"><option value="minor">Minor</option><option value="major">Major</option><option value="critical">Critical</option></select></div>
         <div class="field"><label>Owner</label><select id="f-owner">${memberOptions(STATE.user.id)}</select></div>
+        <div class="field"><label>Personnel this concerns (optional)</label><select id="f-personnel"><option value="">None</option>${STATE.personnel.filter(p=>p.status==='active').map(p=>`<option value="${p.id}">${p.full_name} (${p.ref_code})</option>`).join('')}</select></div>
         <div class="field"><label>Target close date</label><input type="date" id="f-target" value="${todayISO()}"></div>
         <div class="field"><label>Supplier (if applicable)</label><select id="f-supplier" onchange="toggleSupplierSeverityField()"><option value="">None</option>${STATE.suppliers.map(s=>`<option value="${s.id}">${s.ref_code} — ${s.name}</option>`).join('')}</select></div>
         <div class="field"><label>Process (if applicable)</label><select id="f-process"><option value="">None</option>${STATE.processes.map(p=>`<option value="${p.id}">${p.ref_code} — ${p.name}</option>`).join('')}</select></div>
@@ -2528,6 +2529,10 @@ const RENDERERS = {
         <div class="field"><label>Assignee</label><select id="tf-assignee">${memberOptions(STATE.user.id)}</select></div>
         <div class="field"><label>Priority</label><select id="tf-priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></div>
         <div class="field"><label>Due date</label><input type="date" id="tf-due" value="${todayISO()}"></div>
+        <div class="field"><label>Personnel this concerns (optional)</label><select id="tf-personnel">
+          <option value="">None</option>
+          ${STATE.personnel.filter(p=>p.status==='active').map(p=>`<option value="${p.id}">${p.full_name} (${p.ref_code})</option>`).join('')}
+        </select></div>
       </div>
       <div class="form-actions">
         <button class="btn-cancel" onclick="toggleTaskForm()">Cancel</button>
@@ -2596,6 +2601,7 @@ const RENDERERS = {
         <div class="field"><label id="rf-impact-label">Impact</label><select id="rf-impact">${SCALE_1_5.map(v=>`<option value="${v}" ${v==='3'?'selected':''}>${v}</option>`).join('')}</select></div>
         <div class="field"><label>Owner</label><select id="rf-owner">${memberOptions(STATE.user.id)}</select></div>
         <div class="field"><label>Review date</label><input type="date" id="rf-review" value="${todayISO()}"></div>
+        <div class="field"><label>Department</label><select id="rf-department"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}</select></div>
       </div>
       <div class="form-actions">
         <button class="btn-cancel" onclick="toggleRiskForm()">Cancel</button>
@@ -2697,6 +2703,7 @@ const RENDERERS = {
         <div class="field"><label>Contact email</label><input id="sf-contact-email" type="email"></div>
         <div class="field"><label>Contact phone</label><input id="sf-contact-phone"></div>
         <div class="field"><label>Internal owner</label><select id="sf-owner">${memberOptions(STATE.user.id)}</select></div>
+        <div class="field"><label>Department</label><select id="sf-department"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}</select></div>
       </div>
       <div class="form-actions">
         <button class="btn-cancel" onclick="toggleSupplierForm()">Cancel</button>
@@ -2864,6 +2871,7 @@ const RENDERERS = {
         <div class="field span3"><label>Legal document description</label><textarea id="lf-description" placeholder="What this requirement covers and why it applies"></textarea></div>
         <div class="field"><label>Owner</label><select id="lf-owner">${memberOptions(STATE.user.id)}</select></div>
         <div class="field"><label>Next review due date</label><input type="date" id="lf-next-review" value="${todayISO()}"></div>
+        <div class="field"><label>Department</label><select id="lf-department"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}</select></div>
       </div>
       <div class="form-actions">
         <button class="btn-cancel" onclick="toggleLegalForm()">Cancel</button>
@@ -3271,6 +3279,7 @@ const RENDERERS = {
         <div class="field"><label>Inputs</label><textarea id="pf-inputs" placeholder="What feeds into this process"></textarea></div>
         <div class="field"><label>Outputs</label><textarea id="pf-outputs" placeholder="What this process produces"></textarea></div>
         <div class="field span2"><label>Departments / areas involved</label><input id="pf-departments" placeholder="e.g. Sales, Finance, Operations — processes usually cross more than one"></div>
+        <div class="field"><label>Department</label><select id="pf-department"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}</select></div>
       </div>
       <div class="form-actions">
         <button class="btn-cancel" onclick="toggleProcessForm()">Cancel</button>
@@ -3355,6 +3364,7 @@ window.submitNC = async function(){
     severity: document.getElementById('f-severity').value,
     raised_by: STATE.user.id,
     owner_id: document.getElementById('f-owner').value,
+    personnel_id: document.getElementById('f-personnel').value || null,
     target_close_date,
     supplier_id: document.getElementById('f-supplier').value || null,
     process_id: document.getElementById('f-process').value || null,
@@ -3527,6 +3537,7 @@ async function openNCDetail(id){
       <div class="form-grid" style="margin-bottom:16px;">
         ${renderTitleCategoryPicker('d', n.title)}
         <div class="field"><label>Department</label><select id="d-department"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}" ${n.department_id===x.id?'selected':''}>${x.name}</option>`).join('')}</select></div>
+        <div class="field"><label>Personnel this concerns</label><select id="d-personnel"><option value="">None</option>${STATE.personnel.map(p=>`<option value="${p.id}" ${n.personnel_id===p.id?'selected':''}>${p.full_name} (${p.ref_code})</option>`).join('')}</select></div>
         <div class="field"><label>Containment action</label>
           <select id="d-containment">
             <option value="">Not set</option>
@@ -4181,6 +4192,7 @@ window.saveNCDetail = async function(id){
     contact_details: document.getElementById('d-contact-details').value.trim(),
     status: newStatus, correction: correction,
     department_id: document.getElementById('d-department').value || null,
+    personnel_id: document.getElementById('d-personnel').value || null,
     containment_action: document.getElementById('d-containment').value || null,
     preventive_action: document.getElementById('d-preventive').value.trim(),
     preventive_action_effectiveness: document.getElementById('d-effectiveness').value.trim(),
@@ -4253,12 +4265,14 @@ window.submitTask = async function(){
     assignee_id: document.getElementById('tf-assignee').value,
     priority: document.getElementById('tf-priority').value,
     due_date,
+    personnel_id: document.getElementById('tf-personnel').value || null,
     created_by: STATE.user.id,
   };
   const { error } = await STATE.supabase.from('tasks').insert(payload);
   if(error){ toast('Could not add task: ' + error.message, 'error'); return; }
   toggleTaskForm();
   document.querySelectorAll('#task-form input, #task-form textarea').forEach(el=>el.value='');
+  const tfp = document.getElementById('tf-personnel'); if(tfp) tfp.value='';
   await loadTasks();
   renderTaskTable();
   updateNavBadges();
@@ -4323,6 +4337,7 @@ async function openTaskDetail(id){
         <div class="dm-item"><div class="l">Priority</div><div class="v" style="text-transform:capitalize">${t.priority}</div></div>
         <div class="dm-item"><div class="l">Due</div><div class="v">${fmtDate(t.due_date)}</div></div>
         <div class="dm-item"><div class="l">Status</div><div class="v">${pill(t.status)}</div></div>
+        <div class="dm-item"><div class="l">Personnel this concerns</div><div class="v">${t.personnel_id ? (personById(t.personnel_id)?personById(t.personnel_id).full_name:'—') : '—'}</div></div>
       </div>
       <p style="font-size:13.5px; color:var(--text-dim); margin-bottom:16px; line-height:1.55;">${t.description || 'No description recorded.'}</p>
 
@@ -4335,6 +4350,15 @@ async function openTaskDetail(id){
           <option value="done" ${t.status==='done'?'selected':''}>Done</option>
         </select>
         <button class="btn-small primary" onclick="saveTaskStatus('${t.id}')">Update status</button>
+      </div>
+
+      <div class="status-row">
+        <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase;">Personnel this concerns</label>
+        <select id="dt-personnel">
+          <option value="">None</option>
+          ${STATE.personnel.map(p=>`<option value="${p.id}" ${t.personnel_id===p.id?'selected':''}>${p.full_name} (${p.ref_code})</option>`).join('')}
+        </select>
+        <button class="btn-small primary" onclick="saveTaskPersonnel('${t.id}')">Save</button>
       </div>
 
       <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Comments</div>
@@ -4411,6 +4435,16 @@ window.saveTaskStatus = async function(id){
   openTaskDetail(id);
   renderTaskTable();
   updateNavBadges();
+};
+
+window.saveTaskPersonnel = async function(id){
+  const personnel_id = document.getElementById('dt-personnel').value || null;
+  const { error } = await STATE.supabase.from('tasks').update({ personnel_id }).eq('id', id);
+  if(error){ toast('Could not update task: ' + error.message, 'error'); return; }
+  await loadTasks();
+  openTaskDetail(id);
+  renderTaskTable();
+  toast('Task updated.', 'success');
 };
 
 window.addTaskComment = async function(id){
@@ -5102,6 +5136,7 @@ window.submitRisk = async function(){
     impact: parseInt(document.getElementById('rf-impact').value, 10),
     owner_id: document.getElementById('rf-owner').value,
     review_date: document.getElementById('rf-review').value || null,
+    department_id: document.getElementById('rf-department').value || null,
     created_by: STATE.user.id,
   };
   const { error } = await STATE.supabase.from('risk_register').insert(payload);
@@ -5165,6 +5200,7 @@ async function openRiskDetail(id){
         <div class="dm-item"><div class="l">Residual score</div><div class="v">${scoreBadge(r.residual_score)}</div></div>
         <div class="dm-item"><div class="l">Owner</div><div class="v">${memberName(r.owner_id)}</div></div>
         <div class="dm-item"><div class="l">Review date</div><div class="v">${fmtDate(r.review_date)}</div></div>
+        <div class="dm-item"><div class="l">Department</div><div class="v">${r.department_id ? (STATE.docDepartments.find(x=>x.id===r.department_id)||{}).name||'—' : '—'}</div></div>
       </div>
       <p style="font-size:13.5px; color:var(--text-dim); margin-bottom:16px; line-height:1.55;">${r.description || 'No description recorded.'}</p>
 
@@ -5172,6 +5208,7 @@ async function openRiskDetail(id){
         <div class="field span3"><label>Treatment plan</label><textarea id="rd-treatment" placeholder="How this is being addressed / pursued">${r.treatment_plan||''}</textarea></div>
         <div class="field"><label>Residual ${isOpp?'probability':'likelihood'}</label><select id="rd-res-likelihood">${SCALE_1_5.map(v=>`<option value="${v}" ${String(r.residual_likelihood)===v?'selected':''}>${v}</option>`).join('')}</select></div>
         <div class="field"><label>Residual ${isOpp?'benefit':'impact'}</label><select id="rd-res-impact">${SCALE_1_5.map(v=>`<option value="${v}" ${String(r.residual_impact)===v?'selected':''}>${v}</option>`).join('')}</select></div>
+        <div class="field"><label>Department</label><select id="rd-department"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}" ${r.department_id===x.id?'selected':''}>${x.name}</option>`).join('')}</select></div>
       </div>
 
       <div class="status-row">
@@ -5218,6 +5255,7 @@ window.saveRiskDetail = async function(id){
     residual_likelihood: parseInt(document.getElementById('rd-res-likelihood').value, 10),
     residual_impact: parseInt(document.getElementById('rd-res-impact').value, 10),
     status: document.getElementById('rd-status').value,
+    department_id: document.getElementById('rd-department').value || null,
   };
   const { error } = await STATE.supabase.from('risk_register').update(patch).eq('id', id);
   if(error){ toast('Could not save changes: ' + error.message, 'error'); return; }
@@ -7684,6 +7722,7 @@ window.submitSupplier = async function(){
     contact_email: document.getElementById('sf-contact-email').value.trim(),
     contact_phone: document.getElementById('sf-contact-phone').value.trim(),
     owner_id: document.getElementById('sf-owner').value,
+    department_id: document.getElementById('sf-department').value || null,
     created_by: STATE.user.id,
   };
   const { data: newSup, error } = await STATE.supabase.from('suppliers').insert(payload).select().single();
@@ -7748,6 +7787,7 @@ async function openSupplierDetail(id){
         <div class="dm-item"><div class="l">Owner</div><div class="v">${memberName(s.owner_id)}</div></div>
         <div class="dm-item"><div class="l">Contact</div><div class="v">${s.contact_name || '—'}</div></div>
         <div class="dm-item"><div class="l">Total NCs logged</div><div class="v">${excCount ?? 0}</div></div>
+        <div class="dm-item"><div class="l">Department</div><div class="v">${s.department_id ? (STATE.docDepartments.find(x=>x.id===s.department_id)||{}).name||'—' : '—'}</div></div>
       </div>
       <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:16px;">${s.contact_email||''}${s.contact_email && s.contact_phone ? ' · ' : ''}${s.contact_phone||''}</p>
 
@@ -7757,6 +7797,12 @@ async function openSupplierDetail(id){
         <button class="btn-small primary" onclick="saveSupplierStatus('${s.id}')">Update status</button>
       </div>
       <div id="sup-status-warning"></div>
+
+      <div class="status-row">
+        <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase;">Department</label>
+        <select id="sd-department"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}" ${s.department_id===x.id?'selected':''}>${x.name}</option>`).join('')}</select>
+        <button class="btn-small primary" onclick="saveSupplierDepartment('${s.id}')">Save</button>
+      </div>
 
       ${renderAssessmentSection('supplier', s.id, assessments || [], s.risk_classification)}
 
@@ -8148,6 +8194,16 @@ window.saveSupplierStatus = async function(supplierId){
   renderSuppliersTable();
   updateNavBadges();
   toast('Status updated.', 'success');
+};
+
+window.saveSupplierDepartment = async function(supplierId){
+  const department_id = document.getElementById('sd-department').value || null;
+  const { error } = await STATE.supabase.from('suppliers').update({ department_id }).eq('id', supplierId);
+  if(error){ toast('Could not save department: ' + error.message, 'error'); return; }
+  await loadSuppliers();
+  openSupplierDetail(supplierId);
+  renderSuppliersTable();
+  toast('Department saved.', 'success');
 };
 
 /* ============ Customers & Satisfaction Surveys ============ */
@@ -9078,6 +9134,7 @@ window.submitLegal = async function(){
     description: document.getElementById('lf-description').value.trim(),
     owner_id: document.getElementById('lf-owner').value,
     next_review_due_date: document.getElementById('lf-next-review').value || null,
+    department_id: document.getElementById('lf-department').value || null,
     created_by: STATE.user.id,
   };
   const { data: newItem, error } = await STATE.supabase.from('legal_register').insert(payload).select().single();
@@ -9133,8 +9190,15 @@ async function openLegalDetail(id){
         <div class="dm-item"><div class="l">Owner</div><div class="v">${memberName(l.owner_id)}</div></div>
         <div class="dm-item"><div class="l">Last reviewed</div><div class="v">${fmtDate(l.last_reviewed_date)}</div></div>
         <div class="dm-item"><div class="l">Next review due</div><div class="v">${fmtDate(l.next_review_due_date)}</div></div>
+        <div class="dm-item"><div class="l">Department</div><div class="v">${l.department_id ? (STATE.docDepartments.find(x=>x.id===l.department_id)||{}).name||'—' : '—'}</div></div>
       </div>
       <p style="font-size:13.5px; color:var(--text-dim); margin-bottom:18px; line-height:1.55;">${l.description || 'No description recorded.'}</p>
+
+      <div class="status-row">
+        <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase;">Department</label>
+        <select id="ld-department"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}" ${l.department_id===x.id?'selected':''}>${x.name}</option>`).join('')}</select>
+        <button class="btn-small primary" onclick="saveLegalDepartment('${l.id}')">Save</button>
+      </div>
 
       <div class="panel-head"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Compliance reviews</h3>
         <button class="btn-small primary" onclick="toggleLegalReviewForm()">+ Log review</button>
@@ -9243,6 +9307,16 @@ window.submitLegalReview = async function(legalId){
   renderLegalTable();
   updateNavBadges();
   toast('Review logged.', 'success');
+};
+
+window.saveLegalDepartment = async function(legalId){
+  const department_id = document.getElementById('ld-department').value || null;
+  const { error } = await STATE.supabase.from('legal_register').update({ department_id }).eq('id', legalId);
+  if(error){ toast('Could not save department: ' + error.message, 'error'); return; }
+  await loadLegalRegister();
+  openLegalDetail(legalId);
+  renderLegalTable();
+  toast('Department saved.', 'success');
 };
 
 window.promoteLegalFinding = async function(reviewId, legalId){
@@ -9480,7 +9554,23 @@ async function openPersonDetail(id){
   const records = competenceFor(id);
   const primary = records.find(c=>c.is_primary);
   const subs = records.filter(c=>!c.is_primary);
-  const linkedNcs = p.linked_profile_id ? STATE.ncs.filter(n=>n.owner_id===p.linked_profile_id) : [];
+  // Matches on personnel_id directly (works for every personnel record) and
+  // also on owner_id via a linked login (only when one exists) — a person
+  // can turn up in either set, so the two are merged and de-duplicated.
+  const linkedNcs = (() => {
+    const byPersonnel = STATE.ncs.filter(n=>n.personnel_id===id);
+    const byOwnerLogin = p.linked_profile_id ? STATE.ncs.filter(n=>n.owner_id===p.linked_profile_id) : [];
+    const seen = new Set(byPersonnel.map(n=>n.id));
+    return byPersonnel.concat(byOwnerLogin.filter(n=>!seen.has(n.id)));
+  })();
+  // These three cross-references match directly on personnel_id/
+  // responsible_person_id/recognised_person_id — unlike NC's owner_id
+  // (which only ever points to a system login), so these work for every
+  // personnel record regardless of whether they have a Watchman login.
+  const linkedAppraisals = STATE.appraisals.filter(x=>x.personnel_id===id);
+  const linkedAssets = STATE.assets.filter(x=>x.responsible_person_id===id);
+  const linkedRaga = (STATE.ragaAlerts||[]).filter(x=>x.recognised_person_id===id);
+  const linkedTasks = (STATE.tasks||[]).filter(x=>x.personnel_id===id);
   const { data: compliments } = await STATE.supabase.from('compliments').select('*').eq('personnel_id', id).order('compliment_date', {ascending:false});
 
   document.getElementById('pers-detail-slot').innerHTML = `
@@ -9547,7 +9637,7 @@ async function openPersonDetail(id){
         </select>
         <button class="btn-small primary" onclick="savePersonLink('${p.id}')">Save link</button>
       </div>
-      <p style="font-size:11px; color:var(--text-faint); margin-bottom:16px;">Only relevant if this person also has a Watchman login — linking it is what lets their nonconformances show up below.</p>
+      <p style="font-size:11px; color:var(--text-faint); margin-bottom:16px;">Only relevant if this person also has a Watchman login — linking it is what lets nonconformances they own (via that login) show up below, in addition to any linked directly to this personnel record.</p>
 
       ${STATE.org.hr_enabled ? `
       <div class="status-row">
@@ -9563,11 +9653,30 @@ async function openPersonDetail(id){
 
       <div id="person-training-list" style="margin-bottom:16px;"></div>
 
-      ${p.linked_profile_id ? `
       <div style="margin-bottom:16px;">
-        <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Nonconformances (as owner)</div>
-        ${linkedNcs.length ? linkedNcs.map(n=>`<span class="linked-task-chip" style="cursor:pointer;" onclick="showModule('nonconformances'); setTimeout(()=>openNCDetail('${n.id}'),0);">${n.ref_code} — ${n.title} — ${pill(n.status)}</span>`).join('') : '<p style="font-size:12.5px; color:var(--text-faint);">No nonconformances owned by this person.</p>'}
-      </div>` : ''}
+        <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Nonconformances</div>
+        ${linkedNcs.length ? linkedNcs.map(n=>`<span class="linked-task-chip" style="cursor:pointer;" onclick="showModule('nonconformances'); setTimeout(()=>openNCDetail('${n.id}'),0);">${n.ref_code} — ${n.title} — ${pill(n.status)}</span>`).join('') : (p.linked_profile_id ? '<p style="font-size:12.5px; color:var(--text-faint);">No nonconformances linked to this person.</p>' : '<p style="font-size:12.5px; color:var(--text-faint);">No nonconformances linked to this person yet — an NC can be linked directly to this personnel record (via "Personnel this concerns" on the NC) or, once a Watchman login is linked above, by ownership.</p>')}
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Appraisals &amp; KPIs</div>
+        ${linkedAppraisals.length ? linkedAppraisals.map(a=>`<span class="linked-task-chip" style="cursor:pointer;" onclick="showModule('appraisals'); setTimeout(()=>openAppraisalDetail('${a.id}'),0);">${a.ref_code} — ${fmtDate(a.period_start)}–${fmtDate(a.period_end)} — ${pill(a.status)}</span>`).join('') : '<p style="font-size:12.5px; color:var(--text-faint);">No appraisals recorded for this person yet.</p>'}
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Assets — Responsible For</div>
+        ${linkedAssets.length ? linkedAssets.map(a=>`<span class="linked-task-chip" style="cursor:pointer;" onclick="showModule('assets'); setTimeout(()=>openAssetDetail('${a.id}'),0);">${a.ref_code} — ${escapeHtml(a.description||'')}</span>`).join('') : '<p style="font-size:12.5px; color:var(--text-faint);">This person isn\'t the responsible person for any asset.</p>'}
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">RAGA — Recognitions (Green Alerts)</div>
+        ${linkedRaga.length ? linkedRaga.map(r=>`<span class="linked-task-chip" style="cursor:pointer;" onclick="showModule('raga'); setTimeout(()=>openRagaDetail('${r.id}'),0);">${r.ref_code} — ${escapeHtml(r.title||'')} — ${pill(r.status)}</span>`).join('') : '<p style="font-size:12.5px; color:var(--text-faint);">No RAGA recognitions recorded for this person yet.</p>'}
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Tasks</div>
+        ${linkedTasks.length ? linkedTasks.map(t=>`<span class="linked-task-chip" style="cursor:pointer;" onclick="showModule('tasks'); setTimeout(()=>openTaskDetail('${t.id}'),0);">${escapeHtml(t.title||'')} — ${pill(t.status)}</span>`).join('') : '<p style="font-size:12.5px; color:var(--text-faint);">No tasks linked to this person.</p>'}
+      </div>
 
       <div style="margin-bottom:16px;">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
@@ -14831,6 +14940,7 @@ window.submitProcess = async function(){
     inputs: document.getElementById('pf-inputs').value.trim(),
     outputs: document.getElementById('pf-outputs').value.trim(),
     departments_involved: document.getElementById('pf-departments').value.trim(),
+    department_id: document.getElementById('pf-department').value || null,
     created_by: STATE.user.id,
   });
   if(error){ toast('Could not add the process: ' + error.message, 'error'); return; }
@@ -14967,6 +15077,7 @@ async function openProcessDetail(id){
         <div class="dm-item"><div class="l">Review frequency</div><div class="v" style="text-transform:capitalize">${p.review_frequency||'—'}</div></div>
         <div class="dm-item"><div class="l">Departments involved</div><div class="v">${p.departments_involved||'—'}</div></div>
         <div class="dm-item"><div class="l">Status</div><div class="v">${pill(p.status)}</div></div>
+        <div class="dm-item"><div class="l">Department</div><div class="v">${p.department_id ? (STATE.docDepartments.find(x=>x.id===p.department_id)||{}).name||'—' : '—'}</div></div>
       </div>
       <div class="status-row" style="flex-direction:column; align-items:flex-start;">
         <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Document Control</label>
@@ -14974,6 +15085,7 @@ async function openProcessDetail(id){
           <div class="field"><label>Document number</label><input id="proc-docnum" value="${p.doc_number||''}"></div>
           <div class="field"><label>Revision</label><input id="proc-rev" value="${p.revision||''}"></div>
           <div class="field"><label>Revision date</label><input type="date" id="proc-revdate" value="${p.revision_date||''}"></div>
+          <div class="field"><label>Department</label><select id="proc-department"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}" ${p.department_id===x.id?'selected':''}>${x.name}</option>`).join('')}</select></div>
         </div>
         <button class="btn-small primary" style="margin-top:8px;" onclick="saveProcessDocInfo('${p.id}')">Save</button>
       </div>
@@ -15131,6 +15243,7 @@ window.saveProcessDocInfo = async function(processId){
     doc_number: document.getElementById('proc-docnum').value.trim(),
     revision: document.getElementById('proc-rev').value.trim(),
     revision_date: document.getElementById('proc-revdate').value || null,
+    department_id: document.getElementById('proc-department').value || null,
   }).eq('id', processId);
   if(error){ toast('Could not save: ' + error.message, 'error'); return; }
   await loadProcesses();
@@ -15738,6 +15851,7 @@ function renderAdminProcesses(){
         <div class="field"><label>Inputs</label><textarea id="pf-inputs" placeholder="What feeds into it"></textarea></div>
         <div class="field"><label>Outputs</label><textarea id="pf-outputs" placeholder="What it produces"></textarea></div>
         <div class="field span2"><label>Departments involved</label><input id="pf-departments" placeholder="e.g. Sales, Warehouse, Finance"></div>
+        <div class="field"><label>Department</label><select id="pf-department"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}</select></div>
       </div>
       <button class="btn-small primary" onclick="submitProcess()">Add process</button>
     </div>
