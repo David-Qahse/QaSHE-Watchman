@@ -2649,8 +2649,8 @@ const RENDERERS = {
       <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:14px;">Add a controlled document</h3>
       <div class="form-grid">
         <div class="field span3"><label>Title / description</label><input id="df-title" placeholder="e.g. Welding Procedure Specification"></div>
-        <div class="field"><label>Department</label><select id="df-department">${STATE.docDepartments.filter(d=>d.is_active).map(d=>`<option value="${d.id}">${d.code}: ${d.name}</option>`).join('')}</select></div>
-        <div class="field"><label>Document type</label><select id="df-type">${STATE.docTypes.filter(t=>t.is_active).map(t=>`<option value="${t.id}">${t.code}: ${t.name}</option>`).join('')}</select></div>
+        <div class="field"><label>Department</label><select id="df-department" onchange="updateDfNextNumberPreview()">${STATE.docDepartments.filter(d=>d.is_active).map(d=>`<option value="${d.id}">${d.code}: ${d.name}</option>`).join('')}</select></div>
+        <div class="field"><label>Document type</label><select id="df-type" onchange="updateDfNextNumberPreview()">${STATE.docTypes.filter(t=>t.is_active).map(t=>`<option value="${t.id}">${t.code}: ${t.name}</option>`).join('')}</select></div>
         <div class="field"><label>Owner</label><select id="df-owner">${memberOptions(STATE.user.id)}</select></div>
         <div class="field"><label>Developer</label><select id="df-developer">${memberOptions(STATE.user.id)}</select></div>
         <div class="field"><label>Approver</label><select id="df-approver">${memberOptions()}</select></div>
@@ -2658,6 +2658,7 @@ const RENDERERS = {
         <div class="field span2"><label>Revision 0 — change description</label><input id="df-rev-desc" placeholder="e.g. Initial issue" value="Initial issue"></div>
         <div class="field"><label>Revision 0 — file (optional)</label><input type="file" id="df-file"></div>
       </div>
+      <p id="df-next-number-preview" style="font-size:12px; color:var(--text-faint); margin:-4px 0 10px;"></p>
       <div class="form-actions">
         <button class="btn-cancel" onclick="toggleDocForm()">Cancel</button>
         <button class="btn-primary" onclick="submitDocument()">Add document</button>
@@ -3331,6 +3332,7 @@ const RENDERERS = {
         <button class="btn-small ${STATE._adminSubtab==='team'?'primary':''}" onclick="switchAdminSubtab('team')">Team &amp; Access</button>
         <button class="btn-small ${STATE._adminSubtab==='processes'?'primary':''}" onclick="switchAdminSubtab('processes')">Processes</button>
         <button class="btn-small ${STATE._adminSubtab==='moduleinfo'?'primary':''}" onclick="switchAdminSubtab('moduleinfo')">Module Info</button>
+        <button class="btn-small ${STATE._adminSubtab==='masterregister'?'primary':''}" onclick="switchAdminSubtab('masterregister')">Master Documents Register</button>
         ${STATE.profile.is_platform_staff ? `<button class="btn-small ${STATE._adminSubtab==='templatelibrary'?'primary':''}" onclick="switchAdminSubtab('templatelibrary')">Template Library</button>` : ''}
       </div>
     </div>
@@ -5847,8 +5849,29 @@ window.deleteEvidence = async function(id, storagePath, entityType, entityId){
 /* ============ Document Control ============ */
 function documentById(id){ return STATE.documents.find(d=>d.id===id); }
 
-function toggleDocForm(){ document.getElementById('doc-form').classList.toggle('open'); }
+function toggleDocForm(){
+  document.getElementById('doc-form').classList.toggle('open');
+  updateDfNextNumberPreview();
+}
 window.toggleDocForm = toggleDocForm;
+
+// Live, best-effort preview of what Document Number Document Control will
+// assign on save — the actual number is still generated server-side when
+// the document is created, this just answers "what would be next?" using
+// the same sequence logic as the Master Documents Register.
+window.updateDfNextNumberPreview = function(){
+  const previewEl = document.getElementById('df-next-number-preview');
+  if(!previewEl) return;
+  const deptId = document.getElementById('df-department') ? document.getElementById('df-department').value : '';
+  const typeId = document.getElementById('df-type') ? document.getElementById('df-type').value : '';
+  const dept = STATE.docDepartments.find(d=>d.id===deptId);
+  const type = STATE.docTypes.find(t=>t.id===typeId);
+  if(!dept || !type){ previewEl.textContent = ''; return; }
+  const { sequences } = masterDocRegistryData();
+  const match = sequences.find(g=>g.dept.id===dept.id && g.type.id===type.id);
+  const next = match ? match.nextNumber : `${dept.code}-${type.code}-001`;
+  previewEl.innerHTML = `Next available number for ${escapeHtml(dept.name)} · ${escapeHtml(type.name)}: <b class="mono-cell">${next}</b> (predicted — the actual number is assigned when you save).`;
+};
 
 /* ---- Manage departments & types ---- */
 function toggleDocListsPanel(){
@@ -14678,6 +14701,33 @@ function parseBulkDocFilename(filename){
   };
 }
 
+// Auto-classification: given a parsed doc number like "GOV-POL-004", try to
+// match its leading tokens against the org's configured department and
+// document-type codes (the same codes Document Control uses), so a bulk
+// upload of disciplined, well-named files can be filed automatically
+// without the person stepping through the Departments -> Types drill-down.
+// Returns {department_id, document_type_id} — either can be null when no
+// confident match is found, in which case the file lands in "Unfiled"
+// (department_id null) exactly as it does today, ready for manual review.
+function autoDetectDeptType(docNumber){
+  if(!docNumber) return { department_id:null, document_type_id:null };
+  const tokens = docNumber.split('-').map(t=>t.trim().toUpperCase()).filter(Boolean);
+  const deptCodes = STATE.docDepartments.filter(d=>d.is_active);
+  const typeCodes = STATE.docTypes.filter(t=>t.is_active);
+  let department_id = null, document_type_id = null;
+  // Department code is expected to be the first token, type code the second
+  // (the same GOV-POL-001 convention Document Control already documents).
+  if(tokens.length >= 1){
+    const d = deptCodes.find(x=>x.code && x.code.toUpperCase() === tokens[0]);
+    if(d) department_id = d.id;
+  }
+  if(tokens.length >= 2){
+    const t = typeCodes.find(x=>x.code && x.code.toUpperCase() === tokens[1]);
+    if(t) document_type_id = t.id;
+  }
+  return { department_id, document_type_id };
+}
+
 function toggleBulkUploadPanel(){
   document.getElementById('bulkdoc-upload-panel').classList.toggle('open');
 }
@@ -15788,8 +15838,106 @@ function renderAdminSubtabContent(tab){
   if(tab === 'team') renderAdminTeam();
   if(tab === 'processes') renderAdminProcesses();
   if(tab === 'moduleinfo') renderAdminModuleInfo();
+  if(tab === 'masterregister') renderAdminMasterDocRegister();
   if(tab === 'templatelibrary') renderTemplateLibrary();
 }
+
+// ============ Master Documents Register ============
+// A single sequence check across BOTH places a document number can come
+// from — documents formally created in Document Control (`documents`) and
+// files filed or bulk-uploaded in All Documents (`bulk_documents`) — since
+// a client may bulk-upload historical documents that should still slot
+// into the same running sequence as new ones created going forward.
+// Grouped by department + type (the same GOV-POL-001 convention), it lists
+// each sequence, flags any gaps or duplicates, and separately lists any
+// document number that doesn't match a known department/type code at all.
+function masterDocRegistryData(){
+  const deptByCode = {}; STATE.docDepartments.filter(d=>d.is_active).forEach(d=>{ deptByCode[d.code.toUpperCase()] = d; });
+  const typeByCode = {}; STATE.docTypes.filter(t=>t.is_active).forEach(t=>{ typeByCode[t.code.toUpperCase()] = t; });
+  const all = [
+    ...STATE.documents.map(d=>({ doc_number:d.doc_number, ref:d, source:'Document Control' })),
+    ...STATE.bulkDocuments.map(d=>({ doc_number:d.doc_number, ref:d, source:'All Documents' })),
+  ].filter(x=>x.doc_number);
+
+  const groups = {}; // key: "DEPT-TYPE" -> { dept, type, entries:[{num, ...}] }
+  const unmatched = [];
+  all.forEach(x => {
+    const tokens = x.doc_number.split('-').map(t=>t.trim().toUpperCase()).filter(Boolean);
+    const dept = tokens[0] ? deptByCode[tokens[0]] : null;
+    const type = tokens[1] ? typeByCode[tokens[1]] : null;
+    const rest = dept && type ? x.doc_number.slice((tokens[0]+'-'+tokens[1]+'-').length) : null;
+    const numMatch = rest ? rest.match(/^(\d+)/) : null;
+    if(dept && type && numMatch){
+      const key = dept.id + '::' + type.id;
+      groups[key] = groups[key] || { dept, type, entries: [] };
+      groups[key].entries.push({ seq: parseInt(numMatch[1],10), doc_number: x.doc_number, source: x.source });
+    } else {
+      unmatched.push(x);
+    }
+  });
+
+  const sequences = Object.values(groups).map(g => {
+    const seqs = g.entries.map(e=>e.seq).sort((a,b)=>a-b);
+    const max = seqs[seqs.length-1] || 0;
+    const seen = new Set(seqs);
+    const gaps = [];
+    for(let i=1;i<max;i++){ if(!seen.has(i)) gaps.push(i); }
+    const dupCounts = {}; seqs.forEach(s=>{ dupCounts[s]=(dupCounts[s]||0)+1; });
+    const duplicates = Object.keys(dupCounts).filter(k=>dupCounts[k]>1).map(Number);
+    const padWidth = g.entries[0] && /^\d+$/.test(g.entries[0].doc_number.split('-')[2]) ? g.entries[0].doc_number.split('-')[2].length : 3;
+    const next = String(max+1).padStart(padWidth,'0');
+    return { dept:g.dept, type:g.type, entries:g.entries, gaps, duplicates, nextNumber: `${g.dept.code}-${g.type.code}-${next}` };
+  }).sort((a,b) => (a.dept.code+a.type.code).localeCompare(b.dept.code+b.type.code));
+
+  return { sequences, unmatched };
+}
+
+function renderAdminMasterDocRegister(){
+  const wrap = document.getElementById('admin-subtab-content');
+  if(!wrap) return;
+  const { sequences, unmatched } = masterDocRegistryData();
+  const totalGaps = sequences.reduce((s,g)=>s+g.gaps.length,0);
+  const totalDups = sequences.reduce((s,g)=>s+g.duplicates.length,0);
+  wrap.innerHTML = `
+    <div class="detail-card">
+      <div class="panel-head"><h3>Master Documents Register</h3></div>
+      <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:14px;">Every document number in the system — from Document Control and from All Documents combined — checked for a running, gap-free sequence per department and type. Create new documents in Document Control; this is the discipline check across everything.</p>
+      <div style="display:flex; gap:24px; margin-bottom:4px;">
+        <div><span class="mono" style="font-size:20px; font-weight:700; color:${totalGaps?'var(--red)':'var(--green)'};">${totalGaps}</span> <span style="font-size:12px; color:var(--text-faint);">gap${totalGaps===1?'':'s'}</span></div>
+        <div><span class="mono" style="font-size:20px; font-weight:700; color:${totalDups?'var(--red)':'var(--green)'};">${totalDups}</span> <span style="font-size:12px; color:var(--text-faint);">duplicate${totalDups===1?'':'s'}</span></div>
+        <div><span class="mono" style="font-size:20px; font-weight:700; color:${unmatched.length?'var(--amber)':'var(--green)'};">${unmatched.length}</span> <span style="font-size:12px; color:var(--text-faint);">naming discrepanc${unmatched.length===1?'y':'ies'}</span></div>
+      </div>
+    </div>
+
+    <div class="detail-card">
+      <div class="panel-head"><h3>Sequences by Department &amp; Type</h3></div>
+      ${!sequences.length ? '<p style="font-size:12.5px; color:var(--text-faint);">No correctly-numbered documents yet.</p>' : `
+      <table>
+        <tr><th>Department</th><th>Type</th><th>Range</th><th>Count</th><th>Gaps</th><th>Duplicates</th><th>Next available number</th></tr>
+        ${sequences.map(g => `<tr>
+          <td>${escapeHtml(g.dept.name)}</td>
+          <td>${escapeHtml(g.type.name)}</td>
+          <td class="mono-cell">${g.dept.code}-${g.type.code}-001 → ${g.entries.length ? Math.max(...g.entries.map(e=>e.seq)) : 0}</td>
+          <td>${g.entries.length}</td>
+          <td>${g.gaps.length ? `<span style="color:var(--red);">${g.gaps.join(', ')}</span>` : '<span style="color:var(--green);">None</span>'}</td>
+          <td>${g.duplicates.length ? `<span style="color:var(--red);">${g.duplicates.join(', ')}</span>` : '<span style="color:var(--green);">None</span>'}</td>
+          <td class="mono-cell strong">${g.nextNumber}</td>
+        </tr>`).join('')}
+      </table>`}
+    </div>
+
+    <div class="detail-card">
+      <div class="panel-head"><h3>Naming Convention Discrepancies</h3></div>
+      <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:10px;">Documents whose number doesn't start with a recognised Department-Type code — check these for a typo or a missing department/type setup.</p>
+      ${!unmatched.length ? '<p style="font-size:12.5px; color:var(--green);">None — every document number matches a known department and type code.</p>' : `
+      <table>
+        <tr><th>Document Number</th><th>Source</th></tr>
+        ${unmatched.map(x=>`<tr><td class="mono-cell">${escapeHtml(x.doc_number)}</td><td>${x.source}</td></tr>`).join('')}
+      </table>`}
+    </div>
+  `;
+}
+window.renderAdminMasterDocRegister = renderAdminMasterDocRegister;
 
 function renderAdminModuleInfo(){
   const wrap = document.getElementById('admin-subtab-content');
@@ -16178,12 +16326,24 @@ function renderAllDocsDepartmentsShell(){
   const unfiledCount = allDocsDeptDocs('').length;
   return `
     <div class="toolbar">
-      <div class="filters"><div></div></div>
+      <div class="filters">
+        <input type="text" id="alldocs-global-search" placeholder="Search every document — any department, any type…" style="min-width:320px;" oninput="allDocsGlobalSearch(this.value)">
+      </div>
       <div style="display:flex; gap:8px;">
+        <button class="btn-small" onclick="toggleAllDocsSmartUploadPanel()">+ Smart Bulk Upload</button>
         <button class="btn-small" onclick="exportModuleExcel('all_documents')">Export Excel</button>
         <button class="btn-small" onclick="printCurrentRegister('all_documents','All Documents Register')">Print Register</button>
         <button class="btn-primary btn-add" onclick="toggleAllDocsAddDeptForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Department</button>
       </div>
+    </div>
+    <div class="form-panel" id="alldocs-smart-upload-panel">
+      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:6px;">Smart bulk upload — auto-sort by naming convention</h3>
+      <p style="font-size:11.5px; color:var(--text-faint); margin-bottom:10px;">Drop in as many files as you like without picking a department or type first. Each file name is read as <b>DEPTCODE-TYPECODE-Number_Description.ext</b> (e.g. <span class="mono">GOV-POL-004_Data Protection Policy.pdf</span>) and matched against your department and document type codes below. A file that matches both is filed automatically; anything that doesn't match a code lands in "Unfiled documents" for a quick manual check — that's your naming-convention discrepancy list.</p>
+      <input type="file" id="alldocs-smart-files" multiple>
+      <p style="font-size:11px; color:var(--text-faint); margin:8px 0 12px;">Accepted formats: PDF, Word, Excel, JPG, PNG. Maximum ${EVIDENCE_MAX_SIZE_MB}MB per file.</p>
+      <button class="btn-primary" onclick="uploadAllDocsSmart()" id="alldocs-smart-upload-btn">Upload &amp; Auto-sort</button>
+      <div id="alldocs-smart-progress" style="margin-top:12px;"></div>
+      <div id="alldocs-smart-result" style="margin-top:10px;"></div>
     </div>
     <div class="form-panel" id="alldocs-add-dept-form">
       <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:10px;">Add a department</h3>
@@ -16196,6 +16356,8 @@ function renderAllDocsDepartmentsShell(){
         <button class="btn-primary" onclick="submitAllDocsAddDept()">Add department</button>
       </div>
     </div>
+    <div id="alldocs-search-results-wrap"></div>
+    <div id="alldocs-dept-grid-wrap">
     ${!depts.length ? `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg><p>No departments set up yet — add one above (e.g. Operations, Quality, HR) to start organising documents by department and type.</p></div>` : `
     <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px;">
       ${depts.map(d => {
@@ -16208,8 +16370,107 @@ function renderAllDocsDepartmentsShell(){
       }).join('')}
     </div>`}
     ${unfiledCount ? `<p style="margin-top:16px;"><button class="btn-small" onclick="allDocsOpenDept('')">${unfiledCount} document${unfiledCount===1?'':'s'} not yet filed under a department →</button></p>` : ''}
+    </div>
   `;
 }
+
+window.toggleAllDocsSmartUploadPanel = function(){ document.getElementById('alldocs-smart-upload-panel').classList.toggle('open'); };
+
+// Cross-department, cross-type search across every bulk-uploaded document —
+// so a person can find the one document they need without stepping through
+// the Departments -> Types drill-down at all.
+window.allDocsGlobalSearch = function(term){
+  const resultsWrap = document.getElementById('alldocs-search-results-wrap');
+  const gridWrap = document.getElementById('alldocs-dept-grid-wrap');
+  const q = (term || '').trim().toLowerCase();
+  if(!q){
+    resultsWrap.innerHTML = '';
+    gridWrap.style.display = '';
+    return;
+  }
+  gridWrap.style.display = 'none';
+  const matches = STATE.bulkDocuments.filter(d =>
+    (d.doc_number || '').toLowerCase().includes(q) ||
+    (d.file_name || '').toLowerCase().includes(q) ||
+    (d.doc_description || '').toLowerCase().includes(q));
+  if(!matches.length){
+    resultsWrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><p>No documents match "${escapeHtml(term)}".</p></div>`;
+    return;
+  }
+  resultsWrap.innerHTML = `
+    <p style="font-size:12px; color:var(--text-faint); margin-bottom:10px;">${matches.length} document${matches.length===1?'':'s'} found across all departments and types.</p>
+    <div class="panel" style="padding:0; overflow:hidden;">
+      <table>
+        <tr><th>Document Number</th><th>File</th><th>Department</th><th>Type</th><th></th></tr>
+        ${matches.map(d=>{
+          const dept = STATE.docDepartments.find(x=>x.id===d.department_id);
+          const type = STATE.docTypes.find(x=>x.id===d.document_type_id);
+          return `<tr class="clickable" onclick="allDocsOpenDept('${d.department_id||''}'); setTimeout(()=>allDocsOpenType('${d.document_type_id||''}'),0);">
+            <td class="mono-cell strong">${escapeHtml(d.doc_number || '—')}</td>
+            <td>${escapeHtml(d.file_name || '—')}</td>
+            <td>${dept ? escapeHtml(dept.name) : '<span style="color:var(--text-faint);">Unfiled</span>'}</td>
+            <td>${type ? escapeHtml(type.name) : '<span style="color:var(--text-faint);">No type</span>'}</td>
+            <td style="text-align:right;" onclick="event.stopPropagation();"><button class="btn-small" onclick="downloadFromBucket('documents','${d.storage_path}')">Download</button></td>
+          </tr>`;
+        }).join('')}
+      </table>
+    </div>
+  `;
+};
+
+window.uploadAllDocsSmart = async function(){
+  const fileInput = document.getElementById('alldocs-smart-files');
+  const files = Array.from(fileInput.files);
+  if(!files.length){ alert('Choose at least one file first.'); return; }
+
+  const tooLarge = files.filter(f => f.size > EVIDENCE_MAX_SIZE_MB * 1024 * 1024);
+  const wrongFormat = files.filter(f => !EVIDENCE_ALLOWED_EXT.includes(f.name.split('.').pop().toLowerCase()));
+  const toUpload = files.filter(f => !tooLarge.includes(f) && !wrongFormat.includes(f));
+  if(tooLarge.length) toast(`${tooLarge.length} file(s) over ${EVIDENCE_MAX_SIZE_MB}MB were skipped.`, 'error');
+  if(wrongFormat.length) toast(`${wrongFormat.length} file(s) in an unsupported format were skipped.`, 'error');
+  if(!toUpload.length) return;
+
+  const btn = document.getElementById('alldocs-smart-upload-btn');
+  const progressEl = document.getElementById('alldocs-smart-progress');
+  btn.disabled = true;
+  let matchedCount = 0, unmatchedCount = 0, failCount = 0;
+  const unmatchedNames = [];
+
+  for(let i = 0; i < toUpload.length; i++){
+    const file = toUpload[i];
+    progressEl.textContent = `Uploading ${i+1} of ${toUpload.length}: ${file.name}`;
+    const { docNumber, description } = parseBulkDocFilename(file.name);
+    const { department_id, document_type_id } = autoDetectDeptType(docNumber);
+    const path = `${STATE.org.id}/bulk/${Date.now()}-${sanitizeFileName(file.name)}`;
+    const { error: upErr } = await STATE.supabase.storage.from('documents').upload(path, file);
+    if(upErr){ failCount++; continue; }
+    const { error: rowErr } = await STATE.supabase.from('bulk_documents').insert({
+      organisation_id: STATE.org.id, file_name: file.name, storage_path: path,
+      file_type: file.type, file_size: file.size, uploaded_by: STATE.user.id,
+      doc_number: docNumber, doc_description: description, department_id, document_type_id,
+    });
+    if(rowErr){ failCount++; continue; }
+    if(department_id && document_type_id){ matchedCount++; } else { unmatchedCount++; unmatchedNames.push(file.name); }
+  }
+
+  btn.disabled = false;
+  progressEl.textContent = '';
+  fileInput.value = '';
+  await renderBulkDocumentsRegister();
+  // The shell just re-rendered from scratch, so re-open the panel and drop
+  // the result message in after, rather than losing it to the refresh.
+  const panelEl = document.getElementById('alldocs-smart-upload-panel');
+  if(panelEl) panelEl.classList.add('open');
+  const resultEl = document.getElementById('alldocs-smart-result');
+  if(resultEl){
+    resultEl.innerHTML = `
+      <p style="font-size:12.5px; color:var(--green); margin-bottom:4px;">${matchedCount} file${matchedCount===1?'':'s'} auto-filed by naming convention.</p>
+      ${unmatchedCount ? `<p style="font-size:12.5px; color:var(--amber);">${unmatchedCount} file${unmatchedCount===1?'':'s'} didn't match a department/type code and landed in "Unfiled documents" for review: ${unmatchedNames.map(escapeHtml).join(', ')}</p>` : ''}
+      ${failCount ? `<p style="font-size:12.5px; color:var(--red);">${failCount} file(s) failed to upload.</p>` : ''}
+    `;
+  }
+  toast(`${matchedCount + unmatchedCount} file(s) uploaded.`, 'success');
+};
 
 window.toggleAllDocsAddDeptForm = function(){ document.getElementById('alldocs-add-dept-form').classList.toggle('open'); };
 
