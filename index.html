@@ -1064,7 +1064,7 @@ const STATE = {
   _awView:'clients', _awCustomerId:null,
   _allDocsDeptId:null, _allDocsTypeId:null, _activePromotionRequestId:null, _activePromotionBulkDocId:null,
   checklistTemplates:[],
-  docDepartments:[], docTypes:[], docReviewRequests:[], formIdentifications:[], ncTypes:[], legalAiSuggestions:[],
+  docDepartments:[], docTypes:[], docReviewRequests:[], formIdentifications:[], ncTypes:[], legalAiSuggestions:[], legalChecklistItems:[],
   assessmentTemplates:[], assessmentItems:[], assessmentRecords:[], customerSurveys:[], bulkDocuments:[], fiveSInspections:[],
   processes:[], processKpis:[], processReviews:[], managementReviews:[], managementReviewActions:[], invites:[], moduleDescriptions:[], assetInspectionsSummary:[],
   auditChecklistTemplates:[], auditChecklistItems:[], auditTeamMembers:[],
@@ -1387,6 +1387,7 @@ window.selectOrg = async function(orgId){
   await loadObjectives();
   await loadLegalRegister();
   await loadLegalAiSuggestions();
+  await loadLegalChecklistItems();
   await loadPositions();
   await loadPersonnel();
   await loadDivisions();
@@ -1584,6 +1585,11 @@ async function loadLegalAiSuggestions(){
   const { data, error } = await STATE.supabase.from('legal_register_ai_suggestions').select('*').eq('organisation_id', STATE.org.id).eq('status','suggested').order('created_at', {ascending:false});
   if(error){ toast('Could not load AI legal register suggestions: ' + error.message, 'error'); return; }
   STATE.legalAiSuggestions = data || [];
+}
+async function loadLegalChecklistItems(){
+  const { data, error } = await STATE.supabase.from('legal_register_checklist_items').select('*').eq('organisation_id', STATE.org.id).order('created_at', {ascending:true});
+  if(error){ toast('Could not load legal compliance checklist items: ' + error.message, 'error'); return; }
+  STATE.legalChecklistItems = data || [];
 }
 async function loadPositions(){
   const { data, error } = await STATE.supabase.from('positions').select('*').eq('organisation_id', STATE.org.id).order('title', {ascending:true});
@@ -2886,6 +2892,7 @@ const RENDERERS = {
         <button class="btn-small" onclick="openImportModal('legal')">Import Excel</button>
       <button class="btn-small" onclick="exportModuleExcel('legal')">Export Excel</button>
       <button class="btn-small" onclick="printCurrentRegister('legal','Legal Compliance Register')">Print Register</button>
+        <button class="btn-small" onclick="bulkMarkAllLegalCompliant()" title="Mark every item matching the current filter as compliant — then open the specific ones you know aren't and adjust those">Mark all compliant</button>
         <button class="btn-small" style="background:linear-gradient(135deg,#6d4fe0,#8a6ff5); color:#fff; border:none;" onclick="toggleLegalAiForm()">✨ AI: Build Legal Register</button>
         <button class="btn-primary btn-add" onclick="toggleLegalForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Legal Item</button>
       </div>
@@ -4898,6 +4905,18 @@ async function openAuditDetail(id){
   }
   const { data: newChecklistResponses } = await STATE.supabase.from('audit_checklist_item_responses').select('*').eq('audit_id', id).order('sort_order', {ascending:true});
 
+  let findingEvidenceByFinding = {};
+  const findingIds = (findings||[]).map(f=>f.id);
+  if(findingIds.length){
+    const { data: allFindingEv } = await STATE.supabase.from('evidence_files').select('*').eq('entity_type','audit_finding').in('entity_id', findingIds);
+    (allFindingEv||[]).forEach(e=>{ (findingEvidenceByFinding[e.entity_id] = findingEvidenceByFinding[e.entity_id]||[]).push(e); });
+  }
+
+  // Genuine two-way link with Legal Compliance: any checklist item assessed
+  // "as part of" this audit shows up here, against the legal register item
+  // it belongs to — this audit report IS the record of that assessment.
+  const linkedLegalItems = (STATE.legalChecklistItems || []).filter(ci => ci.linked_audit_id === id);
+
   const auditorLabel = audit.auditor_id ? memberName(audit.auditor_id) : (audit.external_auditor_name || '—');
 
   document.getElementById('audit-detail-slot').innerHTML = `
@@ -4948,10 +4967,14 @@ async function openAuditDetail(id){
       <div id="findings-list">
         ${fErr ? '<p style="font-size:12.5px; color:var(--text-faint);">Could not load findings.</p>' :
           (!findings || !findings.length) ? '<p style="font-size:12.5px; color:var(--text-faint);">No findings logged yet.</p>' :
-          findings.map(f => renderFindingRow(f)).join('')}
+          findings.map(f => renderFindingRow(f, findingEvidenceByFinding[f.id])).join('')}
       </div>
 
+      ${renderAuditLegalCrossRef(audit, linkedLegalItems)}
+
       ${renderEvidenceSection('audit', audit.id, evidenceFiles)}
+
+      ${renderAuditReportFields(audit)}
 
       ${renderApprovalSection(audit)}
     </div>
@@ -4968,48 +4991,126 @@ window.printAudit = async function(id){
   const { files: evidenceFiles } = await loadEvidence('audit', id);
   const { data: checklistResponses } = await STATE.supabase.from('audit_checklist_item_responses').select('*').eq('audit_id', id).order('sort_order', {ascending:true});
 
+  // Per-finding photo evidence, fetched in one batch and matched back to
+  // each finding so the printed report shows illustrations against the
+  // finding they document, not lumped in a generic gallery.
+  let findingEvidenceByFinding = {};
+  const findingIds = (findings||[]).map(f=>f.id);
+  if(findingIds.length){
+    const { data: allFindingEv } = await STATE.supabase.from('evidence_files').select('*').eq('entity_type','audit_finding').in('entity_id', findingIds);
+    (allFindingEv||[]).forEach(e=>{ (findingEvidenceByFinding[e.entity_id] = findingEvidenceByFinding[e.entity_id]||[]).push(e); });
+  }
+  // Resolve each finding's linked NC/RAGA record and its current status —
+  // the "genuine cross-reference" the printed report needs to show.
+  const findingsWithLinks = (findings||[]).map(f => {
+    let linkedRef = '—', linkedStatus = '—';
+    if(f.nonconformance_id){ const nc = ncById(f.nonconformance_id); if(nc){ linkedRef = nc.ref_code; linkedStatus = label(nc.status); } }
+    else if(f.raga_alert_id){ const ra = (STATE.ragaAlerts||[]).find(r=>r.id===f.raga_alert_id); if(ra){ linkedRef = 'RAGA'; linkedStatus = label(ra.status || ra.alert_type); } }
+    return { ...f, linkedRef, linkedStatus };
+  });
+
+  const linkedLegalItems = (STATE.legalChecklistItems || []).filter(ci => ci.linked_audit_id === id);
+
   const leadLabel = audit.auditor_id ? memberName(audit.auditor_id) : (audit.external_auditor_name || null);
   const teamMembers = STATE.auditTeamMembers.filter(t=>t.audit_id===id).map(t=>memberName(t.user_id));
   const fullTeam = [leadLabel, ...teamMembers].filter(Boolean);
+  const auditeeList = (audit.auditee_names || '').split(',').map(s=>s.trim()).filter(Boolean);
   const standardsLabel = (audit.standards && audit.standards.length) ? audit.standards.join(', ') : (audit.standard || '—');
 
   const meta = [
-    ['Type', label(audit.audit_type)], ['Standard(s)', standardsLabel], ['Audit Team', fullTeam.length ? fullTeam.join(', ') : '—'],
+    ['Audit Report No.', audit.audit_ref], ['Type', label(audit.audit_type)], ['Standard(s) / Criteria referenced', standardsLabel],
+    ['Lead Auditor', leadLabel || '—'], ['Audit Team', fullTeam.length ? fullTeam.join(', ') : '—'],
     ['Planned date', fmtDate(audit.planned_date)], ['Actual date', fmtDate(audit.actual_date)], ['Status', label(audit.status)],
   ];
 
-  let body = `<p><b>Scope</b><br>${audit.scope || 'No scope recorded.'}</p>`;
-  if(audit.criteria) body += `<p style="margin-top:10px;"><b>Criteria</b><br>${audit.criteria}</p>`;
+  let body = printSectionTitle('1. Scope of the Audit');
+  body += `<p>${audit.scope || 'No scope recorded.'}</p>`;
+  if(audit.criteria) body += `<p style="margin-top:10px;"><b>Audit criteria:</b> ${audit.criteria}</p>`;
 
-  const scopedDepts = (audit.department_ids||[]).map(id=>{ const d = STATE.docDepartments.find(x=>x.id===id); return d ? d.name : null; }).filter(Boolean);
-  const scopedProcs = (audit.process_ids||[]).map(id=>{ const p = STATE.processes.find(x=>x.id===id); return p ? p.name : null; }).filter(Boolean);
-  const scopedSupps = (audit.supplier_ids||[]).map(id=>{ const s = STATE.suppliers.find(x=>x.id===id); return s ? s.name : null; }).filter(Boolean);
+  const scopedDepts = (audit.department_ids||[]).map(did=>{ const d = STATE.docDepartments.find(x=>x.id===did); return d ? d.name : null; }).filter(Boolean);
+  const scopedProcs = (audit.process_ids||[]).map(pid=>{ const p = STATE.processes.find(x=>x.id===pid); return p ? p.name : null; }).filter(Boolean);
+  const scopedSupps = (audit.supplier_ids||[]).map(sid=>{ const s = STATE.suppliers.find(x=>x.id===sid); return s ? s.name : null; }).filter(Boolean);
   if(scopedDepts.length || scopedProcs.length || scopedSupps.length || audit.other_scope){
-    body += printSectionTitle('Audit Scope Detail');
+    body += printSectionTitle('2. Departments, Processes &amp; Suppliers Audited');
     if(scopedDepts.length) body += `<p><b>Departments:</b> ${scopedDepts.join(', ')}</p>`;
     if(scopedProcs.length) body += `<p><b>Processes:</b> ${scopedProcs.join(', ')}</p>`;
     if(scopedSupps.length) body += `<p><b>Suppliers:</b> ${scopedSupps.join(', ')}</p>`;
     if(audit.other_scope) body += `<p><b>Other:</b> ${audit.other_scope}</p>`;
   }
 
+  if(audit.reference_documents){
+    body += printSectionTitle('3. Reference Documents &amp; Evidence Relied On');
+    body += `<p>${audit.reference_documents}</p>`;
+  }
   body += await buildPrintPhotoGallery(evidenceFiles);
 
+  if(audit.executive_summary){
+    body += printSectionTitle('4. Executive Summary');
+    body += `<p>${audit.executive_summary}</p>`;
+  }
+
   if(checklistResponses && checklistResponses.length){
-    body += printSectionTitle('Checklist');
+    body += printSectionTitle('5. Audit Checklist');
     body += printTable(['Criterion','Result','Notes'], checklistResponses.map(r => [r.item_text, r.result ? label(r.result) : 'Not assessed', r.notes || '—']));
   }
 
-  if(findings && findings.length){
-    body += printSectionTitle('Findings');
-    body += printTable(['Type','Clause','Description'], findings.map(f => [label(f.finding_type), f.clause_reference||'—', f.description]));
+  if(linkedLegalItems.length){
+    body += printSectionTitle('6. Legal Compliance Assessed During This Audit');
+    body += `<p style="font-size:12px; color:#555; margin-bottom:8px;">Cross-referenced to this audit report (${audit.audit_ref}) from the Legal Compliance Register.</p>`;
+    const byRegister = {};
+    linkedLegalItems.forEach(ci => { (byRegister[ci.legal_register_id] = byRegister[ci.legal_register_id] || []).push(ci); });
+    Object.keys(byRegister).forEach(legalId => {
+      const l = legalById(legalId);
+      body += `<p style="margin-top:8px;"><b>${l ? l.title : 'Legal register item'}</b></p>`;
+      body += printTable(['Clause','Requirement','Status','Notes'], byRegister[legalId].map(ci => [ci.clause_reference||'—', ci.item_text, label(ci.compliance_status), ci.notes||'—']));
+    });
   }
+
+  if(findingsWithLinks.length){
+    body += printSectionTitle('7. Findings');
+    body += printTable(['Type','Clause','Description','Response','Raised as','Status'],
+      findingsWithLinks.map(f => [label(f.finding_type), f.clause_reference||'—', f.description, f.response||'—', f.linkedRef, f.linkedStatus]));
+    for(const f of findingsWithLinks){
+      const evs = findingEvidenceByFinding[f.id];
+      if(evs && evs.length){
+        body += `<p style="font-size:12px; font-weight:600; margin-top:10px;">Illustrations — ${label(f.finding_type)}${f.clause_reference ? ' ('+f.clause_reference+')' : ''}:</p>`;
+        body += await buildPrintPhotoGallery(evs);
+      }
+    }
+  }
+
+  if(audit.conclusion){
+    body += printSectionTitle('8. Conclusion');
+    body += `<p>${audit.conclusion}</p>`;
+  }
+
+  body += printSectionTitle('9. Validation &amp; Sign-Off');
+  let signoff = `<table style="width:100%; border-collapse:collapse; margin-top:6px;">
+    <tr><td style="padding:14px 4px; border-bottom:1px solid #ccc; width:33%;"><b>Lead Auditor</b><br>${leadLabel || '—'}</td>
+        <td style="padding:14px 4px; border-bottom:1px solid #ccc;"><b>Signature</b><br>${audit.status==='report_issued' ? `${audit.approval_signature_name} (electronically approved)` : '_______________________'}</td>
+        <td style="padding:14px 4px; border-bottom:1px solid #ccc;"><b>Date</b><br>${audit.status==='report_issued' ? fmtDate(audit.approved_at ? audit.approved_at.slice(0,10) : null) : '_______________'}</td></tr>`;
+  teamMembers.forEach(t => {
+    signoff += `<tr><td style="padding:14px 4px; border-bottom:1px solid #eee;"><b>Audit Team</b><br>${t}</td>
+        <td style="padding:14px 4px; border-bottom:1px solid #eee;">_______________________</td>
+        <td style="padding:14px 4px; border-bottom:1px solid #eee;">_______________</td></tr>`;
+  });
+  auditeeList.forEach(a => {
+    signoff += `<tr><td style="padding:14px 4px; border-bottom:1px solid #eee;"><b>Auditee</b><br>${a}</td>
+        <td style="padding:14px 4px; border-bottom:1px solid #eee;">_______________________</td>
+        <td style="padding:14px 4px; border-bottom:1px solid #eee;">_______________</td></tr>`;
+  });
+  signoff += `</table>`;
+  body += signoff;
+
   body += buildPrintSupportingDocsList(evidenceFiles);
-  await printRecord('Audit Report', audit.audit_ref, meta, body, null, 'audits');
+  await printRecord('Internal Audit Report', audit.audit_ref, meta, body, null, 'audits');
 };
 
-function renderFindingRow(f){
+function renderFindingRow(f, evidenceFiles){
   const linkedNc = f.nonconformance_id ? ncById(f.nonconformance_id) : null;
-  const canPromote = f.finding_type !== 'positive' && !f.nonconformance_id;
+  const linkedRaga = f.raga_alert_id ? (STATE.ragaAlerts||[]).find(r=>r.id===f.raga_alert_id) : null;
+  const usesNc = STATE.org.nc_enabled !== false;
+  const canPromote = f.finding_type !== 'positive' && !f.nonconformance_id && !f.raga_alert_id;
   return `
     <div class="detail-card" style="margin-bottom:10px; padding:16px;" id="finding-row-${f.id}">
       <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
@@ -5019,15 +5120,75 @@ function renderFindingRow(f){
           <p style="font-size:13.5px; margin-top:8px; color:var(--text-dim); line-height:1.5;">${f.description}</p>
         </div>
       </div>
-      ${f.response ? `<div style="margin-top:10px; padding:10px 12px; background:var(--grey-tint); border-radius:8px;"><div class="l" style="font-family:'JetBrains Mono'; font-size:9.5px; color:var(--text-faint); text-transform:uppercase; margin-bottom:4px;">Response${f.responded_at ? ' — ' + fmtDate(f.responded_at.slice(0,10)) : ''}</div><p style="font-size:13px; color:var(--text-dim); margin:0;">${f.response}</p></div>` : (!f.nonconformance_id ? `<div style="margin-top:10px;"><button class="btn-small" onclick="openFindingUpdateLinkModal('${f.id}')">Send response link</button></div><div id="finding-update-link-modal-${f.id}"></div>` : '')}
+      ${f.response ? `<div style="margin-top:10px; padding:10px 12px; background:var(--grey-tint); border-radius:8px;"><div class="l" style="font-family:'JetBrains Mono'; font-size:9.5px; color:var(--text-faint); text-transform:uppercase; margin-bottom:4px;">Response${f.responded_at ? ' — ' + fmtDate(f.responded_at.slice(0,10)) : ''}</div><p style="font-size:13px; color:var(--text-dim); margin:0;">${f.response}</p></div>` : (!f.nonconformance_id && !f.raga_alert_id ? `<div style="margin-top:10px;"><button class="btn-small" onclick="openFindingUpdateLinkModal('${f.id}')">Send response link</button></div><div id="finding-update-link-modal-${f.id}"></div>` : '')}
       ${linkedNc
         ? `<div style="margin-top:10px;"><span class="linked-task-chip"><svg viewBox="0 0 24 24"><path d="M12 3l10 18H2L12 3z"/><line x1="12" y1="10" x2="12" y2="14"/><line x1="12" y1="17" x2="12" y2="17.01"/></svg>Raised as ${linkedNc.ref_code} — ${pill(linkedNc.status)}</span></div>`
-        : (canPromote ? `<div style="margin-top:10px;"><button class="btn-small primary" onclick="togglePromoteForm('${f.id}','${f.finding_type}')">Promote to Nonconformance</button></div><div id="promote-form-${f.id}"></div>` : '')}
+        : linkedRaga
+        ? `<div style="margin-top:10px;"><span class="linked-task-chip"><svg viewBox="0 0 24 24"><path d="M12 3l10 18H2L12 3z"/><line x1="12" y1="10" x2="12" y2="14"/><line x1="12" y1="17" x2="12" y2="17.01"/></svg>Raised as RAGA alert — ${pill(linkedRaga.status||linkedRaga.alert_type)}</span></div>`
+        : (canPromote ? `<div style="margin-top:10px;"><button class="btn-small primary" onclick="togglePromoteForm('${f.id}','${f.finding_type}')">Promote to ${usesNc?'Nonconformance':'RAGA alert'}</button></div><div id="promote-form-${f.id}"></div>` : '')}
+      <div style="margin-top:10px;">${renderEvidenceSection('audit_finding', f.id, evidenceFiles || [])}</div>
     </div>
   `;
 }
 
 window.toggleFindingForm = function(){ document.getElementById('finding-form').classList.toggle('open'); };
+
+// The genuine cross-reference the Legal Compliance module and the Audits
+// module were each missing the other half of: every legal compliance
+// checklist item assessed "as part of" this audit, grouped by its parent
+// legal register item, so the audit report shows exactly what legal
+// compliance was validated during it.
+function renderAuditLegalCrossRef(audit, linkedLegalItems){
+  if(!linkedLegalItems.length) return '';
+  const byRegister = {};
+  linkedLegalItems.forEach(ci => { (byRegister[ci.legal_register_id] = byRegister[ci.legal_register_id] || []).push(ci); });
+  return `
+    <div class="panel-head" style="margin-top:6px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Legal compliance assessed in this audit</h3></div>
+    <div style="margin-bottom:10px;">
+      ${Object.keys(byRegister).map(legalId => {
+        const l = legalById(legalId);
+        const items = byRegister[legalId];
+        const compliant = items.filter(i=>i.compliance_status==='compliant').length;
+        return `<div class="detail-card" style="margin-bottom:8px; padding:12px 14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <a href="#" onclick="showModule('legal'); setTimeout(()=>openLegalDetail('${legalId}'),0); return false;" style="color:var(--red); font-size:13px; font-weight:600;">${l ? l.title : 'Legal register item'} →</a>
+            <span class="mono" style="font-size:11px; color:var(--text-faint);">${compliant}/${items.length} compliant</span>
+          </div>
+          ${items.map(ci=>`<div style="font-size:12px; color:var(--text-dim); padding:4px 0; border-top:1px dashed var(--border); margin-top:6px;"><span class="mono" style="color:var(--text-faint);">${ci.clause_reference||'—'}</span> · ${ci.item_text} — ${pill(ci.compliance_status)}</div>`).join('')}
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+// Free-text fields the formal ISO-style audit report is built from —
+// always editable, filled in as the audit is worked, not locked at any
+// point (the report simply prints whatever's currently saved here).
+function renderAuditReportFields(audit){
+  return `
+    <div class="panel-head" style="margin-top:6px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Report content</h3>
+      <button class="btn-small primary" onclick="saveAuditReportFields('${audit.id}')">Save report content</button>
+    </div>
+    <div class="form-grid" style="margin-bottom:18px;">
+      <div class="field span3"><label>Reference documents &amp; evidence relied on</label><textarea id="ar-refdocs" placeholder="e.g. TES-GOV-POL-001 H&amp;S Policy rev 3, site inspection records, training register, prior audit report IA-014">${audit.reference_documents || ''}</textarea></div>
+      <div class="field span3"><label>Executive summary</label><textarea id="ar-execsummary" placeholder="Overall outcome of the audit in a short paragraph — what was covered, overall conformance level, key themes">${audit.executive_summary || ''}</textarea></div>
+      <div class="field span3"><label>Conclusion</label><textarea id="ar-conclusion" placeholder="Formal conclusion — e.g. the management system remains effective / recommendation on certification status">${audit.conclusion || ''}</textarea></div>
+      <div class="field span3"><label>Auditees (names, comma separated)</label><input id="ar-auditees" value="${(audit.auditee_names||'').replace(/"/g,'&quot;')}" placeholder="e.g. J. Smith (Site Manager), T. Naidoo (SHE Officer)"></div>
+    </div>
+  `;
+}
+window.saveAuditReportFields = async function(id){
+  const patch = {
+    reference_documents: document.getElementById('ar-refdocs').value.trim(),
+    executive_summary: document.getElementById('ar-execsummary').value.trim(),
+    conclusion: document.getElementById('ar-conclusion').value.trim(),
+    auditee_names: document.getElementById('ar-auditees').value.trim(),
+  };
+  const { error } = await STATE.supabase.from('audits').update(patch).eq('id', id);
+  if(error){ toast('Could not save report content: ' + error.message, 'error'); return; }
+  await loadAudits();
+  toast('Report content saved.', 'success');
+};
 
 window.openFindingUpdateLinkModal = function(findingId){
   const slot = document.getElementById('finding-update-link-modal-'+findingId);
@@ -5114,58 +5275,115 @@ window.togglePromoteForm = function(findingId, findingType){
   if(!slot) return;
   if(slot.innerHTML.trim()){ slot.innerHTML = ''; return; }
   const defaultSev = SEVERITY_BY_FINDING[findingType] || 'minor';
-  const auditTypeMatch = STATE.ncTypes.find(t=>t.name.toLowerCase().includes('audit') && t.is_active);
-  slot.innerHTML = `
-    <div class="form-panel open" style="margin-top:10px;">
-      <div class="form-grid">
-        <div class="field span3"><label>Type</label><select id="pf-type-${findingId}">${STATE.ncTypes.filter(t=>t.is_active).map(t=>`<option value="${t.id}" ${auditTypeMatch && t.id===auditTypeMatch.id?'selected':''}>${t.name}</option>`).join('')}</select></div>
-        <div class="field"><label>Severity</label><select id="pf-severity-${findingId}">
-          <option value="minor" ${defaultSev==='minor'?'selected':''}>Minor</option>
-          <option value="major" ${defaultSev==='major'?'selected':''}>Major</option>
-          <option value="critical" ${defaultSev==='critical'?'selected':''}>Critical</option>
-        </select></div>
-        <div class="field"><label>Owner</label><select id="pf-owner-${findingId}">${memberOptions(STATE.user.id)}</select></div>
-        <div class="field"><label>Target close date</label><input type="date" id="pf-target-${findingId}" value="${todayISO()}"></div>
+  const usesNc = STATE.org.nc_enabled !== false;
+  if(usesNc){
+    const auditTypeMatch = STATE.ncTypes.find(t=>t.name.toLowerCase().includes('audit') && t.is_active);
+    slot.innerHTML = `
+      <div class="form-panel open" style="margin-top:10px;">
+        <div class="form-grid">
+          <div class="field span3"><label>Type</label><select id="pf-type-${findingId}">${STATE.ncTypes.filter(t=>t.is_active).map(t=>`<option value="${t.id}" ${auditTypeMatch && t.id===auditTypeMatch.id?'selected':''}>${t.name}</option>`).join('')}</select></div>
+          <div class="field"><label>Severity</label><select id="pf-severity-${findingId}">
+            <option value="minor" ${defaultSev==='minor'?'selected':''}>Minor</option>
+            <option value="major" ${defaultSev==='major'?'selected':''}>Major</option>
+            <option value="critical" ${defaultSev==='critical'?'selected':''}>Critical</option>
+          </select></div>
+          <div class="field"><label>Owner</label><select id="pf-owner-${findingId}">${memberOptions(STATE.user.id)}</select></div>
+          <div class="field"><label>Target close date</label><input type="date" id="pf-target-${findingId}" value="${todayISO()}"></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn-cancel" onclick="togglePromoteForm('${findingId}')">Cancel</button>
+          <button class="btn-small primary" onclick="promoteFinding('${findingId}')">Create nonconformance</button>
+        </div>
       </div>
-      <div class="form-actions">
-        <button class="btn-cancel" onclick="togglePromoteForm('${findingId}')">Cancel</button>
-        <button class="btn-small primary" onclick="promoteFinding('${findingId}')">Create nonconformance</button>
+    `;
+  } else {
+    slot.innerHTML = `
+      <div class="form-panel open" style="margin-top:10px;">
+        <div class="form-grid">
+          <div class="field"><label>Alert type</label><select id="pf-alerttype-${findingId}">
+            <option value="red" ${defaultSev!=='minor'?'selected':''}>Red</option>
+            <option value="orange" ${defaultSev==='minor'?'selected':''}>Orange</option>
+          </select></div>
+          <div class="field"><label>Owner</label><select id="pf-owner-${findingId}">${memberOptions(STATE.user.id)}</select></div>
+          <div class="field"><label>Target close date</label><input type="date" id="pf-target-${findingId}" value="${todayISO()}"></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn-cancel" onclick="togglePromoteForm('${findingId}')">Cancel</button>
+          <button class="btn-small primary" onclick="promoteFinding('${findingId}')">Create RAGA alert</button>
+        </div>
       </div>
-    </div>
-  `;
+    `;
+  }
 };
 
 window.promoteFinding = async function(findingId){
   const { data: finding, error: fErr } = await STATE.supabase.from('audit_findings').select('*').eq('id', findingId).single();
   if(fErr || !finding){ toast('Could not load finding.', 'error'); return; }
 
-  const typeId = document.getElementById('pf-type-'+findingId).value;
+  const usesNc = STATE.org.nc_enabled !== false;
   const target_close_date = document.getElementById('pf-target-'+findingId).value;
-  if(!typeId || !target_close_date){ alert('Type and target close date are required.'); return; }
-  const selectedType = STATE.ncTypes.find(t=>t.id===typeId);
+  const owner_id = document.getElementById('pf-owner-'+findingId).value;
+  if(!target_close_date){ alert('Target close date is required.'); return; }
 
-  const payload = {
+  let newRecordId, newRecordRef, linkedType;
+
+  if(usesNc){
+    const typeId = document.getElementById('pf-type-'+findingId).value;
+    if(!typeId){ alert('Type is required.'); return; }
+    const selectedType = STATE.ncTypes.find(t=>t.id===typeId);
+    const payload = {
+      organisation_id: STATE.org.id,
+      title: selectedType ? selectedType.name : '',
+      nc_type_id: typeId,
+      description: finding.description,
+      standard_clause: finding.clause_reference,
+      severity: document.getElementById('pf-severity-'+findingId).value,
+      raised_by: STATE.user.id,
+      owner_id,
+      target_close_date,
+    };
+    const { data: newNc, error: ncErr } = await STATE.supabase.from('nonconformances').insert(payload).select().single();
+    if(ncErr){ toast('Could not create nonconformance: ' + ncErr.message, 'error'); return; }
+    const { error: linkErr } = await STATE.supabase.from('audit_findings').update({ nonconformance_id: newNc.id }).eq('id', findingId);
+    if(linkErr){ toast('Nonconformance created, but could not link it back to the finding: ' + linkErr.message, 'error'); }
+    newRecordId = newNc.id; newRecordRef = newNc.ref_code; linkedType = 'nonconformance';
+    await loadNCs();
+  } else {
+    const alertType = document.getElementById('pf-alerttype-'+findingId).value;
+    const payload = {
+      organisation_id: STATE.org.id,
+      alert_type: alertType,
+      title: `${finding.clause_reference ? finding.clause_reference+' — ' : ''}Audit finding`.slice(0,120),
+      description: finding.description,
+      raised_by: STATE.user.id,
+      owner_id,
+      target_close_date,
+    };
+    const { data: newAlert, error: raErr } = await STATE.supabase.from('raga_alerts').insert(payload).select().single();
+    if(raErr){ toast('Could not create RAGA alert: ' + raErr.message, 'error'); return; }
+    const { error: linkErr } = await STATE.supabase.from('audit_findings').update({ raga_alert_id: newAlert.id }).eq('id', findingId);
+    if(linkErr){ toast('RAGA alert created, but could not link it back to the finding: ' + linkErr.message, 'error'); }
+    newRecordId = newAlert.id; newRecordRef = 'RAGA alert'; linkedType = 'raga_alert';
+    await loadRagaAlerts();
+  }
+
+  // Genuine sync with Tasks: a follow-up task is created automatically so
+  // closing this out isn't left to memory.
+  await STATE.supabase.from('tasks').insert({
     organisation_id: STATE.org.id,
-    title: selectedType ? selectedType.name : '',
-    nc_type_id: typeId,
+    title: `Close out: ${finding.clause_reference ? finding.clause_reference+' — ' : ''}${finding.description}`.slice(0,120),
     description: finding.description,
-    standard_clause: finding.clause_reference,
-    severity: document.getElementById('pf-severity-'+findingId).value,
-    raised_by: STATE.user.id,
-    owner_id: document.getElementById('pf-owner-'+findingId).value,
-    target_close_date,
-  };
+    linked_type: linkedType,
+    linked_id: newRecordId,
+    assignee_id: owner_id,
+    priority: 'high',
+    due_date: target_close_date,
+    created_by: STATE.user.id,
+  });
 
-  const { data: newNc, error: ncErr } = await STATE.supabase.from('nonconformances').insert(payload).select().single();
-  if(ncErr){ toast('Could not create nonconformance: ' + ncErr.message, 'error'); return; }
-
-  const { error: linkErr } = await STATE.supabase.from('audit_findings').update({ nonconformance_id: newNc.id }).eq('id', findingId);
-  if(linkErr){ toast('Nonconformance created, but could not link it back to the finding: ' + linkErr.message, 'error'); }
-
-  await loadNCs();
   await openAuditDetail(finding.audit_id);
   updateNavBadges();
-  toast(`Raised as ${newNc.ref_code}.`, 'success');
+  toast(`Raised as ${newRecordRef} and a follow-up task created.`, 'success');
 };
 
 /* ============ Risk & Opportunity Register ============ */
@@ -9488,6 +9706,13 @@ function renderLegalAiSuggestions(){
             <div class="field"><label>Suggested review frequency</label><input id="lai-freq-${s.id}" value="${s.suggested_review_frequency || 'Annual'}"></div>
             <div class="field"><label>Owner</label><select id="lai-owner-${s.id}">${memberOptions(STATE.user.id)}</select></div>
             <div class="field"><label>Department</label><select id="lai-dept-${s.id}"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}</select></div>
+            ${(Array.isArray(s.checklist_items) && s.checklist_items.length) ? `
+            <div class="field span3">
+              <label>Compliance checklist that will be created with this item (${s.checklist_items.length})</label>
+              <div style="border:1px solid var(--border); border-radius:8px; padding:8px 10px; max-height:180px; overflow-y:auto;">
+                ${s.checklist_items.map(ci=>`<div style="font-size:12px; color:var(--text-dim); padding:4px 0; border-bottom:1px dashed var(--border);"><span class="mono" style="color:var(--text-faint);">${ci.clause_reference||'—'}</span> · ${ci.item_text}</div>`).join('')}
+              </div>
+            </div>` : ''}
           </div>
           <div class="form-actions">
             <button class="btn-cancel" onclick="rejectLegalAiSuggestion('${s.id}')">Reject</button>
@@ -9531,8 +9756,28 @@ window.acceptLegalAiSuggestion = async function(id){
   }).eq('id', id);
   if(uErr){ toast('Added to register, but could not update the suggestion status: ' + uErr.message, 'error'); }
 
+  // The AI breaks each instrument into individually-checkable obligations —
+  // these become this item's actual compliance checklist, staged on the
+  // suggestion until acceptance, then inserted as real checklist rows.
+  if(Array.isArray(s.checklist_items) && s.checklist_items.length){
+    const checklistRows = s.checklist_items.filter(ci=>ci && ci.item_text).map(ci => ({
+      organisation_id: STATE.org.id,
+      legal_register_id: newItem.id,
+      clause_reference: ci.clause_reference || null,
+      item_text: ci.item_text,
+      source: 'ai_suggested',
+      ai_suggestion_id: id,
+      created_by: STATE.user.id,
+    }));
+    if(checklistRows.length){
+      const { error: clErr } = await STATE.supabase.from('legal_register_checklist_items').insert(checklistRows);
+      if(clErr) toast('Register item added, but the checklist items could not be created: ' + clErr.message, 'error');
+    }
+  }
+
   await loadLegalRegister();
   await loadLegalAiSuggestions();
+  await loadLegalChecklistItems();
   renderLegalTable();
   renderLegalAiSuggestions();
   updateNavBadges();
@@ -9560,12 +9805,20 @@ async function openLegalDetail(id){
   if(!l) return;
   const { data: reviews, error: rErr } = await STATE.supabase.from('legal_reviews').select('*').eq('legal_register_id', id).order('review_date', {ascending:false});
   const { files: evidenceFiles } = await loadEvidence('legal_register', id);
+  const checklistItems = (STATE.legalChecklistItems || []).filter(ci => ci.legal_register_id === id);
+  let checklistEvidenceByItem = {};
+  const checklistItemIds = checklistItems.map(ci=>ci.id);
+  if(checklistItemIds.length){
+    const { data: allEv } = await STATE.supabase.from('evidence_files').select('*').eq('entity_type','legal_checklist_item').in('entity_id', checklistItemIds);
+    (allEv||[]).forEach(e=>{ (checklistEvidenceByItem[e.entity_id] = checklistEvidenceByItem[e.entity_id]||[]).push(e); });
+  }
 
   document.getElementById('legal-detail-slot').innerHTML = `
     <div class="detail-panel">
       <div class="detail-head">
         <div><span class="ref">${l.ref_code}</span><h3>${l.title}</h3></div>
         <div style="display:flex; gap:8px;">
+          <button class="btn-small" onclick="toggleLegalItemEditForm('${l.id}')">Edit item</button>
           <button class="btn-small" onclick="printLegal('${l.id}')">Print / PDF</button>
           <button class="close-btn" onclick="closeLegalDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
@@ -9578,6 +9831,20 @@ async function openLegalDetail(id){
         <div class="dm-item"><div class="l">Department</div><div class="v">${l.department_id ? (STATE.docDepartments.find(x=>x.id===l.department_id)||{}).name||'—' : '—'}</div></div>
       </div>
       <p style="font-size:13.5px; color:var(--text-dim); margin-bottom:18px; line-height:1.55;">${l.description || 'No description recorded.'}</p>
+
+      <div class="form-panel" id="lei-form">
+        <div class="form-grid">
+          <div class="field span3"><label>Legal document title</label><input id="lei-title" value="${(l.title||'').replace(/"/g,'&quot;')}"></div>
+          <div class="field span3"><label>Legal document description</label><textarea id="lei-description">${l.description || ''}</textarea></div>
+          <div class="field"><label>Owner</label><select id="lei-owner">${memberOptions(l.owner_id)}</select></div>
+          <div class="field"><label>Next review due date</label><input type="date" id="lei-next-review" value="${l.next_review_due_date || ''}"></div>
+          <div class="field"><label>Jurisdiction</label><input id="lei-jurisdiction" value="${(l.jurisdiction||'').replace(/"/g,'&quot;')}"></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn-cancel" onclick="toggleLegalItemEditForm('${l.id}')">Cancel</button>
+          <button class="btn-primary" onclick="saveLegalItemEdit('${l.id}')">Save changes</button>
+        </div>
+      </div>
 
       <div class="status-row">
         <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase;">Department</label>
@@ -9612,11 +9879,34 @@ async function openLegalDetail(id){
           reviews.map(r => renderLegalReviewRow(r)).join('')}
       </div>
 
+      ${renderLegalChecklistSection(l, checklistItems, checklistEvidenceByItem)}
+
       ${renderEvidenceSection('legal_register', l.id, evidenceFiles)}
     </div>
   `;
 }
 window.openLegalDetail = openLegalDetail;
+
+function toggleLegalItemEditForm(){ const el = document.getElementById('lei-form'); if(el) el.classList.toggle('open'); }
+window.toggleLegalItemEditForm = toggleLegalItemEditForm;
+
+window.saveLegalItemEdit = async function(id){
+  const title = document.getElementById('lei-title').value.trim();
+  if(!title){ alert('Title is required.'); return; }
+  const patch = {
+    title,
+    description: document.getElementById('lei-description').value.trim(),
+    owner_id: document.getElementById('lei-owner').value,
+    next_review_due_date: document.getElementById('lei-next-review').value || null,
+    jurisdiction: document.getElementById('lei-jurisdiction').value.trim() || null,
+  };
+  const { error } = await STATE.supabase.from('legal_register').update(patch).eq('id', id);
+  if(error){ toast('Could not save changes: ' + error.message, 'error'); return; }
+  await loadLegalRegister();
+  renderLegalTable();
+  openLegalDetail(id);
+  toast('Legal register item updated.', 'success');
+};
 function closeLegalDetail(){ document.getElementById('legal-detail-slot').innerHTML = ''; }
 window.closeLegalDetail = closeLegalDetail;
 
@@ -9726,6 +10016,218 @@ window.promoteLegalFinding = async function(reviewId, legalId){
   openLegalDetail(legalId);
   updateNavBadges();
   toast(`Raised as ${newNc.ref_code}.`, 'success');
+};
+
+/* ---- Legal Compliance Checklist ----
+   Each legal register item breaks down into individually-assessable
+   checklist items — the actual legal compliance audit checklist. Status
+   and notes are always editable (no locking): every change is logged to
+   legal_checklist_assessment_history so amendments stay auditable. */
+function renderLegalChecklistSection(l, items, evidenceByItem){
+  const compliantCount = items.filter(i=>i.compliance_status==='compliant').length;
+  return `
+    <div class="panel-head" style="margin-top:22px;">
+      <h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Compliance checklist${items.length ? ` (${compliantCount}/${items.length} compliant)` : ''}</h3>
+      <div style="display:flex; gap:8px;">
+        ${items.length ? `<button class="btn-small" onclick="bulkMarkChecklistCompliant('${l.id}')">Mark all items compliant</button>` : ''}
+        <button class="btn-small primary" onclick="toggleAddChecklistItemForm()">+ Add checklist item</button>
+      </div>
+    </div>
+    <div class="form-panel" id="lci-add-form">
+      <div class="form-grid">
+        <div class="field"><label>Clause / section reference (optional)</label><input id="lci-new-clause" placeholder="e.g. Section 8(1)"></div>
+        <div class="field span2"><label>Specific requirement to verify</label><input id="lci-new-text" placeholder="e.g. A written health and safety policy is displayed and communicated to all employees"></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-cancel" onclick="toggleAddChecklistItemForm()">Cancel</button>
+        <button class="btn-primary" onclick="submitLegalChecklistItem('${l.id}')">Add item</button>
+      </div>
+    </div>
+    ${!items.length
+      ? '<p style="font-size:12.5px; color:var(--text-faint);">No checklist items yet — add one, or accept an AI-drafted register item, which generates a full checklist automatically.</p>'
+      : items.map(ci => renderLegalChecklistItemRow(ci, evidenceByItem[ci.id] || [])).join('')}
+  `;
+}
+
+function renderLegalChecklistItemRow(ci, evidenceFiles){
+  const linkedAudit = ci.linked_audit_id ? STATE.audits.find(a=>a.id===ci.linked_audit_id) : null;
+  const canPromote = ci.compliance_status === 'non_compliant' && !ci.nonconformance_id && !ci.raga_alert_id;
+  const usesNc = STATE.org.nc_enabled !== false;
+  const issueChip = ci.nonconformance_id ? `<span class="linked-task-chip">Raised as nonconformance</span>`
+    : ci.raga_alert_id ? `<span class="linked-task-chip">Raised as RAGA alert</span>` : '';
+  return `
+    <div class="detail-card" style="margin-bottom:10px; padding:14px 16px;" id="lci-row-${ci.id}">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+        <div style="flex:1;">
+          <span class="mono" style="font-size:11px; color:var(--text-faint);">${ci.clause_reference || '—'}</span>
+          <p style="font-size:13px; margin:2px 0 0; font-weight:500;">${ci.item_text}</p>
+        </div>
+        <div>${pill(ci.compliance_status)}</div>
+      </div>
+      <div class="form-grid" style="margin-top:10px;">
+        <div class="field"><label>Status</label><select id="lci-status-${ci.id}">${optionList(['not_assessed','compliant','non_compliant','not_applicable'], ci.compliance_status)}</select></div>
+        <div class="field span2"><label>Notes / evidence description</label><textarea id="lci-notes-${ci.id}" style="min-height:38px;">${ci.notes || ''}</textarea></div>
+        <div class="field span2"><label>Assessed as part of audit (optional)</label><select id="lci-audit-${ci.id}"><option value="">None</option>${STATE.audits.map(a=>`<option value="${a.id}" ${ci.linked_audit_id===a.id?'selected':''}>${a.audit_ref} — ${a.title}</option>`).join('')}</select></div>
+        <div class="field"><label>&nbsp;</label><button class="btn-small primary" style="width:100%;" onclick="saveLegalChecklistItem('${ci.id}')">Save assessment</button></div>
+      </div>
+      ${ci.assessed_at ? `<p style="font-size:11px; color:var(--text-faint); margin-top:6px;">Last assessed ${fmtDate(ci.assessed_at)} by ${memberName(ci.assessed_by)}${linkedAudit ? ` — as part of <a href="#" onclick="showModule('audits'); setTimeout(()=>openAuditDetail('${linkedAudit.id}'),0); return false;" style="color:var(--red);">${linkedAudit.audit_ref}</a>` : ''}</p>` : '<p style="font-size:11px; color:var(--text-faint); margin-top:6px;">Not yet assessed.</p>'}
+      <div style="margin-top:8px; display:flex; align-items:center; gap:10px;">
+        ${issueChip}
+        ${canPromote ? `<button class="btn-small" onclick="promoteLegalChecklistItem('${ci.id}')">Raise ${usesNc ? 'nonconformance' : 'RAGA alert'}</button>` : ''}
+      </div>
+      <div style="margin-top:10px;">${renderEvidenceSection('legal_checklist_item', ci.id, evidenceFiles)}</div>
+    </div>
+  `;
+}
+
+function toggleAddChecklistItemForm(){ document.getElementById('lci-add-form').classList.toggle('open'); }
+window.toggleAddChecklistItemForm = toggleAddChecklistItemForm;
+
+window.submitLegalChecklistItem = async function(legalId){
+  const itemText = document.getElementById('lci-new-text').value.trim();
+  if(!itemText){ alert('Please describe the specific requirement to verify.'); return; }
+  const payload = {
+    organisation_id: STATE.org.id,
+    legal_register_id: legalId,
+    clause_reference: document.getElementById('lci-new-clause').value.trim() || null,
+    item_text: itemText,
+    source: 'manual',
+    created_by: STATE.user.id,
+  };
+  const { error } = await STATE.supabase.from('legal_register_checklist_items').insert(payload);
+  if(error){ toast('Could not add checklist item: ' + error.message, 'error'); return; }
+  document.getElementById('lci-new-clause').value = '';
+  document.getElementById('lci-new-text').value = '';
+  toggleAddChecklistItemForm();
+  await loadLegalChecklistItems();
+  openLegalDetail(legalId);
+  toast('Checklist item added.', 'success');
+};
+
+window.saveLegalChecklistItem = async function(id){
+  const ci = (STATE.legalChecklistItems || []).find(x=>x.id===id);
+  if(!ci) return;
+  const newStatus = document.getElementById(`lci-status-${id}`).value;
+  const newNotes = document.getElementById(`lci-notes-${id}`).value.trim();
+  const newAuditId = document.getElementById(`lci-audit-${id}`).value || null;
+  const changed = (newStatus !== ci.compliance_status) || (newNotes !== (ci.notes || ''));
+
+  if(changed){
+    // Log what it was BEFORE this change — an append-only amendment trail,
+    // so editing an assessment after the fact never loses the history of
+    // what was previously recorded, or when/against which audit.
+    await STATE.supabase.from('legal_checklist_assessment_history').insert({
+      checklist_item_id: id,
+      organisation_id: STATE.org.id,
+      previous_status: ci.compliance_status,
+      previous_notes: ci.notes || null,
+      audit_id: ci.linked_audit_id || null,
+      changed_by: STATE.user.id,
+    });
+  }
+
+  const { error } = await STATE.supabase.from('legal_register_checklist_items').update({
+    compliance_status: newStatus,
+    notes: newNotes,
+    linked_audit_id: newAuditId,
+    assessed_by: STATE.user.id,
+    assessed_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq('id', id);
+  if(error){ toast('Could not save assessment: ' + error.message, 'error'); return; }
+
+  await loadLegalChecklistItems();
+  openLegalDetail(ci.legal_register_id);
+  toast('Assessment saved.', 'success');
+};
+
+window.bulkMarkAllLegalCompliant = async function(){
+  const fStatus = document.getElementById('legal-filter-status').value;
+  const rows = STATE.legalRegister.filter(l => !fStatus || l.current_status === fStatus);
+  if(!rows.length){ toast('No legal register items match the current filter.', 'error'); return; }
+  if(!confirm(`Mark all ${rows.length} legal register item(s) currently shown — and every checklist item under them — as compliant? A dated review entry is logged for each so this stays auditable. You can then open the specific items you know aren't compliant and correct just those.`)) return;
+
+  const today = todayISO();
+  const reviewRows = rows.map(l => ({
+    organisation_id: STATE.org.id, legal_register_id: l.id, review_date: today, compliance_status: 'compliant',
+    finding_text: '', reviewed_by: STATE.user.id,
+  }));
+  const { error: revErr } = await STATE.supabase.from('legal_reviews').insert(reviewRows);
+  if(revErr){ toast('Could not log bulk reviews: ' + revErr.message, 'error'); return; }
+
+  await Promise.all(rows.map(l => STATE.supabase.from('legal_register').update({ current_status: 'compliant', last_reviewed_date: today }).eq('id', l.id)));
+
+  const registerIds = rows.map(l=>l.id);
+  const checklistIds = (STATE.legalChecklistItems || []).filter(ci => registerIds.includes(ci.legal_register_id)).map(ci=>ci.id);
+  if(checklistIds.length){
+    await STATE.supabase.from('legal_register_checklist_items').update({
+      compliance_status: 'compliant', assessed_by: STATE.user.id, assessed_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    }).in('id', checklistIds);
+  }
+
+  await loadLegalRegister();
+  await loadLegalChecklistItems();
+  renderLegalTable();
+  updateNavBadges();
+  toast(`${rows.length} item(s) marked compliant.`, 'success');
+};
+
+window.bulkMarkChecklistCompliant = async function(legalId){
+  const items = (STATE.legalChecklistItems || []).filter(ci => ci.legal_register_id === legalId);
+  if(!items.length) return;
+  if(!confirm(`Mark all ${items.length} checklist items compliant? You can still open any specific item afterwards and change it to non-compliant.`)) return;
+  const { error } = await STATE.supabase.from('legal_register_checklist_items').update({
+    compliance_status: 'compliant', assessed_by: STATE.user.id, assessed_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+  }).in('id', items.map(i=>i.id));
+  if(error){ toast('Could not bulk-update: ' + error.message, 'error'); return; }
+  await loadLegalChecklistItems();
+  openLegalDetail(legalId);
+  toast('All checklist items marked compliant.', 'success');
+};
+
+window.promoteLegalChecklistItem = async function(id){
+  const ci = (STATE.legalChecklistItems || []).find(x=>x.id===id);
+  if(!ci) return;
+  const l = legalById(ci.legal_register_id);
+  const usesNc = STATE.org.nc_enabled !== false;
+  const targetClose = (() => { const d = new Date(); d.setDate(d.getDate()+30); return d.toISOString().slice(0,10); })();
+  const title = `Legal compliance — ${ci.clause_reference ? ci.clause_reference+': ' : ''}${(l ? l.title : ci.item_text)}`.slice(0,120);
+
+  let updatePatch = {};
+  if(usesNc){
+    const { data: newNc, error } = await STATE.supabase.from('nonconformances').insert({
+      organisation_id: STATE.org.id, title, description: ci.item_text + (ci.notes ? ` — ${ci.notes}` : ''),
+      discipline: 'governance', source: 'internal_audit', standard_clause: ci.clause_reference || null,
+      severity: 'major', raised_by: STATE.user.id, owner_id: l ? l.owner_id : STATE.user.id, target_close_date: targetClose,
+    }).select().single();
+    if(error){ toast('Could not raise nonconformance: ' + error.message, 'error'); return; }
+    updatePatch.nonconformance_id = newNc.id;
+    await STATE.supabase.from('tasks').insert({
+      organisation_id: STATE.org.id, title: `Close out: ${title}`, description: ci.item_text,
+      linked_type: 'nonconformance', linked_id: newNc.id, assignee_id: l ? l.owner_id : STATE.user.id,
+      priority: 'high', due_date: targetClose, created_by: STATE.user.id,
+    });
+    await loadNCs();
+    toast(`Raised as ${newNc.ref_code} and a follow-up task created.`, 'success');
+  } else {
+    const { data: newAlert, error } = await STATE.supabase.from('raga_alerts').insert({
+      organisation_id: STATE.org.id, alert_type: 'red', title, description: ci.item_text + (ci.notes ? ` — ${ci.notes}` : ''),
+      raised_by: STATE.user.id, owner_id: l ? l.owner_id : STATE.user.id, target_close_date: targetClose,
+    }).select().single();
+    if(error){ toast('Could not raise RAGA alert: ' + error.message, 'error'); return; }
+    updatePatch.raga_alert_id = newAlert.id;
+    await STATE.supabase.from('tasks').insert({
+      organisation_id: STATE.org.id, title: `Close out: ${title}`, description: ci.item_text,
+      linked_type: 'raga_alert', linked_id: newAlert.id, assignee_id: l ? l.owner_id : STATE.user.id,
+      priority: 'high', due_date: targetClose, created_by: STATE.user.id,
+    });
+    await loadRagaAlerts();
+    toast(`Raised as a RAGA alert and a follow-up task created.`, 'success');
+  }
+  await STATE.supabase.from('legal_register_checklist_items').update(updatePatch).eq('id', id);
+  await loadLegalChecklistItems();
+  openLegalDetail(ci.legal_register_id);
+  updateNavBadges();
 };
 
 /* ============ Personnel & Competence ============ */
