@@ -2677,22 +2677,23 @@ const RENDERERS = {
     <div id="doc-subtab-content"></div>
 
     <div class="form-panel" id="doc-form">
-      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:14px;">Add a controlled document</h3>
+      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:14px;">Create a new document</h3>
       <div class="form-grid">
-        <div class="field span3"><label>Title / description</label><input id="df-title" placeholder="e.g. Welding Procedure Specification"></div>
+        <div class="field span3"><label>Suggested document name</label><input id="df-title" placeholder="e.g. Welding Procedure Specification"></div>
+        <div class="field span3"><label>Purpose, requirement &amp; scope</label><textarea id="df-purpose" placeholder="What is this document for, what requirement does it satisfy, and what does it cover? This also seeds the AI drafting assistant on the next screen."></textarea></div>
         <div class="field"><label>Department</label><select id="df-department" onchange="updateDfNextNumberPreview()">${STATE.docDepartments.filter(d=>d.is_active).map(d=>`<option value="${d.id}">${d.code}: ${d.name}</option>`).join('')}</select></div>
         <div class="field"><label>Document type</label><select id="df-type" onchange="updateDfNextNumberPreview()">${STATE.docTypes.filter(t=>t.is_active).map(t=>`<option value="${t.id}">${t.code}: ${t.name}</option>`).join('')}</select></div>
+        <div class="field"><label>Creator</label><select id="df-creator">${memberOptions(STATE.user.id)}</select></div>
         <div class="field"><label>Owner</label><select id="df-owner">${memberOptions(STATE.user.id)}</select></div>
-        <div class="field"><label>Developer</label><select id="df-developer">${memberOptions(STATE.user.id)}</select></div>
-        <div class="field"><label>Approver</label><select id="df-approver">${memberOptions()}</select></div>
         <div class="field"><label>Next review date</label><input type="date" id="df-review"></div>
         <div class="field span2"><label>Revision 0 — change description</label><input id="df-rev-desc" placeholder="e.g. Initial issue" value="Initial issue"></div>
         <div class="field"><label>Revision 0 — file (optional)</label><input type="file" id="df-file"></div>
       </div>
       <p id="df-next-number-preview" style="font-size:12px; color:var(--text-faint); margin:-4px 0 10px;"></p>
+      <p style="font-size:11.5px; color:var(--text-faint); margin:-4px 0 10px;">Reviewers and the approver are chosen later, once the document is drafted and ready to submit.</p>
       <div class="form-actions">
         <button class="btn-cancel" onclick="toggleDocForm()">Cancel</button>
-        <button class="btn-primary" onclick="submitDocument()">Add document</button>
+        <button class="btn-primary" onclick="submitDocument()">Create &amp; start drafting</button>
       </div>
     </div>
 
@@ -6401,16 +6402,16 @@ window.submitDocument = async function(){
   const payload = {
     organisation_id: STATE.org.id,
     title,
+    purpose: document.getElementById('df-purpose').value.trim(),
     department_id: departmentId,
     type_id: typeId,
     owner_id: document.getElementById('df-owner').value,
-    developer_id: document.getElementById('df-developer').value || null,
-    approver_id: document.getElementById('df-approver').value || null,
     next_review_date: document.getElementById('df-review').value || null,
     introduced_date: todayISO(),
     current_revision_date: todayISO(),
     current_revision: 0,
-    created_by: STATE.user.id,
+    created_by: document.getElementById('df-creator').value || STATE.user.id,
+    workflow_status: 'draft',
     promoted_from_bulk_document_id: STATE._activePromotionBulkDocId || null,
   };
   const { data: newDoc, error: docErr } = await STATE.supabase.from('documents').insert(payload).select().single();
@@ -6452,10 +6453,14 @@ window.submitDocument = async function(){
 
   toggleDocForm();
   document.querySelectorAll('#doc-form input').forEach(el=>el.value='');
+  document.getElementById('df-purpose').value = '';
   await loadDocuments();
   renderDocumentsTable();
   updateNavBadges();
-  toast(`${newDoc.doc_number} added.`, 'success');
+  // Straight into drafting — this is the continuous create → upload
+  // historical context → AI-draft → edit flow, not a dead-end register row.
+  openDocumentDetail(newDoc.id);
+  toast(`${newDoc.doc_number} created — now upload any historical document for context, then generate an AI draft.`, 'success');
 };
 
 window.switchDocSubtab = function(tab){
@@ -6669,6 +6674,234 @@ function renderDocumentsTable(){
 }
 window.renderDocumentsTable = renderDocumentsTable;
 
+/* ---- Document Management: create -> review -> approval workflow ----
+   Replaces the old single-person developer/reviewer/approver sign-off
+   chain with a proper multi-reviewer, notified, staged process:
+   draft -> submitted_for_review -> reviewers_satisfied ->
+   submitted_for_approval -> approver_requested_changes ->
+   reviewers_finalized -> approved. */
+const DOC_WORKFLOW_LABELS = {
+  draft: 'Draft — not yet submitted for review',
+  submitted_for_review: 'Submitted for review',
+  reviewers_satisfied: 'All reviewers satisfied — ready to send for approval',
+  submitted_for_approval: 'Submitted for approval',
+  approver_requested_changes: 'Approver requested changes — reviewers rechecking',
+  reviewers_finalized: 'Reviewers finalised — awaiting final approval',
+  approved: 'Approved',
+};
+const DOC_REVIEWER_COLORS = ['#c0392b','#2166ac','#1a8a5f','#b8860b','#7d3fbf','#c2185b','#00838f','#8d6e37'];
+
+function renderDocumentWorkflowCard(d, reviewers, comments){
+  const canManage = STATE.user.id === d.created_by || STATE.user.id === d.owner_id || STATE.myRole === 'admin' || STATE.myRole === 'manager';
+  const myReviewerRow = reviewers.find(r=>r.reviewer_id === STATE.user.id);
+  const isApprover = d.workflow_approver_id && d.workflow_approver_id === STATE.user.id;
+  const status = d.workflow_status || 'draft';
+
+  let body = '';
+
+  if(status === 'draft'){
+    body += canManage ? `
+      <div class="form-grid" style="margin-bottom:10px;">
+        <div class="field span3">
+          <label>Select reviewer(s)</label>
+          <div style="display:flex; flex-wrap:wrap; gap:6px 16px; padding:8px 2px;">
+            ${STATE.members.map(m=>`<label style="display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:400;"><input type="checkbox" class="dwf-reviewer-cb" value="${m.user_id}" style="width:auto;"> ${(m.profiles&&m.profiles.name)||'Unknown'}</label>`).join('')}
+          </div>
+        </div>
+      </div>
+      <button class="btn-small primary" onclick="submitDocumentForReview('${d.id}')">Submit for review</button>
+    ` : `<p style="font-size:12.5px; color:var(--text-faint);">Still being drafted by ${memberName(d.created_by)}.</p>`;
+  }
+
+  if(status !== 'draft'){
+    body += `<div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+      ${reviewers.map(r => {
+        const inRound2 = (status==='approver_requested_changes' || status==='reviewers_finalized');
+        const done = inRound2 ? r.finalized_at : r.satisfied_at;
+        return `<div style="display:flex; align-items:center; gap:6px; padding:6px 10px; border-radius:20px; border:1.5px solid ${r.color};">
+          <span style="width:8px; height:8px; border-radius:50%; background:${r.color}; display:inline-block;"></span>
+          <b style="color:${r.color}; font-size:12px;">${memberName(r.reviewer_id)}</b>
+          <span style="font-size:11px; color:${done?'var(--green)':'var(--text-faint)'};">${done ? (inRound2?'✓ Finalised':'✓ Satisfied') : 'Awaiting'}</span>
+        </div>`;
+      }).join('')}
+    </div>`;
+
+    if(d.workflow_approver_id) body += `<p style="font-size:12.5px; margin-bottom:12px;"><b>Approver:</b> ${memberName(d.workflow_approver_id)}</p>`;
+
+    body += `<div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Review Discussion</div>`;
+    body += comments.length ? comments.map(c => `
+      <div style="margin-bottom:8px; padding:8px 12px; border-left:3px solid ${c.color||'#999'}; background:var(--grey-tint); border-radius:0 8px 8px 0;">
+        <div style="font-size:11.5px; font-weight:600; color:${c.color||'inherit'};">${memberName(c.author_id)} <span style="font-weight:400; color:var(--text-faint); text-transform:capitalize;">(${c.author_role})</span> <span style="font-weight:400; color:var(--text-faint);">— ${fmtDate(c.created_at.slice(0,10))}</span></div>
+        <p style="font-size:13px; margin:4px 0 0; white-space:pre-wrap;">${c.comment_text}</p>
+      </div>
+    `).join('') : `<p style="font-size:12px; color:var(--text-faint); margin-bottom:10px;">No comments yet.</p>`;
+
+    if(canManage || myReviewerRow || isApprover){
+      body += `
+        <div style="margin-top:10px;">
+          <textarea id="dwf-comment-${d.id}" placeholder="Add a comment…" style="width:100%; min-height:60px; font-size:12.5px; padding:8px 10px; border:1px solid var(--border); border-radius:6px;"></textarea>
+          <button class="btn-small" style="margin-top:6px;" onclick="postWorkflowComment('${d.id}')">Post comment</button>
+        </div>
+      `;
+    }
+  }
+
+  if(status === 'submitted_for_review' && myReviewerRow){
+    body += myReviewerRow.satisfied_at
+      ? `<div style="margin-top:12px;"><button class="btn-small" onclick="reopenReviewerSatisfied('${d.id}')">Reopen — I have more to add</button></div>`
+      : `<div style="margin-top:12px;"><button class="btn-small primary" onclick="markReviewerSatisfied('${d.id}')">I'm satisfied with this draft</button></div>`;
+  }
+  if(status === 'reviewers_satisfied' && canManage){
+    body += `
+      <div class="form-grid" style="margin-top:14px;">
+        <div class="field span2"><label>Select approver</label><select id="dwf-approver-${d.id}">${memberOptions(d.workflow_approver_id)}</select></div>
+      </div>
+      <button class="btn-small primary" onclick="sendDocumentForApproval('${d.id}')">Send for approval</button>
+    `;
+  }
+  if(status === 'submitted_for_approval' && isApprover){
+    body += `
+      <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn-small primary" onclick="approveDocumentRevision('${d.id}')">Approve directly</button>
+        <button class="btn-small" onclick="approverRequestChanges('${d.id}')">Request changes — send to reviewers for final check</button>
+      </div>
+    `;
+  }
+  if(status === 'approver_requested_changes' && myReviewerRow && !myReviewerRow.finalized_at){
+    body += `<div style="margin-top:12px;"><button class="btn-small primary" onclick="reviewerFinalize('${d.id}')">Finalise — I agree with the approver's changes</button></div>`;
+  }
+  if(status === 'reviewers_finalized' && isApprover){
+    body += `<div style="margin-top:12px;"><button class="btn-small primary" onclick="approveDocumentRevision('${d.id}')">Finalise &amp; approve</button></div>`;
+  }
+  if(status === 'approved'){
+    body += `<div style="margin-top:12px; padding:10px 14px; background:var(--green-tint); border-radius:8px; font-size:12.5px; color:var(--green); font-weight:600;">✓ Approved by ${memberName(d.approved_by)} on ${fmtDate(d.approved_date)} — now official and visible in All Documents.</div>`;
+  }
+
+  return `
+    <div class="detail-card" style="padding:16px; margin-bottom:16px;">
+      <div class="panel-head" style="margin-bottom:10px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Review &amp; Approval Workflow</h3></div>
+      <div style="background:var(--grey-tint); border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:12.5px;"><b>${DOC_WORKFLOW_LABELS[status] || label(status)}</b></div>
+      ${body}
+    </div>
+  `;
+}
+
+window.submitDocumentForReview = async function(docId){
+  const checked = Array.from(document.querySelectorAll('.dwf-reviewer-cb:checked')).map(el=>el.value);
+  if(!checked.length){ alert('Select at least one reviewer.'); return; }
+  await STATE.supabase.from('document_reviewers').delete().eq('document_id', docId);
+  const rows = checked.map((uid,i) => ({ organisation_id: STATE.org.id, document_id: docId, reviewer_id: uid, color: DOC_REVIEWER_COLORS[i % DOC_REVIEWER_COLORS.length] }));
+  const { error } = await STATE.supabase.from('document_reviewers').insert(rows);
+  if(error){ toast('Could not assign reviewers: ' + error.message, 'error'); return; }
+  const { error: updErr } = await STATE.supabase.from('documents').update({ workflow_status: 'submitted_for_review', workflow_approver_id: null }).eq('id', docId);
+  if(updErr){ toast('Could not submit for review: ' + updErr.message, 'error'); return; }
+
+  const d = documentById(docId);
+  await notifyDocumentUsers(checked, `Document review requested: ${d.doc_number}`,
+    `${memberName(STATE.user.id)} has submitted "${d.title}" (${d.doc_number}) for your review in QaSHE Watchman. Please open Document Management to review it.`);
+
+  await loadDocuments();
+  openDocumentDetail(docId);
+  renderDocumentsTable();
+  toast('Submitted for review — reviewers notified.', 'success');
+};
+
+window.markReviewerSatisfied = async function(docId){
+  const { error } = await STATE.supabase.from('document_reviewers').update({ satisfied_at: new Date().toISOString() }).eq('document_id', docId).eq('reviewer_id', STATE.user.id);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+
+  const { data: reviewers } = await STATE.supabase.from('document_reviewers').select('*').eq('document_id', docId);
+  const allSatisfied = (reviewers||[]).length && reviewers.every(r=>r.satisfied_at);
+  const d = documentById(docId);
+  if(allSatisfied){
+    await STATE.supabase.from('documents').update({ workflow_status: 'reviewers_satisfied' }).eq('id', docId);
+    await notifyDocumentUsers([d.created_by, d.owner_id], `All reviewers satisfied: ${d.doc_number}`,
+      `All reviewers have marked "${d.title}" (${d.doc_number}) as satisfactory. You can now select an approver and send it for approval.`);
+  }
+  await loadDocuments();
+  openDocumentDetail(docId);
+  toast('Marked as satisfied.', 'success');
+};
+
+window.reopenReviewerSatisfied = async function(docId){
+  await STATE.supabase.from('document_reviewers').update({ satisfied_at: null }).eq('document_id', docId).eq('reviewer_id', STATE.user.id);
+  const d = documentById(docId);
+  if(d.workflow_status === 'reviewers_satisfied'){
+    await STATE.supabase.from('documents').update({ workflow_status: 'submitted_for_review' }).eq('id', docId);
+  }
+  await loadDocuments();
+  openDocumentDetail(docId);
+};
+
+window.postWorkflowComment = async function(docId){
+  const textEl = document.getElementById(`dwf-comment-${docId}`);
+  const text = textEl.value.trim();
+  if(!text) return;
+  const d = documentById(docId);
+  const { data: reviewers } = await STATE.supabase.from('document_reviewers').select('*').eq('document_id', docId);
+  const myReviewerRow = (reviewers||[]).find(r=>r.reviewer_id===STATE.user.id);
+  const isApprover = d.workflow_approver_id === STATE.user.id;
+  let role = 'creator', color = '#333';
+  if(myReviewerRow){ role = 'reviewer'; color = myReviewerRow.color; }
+  else if(isApprover){ role = 'approver'; color = '#111'; }
+  const stage = ['submitted_for_approval','approver_requested_changes','reviewers_finalized'].includes(d.workflow_status) ? 'approval' : 'review';
+
+  const { error } = await STATE.supabase.from('document_workflow_comments').insert({
+    organisation_id: STATE.org.id, document_id: docId, stage, author_id: STATE.user.id, author_role: role, color, comment_text: text,
+  });
+  if(error){ toast('Could not post comment: ' + error.message, 'error'); return; }
+  textEl.value = '';
+
+  const others = [d.created_by, d.owner_id, d.workflow_approver_id, ...(reviewers||[]).map(r=>r.reviewer_id)];
+  await notifyDocumentUsers(others, `New comment on ${d.doc_number}`,
+    `${memberName(STATE.user.id)} (${role}) commented on "${d.title}" (${d.doc_number}):\n\n${text}`);
+
+  openDocumentDetail(docId);
+};
+
+window.sendDocumentForApproval = async function(docId){
+  const approverId = document.getElementById(`dwf-approver-${docId}`).value;
+  if(!approverId){ alert('Select an approver.'); return; }
+  const { error } = await STATE.supabase.from('documents').update({ workflow_status: 'submitted_for_approval', workflow_approver_id: approverId }).eq('id', docId);
+  if(error){ toast('Could not send for approval: ' + error.message, 'error'); return; }
+  const d = documentById(docId);
+  await notifyDocumentUsers([approverId], `Document approval requested: ${d.doc_number}`,
+    `"${d.title}" (${d.doc_number}) has been reviewed and is ready for your approval in QaSHE Watchman.`);
+  await loadDocuments();
+  openDocumentDetail(docId);
+  toast('Sent for approval — approver notified.', 'success');
+};
+
+window.approverRequestChanges = async function(docId){
+  const d = documentById(docId);
+  const { error } = await STATE.supabase.from('documents').update({ workflow_status: 'approver_requested_changes' }).eq('id', docId);
+  if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+  await STATE.supabase.from('document_reviewers').update({ finalized_at: null }).eq('document_id', docId);
+  const { data: reviewers } = await STATE.supabase.from('document_reviewers').select('*').eq('document_id', docId);
+  await notifyDocumentUsers((reviewers||[]).map(r=>r.reviewer_id), `Approver requested changes: ${d.doc_number}`,
+    `The approver has requested changes on "${d.title}" (${d.doc_number}). Please review their comments and finalise once you agree.`);
+  await loadDocuments();
+  openDocumentDetail(docId);
+  toast('Reviewers notified to finalise.', 'success');
+};
+
+window.reviewerFinalize = async function(docId){
+  await STATE.supabase.from('document_reviewers').update({ finalized_at: new Date().toISOString() }).eq('document_id', docId).eq('reviewer_id', STATE.user.id);
+  const { data: reviewers } = await STATE.supabase.from('document_reviewers').select('*').eq('document_id', docId);
+  const allFinalized = (reviewers||[]).length && reviewers.every(r=>r.finalized_at);
+  const d = documentById(docId);
+  if(allFinalized){
+    await STATE.supabase.from('documents').update({ workflow_status: 'reviewers_finalized' }).eq('id', docId);
+    if(d.workflow_approver_id){
+      await notifyDocumentUsers([d.workflow_approver_id], `Reviewers finalised: ${d.doc_number}`,
+        `All reviewers have finalised "${d.title}" (${d.doc_number}). You can now give final approval.`);
+    }
+  }
+  await loadDocuments();
+  openDocumentDetail(docId);
+  toast('Finalised.', 'success');
+};
+
 async function openDocumentDetail(id){
   const d = documentById(id);
   if(!d) return;
@@ -6680,8 +6913,9 @@ async function openDocumentDetail(id){
   const { data: sectionImages } = await STATE.supabase.from('document_section_images').select('*').eq('document_id', id).order('sort_order', {ascending:true});
   const { data: sectionTables } = await STATE.supabase.from('document_section_tables').select('*').eq('document_id', id).order('sort_order', {ascending:true});
   const { data: addendums } = await STATE.supabase.from('document_addendums').select('*').eq('document_id', id).order('sort_order', {ascending:true});
-  const { data: reviewComments } = await STATE.supabase.from('document_review_comments').select('*').eq('document_id', id).order('created_at', {ascending:true});
   const { data: referenceUploads } = await STATE.supabase.from('document_reference_uploads').select('*').eq('document_id', id).order('created_at', {ascending:false});
+  const { data: docReviewers } = await STATE.supabase.from('document_reviewers').select('*').eq('document_id', id).order('created_at', {ascending:true});
+  const { data: workflowComments } = await STATE.supabase.from('document_workflow_comments').select('*').eq('document_id', id).order('created_at', {ascending:true});
 
   document.getElementById('doc-detail-slot').innerHTML = `
     <div class="detail-panel">
@@ -6700,79 +6934,11 @@ async function openDocumentDetail(id){
         <div class="dm-item"><div class="l">Introduced</div><div class="v">${fmtDate(d.introduced_date)}</div></div>
         <div class="dm-item"><div class="l">This revision dated</div><div class="v">${fmtDate(d.current_revision_date)}</div></div>
         <div class="dm-item"><div class="l">Owner</div><div class="v">${memberName(d.owner_id)}</div></div>
+        <div class="dm-item"><div class="l">Created by</div><div class="v">${memberName(d.created_by)}</div></div>
       </div>
+      ${d.purpose ? `<p style="font-size:13px; color:var(--text-dim); margin-bottom:16px; line-height:1.5; background:var(--grey-tint); padding:10px 14px; border-radius:8px;"><b>Purpose, requirement &amp; scope:</b> ${d.purpose}</p>` : ''}
 
-      <div class="detail-card" style="padding:16px; margin-bottom:16px;">
-        <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Developer, Reviewer &amp; Approver Sign-Off</h3></div>
-        ${(() => {
-          let stageLabel, stagePersonId, stageRole;
-          if(!d.developer_signed_off_at){ stageLabel = 'Developer'; stagePersonId = d.developer_id; stageRole = 'developer'; }
-          else if(!d.reviewer_signed_off_at){ stageLabel = 'Reviewer'; stagePersonId = d.reviewer_id; stageRole = 'reviewer'; }
-          else if(!d.approver_signed_off_at){ stageLabel = 'Approver'; stagePersonId = d.approver_id; stageRole = 'approver'; }
-          if(!stageLabel) return '';
-          return `<div style="background:var(--grey-tint); border-radius:8px; padding:10px 14px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-            <div style="font-size:12.5px;"><b>Currently with: ${stageLabel}</b>${stagePersonId ? ` — ${memberName(stagePersonId)}` : ' (not yet assigned)'}. Only they can sign off or comment at this stage — this is enforced by the system itself, not just this screen.</div>
-            ${stagePersonId ? `<button class="btn-small" onclick="sendDocumentReminder('${d.id}','${stageRole}')">Send reminder</button>` : ''}
-          </div>`;
-        })()}
-        <div class="form-grid" style="margin-bottom:10px;">
-          <div class="field"><label>Developer</label><select id="dd-developer">${memberOptions(d.developer_id)}</select></div>
-          <div class="field"><label>Reviewer</label><select id="dd-reviewer">${memberOptions(d.reviewer_id)}</select></div>
-          <div class="field"><label>Approver</label><select id="dd-approver">${memberOptions(d.approver_id)}</select></div>
-        </div>
-        <button class="btn-small" onclick="saveDocumentSignoffAssignment('${d.id}')">Save assignment</button>
-        <div style="display:flex; gap:24px; margin-top:14px; flex-wrap:wrap;">
-          <div>
-            <div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:4px;">Developer sign-off</div>
-            ${d.developer_signed_off_at
-              ? `<span style="color:var(--green); font-size:12.5px; font-weight:600;">✓ Signed ${fmtDate(d.developer_signed_off_at)}</span>`
-              : (d.developer_id === STATE.user.id
-                  ? `<button class="btn-small primary" onclick="signOffDocument('${d.id}','developer')">Sign as developer</button>`
-                  : `<span style="font-size:12px; color:var(--text-faint);">Not yet signed</span>`)}
-          </div>
-          <div>
-            <div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:4px;">Reviewer sign-off</div>
-            ${d.reviewer_signed_off_at
-              ? `<span style="color:var(--green); font-size:12.5px; font-weight:600;">✓ Signed ${fmtDate(d.reviewer_signed_off_at)}</span>`
-              : (d.reviewer_id === STATE.user.id
-                  ? (d.developer_signed_off_at
-                      ? `<button class="btn-small primary" onclick="signOffDocument('${d.id}','reviewer')">Sign as reviewer</button>`
-                      : `<span style="font-size:12px; color:var(--text-faint);">Waiting for developer sign-off first</span>`)
-                  : `<span style="font-size:12px; color:var(--text-faint);">Not yet signed</span>`)}
-          </div>
-          <div>
-            <div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:4px;">Approver sign-off</div>
-            ${d.approver_signed_off_at
-              ? `<span style="color:var(--green); font-size:12.5px; font-weight:600;">✓ Signed ${fmtDate(d.approver_signed_off_at)}</span>`
-              : (d.approver_id === STATE.user.id
-                  ? (d.reviewer_signed_off_at
-                      ? `<button class="btn-small primary" onclick="signOffDocument('${d.id}','approver')">Sign as approver</button>`
-                      : `<span style="font-size:12px; color:var(--text-faint);">Waiting for reviewer sign-off first</span>`)
-                  : `<span style="font-size:12px; color:var(--text-faint);">Not yet signed</span>`)}
-          </div>
-        </div>
-        ${d.approver_signed_off_at ? `<div style="margin-top:14px; padding:10px 14px; background:var(--green-tint); border-radius:8px; font-size:12.5px; color:var(--green); font-weight:600;">✓ Fully approved and official</div>` : ''}
-
-        <div style="margin-top:18px; border-top:1px solid var(--border); padding-top:14px;">
-          <div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:10px;">Review Discussion</div>
-          <div id="document-review-thread"></div>
-          ${d.developer_id === STATE.user.id ? `
-            <div style="margin-top:10px;">
-              <textarea id="comment-developer" placeholder="Comment as developer…" style="width:100%; min-height:60px; font-size:12.5px; padding:8px 10px; border:1px solid var(--border); border-radius:6px;"></textarea>
-              <button class="btn-small" style="margin-top:6px;" onclick="addReviewComment('${d.id}','developer')">Post as developer</button>
-            </div>` : ''}
-          ${d.reviewer_id === STATE.user.id ? `
-            <div style="margin-top:10px;">
-              <textarea id="comment-reviewer" placeholder="Comment as reviewer…" style="width:100%; min-height:60px; font-size:12.5px; padding:8px 10px; border:1px solid var(--border); border-radius:6px;"></textarea>
-              <button class="btn-small" style="margin-top:6px;" onclick="addReviewComment('${d.id}','reviewer')">Post as reviewer</button>
-            </div>` : ''}
-          ${d.approver_id === STATE.user.id ? `
-            <div style="margin-top:10px;">
-              <textarea id="comment-approver" placeholder="Comment as approver…" style="width:100%; min-height:60px; font-size:12.5px; padding:8px 10px; border:1px solid var(--border); border-radius:6px;"></textarea>
-              <button class="btn-small" style="margin-top:6px;" onclick="addReviewComment('${d.id}','approver')">Post as approver</button>
-            </div>` : ''}
-        </div>
-      </div>
+      ${renderDocumentWorkflowCard(d, docReviewers || [], workflowComments || [])}
 
       <div class="detail-card" style="padding:16px; margin-bottom:16px;">
         <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Historical Reference Documents</h3></div>
@@ -6790,7 +6956,7 @@ async function openDocumentDetail(id){
         </div>
         <div id="ai-draft-form-${d.id}" style="display:none; margin-bottom:14px;">
           <div class="form-grid">
-            <div class="field span3"><label>What is this document about? Describe its purpose and scope in a sentence or two</label><textarea id="ai-draft-prompt" placeholder="e.g. A procedure for how nonconformances get raised, investigated, and closed out"></textarea></div>
+            <div class="field span3"><label>What is this document about? Describe its purpose and scope in a sentence or two</label><textarea id="ai-draft-prompt" placeholder="e.g. A procedure for how nonconformances get raised, investigated, and closed out">${(d.purpose||'').replace(/</g,'&lt;')}</textarea></div>
           </div>
           <button class="btn-small primary" onclick="generateAiDraft('${d.id}')" id="ai-draft-btn">Generate draft sections</button>
           <p style="font-size:11px; color:var(--text-faint); margin-top:6px;">Generates a starting draft for you to review and edit — nothing here gets treated as final or signed off automatically.${(referenceUploads||[]).length ? ' Uses your uploaded historical document(s) above as context, so this draft reflects how this client actually does things.' : ''}</p>
@@ -6842,14 +7008,6 @@ async function openDocumentDetail(id){
         ${d.storage_path ? `<button class="btn-small" onclick="downloadFromBucket('documents','${d.storage_path}')">Download current file</button>` : ''}
       </div>
 
-      <div class="status-row">
-        <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase;">Approval (Rev ${d.current_revision})</label>
-        ${pill(d.approval_status || 'pending')}
-        ${d.approval_status === 'approved'
-          ? `<span style="font-size:11.5px; color:var(--text-faint);">by ${memberName(d.approved_by)} on ${fmtDate(d.approved_date)}</span>`
-          : `<button class="btn-small primary" onclick="approveDocumentRevision('${d.id}')">Approve this revision</button>`}
-      </div>
-
       <div class="panel-head" style="margin-top:10px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Issue a new revision</h3></div>
       <p style="font-size:11.5px; color:var(--text-faint); margin-bottom:10px;">Next revision will be numbered <b>${d.current_revision + 1}</b> automatically.</p>
       <div class="form-grid">
@@ -6881,7 +7039,6 @@ async function openDocumentDetail(id){
   renderReferenceUploadsList(id, referenceUploads || []);
   renderDocumentLinksList(id, links || []);
   renderDocumentAddendumsList(id, addendums || []);
-  renderDocumentReviewThread(id, reviewComments || []);
 }
 window.openDocumentDetail = openDocumentDetail;
 function closeDocumentDetail(){ document.getElementById('doc-detail-slot').innerHTML = ''; }
@@ -7860,6 +8017,17 @@ async function sendEmailToAddress(toEmail, subject, message){
   return await actuallySendEmail(toEmail, subject, message);
 }
 
+// Notifies a set of org members by user id, deduplicated, skipping the
+// person who just took the action (they don't need an email about their
+// own click) and skipping any falsy/unassigned ids.
+async function notifyDocumentUsers(userIds, subject, message){
+  const unique = [...new Set((userIds||[]).filter(Boolean))];
+  for(const uid of unique){
+    if(uid === STATE.user.id) continue;
+    await sendNotificationEmail(uid, subject, message);
+  }
+}
+
 window.saveDocumentSignoffAssignment = async function(docId){
   const { error } = await STATE.supabase.from('documents').update({
     developer_id: document.getElementById('dd-developer').value || null,
@@ -7974,7 +8142,7 @@ window.approveDocumentRevision = async function(id){
   const d = documentById(id);
   if(!d) return;
   const patch = { approval_status:'approved', approved_by: STATE.user.id, approved_date: todayISO() };
-  const { error } = await STATE.supabase.from('documents').update(patch).eq('id', id);
+  const { error } = await STATE.supabase.from('documents').update({ ...patch, workflow_status: 'approved', ever_approved: true }).eq('id', id);
   if(error){ toast('Could not approve: ' + error.message, 'error'); return; }
   // Mirror the same approval onto that revision's own history row.
   await STATE.supabase.from('document_revisions').update(patch)
@@ -7992,6 +8160,15 @@ window.approveDocumentRevision = async function(id){
     .update({ status:'completed', resolved_at: new Date().toISOString(), resolved_by: STATE.user.id })
     .in('status', ['pending','in_progress'])
     .or(`document_id.eq.${id},resulting_document_id.eq.${id}`);
+
+  // Notify everyone who took part in this document's workflow that it's
+  // now approved and official — the "all parties notified" close-out.
+  const { data: docReviewers } = await STATE.supabase.from('document_reviewers').select('reviewer_id').eq('document_id', id);
+  await notifyDocumentUsers(
+    [d.created_by, d.owner_id, ...(docReviewers||[]).map(r=>r.reviewer_id)],
+    `Approved: ${d.doc_number}`,
+    `"${d.title}" (${d.doc_number}) has been approved and is now official. It is automatically visible in All Documents.`
+  );
 
   await loadDocuments();
   await renderBulkDocumentsRegister();
@@ -8032,6 +8209,10 @@ window.submitNewRevision = async function(id){
     current_revision: nextRevision, storage_path: path, current_revision_date: todayISO(),
     approval_status: 'pending', approved_by: null, approved_date: null,
     developer_signed_off_at: null, approver_signed_off_at: null,
+    // Back to the start of the review/approval workflow for this new
+    // revision — ever_approved stays true so it keeps showing in All
+    // Documents (flagged "under amendment/review") rather than vanishing.
+    workflow_status: 'draft', workflow_approver_id: null,
   }).eq('id', id);
   if(updErr){ toast('Revision recorded, but could not set it as current: ' + updErr.message, 'error'); return; }
 
@@ -17359,7 +17540,13 @@ function allDocsTypeDocs(deptId, typeId){
 // filed under.
 function allDocsControlledDocs(deptId, typeId){
   if(deptId === '' || typeId === '') return []; // controlled documents always have both set
-  return STATE.documents.filter(d=>d.department_id===deptId && (d.type_id===typeId || d.document_type_id===typeId));
+  // A document only surfaces here once it has been approved for the first
+  // time — before that it lives in Document Management while it's drafted,
+  // reviewed and approved. Once it HAS been approved at least once, it stays
+  // visible here permanently (see ever_approved) even while a later
+  // amendment is back in review/approval — renderAllDocsControlledSection
+  // shows a badge for that in-progress state rather than hiding the document.
+  return STATE.documents.filter(d=>d.department_id===deptId && (d.type_id===typeId || d.document_type_id===typeId) && d.ever_approved);
 }
 
 /* ---- Level 1: Departments ---- */
@@ -17661,7 +17848,7 @@ function renderAllDocsControlledSection(deptId, typeId){
           <td class="mono-cell strong">${d.doc_number || '—'}</td>
           <td>${escapeHtml(d.title || '—')}</td>
           <td>${d.current_revision != null ? d.current_revision : '—'}</td>
-          <td>${pill(d.approval_status || 'pending')}</td>
+          <td>${pill(d.approval_status || 'pending')}${d.workflow_status && d.workflow_status !== 'approved' ? ` <span class="pill" style="background:#fff3cd; color:#8a6400;">Under amendment/review</span>` : ''}</td>
           <td style="text-align:right; white-space:nowrap;">
             <button class="btn-small" onclick="showModule('documents'); setTimeout(()=>openDocumentDetail('${d.id}'),0);">Open in Document Control</button>
             <button class="btn-small" onclick="openReviewRequestForm('document','${d.id}','${deptId}','${typeId}')">Request update</button>
