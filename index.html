@@ -9912,16 +9912,33 @@ function renderLegalAiSuggestions(){
 }
 window.renderLegalAiSuggestions = renderLegalAiSuggestions;
 
-window.acceptLegalAiSuggestion = async function(id){
-  const s = (STATE.legalAiSuggestions || []).find(x=>x.id===id);
-  if(!s) return;
+// Reads the current, possibly-edited field values for one suggestion row
+// straight out of the DOM. Kept separate from the accept logic itself so
+// that acceptAllLegalAiSuggestions() can capture every row's values BEFORE
+// any of them are processed — accepting one suggestion re-renders the
+// staging list from STATE, which would otherwise wipe out unsaved edits to
+// every suggestion still waiting to be processed.
+function captureLegalAiSuggestionFields(id){
   const title = document.getElementById(`lai-title-${id}`).value.trim();
-  if(!title){ alert('Title is required.'); return; }
   const description = document.getElementById(`lai-desc-${id}`).value.trim();
   const actRef = document.getElementById(`lai-act-${id}`).value.trim();
   const freq = document.getElementById(`lai-freq-${id}`).value.trim();
   const ownerId = document.getElementById(`lai-owner-${id}`).value;
   const deptId = document.getElementById(`lai-dept-${id}`).value || null;
+  return { title, description, actRef, freq, ownerId, deptId };
+}
+
+window.acceptLegalAiSuggestion = async function(id){
+  const s = (STATE.legalAiSuggestions || []).find(x=>x.id===id);
+  if(!s) return;
+  const fields = captureLegalAiSuggestionFields(id);
+  await acceptLegalAiSuggestionWithFields(id, s, fields);
+};
+
+async function acceptLegalAiSuggestionWithFields(id, s, fields, opts){
+  const skipRender = !!(opts && opts.skipRender);
+  const { title, description, actRef, freq, ownerId, deptId } = fields;
+  if(!title){ alert(`Title is required for "${s.title || 'a suggestion'}" — skipped.`); return false; }
 
   const payload = {
     organisation_id: STATE.org.id,
@@ -9936,7 +9953,7 @@ window.acceptLegalAiSuggestion = async function(id){
     ai_suggestion_id: id,
   };
   const { data: newItem, error } = await STATE.supabase.from('legal_register').insert(payload).select().single();
-  if(error){ toast('Could not add to legal register: ' + error.message, 'error'); return; }
+  if(error){ toast('Could not add to legal register: ' + error.message, 'error'); return false; }
 
   const { error: uErr } = await STATE.supabase.from('legal_register_ai_suggestions').update({
     status: 'accepted', resulting_legal_register_id: newItem.id, reviewed_at: new Date().toISOString(), reviewed_by: STATE.user.id,
@@ -9962,13 +9979,16 @@ window.acceptLegalAiSuggestion = async function(id){
     }
   }
 
-  await loadLegalRegister();
-  await loadLegalAiSuggestions();
-  await loadLegalChecklistItems();
-  renderLegalTable();
-  renderLegalAiSuggestions();
-  updateNavBadges();
+  if(!skipRender){
+    await loadLegalRegister();
+    await loadLegalAiSuggestions();
+    await loadLegalChecklistItems();
+    renderLegalTable();
+    renderLegalAiSuggestions();
+    updateNavBadges();
+  }
   toast(`${newItem.ref_code} added from AI suggestion.`, 'success');
+  return true;
 };
 
 window.rejectLegalAiSuggestion = async function(id){
@@ -9981,10 +10001,29 @@ window.rejectLegalAiSuggestion = async function(id){
 };
 
 window.acceptAllLegalAiSuggestions = async function(){
-  const ids = (STATE.legalAiSuggestions || []).map(s=>s.id);
-  if(!ids.length) return;
-  if(!confirm(`Accept all ${ids.length} AI suggestions as currently shown (including any edits you've made)?`)) return;
-  for(const id of ids){ await window.acceptLegalAiSuggestion(id); }
+  const suggestions = (STATE.legalAiSuggestions || []).slice();
+  if(!suggestions.length) return;
+  if(!confirm(`Accept all ${suggestions.length} AI suggestions as currently shown (including any edits you've made)?`)) return;
+
+  // Capture every row's current (possibly-edited) field values from the DOM
+  // BEFORE processing any of them. Accepting a suggestion reloads state and
+  // re-renders the whole staging list, which would blow away unsaved edits
+  // to rows further down the list if we read the DOM one row at a time.
+  const captured = suggestions.map(s => ({ id: s.id, s, fields: captureLegalAiSuggestionFields(s.id) }));
+
+  let successCount = 0, failCount = 0;
+  for(const { id, s, fields } of captured){
+    const ok = await acceptLegalAiSuggestionWithFields(id, s, fields, { skipRender: true });
+    if(ok) successCount++; else failCount++;
+  }
+
+  await loadLegalRegister();
+  await loadLegalAiSuggestions();
+  await loadLegalChecklistItems();
+  renderLegalTable();
+  renderLegalAiSuggestions();
+  updateNavBadges();
+  toast(`${successCount} suggestion${successCount===1?'':'s'} added to the register${failCount ? `, ${failCount} skipped (see alerts)` : ''}.`, failCount ? 'error' : 'success');
 };
 
 async function openLegalDetail(id){
