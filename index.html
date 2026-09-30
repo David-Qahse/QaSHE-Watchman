@@ -502,6 +502,16 @@
   .import-summary.has-errors{background:var(--amber-tint);}
   .import-actions{display:flex; gap:10px; justify-content:flex-end; margin-top:18px;}
   .toast.success{background:var(--green);}
+
+  /* Auto-format: floating "Polish" control shown over the focused free-text field. */
+  .af-polish-btn{position:fixed; z-index:60; display:flex; align-items:center; gap:5px; padding:4px 10px; font-size:11px; font-family:'Inter',sans-serif; font-weight:600; color:var(--red, #B21616); background:#fff; border:1px solid var(--border); border-radius:20px; box-shadow:0 2px 8px rgba(0,0,0,.12); cursor:pointer; opacity:0; transform:translateY(4px); pointer-events:none; transition:opacity .12s ease, transform .12s ease;}
+  .af-polish-btn.show{opacity:1; transform:translateY(0); pointer-events:auto;}
+  .af-polish-btn:hover{background:var(--red-tint, #FBEAEA);}
+  .af-polish-btn[disabled]{opacity:.6; cursor:default; pointer-events:none;}
+  .af-polish-btn .af-spin{width:10px; height:10px; border-radius:50%; border:2px solid var(--red, #B21616); border-top-color:transparent; animation:af-spin .6s linear infinite; display:none;}
+  .af-polish-btn.busy .af-spin{display:inline-block;}
+  .af-polish-btn.busy .af-label{display:none;}
+  @keyframes af-spin{to{transform:rotate(360deg);}}
 </style>
 </head>
 <body>
@@ -868,7 +878,7 @@
     <div class="wc-msg wc-msg-bot">Hi, I'm Watchman. Ask me how to use anything in this app, or a general question about ISO standards and compliance. I can't see your organisation's actual records, so I won't be able to answer things like "what are my open nonconformances" — for that, the module itself is the place to look.</div>
   </div>
   <div class="watchman-chat-input-row">
-    <textarea id="watchman-chat-input" placeholder="Ask Watchman…" rows="1" onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); sendWatchmanChat(); }"></textarea>
+    <textarea id="watchman-chat-input" data-no-autoformat placeholder="Ask Watchman…" rows="1" onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); sendWatchmanChat(); }"></textarea>
     <button class="btn-primary" id="watchman-chat-send" onclick="sendWatchmanChat()">Send</button>
   </div>
 </div>
@@ -7395,6 +7405,278 @@ window.toggleAiDraftForm = function(docId){
   if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 };
 
+// ============================================================================
+// Auto-format for free-text fields
+//
+// Every <textarea> in the app (descriptions, findings, comments, corrective
+// actions, purpose statements, etc.) is treated as a free-text field. Titles,
+// reference numbers, codes, names, dates and dropdowns stay as single-line
+// <input> elements and are deliberately left untouched, since forcing
+// sentence-style formatting onto a document number or a person's name would
+// do more harm than good. Any individual textarea can still opt out with a
+// data-no-autoformat attribute (used for the live AI chat box, which is a
+// conversational message, not a stored record).
+//
+// Two layers:
+//  1. Instant, free, deterministic cleanup the moment a person leaves a
+//     field: capitalization, spacing, terminal punctuation, and turning a
+//     dash used as punctuation into a semicolon (never touching a hyphen
+//     that's part of a word, a code, or a reference number).
+//  2. An optional "Polish" button that appears over the field while it's
+//     focused, for a fuller AI grammar pass on demand — same assistant
+//     already used for AI drafting.
+// ============================================================================
+
+// Deterministic prose cleanup. Paragraph-aware: blank lines between
+// paragraphs are preserved, each paragraph is capitalized/punctuated on its
+// own so multi-section notes aren't merged into one run-on block.
+function formatProseText(raw){
+  if(typeof raw !== 'string') return raw;
+  const paragraphs = raw.split(/\n/);
+  const formatted = paragraphs.map(line => formatProseParagraph(line));
+  return formatted.join('\n');
+}
+
+function formatProseParagraph(line){
+  let text = line.replace(/[ \t]+/g, ' ').trim();
+  if(!text) return '';
+
+  // A dash used as punctuation — surrounded by spaces on both sides — becomes
+  // a semicolon. A hyphen with no surrounding spaces (compound words, part
+  // numbers, document codes like "C-G-PRO-03" or "ISO 9001-2015") is left
+  // exactly as typed.
+  text = text.replace(/\s+[-–—]\s+/g, '; ');
+
+  // Collapse any double punctuation left behind, then normalise spacing
+  // around punctuation.
+  text = text.replace(/;\s*;/g, ';');
+  text = text.replace(/\s+([,.;:!?])/g, '$1');
+  text = text.replace(/([,;:])(?=\S)/g, '$1 ');
+
+  // Capitalize the first letter of the paragraph and of each sentence.
+  text = text.replace(/(^\s*|[.!?]\s+)([a-z])/g, (m, lead, letter) => lead + letter.toUpperCase());
+
+  // Standalone lowercase "i" is always a capital letter in English.
+  text = text.replace(/\bi\b/g, 'I');
+
+  // A field that's a short label rather than a sentence (a single word or
+  // two, no verb-like length) is left without a forced full stop — adding
+  // one to "Outdated" or "N/A" would look wrong. Anything longer is treated
+  // as a sentence and given a terminal full stop if it doesn't already end
+  // in one.
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  const endsWithPunctuation = /[.!?:;,)"'”]$/.test(text);
+  if(wordCount >= 4 && !endsWithPunctuation){
+    text += '.';
+  }
+
+  return text;
+}
+
+// Applied once, delegated at the document level, so it covers every textarea
+// on every screen without needing to touch each field's own render code —
+// including fields rendered long after this runs.
+function installAutoformatFields(){
+  document.addEventListener('focusout', (e) => {
+    const el = e.target;
+    if(!el || el.tagName !== 'TEXTAREA') return;
+    if(el.hasAttribute('data-no-autoformat') || el.readOnly || el.disabled) return;
+    const before = el.value;
+    const after = formatProseText(before);
+    if(after !== before){
+      el.value = after;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }, true); // capture: focusout/blur doesn't bubble on its own
+
+  document.addEventListener('focusin', (e) => {
+    const el = e.target;
+    if(!el || el.tagName !== 'TEXTAREA' || el.hasAttribute('data-no-autoformat') || el.readOnly || el.disabled){
+      hidePolishButton();
+      return;
+    }
+    showPolishButton(el);
+  }, true);
+
+  window.addEventListener('scroll', () => { if(AF_STATE.target) positionPolishButton(AF_STATE.target); }, true);
+  window.addEventListener('resize', () => { if(AF_STATE.target) positionPolishButton(AF_STATE.target); });
+}
+
+const AF_STATE = { target: null, btn: null, hideTimer: null, undoTimer: null, mode: 'polish' };
+
+function getPolishButton(){
+  if(AF_STATE.btn) return AF_STATE.btn;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'af-polish-btn';
+  btn.innerHTML = '<span class="af-spin"></span><span class="af-label">✨ Polish</span>';
+  // mousedown (not click) fires before the textarea's blur, so we can stop
+  // the field from losing focus/triggering its own blur-hide first.
+  btn.addEventListener('mousedown', (e) => e.preventDefault());
+  btn.addEventListener('click', () => {
+    if(!AF_STATE.target) return;
+    if(AF_STATE.mode === 'undo'){ undoPolishButton(); }
+    else { polishFieldWithAi(AF_STATE.target); }
+  });
+  document.body.appendChild(btn);
+  AF_STATE.btn = btn;
+  return btn;
+}
+
+function setPolishButtonMode(mode){
+  AF_STATE.mode = mode;
+  const btn = getPolishButton();
+  const label = btn.querySelector('.af-label');
+  clearTimeout(AF_STATE.undoTimer);
+  if(mode === 'undo'){
+    label.textContent = '↺ Undo';
+    AF_STATE.undoTimer = setTimeout(() => setPolishButtonMode('polish'), 6000);
+  } else {
+    label.textContent = '✨ Polish';
+  }
+}
+
+function undoPolishButton(){
+  const el = AF_STATE.target;
+  if(el) window.undoPolish(el);
+  setPolishButtonMode('polish');
+}
+
+function showPolishButton(el){
+  clearTimeout(AF_STATE.hideTimer);
+  AF_STATE.target = el;
+  const btn = getPolishButton();
+  positionPolishButton(el);
+  btn.classList.add('show');
+  setPolishButtonMode(el.dataset.beforePolish !== undefined ? 'undo' : 'polish');
+}
+
+function hidePolishButton(){
+  clearTimeout(AF_STATE.hideTimer);
+  AF_STATE.hideTimer = setTimeout(() => {
+    if(AF_STATE.btn) AF_STATE.btn.classList.remove('show');
+    AF_STATE.target = null;
+    setPolishButtonMode('polish');
+  }, 150);
+}
+
+function positionPolishButton(el){
+  const btn = getPolishButton();
+  const r = el.getBoundingClientRect();
+  btn.style.top = Math.max(6, r.top - 12) + 'px';
+  btn.style.left = Math.min(window.innerWidth - 100, r.right - 90) + 'px';
+}
+
+// Sends one field's current text to the same AI assistant used for drafting,
+// for a fuller grammar/phrasing pass than the instant rules can do — then
+// runs the instant rules over the result too, so punctuation/dash style stay
+// consistent either way. Keeps the field's previous value for one-step undo.
+async function polishFieldWithAi(el){
+  const original = el.value;
+  const text = original.trim();
+  if(!text){ return; }
+  const btn = getPolishButton();
+  btn.classList.add('busy'); btn.disabled = true;
+
+  const prompt = `Rewrite the following text so it reads as professional, grammatically correct business English suitable for a formal compliance record. Fix spelling, grammar, capitalization and punctuation. Do not add, remove or change any factual content, names, dates, numbers, reference codes or technical terms. Never use a hyphen or dash as punctuation — use a comma or semicolon instead (hyphens inside a genuine code or compound word, like "ISO 9001-2015", are fine as they are). Return ONLY the rewritten text, with no preamble, no quotation marks around it, and no explanation.
+
+Text:
+"""${text}"""`;
+
+  try {
+    const { data: sessionData } = await STATE.supabase.auth.getSession();
+    const token = sessionData?.session?.access_token;
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/watchman-chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], max_tokens: 1500 }),
+    });
+    const data = await res.json();
+    let rewritten = (data.reply || data.message || '').trim();
+    // Strip stray wrapping quotes/fences the assistant sometimes adds.
+    rewritten = rewritten.replace(/^```[a-z]*\n?/i, '').replace(/```$/,'').trim();
+    rewritten = rewritten.replace(/^"([\s\S]*)"$/, '$1').trim();
+    if(!rewritten) throw new Error('empty reply');
+
+    el.dataset.beforePolish = original;
+    el.value = formatProseText(rewritten);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    setPolishButtonMode('undo');
+  } catch(e) {
+    toast('Could not polish this field right now — your original text is unchanged.', 'error');
+  } finally {
+    btn.classList.remove('busy'); btn.disabled = false;
+  }
+}
+
+window.undoPolish = function(el){
+  if(el && el.dataset.beforePolish !== undefined){
+    el.value = el.dataset.beforePolish;
+    delete el.dataset.beforePolish;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+};
+
+installAutoformatFields();
+
+// The assistant is asked to reply with raw JSON, but LLM output is
+// occasionally not quite valid JSON: a code fence wrapped around it, a
+// missing comma between two section objects, an unescaped quote or a
+// literal line break inside a "content" value. Rather than failing the
+// whole draft on any of these, try a straight parse first, then repair
+// the common cases and try again.
+function parseAiDraftJson(raw){
+  let text = (raw || '').trim();
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if(fenced) text = fenced[1].trim();
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if(start === -1 || end === -1 || end <= start) return null;
+  text = text.slice(start, end + 1);
+
+  try { return JSON.parse(text); } catch(e) { /* fall through to repair */ }
+
+  let repaired = '';
+  let inString = false, escaped = false;
+  for(let i = 0; i < text.length; i++){
+    const ch = text[i];
+    if(inString){
+      if(escaped){ repaired += ch; escaped = false; continue; }
+      if(ch === '\\'){ repaired += ch; escaped = true; continue; }
+      if(ch === '"'){ inString = false; repaired += ch; continue; }
+      if(ch === '\n'){ repaired += '\\n'; continue; }
+      if(ch === '\r'){ repaired += '\\r'; continue; }
+      if(ch === '\t'){ repaired += '\\t'; continue; }
+      repaired += ch;
+      continue;
+    }
+    if(ch === '"'){ inString = true; repaired += ch; continue; }
+    repaired += ch;
+  }
+  // Trailing commas before a closing bracket/brace.
+  repaired = repaired.replace(/,(\s*[\]}])/g, '$1');
+  // A closing brace/quote immediately followed by an opening brace/quote
+  // with no comma between two array elements — the model ran two
+  // sections together without a separator.
+  repaired = repaired.replace(/}(\s*){/g, '},$1{');
+
+  try { return JSON.parse(repaired); } catch(e) { return null; }
+}
+
+async function requestAiDraftSections(token, instructionPrompt){
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/watchman-chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({ messages: [{ role: 'user', content: instructionPrompt }], max_tokens: 4096 }),
+  });
+  const data = await res.json();
+  const raw = (data.reply || data.message || '').trim();
+  return parseAiDraftJson(raw);
+}
+
 // Reuses the same watchman-chat Edge Function already proven for the
 // in-app AI assistant, rather than building a second, separate AI
 // integration for this one feature.
@@ -7413,23 +7695,25 @@ window.generateAiDraft = async function(docId){
 
   const instructionPrompt = `You are drafting the content of a formal, ISO-compliant ${type ? type.name : 'business'} document titled "${d.title}" for a company's management system. The document is about: ${userPrompt}${referenceBlock}
 
-Produce a genuinely usable first draft, structured as clearly-labeled sections such as Purpose, Scope, Responsibilities, Procedure/Requirements, and Records (adjust the exact sections to whatever genuinely fits a document of this type). Return ONLY valid JSON, no other text, in exactly this shape:
-{"sections": [{"title": "Purpose", "content": "..."}, {"title": "Scope", "content": "..."}]}`;
+Produce a genuinely usable first draft, structured as clearly-labeled sections such as Purpose, Scope, Responsibilities, Procedure/Requirements, and Records (adjust the exact sections to whatever genuinely fits a document of this type). Return ONLY valid JSON, no other text and no markdown code fences, in exactly this shape:
+{"sections": [{"title": "Purpose", "content": "..."}, {"title": "Scope", "content": "..."}]}
+
+The JSON must be strictly valid: every section object in the array must be separated from the next by a comma, every double-quote character that appears inside a "content" value must be escaped as \\", and every line break inside a "content" value must be written as \\n rather than an actual line break.`;
 
   try {
     const { data: sessionData } = await STATE.supabase.auth.getSession();
     const token = sessionData?.session?.access_token;
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/watchman-chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ messages: [{ role: 'user', content: instructionPrompt }], max_tokens: 2000 }),
-    });
-    const data = await res.json();
-    const raw = (data.reply || data.message || '').trim();
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if(!jsonMatch) throw new Error('Could not read a structured draft back from the assistant.');
-    const parsed = JSON.parse(jsonMatch[0]);
-    if(!parsed.sections || !parsed.sections.length) throw new Error('No sections came back.');
+
+    let parsed = await requestAiDraftSections(token, instructionPrompt);
+    if(!parsed || !parsed.sections || !parsed.sections.length){
+      // The model's first reply wasn't valid, repairable JSON — this is an
+      // occasional LLM formatting slip, not a real failure, so retry once
+      // before bothering the user with it.
+      parsed = await requestAiDraftSections(token, instructionPrompt);
+    }
+    if(!parsed || !parsed.sections || !parsed.sections.length){
+      throw new Error('The assistant\'s draft wasn\'t in a readable format, even after a retry. Try shortening your description or generating again.');
+    }
 
     const { data: existing } = await STATE.supabase.from('document_content_sections').select('id').eq('document_id', docId);
     let nextSort = ((existing||[]).length) * 10 + 10;
