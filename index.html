@@ -1849,7 +1849,7 @@ const MODULE_META = {
   objectives:{title:'Objectives & Targets', sub:() => 'MOD-09 · SMART objectives, planned and monitored per ISO 6.2'},
   legal:{title:'Legal Compliance', sub:() => 'MOD-10 · Legal register, compliance reviews, linked to internal audits'},
   personnel:{title:'Personnel & Competence', sub:() => 'MOD-11 · Register, positions, and the organisation competence matrix'},
-  orgchart:{title:'Organisation Chart', sub:() => 'Generated automatically from recorded line managers and positions'},
+  orgchart:{title:'Organisation Chart', sub:() => 'The company-wide chart first, generated from recorded job titles and reporting lines — Departments and Branches unlock once it\'s complete'},
   training:{title:'Training', sub:() => 'MOD-12 · Needs, planning, completion, and certificates'},
   appraisals:{title:'KPIs & Appraisals', sub:() => 'MOD-13 · Position KPIs, self-assessment, and manager review'},
   assets:{title:'Assets Management & Maintenance', sub:() => 'MOD-14 · Register, inspection checklists, certificates'},
@@ -1920,30 +1920,106 @@ function orgChartTreeHTML(peopleInScope, clickable){
   return `<div class="oc-scroll"><ul class="oc-tree">${roots.map(r => orgChartBranchHTML(r, peopleInScope, visited, clickable)).join('')}</ul></div>`;
 }
 
-function renderOrgChart(){
-  const wrap = document.getElementById('orgchart-root');
-  if(!wrap) return;
-  renderDivisionsManageList();
+// ============================================================================
+// Organisation Chart module — three pages under one set of sub-tabs:
+//   "chart"       The company-wide chart (everyone, by reporting line), then
+//                 one sub-chart per Branch underneath it. This is the
+//                 default/opening page.
+//   "departments" Manage the list of Departments — its own page, no chart.
+//   "branches"    Manage the list of Branches — its own page, no chart.
+//
+// Departments and Branches are both rows in the same `divisions` table,
+// distinguished by `division_type` ('department' | 'branch'); a person can
+// belong to any number of each via the existing personnel_divisions table.
+//
+// The Departments/Branches management pages are deliberately locked until
+// the company-wide chart is complete — every active person has a job title
+// (a primary position) and a place in the reporting line — so the org chart
+// itself is always established first, before it gets subdivided.
+// ============================================================================
 
+function divisionsOfType(type){
+  return STATE.divisions.filter(d => d.division_type === type);
+}
+
+// What "complete" means: every active person has a primary position (a job
+// title), and the reporting lines form a single tree — exactly one person
+// with no line manager (the top of the organisation), not zero and not
+// several disconnected ones.
+function orgChartCompletenessIssues(){
   const active = STATE.personnel.filter(p => p.status === 'active');
+  const missingTitle = active.filter(p => !primaryCompetenceFor(p.id));
+  const roots = active.filter(p => !p.line_manager_id);
+  return { active, missingTitle, roots };
+}
+
+function isOrgChartComplete(){
+  const { active, missingTitle, roots } = orgChartCompletenessIssues();
+  return active.length > 0 && missingTitle.length === 0 && roots.length === 1;
+}
+
+// Shared by the chart page's banner and the locked Departments/Branches
+// pages, so the explanation of what's missing — and the links to fix it —
+// read exactly the same wherever they appear.
+function orgChartGapsHTML(){
+  const { active, missingTitle, roots } = orgChartCompletenessIssues();
+  if(!active.length){
+    return `<p style="font-size:12.5px; color:var(--text-faint);">No active personnel recorded yet — add people under Personnel &amp; Competence first.</p>`;
+  }
+  const items = [];
+  if(missingTitle.length){
+    items.push(`<li>${missingTitle.length} ${missingTitle.length===1?'person has':'people have'} no job title recorded yet: ${missingTitle.map(p=>`<a href="#" onclick="showModule('personnel'); setTimeout(()=>openPersonDetail('${p.id}'),0); return false;">${p.full_name}</a>`).join(', ')}.</li>`);
+  }
+  if(roots.length === 0){
+    items.push(`<li>Nobody is recorded as the top of the organisation — every active person currently reports to someone else. Pick whoever sits at the top and clear their line manager.</li>`);
+  } else if(roots.length > 1){
+    items.push(`<li>${roots.length} people currently show as reporting to nobody, which reads as ${roots.length} separate organisations rather than one: ${roots.map(p=>`<a href="#" onclick="showModule('personnel'); setTimeout(()=>openPersonDetail('${p.id}'),0); return false;">${p.full_name}</a>`).join(', ')}. Set a line manager for all but the one genuine top of the organisation.</li>`);
+  }
+  return `<ul style="font-size:12.5px; line-height:1.7; padding-left:18px;">${items.join('')}</ul>`;
+}
+
+window.switchOcSubtab = function(tab){
+  STATE._ocSubtab = tab;
+  document.querySelectorAll('#content-root .toolbar .btn-small').forEach(b => b.classList.remove('primary'));
+  const activeBtn = document.querySelector(`#content-root .toolbar .btn-small[onclick="switchOcSubtab('${tab}')"]`);
+  if(activeBtn) activeBtn.classList.add('primary');
+  renderOcSubtabContent(tab);
+};
+
+function renderOcSubtabContent(tab){
+  tab = tab || STATE._ocSubtab || 'chart';
+  if(tab === 'chart') renderOrgChartPage();
+  if(tab === 'departments') renderOrgDivisionsPage('department', 'Departments');
+  if(tab === 'branches') renderOrgDivisionsPage('branch', 'Branches');
+}
+
+// Kept so the handful of existing call sites (adding/editing/deleting a
+// division, and the module-switch hook) don't need to know which of the
+// three sub-tabs is currently open — they just ask for a re-render and get
+// whichever page the person is actually looking at.
+function renderOrgChart(){ renderOcSubtabContent(); }
+window.renderOrgChart = renderOrgChart;
+
+function renderOrgChartPage(){
+  const wrap = document.getElementById('oc-subtab-content');
+  if(!wrap) return;
+  const { active } = orgChartCompletenessIssues();
+  const complete = isOrgChartComplete();
+
   if(!active.length){
     wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a5 5 0 015-5h4a5 5 0 015 5v2"/></svg><p>No active personnel recorded yet — add people under Personnel &amp; Competence first.</p></div>`;
     return;
   }
 
-  if(!STATE.divisions.length){
-    wrap.innerHTML = `
-      <div class="detail-card">
-        <div class="panel-head"><h3>Organisation Chart</h3></div>
-        ${orgChartTreeHTML(active, true)}
+  const banner = complete
+    ? `<div class="detail-card" style="padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; gap:8px;"><span style="color:var(--green,#2E7D6B); font-weight:600; font-size:12.5px;">✓ Organisation chart complete</span><span style="font-size:12px; color:var(--text-faint);">— every active person has a title and a place in the reporting line. Departments and Branches are unlocked.</span></div>`
+    : `<div class="detail-card" style="padding:14px 16px; margin-bottom:16px; border-color:var(--amber,#B2650F);">
+        <div style="font-weight:600; font-size:13px; color:var(--amber,#B2650F); margin-bottom:6px;">Organisation chart not yet complete</div>
+        <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:8px;">Departments and Branches stay locked until this is sorted out — get the whole company chart right first, then subdivide it.</p>
+        ${orgChartGapsHTML()}
       </div>`;
-    return;
-  }
 
-  const assignedIds = new Set(STATE.personnelDivisions.map(pd=>pd.personnel_id));
-  const unassigned = active.filter(p => !assignedIds.has(p.id));
-
-  wrap.innerHTML = STATE.divisions.map(div => {
+  const branchSections = divisionsOfType('branch').map(div => {
     const memberIds = new Set(STATE.personnelDivisions.filter(pd=>pd.division_id===div.id).map(pd=>pd.personnel_id));
     const members = active.filter(p => memberIds.has(p.id));
     return `
@@ -1955,19 +2031,49 @@ function renderOrgChart(){
         ${div.doc_number || div.revision ? `<p style="font-size:11px; color:var(--text-faint); margin-bottom:10px;">${div.doc_number ? 'Doc '+div.doc_number : ''}${div.doc_number && div.revision ? ' · ' : ''}${div.revision ? 'Rev '+div.revision : ''}${div.revision_date ? ' ('+fmtDate(div.revision_date)+')' : ''}</p>` : ''}
         ${orgChartTreeHTML(members, true)}
       </div>`;
-  }).join('') + (unassigned.length ? `
-      <div class="detail-card">
-        <div class="panel-head"><h3>Unassigned</h3></div>
-        <p style="font-size:11.5px; color:var(--text-faint); margin-bottom:10px;">Not yet allocated to a division.</p>
-        ${orgChartTreeHTML(unassigned, true)}
-      </div>` : '');
-}
-window.renderOrgChart = renderOrgChart;
+  }).join('');
 
-function renderDivisionsManageList(){
-  const wrap = document.getElementById('divisions-manage-list');
+  wrap.innerHTML = banner + `
+    <div class="detail-card">
+      <div class="panel-head"><h3>Company-Wide Organisation Chart</h3></div>
+      ${orgChartTreeHTML(active, true)}
+    </div>` + branchSections;
+}
+
+// One shared renderer for both the Departments page and the Branches page —
+// same layout, same behaviour, just scoped to a different division_type.
+function renderOrgDivisionsPage(type, label){
+  const wrap = document.getElementById('oc-subtab-content');
   if(!wrap) return;
-  wrap.innerHTML = STATE.divisions.length ? STATE.divisions.map(d => `
+
+  if(!isOrgChartComplete()){
+    wrap.innerHTML = `
+      <div class="detail-card">
+        <div class="panel-head"><h3>${label} — locked</h3></div>
+        <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:8px;">${label} can't be set up until the company-wide organisation chart is complete — every active person needs a job title and a place in the reporting line first. Fix the items below, then come back here.</p>
+        ${orgChartGapsHTML()}
+        <button class="btn-small" style="margin-top:10px;" onclick="switchOcSubtab('chart')">Go to Organisation Chart</button>
+      </div>`;
+    return;
+  }
+
+  wrap.innerHTML = `
+    <div class="detail-card">
+      <div class="panel-head"><h3>${label}</h3></div>
+      <div class="form-grid" style="margin-bottom:10px;">
+        <div class="field"><label>New ${type} name</label><input id="${type}-new-name" placeholder="${type==='branch' ? 'e.g. Johannesburg, Dubai, Perth' : 'e.g. Manufacturing, Corporate Services'}"></div>
+      </div>
+      <button class="btn-small primary" onclick="addDivision('${type}')">Add ${type}</button>
+      <div id="${type}-manage-list" style="margin-top:14px;"></div>
+    </div>`;
+  renderDivisionsManageList(type);
+}
+
+function renderDivisionsManageList(type){
+  const wrap = document.getElementById(`${type}-manage-list`);
+  if(!wrap) return;
+  const list = divisionsOfType(type);
+  wrap.innerHTML = list.length ? list.map(d => `
     <div class="evidence-row">
       <div style="flex:1;">
         <b>${d.name}</b>
@@ -1985,18 +2091,18 @@ function renderDivisionsManageList(){
         </div>
       </div>
       <div class="ev-actions"><button class="btn-small" onclick="deleteDivision('${d.id}')">Delete</button></div>
-    </div>`).join('') : '<p style="font-size:12.5px; color:var(--text-faint);">No divisions yet — add one above.</p>';
+    </div>`).join('') : `<p style="font-size:12.5px; color:var(--text-faint);">No ${type}s yet — add one above.</p>`;
 }
 
-window.addDivision = async function(){
-  const name = document.getElementById('div-new-name').value.trim();
-  if(!name){ alert('Give the division a name.'); return; }
-  const { error } = await STATE.supabase.from('divisions').insert({ organisation_id: STATE.org.id, name, created_by: STATE.user.id });
-  if(error){ toast('Could not add division: ' + error.message, 'error'); return; }
-  document.getElementById('div-new-name').value = '';
+window.addDivision = async function(type){
+  const name = document.getElementById(`${type}-new-name`).value.trim();
+  if(!name){ alert(`Give the ${type} a name.`); return; }
+  const { error } = await STATE.supabase.from('divisions').insert({ organisation_id: STATE.org.id, name, division_type: type, created_by: STATE.user.id });
+  if(error){ toast(`Could not add ${type}: ` + error.message, 'error'); return; }
+  document.getElementById(`${type}-new-name`).value = '';
   await loadDivisions();
   renderOrgChart();
-  toast('Division added.', 'success');
+  toast(`${type==='branch'?'Branch':'Department'} added.`, 'success');
 };
 
 window.toggleDivisionDocEdit = function(divId){
@@ -2017,12 +2123,14 @@ window.saveDivisionDocInfo = async function(divId){
 };
 
 window.deleteDivision = async function(divId){
-  if(!confirm('Delete this division? People currently in it will move to "Unassigned" — their records themselves are not affected.')) return;
+  const div = STATE.divisions.find(d=>d.id===divId);
+  const label = div && div.division_type === 'branch' ? 'branch' : 'department';
+  if(!confirm(`Delete this ${label}? People currently in it keep their own records — they're just no longer linked to it.`)) return;
   const { error } = await STATE.supabase.from('divisions').delete().eq('id', divId);
   if(error){ toast('Could not delete: ' + error.message, 'error'); return; }
   await loadDivisions();
   renderOrgChart();
-  toast('Division deleted.', 'success');
+  toast(`${label==='branch'?'Branch':'Department'} deleted.`, 'success');
 };
 
 window.printDivisionOrgChart = async function(divisionId){
@@ -2966,15 +3074,14 @@ const RENDERERS = {
   `,
 
   orgchart: () => `
-    <div class="detail-card">
-      <div class="panel-head"><h3>Divisions</h3></div>
-      <div class="form-grid" style="margin-bottom:10px;">
-        <div class="field"><label>New division name</label><input id="div-new-name" placeholder="e.g. Manufacturing, Corporate Services"></div>
+    <div class="toolbar">
+      <div class="filters">
+        <button class="btn-small ${STATE._ocSubtab==='chart'||!STATE._ocSubtab?'primary':''}" onclick="switchOcSubtab('chart')">Organisation Chart</button>
+        <button class="btn-small ${STATE._ocSubtab==='departments'?'primary':''}" onclick="switchOcSubtab('departments')">Departments</button>
+        <button class="btn-small ${STATE._ocSubtab==='branches'?'primary':''}" onclick="switchOcSubtab('branches')">Branches</button>
       </div>
-      <button class="btn-small primary" onclick="addDivision()">Add division</button>
-      <div id="divisions-manage-list" style="margin-top:14px;"></div>
     </div>
-    <div id="orgchart-root"></div>
+    <div id="oc-subtab-content"></div>
   `,
   personnel: () => `
     <div class="toolbar">
@@ -3016,7 +3123,8 @@ const RENDERERS = {
         <div class="field"><label>Email</label><input type="email" id="pf-email" placeholder="name@company.com"></div>
         <div class="field"><label>Mobile number</label><input id="pf-mobile"></div>
         <div class="field"><label>Line manager</label><select id="pf-line-manager"><option value="">None — reports to nobody in this system (e.g. the top of the org)</option>${STATE.personnel.map(p=>`<option value="${p.id}">${p.full_name}</option>`).join('')}</select></div>
-        <div class="field"><label>Divisions</label>${checkboxMultiSelect('pf-division', STATE.divisions.map(d=>({id:d.id, label:d.name})), [])}</div>
+        <div class="field"><label>Departments</label>${checkboxMultiSelect('pf-department', divisionsOfType('department').map(d=>({id:d.id, label:d.name})), [])}</div>
+        <div class="field"><label>Branches</label>${checkboxMultiSelect('pf-branch', divisionsOfType('branch').map(d=>({id:d.id, label:d.name})), [])}</div>
         <div class="field span3"><label>Qualifications and/or experience</label><textarea id="pf-quals"></textarea></div>
         <div class="field span3"><label>Comments</label><textarea id="pf-comments"></textarea></div>
       </div>
@@ -10884,7 +10992,7 @@ window.submitPerson = async function(){
   });
   if(cErr){ toast('Person registered, but the primary competence record could not be saved: ' + cErr.message, 'error'); }
 
-  const divisionIds = getCheckedValues('pf-division');
+  const divisionIds = [...getCheckedValues('pf-department'), ...getCheckedValues('pf-branch')];
   if(divisionIds.length){
     const divRows = divisionIds.map(divId => ({ organisation_id: STATE.org.id, personnel_id: newPerson.id, division_id: divId }));
     await STATE.supabase.from('personnel_divisions').insert(divRows);
@@ -11090,9 +11198,13 @@ async function openPersonDetail(id){
       </div>
 
       <div class="status-row" style="flex-direction:column; align-items:flex-start;">
-        <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Divisions</label>
-        ${checkboxMultiSelect('pd-division', STATE.divisions.map(d=>({id:d.id, label:d.name})), STATE.personnelDivisions.filter(pd=>pd.personnel_id===p.id).map(pd=>pd.division_id))}
-        <button class="btn-small primary" style="margin-top:8px;" onclick="savePersonDivisions('${p.id}')">Save divisions</button>
+        <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Departments</label>
+        ${checkboxMultiSelect('pd-department', divisionsOfType('department').map(d=>({id:d.id, label:d.name})), STATE.personnelDivisions.filter(pd=>pd.personnel_id===p.id).map(pd=>pd.division_id))}
+      </div>
+      <div class="status-row" style="flex-direction:column; align-items:flex-start;">
+        <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Branches</label>
+        ${checkboxMultiSelect('pd-branch', divisionsOfType('branch').map(d=>({id:d.id, label:d.name})), STATE.personnelDivisions.filter(pd=>pd.personnel_id===p.id).map(pd=>pd.division_id))}
+        <button class="btn-small primary" style="margin-top:8px;" onclick="savePersonDivisions('${p.id}')">Save departments &amp; branches</button>
       </div>
 
       <div class="status-row">
@@ -11427,7 +11539,7 @@ window.savePersonLineManager = async function(personId){
 };
 
 window.savePersonDivisions = async function(personId){
-  const divisionIds = getCheckedValues('pd-division');
+  const divisionIds = [...getCheckedValues('pd-department'), ...getCheckedValues('pd-branch')];
   await STATE.supabase.from('personnel_divisions').delete().eq('personnel_id', personId);
   if(divisionIds.length){
     const rows = divisionIds.map(divId => ({ organisation_id: STATE.org.id, personnel_id: personId, division_id: divId }));
