@@ -3013,6 +3013,8 @@ const RENDERERS = {
         <div class="field"><label>Company number</label><input id="pf-company-number"></div>
         <div class="field"><label>Full time / Contract</label><select id="pf-employment">${optionList(EMPLOYMENT_TYPES)}</select></div>
         <div class="field"><label>Date started</label><input type="date" id="pf-date-started" value="${todayISO()}"></div>
+        <div class="field"><label>Email</label><input type="email" id="pf-email" placeholder="name@company.com"></div>
+        <div class="field"><label>Mobile number</label><input id="pf-mobile"></div>
         <div class="field"><label>Line manager</label><select id="pf-line-manager"><option value="">None — reports to nobody in this system (e.g. the top of the org)</option>${STATE.personnel.map(p=>`<option value="${p.id}">${p.full_name}</option>`).join('')}</select></div>
         <div class="field"><label>Divisions</label>${checkboxMultiSelect('pf-division', STATE.divisions.map(d=>({id:d.id, label:d.name})), [])}</div>
         <div class="field span3"><label>Qualifications and/or experience</label><textarea id="pf-quals"></textarea></div>
@@ -3406,7 +3408,7 @@ const RENDERERS = {
     <div class="toolbar">
       <div class="filters">
         <button class="btn-small ${STATE._adminSubtab==='departments'||!STATE._adminSubtab?'primary':''}" onclick="switchAdminSubtab('departments')">Document Architecture</button>
-        <button class="btn-small ${STATE._adminSubtab==='people'?'primary':''}" onclick="switchAdminSubtab('people')">People</button>
+        <button class="btn-small ${STATE._adminSubtab==='people'?'primary':''}" onclick="switchAdminSubtab('people')">Personnel</button>
         <button class="btn-small ${STATE._adminSubtab==='team'?'primary':''}" onclick="switchAdminSubtab('team')">Team &amp; Access</button>
         <button class="btn-small ${STATE._adminSubtab==='processes'?'primary':''}" onclick="switchAdminSubtab('processes')">Processes</button>
         <button class="btn-small ${STATE._adminSubtab==='moduleinfo'?'primary':''}" onclick="switchAdminSubtab('moduleinfo')">Module Info</button>
@@ -10762,10 +10764,25 @@ function renderPositionsList(){
     return;
   }
   wrap.innerHTML = STATE.positions.map(p => `
-    <div class="evidence-row">
+    <div class="evidence-row" id="pos-row-${p.id}">
       <div style="flex:1;"><b>${p.title}</b>${p.department ? ' — '+p.department : ''}</div>
+      <button class="btn-small" onclick="togglePositionEdit('${p.id}')">Edit</button>
+      <button class="btn-small" onclick="deletePosition('${p.id}')">Delete</button>
+    </div>
+    <div class="form-grid" id="pos-edit-${p.id}" style="display:none; margin:6px 0 14px; padding:12px; background:var(--grey-tint); border-radius:8px;">
+      <div class="field span2"><label>Title</label><input id="pos-edit-title-${p.id}" value="${(p.title||'').replace(/"/g,'&quot;')}"></div>
+      <div class="field"><label>Department (optional)</label><input id="pos-edit-department-${p.id}" value="${(p.department||'').replace(/"/g,'&quot;')}"></div>
+      <div class="field span3">
+        <button class="btn-small primary" onclick="savePosition('${p.id}')">Save</button>
+        <button class="btn-small" onclick="togglePositionEdit('${p.id}')">Cancel</button>
+      </div>
     </div>`).join('');
 }
+
+window.togglePositionEdit = function(id){
+  const row = document.getElementById('pos-edit-'+id);
+  if(row) row.style.display = row.style.display === 'none' ? 'grid' : 'none';
+};
 
 window.addPosition = async function(){
   const title = document.getElementById('pos-new-title').value.trim();
@@ -10784,6 +10801,54 @@ window.addPosition = async function(){
   toast('Position added — pick it from any position dropdown now.', 'success');
 };
 
+// Editing a position's title/department here is the ONLY copy of that data
+// anywhere — every screen that shows a position's name looks it up fresh via
+// positionById(id).title, rather than storing its own copy — so saving here
+// is immediately reflected everywhere a position appears: personnel profiles,
+// the competence matrix, training, audits, appraisals, KPIs, all of it.
+window.savePosition = async function(id){
+  const title = document.getElementById('pos-edit-title-'+id).value.trim();
+  if(!title){ alert('Enter a position title.'); return; }
+  const department = document.getElementById('pos-edit-department-'+id).value.trim();
+  const { error } = await STATE.supabase.from('positions').update({ title, department }).eq('id', id);
+  if(error){ toast('Could not save position: ' + error.message, 'error'); return; }
+  await loadPositions();
+  showModule('personnel');
+  togglePositionsPanel();
+  toast('Position updated — the change is reflected everywhere it\'s used.', 'success');
+};
+
+window.deletePosition = async function(id){
+  const pos = positionById(id);
+  if(!pos) return;
+
+  const holders = STATE.competence.filter(c => c.position_id === id);
+  if(holders.length){
+    const names = holders.map(c => { const person = personById(c.personnel_id); return person ? person.full_name : null; }).filter(Boolean);
+    const uniqueNames = [...new Set(names)];
+    alert(`"${pos.title}" can't be deleted — it's currently assigned to ${uniqueNames.length} ${uniqueNames.length===1?'person':'people'} (${uniqueNames.join(', ')}). Reassign or remove those competence records first, under each person's profile, then delete the position.`);
+    return;
+  }
+
+  const kpiCount = STATE.positionKpis.filter(k => k.position_id === id).length;
+  const kpiWarning = kpiCount ? ` This will also remove the ${kpiCount} KPI${kpiCount===1?'':'s'} defined for it.` : '';
+  if(!confirm(`Delete the position "${pos.title}"?${kpiWarning} This cannot be undone.`)) return;
+
+  if(kpiCount){
+    const { error: kpiError } = await STATE.supabase.from('position_kpis').delete().eq('position_id', id);
+    if(kpiError){ toast('Could not remove this position\'s KPIs: ' + kpiError.message, 'error'); return; }
+  }
+
+  const { error } = await STATE.supabase.from('positions').delete().eq('id', id);
+  if(error){ toast('Could not delete position: ' + error.message, 'error'); return; }
+
+  await loadPositions();
+  await loadPositionKpis();
+  showModule('personnel');
+  togglePositionsPanel();
+  toast('Position deleted.', 'success');
+};
+
 /* ---- Register: new person ---- */
 function togglePersonForm(){ document.getElementById('person-form').classList.toggle('open'); }
 window.togglePersonForm = togglePersonForm;
@@ -10799,6 +10864,8 @@ window.submitPerson = async function(){
     employment_type: document.getElementById('pf-employment').value,
     qualifications_experience: document.getElementById('pf-quals').value.trim(),
     date_started: document.getElementById('pf-date-started').value || null,
+    email: document.getElementById('pf-email').value.trim(),
+    mobile_number: document.getElementById('pf-mobile').value.trim(),
     comments: document.getElementById('pf-comments').value.trim(),
     line_manager_id: document.getElementById('pf-line-manager').value || null,
     created_by: STATE.user.id,
@@ -10996,6 +11063,8 @@ async function openPersonDetail(id){
           <option value="contract" ${p.employment_type==='contract'?'selected':''}>Contract</option>
         </select></div>
         <div class="field"><label>Date started</label><input type="date" id="pd-date-started" value="${p.date_started||''}"></div>
+        <div class="field"><label>Email</label><input type="email" id="pd-email" value="${(p.email||'').replace(/"/g,'&quot;')}" placeholder="name@company.com"></div>
+        <div class="field"><label>Mobile number</label><input id="pd-mobile" value="${(p.mobile_number||'').replace(/"/g,'&quot;')}"></div>
         <div class="field span3"><label>Qualifications/experience</label><textarea id="pd-qualifications" placeholder="Qualifications, prior experience">${p.qualifications_experience||''}</textarea></div>
         <div class="field span3"><label>Comments</label><textarea id="pd-comments" placeholder="Anything else worth recording">${p.comments||''}</textarea></div>
       </div>
@@ -11305,6 +11374,8 @@ window.savePersonDetails = async function(personId){
     company_number: document.getElementById('pd-company-number').value.trim(),
     employment_type: document.getElementById('pd-employment-type').value,
     date_started: document.getElementById('pd-date-started').value || null,
+    email: document.getElementById('pd-email').value.trim(),
+    mobile_number: document.getElementById('pd-mobile').value.trim(),
     qualifications_experience: document.getElementById('pd-qualifications').value.trim(),
     comments: document.getElementById('pd-comments').value.trim(),
   }).eq('id', personId);
@@ -17677,8 +17748,8 @@ function renderAdminPeople(){
   if(!wrap) return;
   wrap.innerHTML = `
     <div class="detail-card">
-      <div class="panel-head"><h3>People</h3></div>
-      <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:14px;">Name, job title, department, and contact details for everyone in the organisation — the same personnel records used throughout Watchman, editable from one place. Competence and appraisal history stay in the Personnel &amp; Competence module itself.</p>
+      <div class="panel-head"><h3>Personnel</h3></div>
+      <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:14px;">Contact details for everyone in the organisation — the same personnel records used throughout Watchman. Primary position and divisions are shown for reference but are set in the Personnel &amp; Competence module, where they're tied to a validated competence record; edit them there and they appear here automatically.</p>
       <div id="admin-people-list"></div>
     </div>
   `;
@@ -17690,14 +17761,20 @@ function renderAdminPeopleList(){
   if(!wrap) return;
   if(!STATE.personnel.length){ wrap.innerHTML = '<p style="font-size:12.5px; color:var(--text-faint);">No personnel records yet — add people in the Personnel &amp; Competence module first.</p>'; return; }
   wrap.innerHTML = `<table>
-    <tr><th>Name</th><th>Position</th><th>Department</th><th>Email</th><th>Mobile</th><th></th></tr>
+    <tr><th>Name</th><th>Primary position</th><th>Divisions</th><th>Email</th><th>Mobile</th><th></th></tr>
     ${STATE.personnel.map(p => {
-      const pos = STATE.positions.find(x=>x.id===p.position_id);
-      const dept = STATE.docDepartments.find(x=>x.id===p.department_id);
+      // Primary position and divisions are read from the same records the
+      // Personnel & Competence module itself uses (a validated competence
+      // record, and the divisions join table) — not a separate copy — so
+      // whichever module last changed them is what every other module sees.
+      const prim = primaryCompetenceFor(p.id);
+      const pos = prim ? positionById(prim.position_id) : null;
+      const divisionNames = STATE.personnelDivisions.filter(pd=>pd.personnel_id===p.id)
+        .map(pd => { const d = STATE.divisions.find(x=>x.id===pd.division_id); return d ? d.name : null; }).filter(Boolean);
       return `<tr>
         <td class="strong">${p.full_name}</td>
         <td>${pos ? pos.title : '—'}</td>
-        <td>${dept ? dept.name : '—'}</td>
+        <td>${divisionNames.length ? divisionNames.join(', ') : '—'}</td>
         <td>${p.email || '—'}</td>
         <td>${p.mobile_number || '—'}</td>
         <td style="text-align:right;"><button class="btn-small" onclick="toggleAdminPersonEdit('${p.id}')">Edit</button></td>
@@ -17705,10 +17782,10 @@ function renderAdminPeopleList(){
       <tr id="admin-person-edit-${p.id}" style="display:none;"><td colspan="6" style="padding:14px; background:var(--grey-tint);">
         <div class="form-grid">
           <div class="field"><label>Full name</label><input id="ap-name-${p.id}" value="${p.full_name.replace(/"/g,'&quot;')}"></div>
-          <div class="field"><label>Position</label><select id="ap-position-${p.id}"><option value="">None</option>${STATE.positions.map(x=>`<option value="${x.id}" ${p.position_id===x.id?'selected':''}>${x.title}</option>`).join('')}</select></div>
-          <div class="field"><label>Department</label><select id="ap-department-${p.id}"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}" ${p.department_id===x.id?'selected':''}>${x.name}</option>`).join('')}</select></div>
           <div class="field"><label>Email</label><input type="email" id="ap-email-${p.id}" value="${(p.email||'').replace(/"/g,'&quot;')}"></div>
           <div class="field"><label>Mobile number</label><input id="ap-mobile-${p.id}" value="${(p.mobile_number||'').replace(/"/g,'&quot;')}"></div>
+          <div class="field"><label>Primary position</label><div style="padding-top:7px; font-size:13px; color:var(--text-faint);">${pos ? pos.title : '— none set —'} <a href="#" onclick="openPersonDetail('${p.id}'); return false;">(set in Personnel &amp; Competence)</a></div></div>
+          <div class="field"><label>Divisions</label><div style="padding-top:7px; font-size:13px; color:var(--text-faint);">${divisionNames.length ? divisionNames.join(', ') : '— none set —'} <a href="#" onclick="openPersonDetail('${p.id}'); return false;">(set in Personnel &amp; Competence)</a></div></div>
         </div>
         <button class="btn-small primary" onclick="saveAdminPerson('${p.id}')">Save</button>
         <button class="btn-small" onclick="toggleAdminPersonEdit('${p.id}')">Cancel</button>
@@ -17725,8 +17802,6 @@ window.toggleAdminPersonEdit = function(id){
 window.saveAdminPerson = async function(id){
   const patch = {
     full_name: document.getElementById('ap-name-'+id).value.trim(),
-    position_id: document.getElementById('ap-position-'+id).value || null,
-    department_id: document.getElementById('ap-department-'+id).value || null,
     email: document.getElementById('ap-email-'+id).value.trim(),
     mobile_number: document.getElementById('ap-mobile-'+id).value.trim(),
   };
