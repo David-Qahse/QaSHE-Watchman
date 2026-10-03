@@ -6959,7 +6959,8 @@ window.submitDocumentForReview = async function(docId){
 
   const d = documentById(docId);
   await notifyDocumentUsers(checked, `Document review requested: ${d.doc_number}`,
-    `${memberName(STATE.user.id)} has submitted "${d.title}" (${d.doc_number}) for your review in QaSHE Watchman. Please open Document Management to review it.`);
+    `${memberName(STATE.user.id)} has submitted "${d.title}" (${d.doc_number}) for your review in QaSHE Watchman. Please open Document Management to review it.`,
+    { includeSelf: true });
 
   await loadDocuments();
   openDocumentDetail(docId);
@@ -6977,7 +6978,8 @@ window.markReviewerSatisfied = async function(docId){
   if(allSatisfied){
     await STATE.supabase.from('documents').update({ workflow_status: 'reviewers_satisfied' }).eq('id', docId);
     await notifyDocumentUsers([d.created_by, d.owner_id], `All reviewers satisfied: ${d.doc_number}`,
-      `All reviewers have marked "${d.title}" (${d.doc_number}) as satisfactory. You can now select an approver and send it for approval.`);
+      `All reviewers have marked "${d.title}" (${d.doc_number}) as satisfactory. You can now select an approver and send it for approval.`,
+      { includeSelf: true });
   }
   await loadDocuments();
   openDocumentDetail(docId);
@@ -7027,7 +7029,8 @@ window.sendDocumentForApproval = async function(docId){
   if(error){ toast('Could not send for approval: ' + error.message, 'error'); return; }
   const d = documentById(docId);
   await notifyDocumentUsers([approverId], `Document approval requested: ${d.doc_number}`,
-    `"${d.title}" (${d.doc_number}) has been reviewed and is ready for your approval in QaSHE Watchman.`);
+    `"${d.title}" (${d.doc_number}) has been reviewed and is ready for your approval in QaSHE Watchman.`,
+    { includeSelf: true });
   await loadDocuments();
   openDocumentDetail(docId);
   toast('Sent for approval — approver notified.', 'success');
@@ -7040,7 +7043,8 @@ window.approverRequestChanges = async function(docId){
   await STATE.supabase.from('document_reviewers').update({ finalized_at: null }).eq('document_id', docId);
   const { data: reviewers } = await STATE.supabase.from('document_reviewers').select('*').eq('document_id', docId);
   await notifyDocumentUsers((reviewers||[]).map(r=>r.reviewer_id), `Approver requested changes: ${d.doc_number}`,
-    `The approver has requested changes on "${d.title}" (${d.doc_number}). Please review their comments and finalise once you agree.`);
+    `The approver has requested changes on "${d.title}" (${d.doc_number}). Please review their comments and finalise once you agree.`,
+    { includeSelf: true });
   await loadDocuments();
   openDocumentDetail(docId);
   toast('Reviewers notified to finalise.', 'success');
@@ -7055,7 +7059,8 @@ window.reviewerFinalize = async function(docId){
     await STATE.supabase.from('documents').update({ workflow_status: 'reviewers_finalized' }).eq('id', docId);
     if(d.workflow_approver_id){
       await notifyDocumentUsers([d.workflow_approver_id], `Reviewers finalised: ${d.doc_number}`,
-        `All reviewers have finalised "${d.title}" (${d.doc_number}). You can now give final approval.`);
+        `All reviewers have finalised "${d.title}" (${d.doc_number}). You can now give final approval.`,
+        { includeSelf: true });
     }
   }
   await loadDocuments();
@@ -8452,13 +8457,20 @@ async function sendEmailToAddress(toEmail, subject, message){
   return await actuallySendEmail(toEmail, subject, message);
 }
 
-// Notifies a set of org members by user id, deduplicated, skipping the
-// person who just took the action (they don't need an email about their
-// own click) and skipping any falsy/unassigned ids.
-async function notifyDocumentUsers(userIds, subject, message){
+// Notifies a set of org members by user id, deduplicated, skipping any
+// falsy/unassigned ids. By default it also skips the person who just took
+// the action — right for a "someone commented" or "reviewers satisfied"
+// ping, where the actor doesn't need an email about their own click. Pass
+// includeSelf:true for an actual task assignment (e.g. a review invite),
+// where the current user may have assigned the task to themselves — a
+// legitimate setup in a small org where one person holds several roles —
+// and skipping them would mean the invite they were expecting never goes
+// out at all.
+async function notifyDocumentUsers(userIds, subject, message, opts){
+  const includeSelf = !!(opts && opts.includeSelf);
   const unique = [...new Set((userIds||[]).filter(Boolean))];
   for(const uid of unique){
-    if(uid === STATE.user.id) continue;
+    if(uid === STATE.user.id && !includeSelf) continue;
     await sendNotificationEmail(uid, subject, message);
   }
 }
@@ -16285,11 +16297,20 @@ function renderAwReadingTypesList(){
 function parseBulkDocFilename(filename){
   const dotIdx = filename.lastIndexOf('.');
   const nameOnly = dotIdx > 0 ? filename.slice(0, dotIdx) : filename;
+  // Accepts both the legacy "DocNumber_Description.ext" convention (an
+  // underscore before the title) and the standard "DocNumber-R0 Title.ext"
+  // convention (a plain space before the title, as issued by Document
+  // Control) — whichever delimiter appears first in the filename is where
+  // the document number ends, so a title that itself contains underscores
+  // or the reverse doesn't matter; only the position of the first one does.
   const underscoreIdx = nameOnly.indexOf('_');
-  if(underscoreIdx === -1) return { docNumber: nameOnly, description: '' };
+  const spaceIdx = nameOnly.indexOf(' ');
+  const candidates = [underscoreIdx, spaceIdx].filter(i => i !== -1);
+  if(!candidates.length) return { docNumber: nameOnly, description: '' };
+  const splitIdx = Math.min(...candidates);
   return {
-    docNumber: nameOnly.slice(0, underscoreIdx),
-    description: nameOnly.slice(underscoreIdx + 1).replace(/_/g, ' '),
+    docNumber: nameOnly.slice(0, splitIdx),
+    description: nameOnly.slice(splitIdx + 1).replace(/_/g, ' ').trim(),
   };
 }
 
