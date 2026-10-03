@@ -1866,7 +1866,7 @@ const MODULE_META = {
   policies:{title:'Policies & Procedures', sub:() => 'Signable, audit-ready policy and procedure documents — applied from the Group QaSHE CG template library and yours to adapt'},
 };
 
-const GATED_MODULES = ['nonconformances','tasks','documents','audits','risks','suppliers','customers','objectives','legal','personnel','training','appraisals','assets','bulletins','all_documents','five_s','processes','management_review','administration','raga','hr','asset_watchman','process_flowcharts','checklists','policies'];
+const GATED_MODULES = ['nonconformances','tasks','documents','audits','risks','suppliers','customers','objectives','legal','personnel','orgchart','training','appraisals','assets','bulletins','all_documents','five_s','processes','management_review','administration','raga','hr','asset_watchman','process_flowcharts','checklists','policies'];
 
 function personTitleFor(personId){
   const primary = primaryCompetenceFor(personId);
@@ -2150,7 +2150,7 @@ function canAccessModule(mod){
   if(!GATED_MODULES.includes(mod)) return true; // overview, compliance — always visible
   if(mod === 'all_documents') return !!STATE.org.all_documents_enabled; // org-level switch only — everyone sees it when on, nobody when off
   if(mod === 'documents') return !!STATE.org.document_control_enabled; // same mechanism — org-level switch only
-  if(mod === 'administration') return !!STATE.org.administration_enabled || (STATE.profile && STATE.profile.is_platform_staff); // org-level switch — platform staff stay exempt so the Admin Console that controls this flag is never itself locked out by it
+  if(mod === 'administration') return (!!STATE.org.administration_enabled && STATE.myRole === 'admin') || (STATE.profile && STATE.profile.is_platform_staff); // org-level switch AND the person's own role must be admin — platform staff stay exempt so the Admin Console that controls this flag is never itself locked out by it
   if(mod === 'raga') return !!STATE.org.raga_enabled; // same mechanism — org-level switch only
   if(mod === 'hr') return !!STATE.org.hr_enabled; // same mechanism — org-level switch only
   if(mod === 'asset_watchman') return !!STATE.org.asset_watchman_enabled; // same mechanism — org-level switch only
