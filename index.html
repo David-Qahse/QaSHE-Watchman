@@ -2076,7 +2076,17 @@ function renderDivisionsManageList(type){
   wrap.innerHTML = list.length ? list.map(d => `
     <div class="evidence-row">
       <div style="flex:1;">
-        <b>${d.name}</b>
+        <div id="div-name-display-${d.id}">
+          <b>${escapeHtml(d.name)}</b>
+          <a onclick="toggleDivisionNameEdit('${d.id}')" style="color:var(--red); cursor:pointer; margin-left:6px; font-size:11px;">Rename</a>
+        </div>
+        <div id="div-name-edit-${d.id}" style="display:none; margin:4px 0 8px;">
+          <div class="form-grid">
+            <div class="field"><label>${type==='branch'?'Branch':'Department'} name</label><input id="div-name-${d.id}" value="${(d.name||'').replace(/"/g,'&quot;')}"></div>
+          </div>
+          <button class="btn-small primary" onclick="saveDivisionName('${d.id}','${type}')">Save</button>
+          <button class="btn-small" onclick="toggleDivisionNameEdit('${d.id}')">Cancel</button>
+        </div>
         <div id="div-doc-display-${d.id}" style="font-size:11px; color:var(--text-faint); margin-top:2px;">
           ${d.doc_number || d.revision ? `Doc ${d.doc_number||'—'} · Rev ${d.revision||'—'}${d.revision_date ? ' ('+fmtDate(d.revision_date)+')' : ''}` : 'No document number set'}
           <a onclick="toggleDivisionDocEdit('${d.id}')" style="color:var(--red); cursor:pointer; margin-left:6px;">Edit</a>
@@ -2093,6 +2103,31 @@ function renderDivisionsManageList(type){
       <div class="ev-actions"><button class="btn-small" onclick="deleteDivision('${d.id}')">Delete</button></div>
     </div>`).join('') : `<p style="font-size:12.5px; color:var(--text-faint);">No ${type}s yet — add one above.</p>`;
 }
+
+window.toggleDivisionNameEdit = function(divId){
+  const display = document.getElementById('div-name-display-'+divId);
+  const edit = document.getElementById('div-name-edit-'+divId);
+  if(!display || !edit) return;
+  const opening = edit.style.display === 'none';
+  edit.style.display = opening ? 'block' : 'none';
+  display.style.display = opening ? 'none' : 'block';
+  if(opening) document.getElementById('div-name-'+divId).focus();
+};
+
+// Renaming just updates the one row — every place that shows a department
+// or branch name (org chart, personnel profiles, registers, exports) reads
+// it live via positionById/division lookups rather than storing a copy, so
+// the new name appears everywhere automatically, nothing else to touch.
+window.saveDivisionName = async function(divId, type){
+  const input = document.getElementById('div-name-'+divId);
+  const name = input.value.trim();
+  if(!name){ alert(`Give the ${type} a name.`); return; }
+  const { error } = await STATE.supabase.from('divisions').update({ name }).eq('id', divId);
+  if(error){ toast('Could not rename: ' + error.message, 'error'); return; }
+  await loadDivisions();
+  renderOrgChart();
+  toast(`${type==='branch'?'Branch':'Department'} renamed.`, 'success');
+};
 
 window.addDivision = async function(type){
   const name = document.getElementById(`${type}-new-name`).value.trim();
@@ -18116,6 +18151,9 @@ async function renderBulkDocumentsRegister(){
   const { data, error } = await STATE.supabase.from('bulk_documents').select('*').eq('organisation_id', STATE.org.id).order('doc_number', {ascending:true});
   if(error){ toast('Could not load documents: ' + error.message, 'error'); return; }
   STATE.bulkDocuments = data || [];
+  // A fresh load of the register is a fresh set of rows on screen — any
+  // previous tick marks no longer correspond to anything visible.
+  STATE._bulkDocSelected = new Set();
   renderAllDocsView();
 }
 window.renderBulkDocumentsRegister = renderBulkDocumentsRegister;
@@ -18241,25 +18279,43 @@ window.allDocsGlobalSearch = function(term){
     resultsWrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><p>No documents match "${escapeHtml(term)}".</p></div>`;
     return;
   }
+  if(!STATE._bulkDocSelected) STATE._bulkDocSelected = new Set();
+  const sel = STATE._bulkDocSelected;
+  const visibleIds = matches.map(d=>d.id);
+  const selectedVisibleCount = visibleIds.filter(id=>sel.has(id)).length;
+  const allVisibleSelected = visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
   resultsWrap.innerHTML = `
     <p style="font-size:12px; color:var(--text-faint); margin-bottom:10px;">${matches.length} document${matches.length===1?'':'s'} found across all departments and types.</p>
     <div class="panel" style="padding:0; overflow:hidden;">
+      ${bulkDocSelectionBarHtml(selectedVisibleCount)}
       <table>
-        <tr><th>Document Number</th><th>File</th><th>Department</th><th>Type</th><th></th></tr>
+        <tr>
+          <th style="width:28px;"><input type="checkbox" onchange="toggleBulkDocSelectAllVisible(this.checked)" ${allVisibleSelected?'checked':''}></th>
+          <th>Document Number</th><th>File</th><th>Department</th><th>Type</th><th></th>
+        </tr>
         ${matches.map(d=>{
           const dept = STATE.docDepartments.find(x=>x.id===d.department_id);
           const type = STATE.docTypes.find(x=>x.id===d.document_type_id);
-          return `<tr class="clickable" onclick="allDocsOpenDept('${d.department_id||''}'); setTimeout(()=>allDocsOpenType('${d.document_type_id||''}'),0);">
-            <td class="mono-cell strong">${escapeHtml(d.doc_number || '—')}</td>
+          return `<tr>
+            <td onclick="event.stopPropagation();"><input type="checkbox" class="bulkdoc-row-cb" data-id="${d.id}" ${sel.has(d.id)?'checked':''} onchange="toggleBulkDocSelect('${d.id}', this.checked)"></td>
+            <td class="mono-cell strong clickable" onclick="allDocsOpenDept('${d.department_id||''}'); setTimeout(()=>allDocsOpenType('${d.document_type_id||''}'),0);">${escapeHtml(d.doc_number || '—')}</td>
             <td>${escapeHtml(d.file_name || '—')}</td>
             <td>${dept ? escapeHtml(dept.name) : '<span style="color:var(--text-faint);">Unfiled</span>'}</td>
             <td>${type ? escapeHtml(type.name) : '<span style="color:var(--text-faint);">No type</span>'}</td>
-            <td style="text-align:right;" onclick="event.stopPropagation();"><button class="btn-small" onclick="downloadFromBucket('documents','${d.storage_path}')">Download</button></td>
+            <td style="text-align:right;"><button class="btn-small" onclick="downloadFromBucket('documents','${d.storage_path}')">Download</button></td>
           </tr>`;
         }).join('')}
       </table>
     </div>
   `;
+};
+
+// Re-runs the current search term so a checkbox toggled inside the search
+// results can refresh just that view — mirrors how the register table
+// refreshes itself after a selection change.
+window.renderAllDocsSearchResults = function(){
+  const input = document.getElementById('alldocs-global-search');
+  window.allDocsGlobalSearch(input ? input.value : '');
 };
 
 window.uploadAllDocsSmart = async function(){
@@ -18333,11 +18389,13 @@ window.submitAllDocsAddDept = async function(){
 window.allDocsOpenDept = function(deptId){
   STATE._allDocsDeptId = deptId;
   STATE._allDocsTypeId = null;
+  STATE._bulkDocSelected = new Set();
   renderAllDocsView();
 };
 window.allDocsBackToDepts = function(){
   STATE._allDocsDeptId = null;
   STATE._allDocsTypeId = null;
+  STATE._bulkDocSelected = new Set();
   renderAllDocsView();
 };
 
@@ -18402,10 +18460,12 @@ window.submitAllDocsAddType = async function(){
    both, no picker needed) ---- */
 window.allDocsOpenType = function(typeId){
   STATE._allDocsTypeId = typeId;
+  STATE._bulkDocSelected = new Set();
   renderAllDocsView();
 };
 window.allDocsBackToTypes = function(){
   STATE._allDocsTypeId = null;
+  STATE._bulkDocSelected = new Set();
   renderAllDocsView();
 };
 
@@ -18544,9 +18604,20 @@ function renderBulkDocumentsTable(searchTerm){
     wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><p>No documents match "${searchTerm}".</p></div>`;
     return;
   }
-  wrap.innerHTML = `<table>
-    <tr><th>Document Number</th><th>File</th><th>Current</th><th>Approved</th><th></th></tr>
+  if(!STATE._bulkDocSelected) STATE._bulkDocSelected = new Set();
+  const sel = STATE._bulkDocSelected;
+  const visibleIds = data.map(d=>d.id);
+  const selectedVisibleCount = visibleIds.filter(id=>sel.has(id)).length;
+  const allVisibleSelected = visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
+  wrap.innerHTML = `
+    ${bulkDocSelectionBarHtml(selectedVisibleCount)}
+    <table>
+    <tr>
+      <th style="width:28px;"><input type="checkbox" id="bulkdoc-select-all" onchange="toggleBulkDocSelectAllVisible(this.checked)" ${allVisibleSelected?'checked':''}></th>
+      <th>Document Number</th><th>File</th><th>Current</th><th>Approved</th><th></th>
+    </tr>
     ${data.map(d=>{ return `<tr>
+      <td><input type="checkbox" class="bulkdoc-row-cb" data-id="${d.id}" ${sel.has(d.id)?'checked':''} onchange="toggleBulkDocSelect('${d.id}', this.checked)"></td>
       <td class="mono-cell strong" id="bulkdoc-num-${d.id}">${d.doc_number || '—'}</td>
       <td>${escapeHtml(d.file_name || '—')}</td>
       <td>${d.current_status ? pill('yes') : pill('no')}</td>
@@ -18558,7 +18629,7 @@ function renderBulkDocumentsTable(searchTerm){
         <button class="btn-small" onclick="deleteBulkDocument('${d.id}','${d.storage_path}')">Delete</button>
       </td>
     </tr>
-    <tr id="bulkdoc-edit-row-${d.id}" style="display:none;"><td colspan="5" style="padding:12px 16px; background:var(--grey-tint);">
+    <tr id="bulkdoc-edit-row-${d.id}" style="display:none;"><td colspan="6" style="padding:12px 16px; background:var(--grey-tint);">
       <div class="form-grid" style="margin-bottom:8px;">
         <div class="field span2"><label>Document Number</label><input id="bulkdoc-edit-num-${d.id}" value="${(d.doc_number||'').replace(/"/g,'&quot;')}"></div>
         <div class="field"><label>Department</label><select id="bulkdoc-edit-dept-${d.id}"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}" ${d.department_id===x.id?'selected':''}>${x.name}</option>`).join('')}</select></div>
@@ -18571,6 +18642,69 @@ function renderBulkDocumentsTable(searchTerm){
     </td></tr>`;}).join('')}
   </table>`;
 }
+
+// Shared "N selected · Delete selected" bar — used above both the
+// department/type register and the cross-department search results, so a
+// large bulk-upload clean-up (hundreds of mis-sorted or duplicate files)
+// doesn't mean clicking Delete one row at a time.
+function bulkDocSelectionBarHtml(selectedCount){
+  if(!selectedCount) return '';
+  return `
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 14px; background:#fff3cd; border-bottom:1px solid var(--border);">
+      <span style="font-size:12.5px; color:#8a6400; font-weight:600;">${selectedCount} document${selectedCount===1?'':'s'} selected</span>
+      <div style="display:flex; gap:8px;">
+        <button class="btn-small" onclick="clearBulkDocSelection()">Clear selection</button>
+        <button class="btn-small" style="background:var(--red); color:#fff; border-color:var(--red);" onclick="deleteSelectedBulkDocuments()">Delete selected</button>
+      </div>
+    </div>
+  `;
+}
+
+window.toggleBulkDocSelect = function(id, checked){
+  if(!STATE._bulkDocSelected) STATE._bulkDocSelected = new Set();
+  if(checked) STATE._bulkDocSelected.add(id); else STATE._bulkDocSelected.delete(id);
+  // Re-render just the table this checkbox lives in, so the selection bar
+  // and "select all" state stay in sync without losing scroll position on
+  // the rest of the page.
+  if(document.getElementById('bulkdoc-table-wrap')) renderBulkDocumentsTable(document.getElementById('bulkdoc-search') ? document.getElementById('bulkdoc-search').value : '');
+  else if(document.getElementById('alldocs-search-results-wrap')) renderAllDocsSearchResults();
+};
+
+window.toggleBulkDocSelectAllVisible = function(checked){
+  if(!STATE._bulkDocSelected) STATE._bulkDocSelected = new Set();
+  document.querySelectorAll('.bulkdoc-row-cb').forEach(cb=>{
+    const id = cb.getAttribute('data-id');
+    if(checked) STATE._bulkDocSelected.add(id); else STATE._bulkDocSelected.delete(id);
+  });
+  if(document.getElementById('bulkdoc-table-wrap')) renderBulkDocumentsTable(document.getElementById('bulkdoc-search') ? document.getElementById('bulkdoc-search').value : '');
+  else if(document.getElementById('alldocs-search-results-wrap')) renderAllDocsSearchResults();
+};
+
+window.clearBulkDocSelection = function(){
+  STATE._bulkDocSelected = new Set();
+  if(document.getElementById('bulkdoc-table-wrap')) renderBulkDocumentsTable(document.getElementById('bulkdoc-search') ? document.getElementById('bulkdoc-search').value : '');
+  else if(document.getElementById('alldocs-search-results-wrap')) renderAllDocsSearchResults();
+};
+
+// Deletes every ticked document in one pass — same storage-then-row delete
+// as the single-document path, just looped, with one confirm and one
+// summary toast instead of one of each per file.
+window.deleteSelectedBulkDocuments = async function(){
+  const ids = Array.from(STATE._bulkDocSelected || []);
+  if(!ids.length) return;
+  const docs = STATE.bulkDocuments.filter(d => ids.includes(d.id));
+  if(!confirm(`Delete ${docs.length} document${docs.length===1?'':'s'}? This cannot be undone.`)) return;
+
+  let okCount = 0, failCount = 0;
+  for(const d of docs){
+    await STATE.supabase.storage.from('documents').remove([d.storage_path]);
+    const { error } = await STATE.supabase.from('bulk_documents').delete().eq('id', d.id);
+    if(error) failCount++; else okCount++;
+  }
+  STATE._bulkDocSelected = new Set();
+  toast(`${okCount} document${okCount===1?'':'s'} deleted${failCount ? `, ${failCount} failed` : ''}.`, failCount ? 'error' : 'success');
+  await renderBulkDocumentsRegister();
+};
 
 window.toggleEditBulkDoc = function(id){
   const row = document.getElementById('bulkdoc-edit-row-'+id);
