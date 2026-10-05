@@ -944,6 +944,7 @@
       <div class="nav-item" data-mod="customers" onclick="showModule('customers')"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21v-2a5 5 0 015-5h4a5 5 0 015 5v2"/><path d="M17 4a4 4 0 010 8"/><path d="M22 21v-2a5 5 0 00-4-4.9"/></svg> Customers <span class="nd amber" id="nd-customer"></span></div>
       <div class="nav-item" data-mod="objectives" onclick="showModule('objectives')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg> Objectives &amp; Targets <span class="nd amber" id="nd-objective"></span></div>
       <div class="nav-item" data-mod="legal" onclick="showModule('legal')"><svg viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M5 8l-3 6a3 3 0 006 0z"/><path d="M19 8l-3 6a3 3 0 006 0z"/><path d="M5 8h14"/><path d="M8 21h8"/></svg> Legal Compliance <span class="nd amber" id="nd-legal"></span></div>
+      <div class="nav-item" data-mod="legal_certs" onclick="showModule('legal_certs')"><svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6"/><circle cx="12" cy="16" r="2.5"/><path d="M10.8 18.2L10 22l2-1 2 1-.8-3.8"/></svg> Legal Documents &amp; Certificates <span class="nd amber" id="nd-legalcert"></span></div>
       <div class="nav-item" data-mod="personnel" onclick="showModule('personnel')"><svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a5 5 0 015-5h4a5 5 0 015 5v2"/><path d="M16 3.13a4 4 0 010 7.75"/><path d="M22 21v-2a4 4 0 00-3-3.87"/></svg> Personnel &amp; Competence</div>
       <div class="nav-item" data-mod="orgchart" onclick="showModule('orgchart')"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="6" rx="1"/><rect x="3" y="15" width="6" height="6" rx="1"/><rect x="15" y="15" width="6" height="6" rx="1"/><path d="M12 9v3M6 15v-3h12v3"/></svg> Organisation Chart</div>
       <div class="nav-item" data-mod="training" onclick="showModule('training')"><svg viewBox="0 0 24 24"><path d="M22 10v6M2 10l10-5 10 5-10 5-10-5z"/><path d="M6 12v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5"/></svg> Training <span class="nd amber" id="nd-training"></span></div>
@@ -1078,7 +1079,7 @@ const STATE = {
   members:[], memberMap:{},
   ncs:[], tasks:[], audits:[], risks:[], documents:[], suppliers:[], customers:[], satisfactionQuestions:[], objectives:[], legalRegister:[],
   positions:[], personnel:[], competence:[], training:[], positionKpis:[], appraisals:[],
-  assetChecklistTemplates:[], assetChecklistItems:[], assets:[], bulletins:[], attendance:[], leaveTypes:[], leaveApplications:[], expenseClaims:[], personnelRequests:[], overtimeRequests:[], awAssets:[], awComponents:[], awReadingTypes:[], awReadings:[], awSiteAssessments:[], awSealReplacements:[],
+  assetChecklistTemplates:[], assetChecklistItems:[], assets:[], bulletins:[], legalCerts:[], attendance:[], leaveTypes:[], leaveApplications:[], expenseClaims:[], personnelRequests:[], overtimeRequests:[], awAssets:[], awComponents:[], awReadingTypes:[], awReadings:[], awSiteAssessments:[], awSealReplacements:[],
   contentTemplates:[], contentTemplateSteps:[], contentTemplateKpis:[], orgFlowcharts:[], orgFlowchartSteps:[], orgFlowchartKpis:[],
   contentTemplateChecklistItems:[], contentTemplatePolicySections:[],
   orgChecklists:[], orgChecklistItems:[], orgChecklistRuns:[], orgChecklistRunItems:[],
@@ -1324,7 +1325,7 @@ async function afterSignIn(user){
 
   const { data: memberships, error: memErr } = await STATE.supabase
     .from('organisation_members')
-    .select('organisation_id, role, module_access, can_download, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color, all_documents_enabled, document_control_enabled, administration_enabled, raga_enabled, hr_enabled, asset_watchman_enabled, nc_enabled, process_flowcharts_enabled, checklists_enabled, policies_enabled, ebitda, subscription_status)')
+    .select('organisation_id, role, module_access, can_download, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color, all_documents_enabled, document_control_enabled, administration_enabled, raga_enabled, hr_enabled, asset_watchman_enabled, nc_enabled, process_flowcharts_enabled, checklists_enabled, policies_enabled, legal_certs_enabled, ebitda, subscription_status)')
     .eq('user_id', user.id).eq('status','active');
 
   if(memErr){ toast('Could not load your organisations: ' + memErr.message, 'error'); return; }
@@ -1433,6 +1434,7 @@ window.selectOrg = async function(orgId){
   await loadOrgFlowcharts();
   await loadOrgChecklists();
   await loadOrgPolicies();
+  await loadLegalCerts();
   await loadAwAssets();
   await loadAwComponents();
   await loadAwReadingTypes();
@@ -1859,6 +1861,7 @@ const MODULE_META = {
   suppliers:{title:'Supplier & Subcontractor Management', sub:() => 'MOD-07 · Risk-classified register, audit or exception-monitored'},
   customers:{title:'Customers', sub:() => 'MOD-08 · Register and satisfaction monitoring'},
   objectives:{title:'Objectives & Targets', sub:() => 'MOD-09 · SMART objectives, planned and monitored per ISO 6.2'},
+  legal_certs:{title:'Legal Documents & Certificates', sub:() => 'A repository of registration, tax, B-BBEE, membership and accreditation certificates — with expiry dates, and a reminder 30 days before each one lapses'},
   legal:{title:'Legal Compliance', sub:() => 'MOD-10 · Legal register, compliance reviews, linked to internal audits'},
   personnel:{title:'Personnel & Competence', sub:() => 'MOD-11 · Register, positions, and the organisation competence matrix'},
   orgchart:{title:'Organisation Chart', sub:() => 'The company-wide chart first, generated from recorded job titles and reporting lines — Departments and Branches unlock once it\'s complete'},
@@ -1878,7 +1881,7 @@ const MODULE_META = {
   policies:{title:'Policies & Procedures', sub:() => 'Signable, audit-ready policy and procedure documents — applied from the Group QaSHE CG template library and yours to adapt'},
 };
 
-const GATED_MODULES = ['nonconformances','tasks','documents','audits','risks','suppliers','customers','objectives','legal','personnel','orgchart','training','appraisals','assets','bulletins','all_documents','five_s','processes','management_review','administration','raga','hr','asset_watchman','process_flowcharts','checklists','policies'];
+const GATED_MODULES = ['nonconformances','tasks','documents','audits','risks','suppliers','customers','objectives','legal','legal_certs','personnel','orgchart','training','appraisals','assets','bulletins','all_documents','five_s','processes','management_review','administration','raga','hr','asset_watchman','process_flowcharts','checklists','policies'];
 
 function personTitleFor(personId){
   const primary = primaryCompetenceFor(personId);
@@ -2287,6 +2290,8 @@ function canAccessModule(mod){
   if(mod === 'process_flowcharts') return !!STATE.org.process_flowcharts_enabled; // same mechanism — org-level switch only
   if(mod === 'checklists') return !!STATE.org.checklists_enabled;
   if(mod === 'policies') return !!STATE.org.policies_enabled;
+  // Sensitive company paperwork: needs the org-level switch AND, for anyone who isn't an admin, an explicit module-access tick.
+  if(mod === 'legal_certs') return !!STATE.org.legal_certs_enabled && (STATE.myRole === 'admin' || (STATE.myModuleAccess || []).includes('legal_certs'));
   if(mod === 'nonconformances') return STATE.org.nc_enabled !== false; // org-level switch — defaults true so no existing client loses access
   if(STATE.myRole === 'admin') return true;
   return (STATE.myModuleAccess || []).includes(mod);
@@ -2337,6 +2342,7 @@ function showModule(mod){
   if(mod === 'appraisals') renderAppraisalsTable();
   if(mod === 'assets') renderAssetsTable();
   if(mod === 'bulletins') renderBulletinsTable();
+  if(mod === 'legal_certs') renderLegalCertsView();
   if(mod === 'hr') switchHrSubtab(STATE._hrSubtab || 'dashboard');
   if(mod === 'asset_watchman') renderAwView();
   if(mod === 'process_flowcharts') renderProcessFlowchartsList();
@@ -2383,6 +2389,8 @@ function updateNavBadges(){
   const pendingAssessments = STATE.awSiteAssessments.filter(sa=>!sa.acknowledged).length;
   const awAttention = STATE.awAssets.filter(a => a.active && (awHealthStatusInfo(a).state==='red' || awDataStatusInfo(a).state==='red')).length + pendingAssessments;
   document.getElementById('nd-aw').style.display = awAttention?'block':'none';
+  const lcAttention = (STATE.legalCerts||[]).filter(c => !c.archived && ['expired','expiring'].includes(legalCertStatus(c).kind)).length;
+  const lcDot = document.getElementById('nd-legalcert'); if(lcDot) lcDot.style.display = lcAttention?'block':'none';
 }
 
 /* ============ SHARED UI HELPERS ============ */
@@ -2424,6 +2432,7 @@ const DATE_TRACKED_MODULES = [
   { key:'appraisals', label:'KPIs & Appraisals', list:() => STATE.appraisals, dateField:'period_end', isResolved:x=>x.status==='finalized', titleField:null, getPerson:x=>{const p=personById(x.personnel_id); return p?p.full_name:'—';} },
   { key:'assets', label:'Assets — Inspection Due', list:() => STATE.assets, dateField:'next_inspection_date', isResolved:() => false, titleField:'description', getPerson:x=>{const p=x.responsible_person_id?personById(x.responsible_person_id):null; return p?p.full_name:'—';} },
   { key:'assets', label:'Assets — Certificate Expiry', list:() => STATE.assets, dateField:'certificate_expiry_date', isResolved:() => false, titleField:'description', getPerson:x=>{const p=x.responsible_person_id?personById(x.responsible_person_id):null; return p?p.full_name:'—';} },
+  { key:'legal_certs', label:'Legal Documents & Certificates — Expiry', list:() => canAccessModule('legal_certs') ? (STATE.legalCerts||[]).filter(c=>!c.archived) : [], dateField:'expiry_date', isResolved:() => false, titleField:'title', getPerson:x=>x.owner_id ? memberName(x.owner_id) : (x.held_by || '—') },
   { key:'management_review', label:'Management Review — Next Meeting Due', list:() => STATE.managementReviews, dateField:'next_meeting_date', isResolved:() => false, titleField:null, getPerson:x=>memberName(x.chair_id) },
 ];
 
@@ -3491,6 +3500,56 @@ const RENDERERS = {
 
     <div class="panel" style="padding:0; overflow:hidden;">
       <div id="bulletin-table-wrap"></div>
+    </div>
+  `,
+
+  legal_certs: () => `
+    <div id="lc-summary" class="kpi-grid" style="margin-bottom:18px;"></div>
+
+    <div class="toolbar">
+      <div class="filters">
+        <select id="lc-filter-cat" onchange="renderLegalCertsView()">
+          <option value="">All categories</option>
+          ${LEGAL_CERT_CATEGORIES.map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}
+        </select>
+        <select id="lc-filter-status" onchange="renderLegalCertsView()">
+          <option value="">All statuses</option>
+          <option value="expired">Expired</option>
+          <option value="expiring">Expiring within 30 days</option>
+          <option value="valid">Valid</option>
+          <option value="none">No expiry</option>
+        </select>
+        <label style="font-size:12.5px; display:flex; align-items:center; gap:6px; color:var(--text-dim); text-transform:none; font-family:'Inter';"><input type="checkbox" id="lc-show-archived" style="width:auto;" onchange="renderLegalCertsView()"> Show archived</label>
+      </div>
+      <button class="btn-small" onclick="exportModuleExcel('legal_certs')">Export Excel</button>
+      <button class="btn-small" onclick="printCurrentRegister('legal_certs','Legal Documents & Certificates Register')">Print Register</button>
+      ${canEditLegalCerts() ? `<button class="btn-primary btn-add" onclick="openLegalCertForm('add')"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Document / Certificate</button>` : ''}
+    </div>
+
+    <div class="form-panel" id="lc-form">
+      <h3 id="lcf-heading" style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:6px;">Add a legal document or certificate</h3>
+      <p id="lcf-renew-note" style="display:none; font-size:12px; color:var(--amber); margin-bottom:12px;">The current certificate stays on file (archived) as a record, and stops raising reminders once you save the renewed one.</p>
+      <div class="form-grid">
+        <div class="field"><label>Category</label><select id="lcf-category">${LEGAL_CERT_CATEGORIES.map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select></div>
+        <div class="field span2"><label>Title</label><input id="lcf-title" placeholder="e.g. B-BBEE Certificate — Level 2"></div>
+        <div class="field"><label>Issuing body</label><input id="lcf-issuer" placeholder="e.g. SANAS, SARS, CIPC, ECSA"></div>
+        <div class="field"><label>Certificate / registration number</label><input id="lcf-number"></div>
+        <div class="field"><label>Held by</label><input id="lcf-heldby" placeholder="Company, site or person's name"></div>
+        <div class="field"><label>Issue date</label><input type="date" id="lcf-issue"></div>
+        <div class="field"><label>Expiry date</label><input type="date" id="lcf-expiry"></div>
+        <div class="field" style="justify-content:flex-end;"><label style="display:flex; align-items:center; gap:8px; text-transform:none; font-family:'Inter'; font-size:12.5px; color:var(--text-dim);"><input type="checkbox" id="lcf-noexpiry" style="width:auto;" onchange="lcToggleNoExpiry()"> This certificate does not expire</label></div>
+        <div class="field"><label>Responsible for keeping it current</label><select id="lcf-owner"><option value="">None</option>${memberOptions('')}</select></div>
+        <div class="field span2"><label id="lcf-file-label">Certificate file</label><input type="file" id="lcf-file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.heic"><p id="lcf-file-hint" style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">PDF, Word, Excel or image — up to ${EVIDENCE_MAX_SIZE_MB}MB.</p></div>
+        <div class="field span3"><label>Notes</label><textarea id="lcf-notes" placeholder="Anything worth knowing — renewal process, who to contact, conditions attached"></textarea></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-cancel" onclick="closeLegalCertForm()">Cancel</button>
+        <button class="btn-primary" id="lcf-submit" onclick="submitLegalCert()">Save</button>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:0; overflow:hidden;">
+      <div id="lc-table-wrap"></div>
     </div>
   `,
 
@@ -13008,6 +13067,237 @@ function renderBulletinsTable(){
 window.renderBulletinsTable = renderBulletinsTable;
 
 /* ============================================================================
+   Legal Documents & Certificates
+   A repository of the certificates and legal documents a company must keep
+   current. Each has an expiry date shown prominently; the expiry date is
+   registered in DATE_TRACKED_MODULES, so the existing Reminders pop-up lists
+   anything expired or expiring within 30 days automatically. A renewal
+   archives the old certificate rather than overwriting it.
+============================================================================ */
+const LEGAL_CERT_CATEGORIES = [
+  ['company_registration','Company Registration'], ['bbbee','B-BBEE Certificate'], ['tax_compliance','Tax Compliance'],
+  ['professional_membership','Professional Membership'], ['certification','Certification'], ['accreditation','Accreditation'],
+  ['licence_permit','Licence / Permit'], ['insurance','Insurance'], ['other','Other'],
+];
+const LEGAL_CERT_LABELS = Object.fromEntries(LEGAL_CERT_CATEGORIES);
+
+async function loadLegalCerts(){
+  STATE.legalCerts = []; // never leave a previous organisation's records behind
+  if(!STATE.org.legal_certs_enabled) return;
+  const { data, error } = await STATE.supabase.from('legal_certificates').select('*').eq('organisation_id', STATE.org.id);
+  if(error){ toast('Could not load legal documents & certificates: ' + error.message, 'error'); return; }
+  STATE.legalCerts = data || [];
+}
+
+function canEditLegalCerts(){ return ['admin','manager','contributor'].includes(STATE.myRole); }
+function canDeleteLegalCerts(){ return ['admin','manager'].includes(STATE.myRole); }
+
+// green = valid beyond 30 days, yellow = within 30 days (the reminder window),
+// red = expired, blue = a certificate that doesn't expire.
+function legalCertStatus(c){
+  if(!c.expiry_date) return { state:'blue', kind:'none', text:'No expiry', days:null };
+  const days = Math.floor((new Date(c.expiry_date+'T00:00:00') - new Date(todayISO()+'T00:00:00')) / 86400000);
+  if(days < 0) return { state:'red', kind:'expired', text:`Expired ${Math.abs(days)}d ago`, days };
+  if(days === 0) return { state:'red', kind:'expiring', text:'Expires today', days };
+  if(days <= 30) return { state:'yellow', kind:'expiring', text:`Expires in ${days}d`, days };
+  return { state:'green', kind:'valid', text:`Valid · ${days}d left`, days };
+}
+function legalCertBadge(c){
+  const st = legalCertStatus(c);
+  return `<span class="date-badge ${st.state}"><span class="dd"></span>${st.text}</span>`;
+}
+
+function renderLegalCertsView(){
+  const wrap = document.getElementById('lc-table-wrap');
+  if(!wrap) return;
+  const all = STATE.legalCerts || [];
+  const live = all.filter(c => !c.archived);
+
+  const count = k => live.filter(c => legalCertStatus(c).kind === k).length;
+  const summary = document.getElementById('lc-summary');
+  if(summary) summary.innerHTML = `
+    <div class="kpi-card"><div class="k-label">Valid</div><div class="k-val green">${count('valid')}</div></div>
+    <div class="kpi-card"><div class="k-label">Expiring within 30 days</div><div class="k-val amber">${count('expiring')}</div></div>
+    <div class="kpi-card"><div class="k-label">Expired</div><div class="k-val red">${count('expired')}</div></div>
+    <div class="kpi-card"><div class="k-label">No expiry</div><div class="k-val">${count('none')}</div></div>`;
+
+  const fCat = document.getElementById('lc-filter-cat').value;
+  const fStatus = document.getElementById('lc-filter-status').value;
+  const showArchived = document.getElementById('lc-show-archived').checked;
+  const rows = all
+    .filter(c => showArchived || !c.archived)
+    .filter(c => !fCat || c.category === fCat)
+    .filter(c => !fStatus || legalCertStatus(c).kind === fStatus)
+    .sort((a,b) => {
+      if(a.archived !== b.archived) return a.archived ? 1 : -1;
+      if(!a.expiry_date && !b.expiry_date) return (a.title||'').localeCompare(b.title||'');
+      if(!a.expiry_date) return 1;
+      if(!b.expiry_date) return -1;
+      return a.expiry_date.localeCompare(b.expiry_date); // soonest / already-expired first
+    });
+
+  if(!rows.length){
+    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6"/></svg><p>${all.length ? 'Nothing matches these filters.' : 'No documents or certificates uploaded yet.'}</p></div>`;
+    return;
+  }
+  wrap.innerHTML = `<table>
+    <tr><th>Category</th><th>Document / Certificate</th><th>Held by</th><th>Issued</th><th>Expiry</th><th>Responsible</th><th></th></tr>
+    ${rows.map(c => `<tr style="${c.archived ? 'opacity:.55;' : ''}">
+      <td style="font-size:12px;">${escapeHtml(LEGAL_CERT_LABELS[c.category] || c.category)}</td>
+      <td><div class="strong">${escapeHtml(c.title)}${c.archived ? ' <span style="font-size:10.5px; font-weight:500; color:var(--text-faint);">(archived)</span>' : ''}</div>
+        <div style="font-size:11px; color:var(--text-faint);">${[c.certificate_number, c.issuing_body].filter(Boolean).map(escapeHtml).join(' · ') || '&nbsp;'}</div></td>
+      <td style="font-size:12px;">${escapeHtml(c.held_by || '—')}</td>
+      <td style="font-size:12px;">${fmtDate(c.issue_date)}</td>
+      <td style="white-space:nowrap;"><div class="strong" style="margin-bottom:3px;">${c.expiry_date ? fmtDate(c.expiry_date) : '—'}</div>${c.archived ? '' : legalCertBadge(c)}</td>
+      <td style="font-size:12px;">${c.owner_id ? escapeHtml(memberName(c.owner_id)) : '—'}</td>
+      <td style="text-align:right; white-space:nowrap;">
+        ${c.storage_path ? `<button class="btn-small" onclick="downloadFromBucket('documents','${c.storage_path.replace(/'/g,"\\'")}')">View</button>` : ''}
+        ${canEditLegalCerts() && !c.archived ? `<button class="btn-small" onclick="openLegalCertForm('edit','${c.id}')">Edit</button><button class="btn-small primary" onclick="openLegalCertForm('renew','${c.id}')">Renew</button>` : ''}
+        ${canEditLegalCerts() ? `<button class="btn-small" onclick="toggleLegalCertArchived('${c.id}', ${!c.archived})">${c.archived ? 'Restore' : 'Archive'}</button>` : ''}
+        ${canDeleteLegalCerts() ? `<button class="btn-small" onclick="deleteLegalCert('${c.id}')">Delete</button>` : ''}
+      </td>
+    </tr>`).join('')}
+  </table>`;
+}
+window.renderLegalCertsView = renderLegalCertsView;
+
+window.lcToggleNoExpiry = function(){
+  const none = document.getElementById('lcf-noexpiry').checked;
+  const exp = document.getElementById('lcf-expiry');
+  exp.disabled = none;
+  if(none) exp.value = '';
+};
+
+window.closeLegalCertForm = function(){
+  const panel = document.getElementById('lc-form');
+  if(panel) panel.classList.remove('open');
+  STATE._lcMode = null;
+};
+
+// One form, three uses: add a new certificate, edit an existing one's details,
+// or renew (a new certificate record replaces the old, which is archived).
+window.openLegalCertForm = function(mode, id){
+  const c = id ? (STATE.legalCerts || []).find(x => x.id === id) : null;
+  STATE._lcMode = { mode, id: id || null };
+  const g = x => document.getElementById(x);
+  g('lcf-heading').textContent = mode === 'edit' ? 'Edit document / certificate' : mode === 'renew' ? 'Renew — upload the new certificate' : 'Add a legal document or certificate';
+  g('lcf-renew-note').style.display = mode === 'renew' ? 'block' : 'none';
+  g('lcf-category').value = c ? c.category : 'company_registration';
+  g('lcf-title').value = c ? c.title : '';
+  g('lcf-issuer').value = c ? (c.issuing_body || '') : '';
+  g('lcf-number').value = c && mode === 'edit' ? (c.certificate_number || '') : '';
+  g('lcf-heldby').value = c ? (c.held_by || '') : '';
+  g('lcf-owner').value = c && c.owner_id ? c.owner_id : '';
+  g('lcf-notes').value = c && mode === 'edit' ? (c.notes || '') : '';
+  // A renewal needs fresh dates, so they start blank rather than carrying the old ones forward.
+  g('lcf-issue').value = c && mode === 'edit' ? (c.issue_date || '') : '';
+  g('lcf-expiry').value = c && mode === 'edit' ? (c.expiry_date || '') : '';
+  g('lcf-noexpiry').checked = !!(c && mode === 'edit' && !c.expiry_date);
+  lcToggleNoExpiry();
+  g('lcf-file').value = '';
+  g('lcf-file-label').textContent = mode === 'edit' ? 'Replace file (optional)' : 'Certificate file';
+  g('lcf-file-hint').textContent = mode === 'edit'
+    ? `Leave empty to keep the current file${c && c.file_name ? ' (' + c.file_name + ')' : ''}.`
+    : `PDF, Word, Excel or image — up to ${EVIDENCE_MAX_SIZE_MB}MB.`;
+  g('lcf-submit').textContent = mode === 'renew' ? 'Save renewed certificate' : (mode === 'edit' ? 'Save changes' : 'Add to repository');
+  g('lc-form').classList.add('open');
+  g('lc-form').scrollIntoView({ behavior:'smooth', block:'start' });
+};
+
+window.submitLegalCert = async function(){
+  const { mode, id } = STATE._lcMode || { mode:'add', id:null };
+  const g = x => document.getElementById(x);
+  const title = g('lcf-title').value.trim();
+  const noExpiry = g('lcf-noexpiry').checked;
+  const expiry = noExpiry ? null : (g('lcf-expiry').value || null);
+  const issue = g('lcf-issue').value || null;
+  if(!title){ alert('Give the document a title.'); return; }
+  if(!noExpiry && !expiry){ alert('Enter the expiry date — or tick "This certificate does not expire".'); return; }
+  if(issue && expiry && expiry < issue){ alert('The expiry date is before the issue date — please check both.'); return; }
+  const file = g('lcf-file').files[0] || null;
+  if(mode !== 'edit' && !file){ alert('Choose the file to upload.'); return; }
+  if(file){
+    if(file.size > EVIDENCE_MAX_SIZE_MB * 1024 * 1024){ alert(`That file is over ${EVIDENCE_MAX_SIZE_MB}MB.`); return; }
+    if(!EVIDENCE_ALLOWED_EXT.includes(file.name.split('.').pop().toLowerCase())){ alert('That file format is not supported — use PDF, Word, Excel or an image.'); return; }
+  }
+
+  const fields = {
+    category: g('lcf-category').value, title,
+    issuing_body: g('lcf-issuer').value.trim() || null,
+    certificate_number: g('lcf-number').value.trim() || null,
+    held_by: g('lcf-heldby').value.trim() || null,
+    issue_date: issue, expiry_date: expiry,
+    owner_id: g('lcf-owner').value || null,
+    notes: g('lcf-notes').value.trim() || null,
+  };
+
+  const btn = g('lcf-submit'); btn.disabled = true;
+  try {
+    let fileFields = {};
+    if(file){
+      const path = `${STATE.org.id}/legal-certs/${Date.now()}-${sanitizeFileName(file.name)}`;
+      const { error: upErr } = await STATE.supabase.storage.from('documents').upload(path, file);
+      if(upErr){ toast('Could not upload the file: ' + upErr.message, 'error'); return; }
+      fileFields = { storage_path: path, file_name: file.name, file_type: file.type, file_size: file.size };
+    }
+
+    if(mode === 'edit'){
+      const old = STATE.legalCerts.find(x => x.id === id);
+      const { error } = await STATE.supabase.from('legal_certificates').update({ ...fields, ...fileFields }).eq('id', id);
+      if(error){
+        if(fileFields.storage_path) await STATE.supabase.storage.from('documents').remove([fileFields.storage_path]);
+        toast('Could not save: ' + error.message, 'error'); return;
+      }
+      if(fileFields.storage_path && old && old.storage_path) await STATE.supabase.storage.from('documents').remove([old.storage_path]);
+    } else {
+      const { data: created, error } = await STATE.supabase.from('legal_certificates')
+        .insert({ ...fields, ...fileFields, organisation_id: STATE.org.id, created_by: STATE.user.id }).select().single();
+      if(error){
+        if(fileFields.storage_path) await STATE.supabase.storage.from('documents').remove([fileFields.storage_path]);
+        toast('Could not save: ' + error.message, 'error'); return;
+      }
+      if(mode === 'renew' && id){
+        const { error: archErr } = await STATE.supabase.from('legal_certificates').update({ archived: true, superseded_by: created.id }).eq('id', id);
+        if(archErr) toast('Renewed certificate saved, but the previous one could not be archived: ' + archErr.message, 'error');
+      }
+    }
+
+    closeLegalCertForm();
+    await loadLegalCerts();
+    renderLegalCertsView();
+    updateNavBadges();
+    toast(mode === 'renew' ? 'Renewed — the previous certificate has been archived.' : (mode === 'edit' ? 'Saved.' : 'Added to the repository.'), 'success');
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+window.toggleLegalCertArchived = async function(id, archived){
+  const { error } = await STATE.supabase.from('legal_certificates').update({ archived }).eq('id', id);
+  if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+  await loadLegalCerts();
+  renderLegalCertsView();
+  updateNavBadges();
+  toast(archived ? 'Archived — it no longer raises reminders.' : 'Restored.', 'success');
+};
+
+window.deleteLegalCert = async function(id){
+  const c = STATE.legalCerts.find(x => x.id === id);
+  if(!c) return;
+  if(!confirm(`Permanently delete "${c.title}" and its file? This cannot be undone. (To keep it on record without reminders, use Archive instead.)`)) return;
+  if(c.storage_path){
+    const { error: stErr } = await STATE.supabase.storage.from('documents').remove([c.storage_path]);
+    if(stErr){ toast('Could not delete the file: ' + stErr.message, 'error'); return; }
+  }
+  const { error } = await STATE.supabase.from('legal_certificates').delete().eq('id', id);
+  if(error){ toast('File removed, but the record could not be deleted: ' + error.message, 'error'); return; }
+  await loadLegalCerts();
+  renderLegalCertsView();
+  updateNavBadges();
+  toast('Deleted.', 'success');
+};
+
+/* ============================================================================
    HR: Attendance, Time & Leave — Stage 1 (Attendance) + Stage 2 (Leave)
    Toggle already gates this whole module (canAccessModule / hr_enabled).
    The workforce clocking in/applying for leave has no Watchman login — see
@@ -17583,6 +17873,7 @@ const ADMIN_CONSOLE_TOGGLES = [
   { field:'process_flowcharts_enabled', label:'Process Flowcharts', note:'Applied from the Template Library.' },
   { field:'checklists_enabled', label:'Checklists', note:'Applied from the Template Library.' },
   { field:'policies_enabled', label:'Policies & Procedures', note:'Applied from the Template Library.' },
+  { field:'legal_certs_enabled', label:'Legal Documents & Certificates', note:'Repository of registration, tax, B-BBEE, membership and accreditation certificates, with expiry reminders. Non-admins also need the module ticked when invited.' },
   { field:'administration_enabled', label:'Administration', note:'Turning this off hides Administration for the client — Group QaSHE CG (platform staff) keeps access regardless, so this screen is never locked out.' },
 ];
 
@@ -19895,6 +20186,11 @@ function getModuleExportConfig(moduleKey){
       {header:'Department', get:r=>{ const d = STATE.docDepartments.find(x=>x.id===r.department_id); return d ? d.name : ''; }},
       {header:'Document Type', get:r=>{ const t = STATE.docTypes.find(x=>x.id===r.document_type_id); return t ? t.name : ''; }},
       {header:'Current', get:r=>r.current_status ? 'Yes' : 'No'}, {header:'Approved', get:r=>r.approved_status ? 'Yes' : 'No'},
+    ]},
+    legal_certs: { rows: (STATE.legalCerts||[]).filter(c=>!c.archived), filename: `legal-documents-certificates-${orgSlug}.xlsx`, columns: [
+      {header:'Category', get:r=>LEGAL_CERT_LABELS[r.category]||r.category}, {header:'Title', get:r=>r.title}, {header:'Certificate No.', get:r=>r.certificate_number||''},
+      {header:'Issuing Body', get:r=>r.issuing_body||''}, {header:'Held By', get:r=>r.held_by||''}, {header:'Issued', get:r=>r.issue_date||''},
+      {header:'Expiry', get:r=>r.expiry_date||'No expiry'}, {header:'Status', get:r=>legalCertStatus(r).text}, {header:'Responsible', get:r=>r.owner_id?memberName(r.owner_id):''},
     ]},
     five_s: { rows: STATE.fiveSInspections, filename: `5s-inspections-${orgSlug}.xlsx`, columns: [
       {header:'Ref', get:r=>r.ref_code}, {header:'Area', get:r=>r.area}, {header:'Inspector', get:r=>memberName(r.inspector_id)},
