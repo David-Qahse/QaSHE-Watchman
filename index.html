@@ -351,6 +351,18 @@
   .oc-name{font-family:'Poppins'; font-weight:600; font-size:12.5px; text-align:center; color:var(--text-main, #1E1C1B);}
   .oc-title{font-size:11px; color:var(--text-faint); text-align:center; margin-top:2px;}
   @media print{.oc-scroll{overflow:visible;}}
+  .oc-fit-inner .oc-scroll{overflow:visible; padding:8px;}
+  /* Compact cards for print so wide charts need less shrinking to fit a page. */
+  .oc-fit-inner .oc-card{min-width:92px; padding:8px 8px; border-radius:8px;}
+  .oc-fit-inner .oc-tree li{padding-left:5px; padding-right:5px;}
+  .oc-fit-inner .oc-avatar, .oc-fit-inner .oc-avatar-photo{width:28px; height:28px; font-size:10px; margin-bottom:5px;}
+  .oc-fit-inner .oc-name{font-size:11px;}
+  .oc-fit-inner .oc-title{font-size:9.5px;}
+  .oc-fit-outer{overflow:hidden; page-break-inside:avoid; break-inside:avoid;}
+  @media print{
+    .oc-fit-inner .oc-avatar{-webkit-print-color-adjust:exact; print-color-adjust:exact;}
+    .oc-fit-inner .oc-card{box-shadow:none;}
+  }
   .empty-state svg{width:34px; height:34px; margin:0 auto 14px; opacity:.5;}
   .empty-state p{font-size:13.5px;}
 
@@ -2035,7 +2047,7 @@ function renderOrgChartPage(){
 
   wrap.innerHTML = banner + `
     <div class="detail-card">
-      <div class="panel-head"><h3>Company-Wide Organisation Chart</h3></div>
+      <div class="panel-head"><h3>Company-Wide Organisation Chart</h3><button class="btn-small" onclick="printCompanyOrgChart()">Print / PDF</button></div>
       ${orgChartTreeHTML(active, true)}
     </div>` + branchSections;
 }
@@ -2177,8 +2189,91 @@ window.printDivisionOrgChart = async function(divisionId){
   const meta = [
     ['Document number', div.doc_number || '—'], ['Revision', div.revision || '—'], ['Revision date', div.revision_date ? fmtDate(div.revision_date) : '—'],
   ];
-  const bodyHtml = orgChartTreeHTML(members, false);
-  await printRecord(`${div.name} — Organisation Chart`, div.doc_number || `${div.name} (no document number set)`, meta, bodyHtml, null, null);
+  openOrgChartPrintDialog({
+    title: `${div.name} — Organisation Chart`,
+    refLine: div.doc_number || `${div.name} (no document number set)`,
+    meta, members,
+  });
+};
+
+window.printCompanyOrgChart = function(){
+  const active = STATE.personnel.filter(p => p.status === 'active');
+  openOrgChartPrintDialog({
+    title: 'Company-Wide Organisation Chart',
+    refLine: `${STATE.org.name} — Company-wide`,
+    meta: [['Date', new Date().toLocaleDateString('en-GB')]],
+    members: active,
+  });
+};
+
+// Org charts are wide, and a normal print simply cuts them off at the page
+// edge. This asks portrait or landscape (landscape by default — it suits a
+// wide tree), then measures the chart at its natural size and shrinks it
+// to fit the usable area of an A4 page in the chosen orientation.
+let _ocPrintJob = null;
+function openOrgChartPrintDialog(job){
+  _ocPrintJob = job;
+  const last = STATE._ocPrintOrientation || 'landscape';
+  const old = document.getElementById('oc-print-dialog'); if(old) old.remove();
+  const el = document.createElement('div');
+  el.id = 'oc-print-dialog';
+  el.className = 'import-overlay active';
+  el.innerHTML = `
+    <div class="import-modal" style="max-width:420px;">
+      <h3>Print / PDF</h3>
+      <p class="sub">${escapeHtml(job.title)}<br>The chart is scaled automatically to fit one A4 page. Choose the page orientation:</p>
+      <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:6px;">
+        <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; text-transform:none; font-family:'Inter';"><input type="radio" name="oc-orient" value="landscape" style="width:auto;" ${last==='landscape'?'checked':''}> Landscape — best for wide charts</label>
+        <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; text-transform:none; font-family:'Inter';"><input type="radio" name="oc-orient" value="portrait" style="width:auto;" ${last==='portrait'?'checked':''}> Portrait — best for tall, narrow charts</label>
+      </div>
+      <div class="import-actions">
+        <button class="btn-small" onclick="document.getElementById('oc-print-dialog').remove()">Cancel</button>
+        <button class="btn-small primary" onclick="confirmOrgChartPrint()">Print / Save as PDF</button>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+}
+
+window.confirmOrgChartPrint = async function(){
+  const picked = document.querySelector('input[name="oc-orient"]:checked');
+  const orientation = picked ? picked.value : 'landscape';
+  STATE._ocPrintOrientation = orientation;
+  const dlg = document.getElementById('oc-print-dialog'); if(dlg) dlg.remove();
+  const job = _ocPrintJob; if(!job) return;
+
+  // A4, 12mm margins. 1mm = 3.7795px. Reserve room for the letterhead,
+  // meta lines, closing note and the fixed footer around the chart.
+  const pageW = orientation === 'landscape' ? 297 : 210;
+  const pageH = orientation === 'landscape' ? 210 : 297;
+  const margin = 12, mm = 3.7795;
+  const availW = (pageW - margin*2) * mm;
+  const availH = (pageH - margin*2) * mm - 235;
+
+  // Measure the chart at its natural size, off-screen.
+  const probe = document.createElement('div');
+  probe.className = 'oc-fit-inner';
+  probe.style.cssText = 'position:absolute; left:-20000px; top:0; width:max-content; visibility:hidden;';
+  probe.innerHTML = orgChartTreeHTML(job.members, false);
+  document.body.appendChild(probe);
+  const natW = Math.max(probe.scrollWidth, probe.offsetWidth, 1);
+  const natH = Math.max(probe.scrollHeight, probe.offsetHeight, 1);
+  probe.remove();
+
+  const scale = Math.min(1, availW / natW, availH / natH);
+  const bodyHtml = `
+    <div class="oc-fit-outer" style="width:${Math.ceil(natW*scale)}px; height:${Math.ceil(natH*scale)}px; margin:0 auto;">
+      <div class="oc-fit-inner" style="width:${natW}px; transform:scale(${scale}); transform-origin:top left;">${orgChartTreeHTML(job.members, false)}</div>
+    </div>`;
+
+  // Set the page orientation for this print only.
+  const styleEl = document.createElement('style');
+  styleEl.id = 'oc-page-style';
+  styleEl.textContent = `@page{ size:A4 ${orientation}; margin:${margin}mm; }`;
+  document.head.appendChild(styleEl);
+  const cleanup = () => { const s = document.getElementById('oc-page-style'); if(s) s.remove(); window.removeEventListener('afterprint', cleanup); };
+  window.addEventListener('afterprint', cleanup);
+
+  await printRecord(job.title, job.refLine, job.meta || [], bodyHtml, null, null);
 };
 
 function canAccessModule(mod){
