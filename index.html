@@ -11390,6 +11390,7 @@ async function openPersonDetail(id){
         </select>
         <button class="btn-small primary" onclick="savePersonStatus('${p.id}')">Update status</button>
         <button class="btn-small" onclick="prefillTrainingFromPerson('${p.id}')">+ Training need</button>
+        ${canDeletePersonnel() ? `<button class="btn-small" style="margin-left:auto; color:var(--red,#c0392b); border-color:var(--red,#c0392b);" onclick="deletePerson('${p.id}')">Delete person</button>` : ''}
       </div>
 
       <div class="status-row">
@@ -11700,6 +11701,49 @@ window.savePersonDetails = async function(personId){
   openPersonDetail(personId);
   renderPersonnelView();
   toast('Details saved.', 'success');
+};
+
+function canDeletePersonnel(){ return ['admin','manager'].includes(STATE.myRole); }
+
+// Permanently removes a personnel record (e.g. an accidental duplicate).
+// Their direct reports are re-parented to the deleted person's own line
+// manager first, so nobody drops off the org chart. Other records that
+// point at the person (training, appraisals, assets, tasks, etc.) are
+// cleaned up by the database — see qashe-watchman-schema-personnel-delete.sql.
+window.deletePerson = async function(personId){
+  if(!canDeletePersonnel()){ toast('Only an admin or manager can delete personnel.', 'error'); return; }
+  const p = personById(personId);
+  if(!p) return;
+  const reports = STATE.personnel.filter(x => x.line_manager_id === personId);
+  const counts = [];
+  const n = (label, arr) => { if(arr && arr.length) counts.push(arr.length + ' ' + label); };
+  n('training/competence record(s)', competenceFor(personId));
+  n('appraisal(s)', (STATE.appraisals||[]).filter(x => x.personnel_id === personId));
+  n('asset(s) assigned', (STATE.assets||[]).filter(x => x.responsible_person_id === personId));
+  n('task(s)', (STATE.tasks||[]).filter(x => x.personnel_id === personId));
+  let msg = `Permanently delete "${p.full_name}" (${p.ref_code})?\n\nThis removes them from Personnel and the Organisation Chart and cannot be undone.`;
+  if(counts.length) msg += `\n\nRecords linked to this person: ${counts.join(', ')}. Training, leave, attendance and similar records belonging to them will be deleted; nonconformances, tasks and assets will simply be un-assigned.`;
+  if(reports.length) msg += `\n\n${reports.length} direct report(s) will be moved up to ${p.line_manager_id ? (personById(p.line_manager_id)?.full_name || 'their manager') : 'the top level (no line manager)'}.`;
+  msg += `\n\nIf this person only left the company, set their status to Inactive instead.`;
+  if(!confirm(msg)) return;
+
+  if(reports.length){
+    const { error: rErr } = await STATE.supabase.from('personnel')
+      .update({ line_manager_id: p.line_manager_id || null })
+      .eq('line_manager_id', personId).eq('organisation_id', STATE.org.id);
+    if(rErr){ toast('Could not re-assign their direct reports: ' + rErr.message, 'error'); return; }
+  }
+  const { data: deleted, error } = await STATE.supabase.from('personnel').delete().eq('id', personId).select('id');
+  if(error){ toast('Could not delete: ' + error.message + ' (has the personnel-delete SQL been run?)', 'error'); return; }
+  if(!deleted || !deleted.length){ toast('Nothing was deleted — your role may not be permitted to delete personnel. Run qashe-watchman-schema-personnel-delete.sql.', 'error'); return; }
+  if(p.photo_path){ try{ await STATE.supabase.storage.from('avatars').remove([p.photo_path]); }catch(e){} }
+  await loadPersonnel();
+  try{ await loadDivisions(); }catch(e){}
+  try{ await loadCompetence(); }catch(e){}
+  closePersonDetail();
+  renderPersonnelView();
+  if(typeof renderOrgChartPage === 'function' && document.getElementById('module-orgchart')?.classList.contains('active')) renderOrgChartPage();
+  toast('Person deleted.', 'success');
 };
 
 window.savePersonStatus = async function(personId){
