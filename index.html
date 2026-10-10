@@ -1180,7 +1180,7 @@
       <div class="nav-item" data-mod="hr" onclick="showModule('hr')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> HR: Attendance &amp; Leave <span class="nd amber" id="nd-hr"></span></div>
       <div class="nav-item" data-mod="asset_watchman" onclick="showModule('asset_watchman')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/><path d="M4.2 8.5l1.6.9M18.2 8.5l-1.6.9M4.2 15.5l1.6-.9M18.2 15.5l-1.6-.9"/></svg> Asset Watchman <span class="nd red" id="nd-aw"></span></div>
       <div class="nav-item" data-mod="site_files" onclick="showModule('site_files')"><svg viewBox="0 0 24 24"><path d="M4 3h11l5 5v13H4z"/><path d="M15 3v5h5"/><path d="M8 14l2.5 2.5L16 11"/></svg> Site SHERQ Files <span class="nd red" id="nd-sf"></span></div>
-      <div class="nav-item" data-mod="process_flowcharts" onclick="showModule('process_flowcharts')"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M12 7v4"/><rect x="4" y="11" width="7" height="4" rx="1"/><rect x="13" y="11" width="7" height="4" rx="1"/><path d="M7.5 15v3M16.5 15v3"/><rect x="4" y="18" width="7" height="4" rx="1"/><rect x="13" y="18" width="7" height="4" rx="1"/></svg> Process Flowcharts</div>
+      <div class="nav-item" data-mod="process_flowcharts" onclick="showModule('process_flowcharts')"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M12 7v4"/><rect x="4" y="11" width="7" height="4" rx="1"/><rect x="13" y="11" width="7" height="4" rx="1"/><path d="M7.5 15v3M16.5 15v3"/><rect x="4" y="18" width="7" height="4" rx="1"/><rect x="13" y="18" width="7" height="4" rx="1"/></svg> Process Flowcharts &amp; KPIs</div>
       <div class="nav-item" data-mod="checklists" onclick="showModule('checklists')"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 9l2 2 4-4"/><line x1="7" y1="16" x2="17" y2="16"/></svg> Checklists</div>
       <div class="nav-item" data-mod="policies" onclick="showModule('policies')"><svg viewBox="0 0 24 24"><path d="M6 2h9l3 3v17H6z"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg> Policies &amp; Procedures</div>
       <div class="nav-item" data-mod="five_s" onclick="showModule('five_s')"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg> 5S Inspections</div>
@@ -1663,6 +1663,7 @@ window.selectOrg = async function(orgId){
     loadPersonnelRequests(),
     loadOvertimeRequests(),
     loadOrgFlowcharts(),
+    loadOrgKpis(),
     loadOrgChecklists(),
     loadOrgPolicies(),
     loadLegalCerts(),
@@ -2032,6 +2033,17 @@ async function loadContentTemplates(){
   STATE.contentTemplateKpis = kpis.data || [];
   STATE.contentTemplateChecklistItems = clItems.data || [];
   STATE.contentTemplatePolicySections = polSections.data || [];
+}
+// KPI measurement + flowchart/document links. Tables arrive with the process-kpi-measurement SQL;
+// until then these quietly stay empty rather than breaking the tenant load.
+async function loadOrgKpis(){
+  STATE.orgKpis = []; STATE.orgKpiReadings = []; STATE.flowchartDocLinks = [];
+  if(!STATE.org.process_flowcharts_enabled) return;
+  const q = t => STATE.supabase.from(t).select('*').eq('organisation_id', STATE.org.id);
+  const [k, r, l] = await Promise.all([q('org_kpis'), q('org_kpi_readings').order('period_date', {ascending:false}), q('flowchart_document_links')]);
+  STATE.orgKpis = k.error ? [] : (k.data || []);
+  STATE.orgKpiReadings = r.error ? [] : (r.data || []);
+  STATE.flowchartDocLinks = l.error ? [] : (l.data || []);
 }
 async function loadOrgFlowcharts(){
   if(!STATE.org.process_flowcharts_enabled) return;
@@ -2550,6 +2562,7 @@ function orgHasModule(mod, org){
 function canAccessModule(mod){
   if(!GATED_MODULES.includes(mod)) return true; // overview, compliance — always visible
   const isStaff = !!(STATE.profile && STATE.profile.is_platform_staff);
+  if(mod === 'policies') return false; // retired as a module: policies & procedures are now templates for Documents
   if(mod === 'administration') return (!!STATE.org.administration_enabled && STATE.myRole === 'admin') || isStaff;
   if(ORG_MODULE_FLAGS[mod]){
     if(!orgHasModule(mod)) return false;
@@ -2697,6 +2710,7 @@ const DATE_TRACKED_MODULES = [
   { key:'assets', label:'Assets — Inspection Due', list:() => STATE.assets, dateField:'next_inspection_date', isResolved:() => false, titleField:'description', getPerson:x=>{const p=x.responsible_person_id?personById(x.responsible_person_id):null; return p?p.full_name:'—';} },
   { key:'assets', label:'Assets — Certificate Expiry', list:() => STATE.assets, dateField:'certificate_expiry_date', isResolved:() => false, titleField:'description', getPerson:x=>{const p=x.responsible_person_id?personById(x.responsible_person_id):null; return p?p.full_name:'—';} },
   { key:'legal_certs', label:'Legal Documents & Certificates — Expiry', list:() => canAccessModule('legal_certs') ? (STATE.legalCerts||[]).filter(c=>!c.archived) : [], dateField:'expiry_date', isResolved:() => false, titleField:'title', getPerson:x=>x.owner_id ? memberName(x.owner_id) : (x.held_by || '—') },
+  { key:'process_flowcharts', label:'Process KPIs — Reading Due', list:() => (canAccessModule('process_flowcharts') ? (STATE.orgKpis||[]).filter(k=>k.is_active).map(k=>({...k, _due: kpiInfo(k).due})) : []), dateField:'_due', isResolved:() => false, titleField:'name', getPerson:x=>x.owner_id ? memberName(x.owner_id) : '—' },
   { key:'management_review', label:'Management Review — Next Meeting Due', list:() => STATE.managementReviews, dateField:'next_meeting_date', isResolved:() => false, titleField:null, getPerson:x=>memberName(x.chair_id) },
 ];
 
@@ -3185,7 +3199,9 @@ const RENDERERS = {
         <select id="doc-filter-status" onchange="renderDocumentsTable()">
           <option value="">All statuses</option>
           <option value="Draft">Draft</option>
-          <option value="Under Review">Under Review</option>
+          <option value="In Review">In Review</option>
+          <option value="Awaiting Approval">Awaiting Approval</option>
+          <option value="Revision in Progress">Revision in Progress</option>
           <option value="Approved">Approved</option>
         </select>
         <select id="doc-filter-department" onchange="renderDocumentsTable()">
@@ -3198,30 +3214,72 @@ const RENDERERS = {
         </select>
         <button class="btn-small" onclick="exportModuleExcel('documents')">Export Excel</button>
         <button class="btn-small" onclick="printCurrentRegister('documents','Document Management Register')">Print Register</button>
-        <button class="btn-primary btn-add" onclick="toggleDocForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Create New Procedure</button>
+        <button class="btn-primary btn-add" onclick="toggleDocForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Document</button>
       </div>
     </div>
 
     <div id="doc-subtab-content"></div>
 
     <div class="form-panel" id="doc-form">
-      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:14px;">Create a new document</h3>
-      <div class="form-grid">
-        <div class="field span3"><label>Suggested document name</label><input id="df-title" placeholder="e.g. Welding Procedure Specification"></div>
-        <div class="field span3"><label>Purpose, requirement &amp; scope</label><textarea id="df-purpose" placeholder="What is this document for, what requirement does it satisfy, and what does it cover? This also seeds the AI drafting assistant on the next screen."></textarea></div>
-        <div class="field"><label>Department</label><select id="df-department" onchange="updateDfNextNumberPreview()">${STATE.docDepartments.filter(d=>d.is_active).map(d=>`<option value="${d.id}">${d.code}: ${d.name}</option>`).join('')}</select></div>
-        <div class="field"><label>Document type</label><select id="df-type" onchange="updateDfNextNumberPreview()">${STATE.docTypes.filter(t=>t.is_active).map(t=>`<option value="${t.id}">${t.code}: ${t.name}</option>`).join('')}</select></div>
-        <div class="field"><label>Creator</label><select id="df-creator">${memberOptions(STATE.user.id)}</select></div>
-        <div class="field"><label>Owner</label><select id="df-owner">${memberOptions(STATE.user.id)}</select></div>
-        <div class="field"><label>Next review date</label><input type="date" id="df-review"></div>
-        <div class="field span2"><label>Revision 0 — change description</label><input id="df-rev-desc" placeholder="e.g. Initial issue" value="Initial issue"></div>
-        <div class="field"><label>Revision 0 — file (optional)</label><input type="file" id="df-file"></div>
+      <style>
+        .dw-steps{display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;}
+        .dw-step{flex:1; min-width:140px; padding:8px 12px; border-radius:8px; background:var(--grey-tint); font-size:12px; color:var(--text-faint); font-weight:600;}
+        .dw-step.on{background:var(--ink,#111); color:#fff;}
+        .dw-step.done{background:var(--green-tint); color:var(--green);}
+        .dw-tpl{border:1.5px solid var(--border); border-radius:10px; padding:10px 14px; margin-bottom:8px; cursor:pointer; background:var(--panel);}
+        .dw-tpl:hover{border-color:var(--text-faint);}
+        .dw-tpl.sel{border-color:var(--red); background:var(--grey-tint);}
+        .dw-choice{display:flex; gap:12px; flex-wrap:wrap; margin-top:10px;}
+      </style>
+      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:12px;">New document</h3>
+      <div class="dw-steps">
+        <div class="dw-step on" id="dw-step-1">1 · What is it?</div>
+        <div class="dw-step" id="dw-step-2">2 · Start from a template or an old document</div>
+        <div class="dw-step" id="dw-step-3">3 · Create &amp; edit</div>
       </div>
-      <p id="df-next-number-preview" style="font-size:12px; color:var(--text-faint); margin:-4px 0 10px;"></p>
-      <p style="font-size:11.5px; color:var(--text-faint); margin:-4px 0 10px;">Reviewers and the approver are chosen later, once the document is drafted and ready to submit.</p>
-      <div class="form-actions">
-        <button class="btn-cancel" onclick="toggleDocForm()">Cancel</button>
-        <button class="btn-primary" onclick="submitDocument()">Create &amp; start drafting</button>
+
+      <div id="dw-pane-1">
+        <div class="form-grid">
+          <div class="field span3"><label>What should this document be called?</label><input id="df-title" placeholder="e.g. Welding Procedure Specification"></div>
+          <div class="field span3"><label>What is it about? (purpose, requirement &amp; scope)</label><textarea id="df-purpose" placeholder="What is this document for, which requirement does it satisfy, and what does it cover? The AI assistant uses this to draft it."></textarea></div>
+          <div class="field"><label>Department</label><select id="df-department" onchange="updateDfNextNumberPreview()">${STATE.docDepartments.filter(d=>d.is_active).map(d=>`<option value="${d.id}">${d.code}: ${d.name}</option>`).join('')}</select></div>
+          <div class="field"><label>Document type</label><select id="df-type" onchange="updateDfNextNumberPreview()">${STATE.docTypes.filter(t=>t.is_active).map(t=>`<option value="${t.id}">${t.code}: ${t.name}</option>`).join('')}</select></div>
+          <div class="field"><label>Owner</label><select id="df-owner">${memberOptions(STATE.user.id)}</select></div>
+          <div class="field"><label>Next review date</label><input type="date" id="df-review"></div>
+        </div>
+        <p id="df-next-number-preview" style="font-size:12px; color:var(--text-faint); margin:-4px 0 10px;"></p>
+        <div class="form-actions">
+          <button class="btn-cancel" onclick="toggleDocForm()">Cancel</button>
+          <button class="btn-primary" onclick="dwNext()">Next: pick a starting point</button>
+        </div>
+      </div>
+
+      <div id="dw-pane-2" style="display:none;">
+        <p style="font-size:12.5px; color:var(--text-dim); margin-bottom:10px;">Pick a ready-made policy or procedure to start from, and/or upload an existing document so the AI assistant can match your current wording and structure. Both are optional.</p>
+        <div class="form-grid">
+          <div class="field span2"><label>Search templates</label><input id="dw-tpl-search" placeholder="e.g. health and safety, quality, environmental…" oninput="dwRenderTemplates()"></div>
+          <div class="field"><label>Kind</label><select id="dw-tpl-type" onchange="dwRenderTemplates()"><option value="">Policies &amp; procedures</option><option value="policy">Policies</option><option value="procedure">Procedures</option></select></div>
+        </div>
+        <div id="dw-template-list" style="max-height:300px; overflow-y:auto; margin-bottom:14px;"></div>
+        <div class="field"><label>Upload an existing (historical) document for context — .docx or .pdf</label><input type="file" id="dw-ref-file" accept=".docx,.pdf" onchange="dwRefChosen()"></div>
+        <p id="dw-ref-status" style="font-size:12px; color:var(--text-faint); margin:4px 0 10px;"></p>
+        <div class="form-actions">
+          <button class="btn-cancel" onclick="dwShowStep(1)">Back</button>
+          <button class="btn-primary" onclick="dwNext()">Next</button>
+        </div>
+      </div>
+
+      <div id="dw-pane-3" style="display:none;">
+        <div id="dw-summary" style="background:var(--grey-tint); border-radius:8px; padding:12px 16px; font-size:12.5px; margin-bottom:6px;"></div>
+        <div class="dw-choice">
+          <button class="btn-primary" onclick="submitDocument('ai')">Create with the AI assistant (recommended)</button>
+          <button class="btn-small" onclick="submitDocument('template')">Use the template as it is</button>
+          <button class="btn-small" onclick="submitDocument('blank')">Start blank</button>
+        </div>
+        <p style="font-size:11.5px; color:var(--text-faint); margin:10px 0;">You then edit the draft on the next screen, choose the reviewers and approver, and submit it, all in one place. Nothing is published until the approver finalises it.</p>
+        <div class="form-actions" style="justify-content:flex-start;">
+          <button class="btn-cancel" onclick="dwShowStep(2)">Back</button>
+        </div>
       </div>
     </div>
 
@@ -6709,8 +6767,89 @@ window.deleteEvidence = async function(id, storagePath, entityType, entityId){
 function documentById(id){ return STATE.documents.find(d=>d.id===id); }
 
 function toggleDocForm(){
-  document.getElementById('doc-form').classList.toggle('open');
+  const f = document.getElementById('doc-form');
+  const opening = !f.classList.contains('open');
+  f.classList.toggle('open');
+  if(opening){ STATE._dw = { step:1, templateId:null, refFile:null, refText:null }; dwShowStep(1); }
   updateDfNextNumberPreview();
+}
+function dwShowStep(n){
+  STATE._dw = STATE._dw || { step:1, templateId:null, refFile:null, refText:null };
+  STATE._dw.step = n;
+  [1,2,3].forEach(i => {
+    const pane = document.getElementById('dw-pane-'+i); if(pane) pane.style.display = (i===n) ? 'block' : 'none';
+    const st = document.getElementById('dw-step-'+i); if(st) st.className = 'dw-step' + (i===n ? ' on' : (i<n ? ' done' : ''));
+  });
+  if(n===2) dwLoadTemplates();
+  if(n===3) dwRenderSummary();
+}
+window.dwShowStep = dwShowStep;
+window.dwNext = function(){
+  const n = (STATE._dw && STATE._dw.step) || 1;
+  if(n===1){
+    if(!document.getElementById('df-title').value.trim()){ alert('Please name the document first.'); return; }
+    if(!document.getElementById('df-department').value || !document.getElementById('df-type').value){ alert('Add at least one department and one document type first (Naming Convention Setup).'); return; }
+  }
+  dwShowStep(n+1);
+};
+// Policies & procedures are no longer a module of their own: they are a template source for documents.
+function dwTemplateOptions(){ return (STATE.contentTemplates||[]).filter(t => t.type==='policy' || t.type==='procedure'); }
+async function dwLoadTemplates(){
+  const list = document.getElementById('dw-template-list'); if(!list) return;
+  if(!STATE.contentTemplates.length){
+    list.innerHTML = '<p style="font-size:12.5px; color:var(--text-faint);">Loading templates…</p>';
+    await loadContentTemplates();
+  }
+  dwRenderTemplates();
+}
+window.dwRenderTemplates = function(){
+  const list = document.getElementById('dw-template-list'); if(!list) return;
+  const q = (document.getElementById('dw-tpl-search').value||'').toLowerCase();
+  const kind = document.getElementById('dw-tpl-type').value;
+  const sel = STATE._dw && STATE._dw.templateId;
+  const rows = dwTemplateOptions().filter(t => (!kind || t.type===kind) &&
+    (!q || (t.title||'').toLowerCase().includes(q) || (t.description||'').toLowerCase().includes(q) || (t.standard_refs||[]).join(' ').toLowerCase().includes(q)));
+  if(!rows.length){ list.innerHTML = '<p style="font-size:12.5px; color:var(--text-faint);">No templates match. You can still continue without one.</p>'; return; }
+  list.innerHTML = rows.map(t => {
+    const n = (STATE.contentTemplatePolicySections||[]).filter(x=>x.template_id===t.id).length;
+    return `<div class="dw-tpl ${sel===t.id?'sel':''}" onclick="dwPickTemplate('${t.id}')">
+      <div style="font-weight:600; font-size:13px;">${escapeHtml(t.title)} <span class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase;">${escapeHtml(t.type)}</span></div>
+      <div style="font-size:12px; color:var(--text-dim);">${escapeHtml(t.description||'')}</div>
+      <div style="font-size:11px; color:var(--text-faint); margin-top:2px;">${n} section${n===1?'':'s'}${(t.standard_refs&&t.standard_refs.length) ? ' · '+escapeHtml(t.standard_refs.join(', ')) : ''}</div>
+    </div>`;
+  }).join('');
+};
+window.dwPickTemplate = function(id){
+  STATE._dw.templateId = (STATE._dw.templateId === id) ? null : id; // click again to deselect
+  dwRenderTemplates();
+};
+window.dwRefChosen = async function(){
+  const f = document.getElementById('dw-ref-file').files[0];
+  const st = document.getElementById('dw-ref-status');
+  STATE._dw.refFile = f || null; STATE._dw.refText = null;
+  if(!f){ st.textContent = ''; return; }
+  st.textContent = 'Reading the document…';
+  STATE._dw.refText = await extractReferenceText(f);
+  st.textContent = STATE._dw.refText ? 'Ready: the AI assistant will use this for context.' : 'Attached, but no text could be read from it (scanned image?). It will be stored with the document.';
+};
+function dwRenderSummary(){
+  const w = STATE._dw || {};
+  const t = (STATE.contentTemplates||[]).find(x=>x.id===w.templateId);
+  const el = document.getElementById('dw-summary'); if(!el) return;
+  el.innerHTML = `<b>${escapeHtml(document.getElementById('df-title').value.trim())}</b><br>
+    Template: ${t ? escapeHtml(t.title) : '<span style="color:var(--text-faint);">none</span>'} &nbsp;·&nbsp;
+    Existing document: ${w.refFile ? escapeHtml(w.refFile.name) : '<span style="color:var(--text-faint);">none</span>'}`;
+}
+function dwBuildAiPrompt(title, purpose, typeName, tplSections, refText){
+  const skeleton = tplSections.length ? '\n\nStart from this standard template (keep its intent and compliance coverage, adapt the wording and detail to this organisation):\n"""' +
+    tplSections.map(s => `## ${s.heading}\n${(s.body_text||'').substring(0,1200)}`).join('\n\n').substring(0,9000) + '"""' : '';
+  const ref = refText ? '\n\nThe organisation\'s own existing document is below. Use it for their terminology, roles and existing structure so the new document is genuinely theirs. Do not copy it verbatim:\n"""' + refText.substring(0,8000) + '"""' : '';
+  return `You are drafting a formal, ISO-compliant ${typeName||'business'} document titled "${title}" for ${STATE.org.name}'s management system. The document is about: ${purpose || title}${skeleton}${ref}
+
+Produce a usable, consistently formatted draft with clearly labelled sections such as Purpose, Scope, Responsibilities, Procedure/Requirements and Records (adjust to what fits this document). Return ONLY valid JSON, no other text and no markdown fences, in exactly this shape:
+{"sections": [{"title": "Purpose", "content": "..."}, {"title": "Scope", "content": "..."}]}
+
+The JSON must be strictly valid: separate every section object with a comma, escape every double-quote inside "content" as \\", and write every line break inside "content" as \\n.`;
 }
 window.toggleDocForm = toggleDocForm;
 
@@ -6848,8 +6987,8 @@ function renderDocDepartmentsList(){
           <option value="">No controller</option>
           ${STATE.members.map(m=>`<option value="${m.user_id}" ${d.controller_id===m.user_id?'selected':''}>${(m.profiles&&m.profiles.name)||'Unknown'}</option>`).join('')}
         </select>
-        <button class="btn-small" onclick="toggleEditDept('${d.id}')">Edit</button>
-        <button class="btn-small" onclick="toggleDeptActive('${d.id}', ${!d.is_active})">${d.is_active ? 'Deactivate' : 'Activate'}</button>
+        ${d.is_standard ? '<span class="mono" title="Part of the standard naming convention. It cannot be changed, but you can add your own." style="font-size:10px; color:var(--text-faint);">🔒 STANDARD</span>' : `<button class="btn-small" onclick="toggleEditDept('${d.id}')">Edit</button>
+        <button class="btn-small" onclick="toggleDeptActive('${d.id}', ${!d.is_active})">${d.is_active ? 'Deactivate' : 'Activate'}</button>`}
       </div>
     </div>
     <div id="dept-edit-${d.id}"></div>
@@ -6871,8 +7010,8 @@ function renderDocTypesList(){
     <div class="evidence-row" style="${!t.is_active?'opacity:.5;':''}">
       <div style="flex:1;"><b class="mono-cell">${t.code}</b>: <span id="type-name-${t.id}">${t.name}</span>${!t.is_active ? ' <span class="mono" style="color:var(--text-faint); font-size:10.5px;">(inactive for this client)</span>' : ''}</div>
       <div class="ev-actions">
-        <button class="btn-small" onclick="toggleEditType('${t.id}')">Edit</button>
-        <button class="btn-small" onclick="toggleTypeActive('${t.id}', ${!t.is_active})">${t.is_active ? 'Deactivate' : 'Activate'}</button>
+        ${t.is_standard ? '<span class="mono" title="Part of the standard naming convention. It cannot be changed, but you can add your own." style="font-size:10px; color:var(--text-faint);">🔒 STANDARD</span>' : `<button class="btn-small" onclick="toggleEditType('${t.id}')">Edit</button>
+        <button class="btn-small" onclick="toggleTypeActive('${t.id}', ${!t.is_active})">${t.is_active ? 'Deactivate' : 'Activate'}</button>`}
       </div>
     </div>
     <div id="type-edit-${t.id}"></div>
@@ -6976,76 +7115,90 @@ window.addDocType = async function(){
   toast('Document type added.', 'success');
 };
 
-/* ---- New document (creates revision 0 too) ---- */
-window.submitDocument = async function(){
+/* ---- New document wizard: creates the document, revision 0 and the first draft in one go ---- */
+window.submitDocument = async function(mode){
+  mode = mode || 'blank';
+  const w = STATE._dw || {};
   const title = document.getElementById('df-title').value.trim();
+  const purpose = document.getElementById('df-purpose').value.trim();
   const departmentId = document.getElementById('df-department').value;
   const typeId = document.getElementById('df-type').value;
   if(!title){ alert('Title is required.'); return; }
-  if(!departmentId || !typeId){ alert('Add at least one department and one document type first (Manage Departments & Types).'); return; }
+  if(!departmentId || !typeId){ alert('Add at least one department and one document type first.'); return; }
+  const tpl = (STATE.contentTemplates||[]).find(t=>t.id===w.templateId);
+  const tplSections = tpl ? (STATE.contentTemplatePolicySections||[]).filter(x=>x.template_id===tpl.id).sort((a,b)=>a.sort_order-b.sort_order) : [];
+  if(mode==='template' && !tplSections.length){ alert('Pick a template in step 2 first, or choose another option.'); return; }
+  if(mode==='ai' && !tplSections.length && !w.refText && !purpose){ alert('Tell the assistant what the document is about, pick a template, or upload an existing document.'); return; }
 
-  const payload = {
-    organisation_id: STATE.org.id,
-    title,
-    purpose: document.getElementById('df-purpose').value.trim(),
-    department_id: departmentId,
-    type_id: typeId,
-    owner_id: document.getElementById('df-owner').value,
-    next_review_date: document.getElementById('df-review').value || null,
-    introduced_date: todayISO(),
-    current_revision_date: todayISO(),
-    current_revision: 0,
-    created_by: document.getElementById('df-creator').value || STATE.user.id,
-    workflow_status: 'draft',
-    promoted_from_bulk_document_id: STATE._activePromotionBulkDocId || null,
-  };
-  const { data: newDoc, error: docErr } = await STATE.supabase.from('documents').insert(payload).select().single();
-  if(docErr){ toast('Could not add document: ' + docErr.message, 'error'); return; }
+  showLoader(mode==='ai' ? 'Creating your document with the AI assistant…' : 'Creating your document…');
+  try {
+    const payload = {
+      organisation_id: STATE.org.id, title, purpose, department_id: departmentId, type_id: typeId,
+      owner_id: document.getElementById('df-owner').value,
+      next_review_date: document.getElementById('df-review').value || null,
+      introduced_date: todayISO(), current_revision_date: todayISO(), current_revision: 0,
+      created_by: STATE.user.id, workflow_status: 'draft',
+      promoted_from_bulk_document_id: STATE._activePromotionBulkDocId || null,
+    };
+    const { data: newDoc, error: docErr } = await STATE.supabase.from('documents').insert(payload).select().single();
+    if(docErr){ toast('Could not add document: ' + docErr.message, 'error'); return; }
 
-  // If this document was created to fulfil a "promote to Document Control"
-  // review request, link the request to it now — it stays in_progress (and
-  // the old bulk copy stays visible) until this new document's first
-  // revision is actually approved, see approveDocumentRevision.
-  if(STATE._activePromotionRequestId){
-    await STATE.supabase.from('document_review_requests').update({ resulting_document_id:newDoc.id }).eq('id', STATE._activePromotionRequestId);
-    STATE._activePromotionRequestId = null;
-    STATE._activePromotionBulkDocId = null;
-    await loadDocReviewRequests();
-  }
-
-  const fileInput = document.getElementById('df-file');
-  const file = fileInput.files[0];
-  let storagePath = null;
-  if(file){
-    const path = `${STATE.org.id}/${newDoc.id}/rev0-${Date.now()}-${sanitizeFileName(file.name)}`;
-    const { error: upErr } = await STATE.supabase.storage.from('documents').upload(path, file);
-    if(upErr){ toast('Document created, but the file failed to upload: ' + upErr.message, 'error'); }
-    else {
-      storagePath = path;
-      const { error: pathErr } = await STATE.supabase.from('documents').update({ storage_path: path }).eq('id', newDoc.id);
-      if(pathErr) toast('Document created and file uploaded, but the document record could not be linked to it: ' + pathErr.message, 'error');
+    if(STATE._activePromotionRequestId){
+      await STATE.supabase.from('document_review_requests').update({ resulting_document_id:newDoc.id }).eq('id', STATE._activePromotionRequestId);
+      STATE._activePromotionRequestId = null; STATE._activePromotionBulkDocId = null;
+      await loadDocReviewRequests();
     }
-  }
 
-  // Revision 0 is a real row in document_revisions from the start — this is
-  // what makes the history genuinely start at revision 0, not just imply it.
-  const { error: revErr } = await STATE.supabase.from('document_revisions').insert({
-    document_id: newDoc.id, organisation_id: STATE.org.id, revision_code: '0',
-    change_description: document.getElementById('df-rev-desc').value.trim() || 'Initial issue',
-    storage_path: storagePath, issued_date: todayISO(), uploaded_by: STATE.user.id,
-  });
-  if(revErr){ toast('Document created, but revision 0 could not be recorded: ' + revErr.message, 'error'); }
+    // Revision 0 is a real history row from the start.
+    const { error: revErr } = await STATE.supabase.from('document_revisions').insert({
+      document_id: newDoc.id, organisation_id: STATE.org.id, revision_code: '0',
+      change_description: tpl ? `Initial issue (started from template: ${tpl.title})` : 'Initial issue',
+      storage_path: null, issued_date: todayISO(), uploaded_by: STATE.user.id,
+    });
+    if(revErr) toast('Document created, but revision 0 could not be recorded: ' + revErr.message, 'error');
 
-  toggleDocForm();
-  document.querySelectorAll('#doc-form input').forEach(el=>el.value='');
-  document.getElementById('df-purpose').value = '';
-  await loadDocuments();
-  renderDocumentsTable();
-  updateNavBadges();
-  // Straight into drafting — this is the continuous create → upload
-  // historical context → AI-draft → edit flow, not a dead-end register row.
-  openDocumentDetail(newDoc.id);
-  toast(`${newDoc.doc_number} created — now upload any historical document for context, then generate an AI draft.`, 'success');
+    // The historical document is kept with the record as reference material.
+    if(w.refFile){
+      const path = `${STATE.org.id}/${newDoc.id}/reference/${Date.now()}-${sanitizeFileName(w.refFile.name)}`;
+      const { error: upErr } = await STATE.supabase.storage.from('documents').upload(path, w.refFile);
+      if(!upErr) await STATE.supabase.from('document_reference_uploads').insert({
+        organisation_id: STATE.org.id, document_id: newDoc.id, file_name: w.refFile.name, storage_path: path,
+        extracted_text: w.refText || null, uploaded_by: STATE.user.id });
+      else toast('The existing document could not be stored: ' + upErr.message, 'error');
+    }
+
+    let sections = [];
+    if(mode==='template') sections = tplSections.map(x => ({ title:x.heading, content:x.body_text||'' }));
+    if(mode==='ai'){
+      try {
+        const type = STATE.docTypes.find(x=>x.id===typeId);
+        const prompt = dwBuildAiPrompt(title, purpose, type && type.name, tplSections, w.refText);
+        const { data: sd } = await STATE.supabase.auth.getSession();
+        const token = sd && sd.session && sd.session.access_token;
+        let parsed = await requestAiDraftSections(token, prompt);
+        if(!parsed || !parsed.sections || !parsed.sections.length) parsed = await requestAiDraftSections(token, prompt);
+        if(parsed && parsed.sections && parsed.sections.length) sections = parsed.sections.map(x => ({ title:x.title, content:x.content }));
+        else throw new Error('unreadable draft');
+      } catch(e) {
+        sections = tplSections.map(x => ({ title:x.heading, content:x.body_text||'' }));
+        toast(sections.length ? 'The assistant could not produce a draft, so the template text was used instead.' : 'The assistant could not produce a draft. You can try again from the document.', 'error');
+      }
+    }
+    if(sections.length){
+      const rows = sections.map((x,i) => ({ organisation_id: STATE.org.id, document_id: newDoc.id, section_title: x.title, content: x.content, sort_order: (i+1)*10 }));
+      const { error: secErr } = await STATE.supabase.from('document_content_sections').insert(rows);
+      if(secErr) toast('Document created, but the draft text could not be saved: ' + secErr.message, 'error');
+    }
+
+    toggleDocForm();
+    ['df-title','df-purpose','df-review'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+    const rf = document.getElementById('dw-ref-file'); if(rf) rf.value='';
+    await loadDocuments();
+    renderDocumentsTable();
+    updateNavBadges();
+    openDocumentDetail(newDoc.id);
+    toast(`${newDoc.doc_number} created. Edit the draft, then choose the reviewers and approver and submit it.`, 'success');
+  } finally { hideLoader(); }
 };
 
 window.switchDocSubtab = function(tab){
@@ -7180,12 +7333,205 @@ function renderDocRegisterTab(){
   renderDocumentsTable();
 }
 
+window.restoreStandardNaming = async function(){
+  const { error } = await STATE.supabase.rpc('restore_standard_naming_convention', { p_org: STATE.org.id });
+  if(error){ toast('Could not restore: ' + error.message + (/restore_standard/.test(error.message) ? ' (run the standard-naming-convention SQL first)' : ''), 'error'); return; }
+  await loadDocDepartments(); await loadDocTypes();
+  renderDocSetupTab();
+  toast('Standard naming convention is complete.', 'success');
+};
+
+window.printNamingGuide = function(){
+  const dep = STATE.docDepartments.filter(d=>d.is_active), typ = STATE.docTypes.filter(t=>t.is_active);
+  const rows = list => list.map(x => `<tr><td style="font-family:monospace; font-weight:700;">${escapeHtml(x.code)}</td><td>${escapeHtml(x.name)}</td><td>${x.is_standard?'Standard':'Added by '+escapeHtml(STATE.org.name)}</td></tr>`).join('');
+  const w = window.open('', '_blank');
+  if(!w){ alert('Please allow pop-ups to print the guide.'); return; }
+  w.document.write(`<!doctype html><html><head><title>Document Naming Convention: ${escapeHtml(STATE.org.name)}</title>
+  <style>body{font-family:Arial,sans-serif; margin:32px; color:#111; font-size:12.5px;} h1{font-size:20px;} h2{font-size:15px; margin-top:22px;} table{border-collapse:collapse; width:100%; margin-top:6px;} td,th{border:1px solid #bbb; padding:5px 8px; text-align:left;} th{background:#eee;} .box{background:#f4f4f4; padding:10px 14px; border-radius:6px; font-family:monospace; font-size:14px;}</style></head><body>
+  <h1>Document Naming Convention</h1><p>${escapeHtml(STATE.org.name)} · QaSHE Watchman</p>
+  <h2>1. The rule</h2><p>Every controlled or uploaded document is named in this format:</p>
+  <p class="box">DEPARTMENT-TYPE-NUMBER_Document Title.ext</p>
+  <p>Example: <b>GOV-POL-001_Quality Policy.pdf</b> is the 1st Policy in Governance &amp; Management. A company prefix is allowed in front (e.g. <b>ABC-GOV-POL-001_Quality Policy.pdf</b>). The department code must be immediately followed by the type code, then the running number.</p>
+  <h2>2. Why it matters</h2><p>Watchman files each uploaded document automatically from its name, and the Master Documents Register depends on unique numbers. A document that does not follow the rule is listed on the Naming Conflicts report until it is corrected.</p>
+  <h2>3. Departments</h2><table><tr><th>Code</th><th>Department</th><th>Source</th></tr>${rows(dep)}</table>
+  <h2>4. Document types</h2><table><tr><th>Code</th><th>Type</th><th>Source</th></tr>${rows(typ)}</table>
+  <h2>5. Do and don't</h2><ul><li>Do use capital letters for codes and a hyphen between the parts.</li><li>Do give every document a unique number within its department and type.</li><li>Don't use spaces or other punctuation inside the code part.</li><li>Don't re-use a number when a document is revised: the revision is tracked inside Watchman (Rev 0, Rev 1…).</li></ul>
+  <script>window.onload=function(){window.print();}<\/script></body></html>`);
+  w.document.close();
+};
+
+/* ---- All Documents: naming conflicts report ---- */
+function allDocsCandidateNumber(b){
+  if(b.doc_number) return b.doc_number;
+  const base = (b.file_name||'').replace(/\.[^.]+$/, '');
+  return base.split('_')[0].trim();
+}
+function allDocsConflictAnalysis(){
+  const deptByCode = {}; STATE.docDepartments.filter(d=>d.is_active).forEach(d=>{ deptByCode[d.code.toUpperCase()] = d; });
+  const typeByCode = {}; STATE.docTypes.filter(t=>t.is_active).forEach(t=>{ typeByCode[t.code.toUpperCase()] = t; });
+  const docs = (STATE.bulkDocuments||[]).filter(b => !b.archived);
+  const out = [], seen = {};
+  const controlled = new Set((STATE.documents||[]).map(d => (d.doc_number||'').toUpperCase()));
+  docs.forEach(b => {
+    const cand = allDocsCandidateNumber(b);
+    const m = matchDeptTypeSeq(cand, deptByCode, typeByCode);
+    const filed = !!(b.department_id && b.document_type_id);
+    if(!m){
+      const toks = cand.split('-').map(t=>t.trim().toUpperCase());
+      const dHit = toks.find(t=>deptByCode[t]), tHit = toks.find(t=>typeByCode[t]);
+      let reason, fix;
+      if(dHit && tHit){ reason = `Codes ${dHit} and ${tHit} are present but not in DEPARTMENT-TYPE-NUMBER order, or the number is missing.`; fix = `${dHit}-${tHit}-001_Title`; }
+      else if(dHit){ reason = `Department ${dHit} found, but no valid document type code follows it.`; fix = `${dHit}-POL-001_Title (choose the right type)`; }
+      else if(tHit){ reason = `Type ${tHit} found, but no department code before it.`; fix = `GOV-${tHit}-001_Title (choose the right department)`; }
+      else reason = 'No recognised department or document type code in the name.';
+      out.push({ b, kind: filed ? 'naming' : 'unfiled', reason: filed ? 'Filed by hand, but the name does not follow the convention. ' + reason : reason, fix: fix || 'DEPT-TYPE-001_Title, e.g. GOV-POL-001_Quality Policy' });
+    } else {
+      if(b.department_id !== m.dept.id || b.document_type_id !== m.type.id){
+        out.push({ b, kind:'mismatch', reason:`Name says ${m.dept.code}-${m.type.code}, but it is filed elsewhere.`, fix:`Re-file under ${m.dept.code} / ${m.type.code}`, auto:{ d:m.dept.id, t:m.type.id } });
+      }
+      const key = `${m.dept.code.toUpperCase()}-${m.type.code.toUpperCase()}-${String(m.seq).padStart(3,'0')}`;
+      (seen[key] = seen[key] || []).push(b);
+      if(controlled.has(key)) out.push({ b, kind:'duplicate', reason:`Number ${key} is already used by a controlled document.`, fix:'Give this file the next free number.' });
+    }
+  });
+  Object.entries(seen).forEach(([key, list]) => { if(list.length > 1) list.forEach(b => out.push({ b, kind:'duplicate', reason:`Number ${key} is used by ${list.length} files.`, fix:'Give each file its own number.' })); });
+  return out;
+}
+const CONFLICT_LABELS = { unfiled:'Cannot be filed', naming:'Name breaks the convention', mismatch:'Filed in the wrong place', duplicate:'Duplicate number' };
+
+window.openNamingConflicts = function(){
+  const list = allDocsConflictAnalysis();
+  const counts = {}; list.forEach(x => counts[x.kind] = (counts[x.kind]||0) + 1);
+  let ov = document.getElementById('naming-conflicts-overlay');
+  if(!ov){ ov = document.createElement('div'); ov.id = 'naming-conflicts-overlay'; ov.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:9999; display:flex; align-items:flex-start; justify-content:center; padding:24px; overflow:auto;'; ov.onclick = e => { if(e.target===ov) ov.remove(); }; document.body.appendChild(ov); }
+  const deptOpts = '<option value="">Department…</option>' + STATE.docDepartments.filter(d=>d.is_active).map(d=>`<option value="${d.id}">${escapeHtml(d.code)}: ${escapeHtml(d.name)}</option>`).join('');
+  const typeOpts = '<option value="">Type…</option>' + STATE.docTypes.filter(t=>t.is_active).map(t=>`<option value="${t.id}">${escapeHtml(t.code)}: ${escapeHtml(t.name)}</option>`).join('');
+  ov.innerHTML = `<div style="background:var(--panel,#fff); max-width:1100px; width:100%; border-radius:12px; padding:24px;">
+    <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+      <h3 style="font-family:'Poppins'; margin:0;">Naming conflicts to resolve</h3>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn-small" onclick="rerunAutoFiling()">Re-run automatic filing</button>
+        <button class="btn-small" onclick="printNamingConflicts()">Print / save report</button>
+        <button class="btn-small" onclick="printNamingGuide()">Naming convention guide</button>
+        <button class="btn-small" onclick="document.getElementById('naming-conflicts-overlay').remove()">Close</button>
+      </div>
+    </div>
+    <p style="font-size:12.5px; color:var(--text-dim); margin:10px 0 14px;">${list.length ? Object.entries(counts).map(([k,n])=>`<b>${n}</b> ${CONFLICT_LABELS[k].toLowerCase()}`).join(' · ') : '<b style="color:var(--green);">No conflicts.</b> Every document follows the naming convention.'}. The best fix is to rename the file to the convention and upload it again; use the quick-assign below to file it now.</p>
+    ${list.length ? `<table><tr><th>File</th><th>Problem</th><th>Suggested name</th><th>Quick assign</th></tr>
+    ${list.map(x => `<tr>
+      <td class="strong" style="max-width:240px; word-break:break-word;">${escapeHtml(x.b.file_name||x.b.doc_number||'')}</td>
+      <td style="font-size:12px;"><span class="sev-badge" style="background:#B26A16; color:#fff;">${CONFLICT_LABELS[x.kind]}</span><div style="margin-top:4px; color:var(--text-dim);">${escapeHtml(x.reason)}</div></td>
+      <td class="mono-cell" style="font-size:11.5px;">${escapeHtml(x.fix)}</td>
+      <td style="white-space:nowrap;">${x.kind==='duplicate' ? '<span style="font-size:11.5px; color:var(--text-faint);">Rename the file</span>' : `<select id="cf-d-${x.b.id}" style="font-size:12px;">${deptOpts.replace(`value="${x.auto?x.auto.d:x.b.department_id}"`, `value="${x.auto?x.auto.d:x.b.department_id}" selected`)}</select> <select id="cf-t-${x.b.id}" style="font-size:12px;">${typeOpts.replace(`value="${x.auto?x.auto.t:x.b.document_type_id}"`, `value="${x.auto?x.auto.t:x.b.document_type_id}" selected`)}</select> <button class="btn-small primary" onclick="applyConflictFix('${x.b.id}')">Apply</button>`}</td>
+    </tr>`).join('')}</table>` : ''}
+  </div>`;
+};
+window.applyConflictFix = async function(id){
+  const d = document.getElementById('cf-d-'+id).value, t = document.getElementById('cf-t-'+id).value;
+  if(!d || !t){ alert('Choose both a department and a document type.'); return; }
+  const { error } = await STATE.supabase.from('bulk_documents').update({ department_id:d, document_type_id:t }).eq('id', id);
+  if(error){ toast('Could not file it: ' + error.message, 'error'); return; }
+  await renderBulkDocumentsRegister();
+  openNamingConflicts();
+  toast('Filed.', 'success');
+};
+window.rerunAutoFiling = async function(){
+  let n = 0;
+  for(const b of (STATE.bulkDocuments||[]).filter(x => !x.archived && (!x.department_id || !x.document_type_id))){
+    const m = autoDetectDeptType(allDocsCandidateNumber(b));
+    if(m.department_id && m.document_type_id){
+      const { error } = await STATE.supabase.from('bulk_documents').update({ department_id:m.department_id, document_type_id:m.document_type_id }).eq('id', b.id);
+      if(!error) n++;
+    }
+  }
+  await renderBulkDocumentsRegister();
+  openNamingConflicts();
+  toast(n ? `${n} document${n===1?'':'s'} filed automatically.` : 'Nothing new could be filed automatically.', n ? 'success' : 'error');
+};
+window.printNamingConflicts = function(){
+  const list = allDocsConflictAnalysis();
+  const w = window.open('', '_blank'); if(!w){ alert('Please allow pop-ups to print.'); return; }
+  w.document.write(`<!doctype html><html><head><title>Naming conflicts: ${escapeHtml(STATE.org.name)}</title><style>body{font-family:Arial,sans-serif; margin:28px; font-size:12px;} table{border-collapse:collapse; width:100%;} td,th{border:1px solid #bbb; padding:5px 8px; text-align:left; vertical-align:top;} th{background:#eee;}</style></head><body>
+  <h2>Document naming conflicts</h2><p>${escapeHtml(STATE.org.name)} · ${new Date().toLocaleDateString('en-GB')} · ${list.length} item${list.length===1?'':'s'} to resolve</p>
+  <table><tr><th>#</th><th>File</th><th>Problem</th><th>Detail</th><th>Suggested name</th><th>Resolved (initial / date)</th></tr>
+  ${list.map((x,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(x.b.file_name||'')}</td><td>${CONFLICT_LABELS[x.kind]}</td><td>${escapeHtml(x.reason)}</td><td>${escapeHtml(x.fix)}</td><td></td></tr>`).join('')}</table>
+  <script>window.onload=function(){window.print();}<\/script></body></html>`);
+  w.document.close();
+};
+
+async function dwAppendPolicyMigration(){
+  if(STATE.myRole !== 'admin') return;
+  const wrap = document.getElementById('doc-subtab-content'); if(!wrap) return;
+  const { data, error } = await STATE.supabase.from('org_policies').select('id, migrated_document_id').eq('organisation_id', STATE.org.id);
+  if(error || !data) return;
+  const pending = data.filter(x => !x.migrated_document_id);
+  if(!pending.length || document.getElementById('policy-migration-card')) return;
+  const card = document.createElement('div');
+  card.className = 'detail-card'; card.id = 'policy-migration-card';
+  card.innerHTML = `<div class="panel-head"><h3>Policies &amp; Procedures are now Documents</h3></div>
+    <p style="font-size:12.5px; color:var(--text-dim); margin-bottom:12px;">${pending.length} policy/procedure record${pending.length===1?'':'s'} from the old module can be moved into Document Management as controlled documents (numbered, version-controlled and, where already published, shown in All Documents). The old records are kept and marked as moved.</p>
+    <button class="btn-small primary" onclick="migratePoliciesToDocuments()">Move them into Documents</button>`;
+  wrap.appendChild(card);
+}
+
+window.migratePoliciesToDocuments = async function(){
+  if(!confirm('Move all remaining policies and procedures into Document Management?')) return;
+  showLoader('Moving policies into Documents…');
+  try {
+    const { data: pols, error } = await STATE.supabase.from('org_policies').select('*').eq('organisation_id', STATE.org.id).is('migrated_document_id', null);
+    if(error){ toast('Could not read policies: ' + error.message + ' (run the document-workflow-v2 SQL first)', 'error'); return; }
+    const ensure = async (table, list, code, name) => {
+      let row = list.find(x => x.code === code);
+      if(row) return row;
+      const { data, error: e } = await STATE.supabase.from(table).insert({ organisation_id: STATE.org.id, code, name, created_by: STATE.user.id }).select().single();
+      if(e) throw new Error(e.message);
+      return data;
+    };
+    const dept = await ensure('document_departments', STATE.docDepartments, 'GOV', 'Governance');
+    const typePol = await ensure('document_types', STATE.docTypes, 'POL', 'Policy');
+    const typePro = await ensure('document_types', STATE.docTypes, 'PRO', 'Procedure');
+    let moved = 0;
+    for(const pol of (pols||[])){
+      const approved = (pol.status === 'approved' || pol.status === 'published');
+      const row = {
+        organisation_id: STATE.org.id, title: pol.title, purpose: pol.description || '',
+        department_id: dept.id, type_id: (pol.type === 'procedure' ? typePro : typePol).id,
+        owner_id: STATE.user.id, created_by: pol.applied_by || STATE.user.id,
+        next_review_date: pol.review_date || null, introduced_date: todayISO(), current_revision_date: todayISO(), current_revision: 0,
+        workflow_status: approved ? 'approved' : 'draft',
+        ...(approved ? { approval_status:'approved', approved_by: pol.approved_by || STATE.user.id, approved_date: pol.approved_date || todayISO(), ever_approved:true } : {}),
+      };
+      const { data: doc, error: dErr } = await STATE.supabase.from('documents').insert(row).select().single();
+      if(dErr){ toast(`"${pol.title}" could not be moved: ${dErr.message}`, 'error'); continue; }
+      await STATE.supabase.from('document_revisions').insert({ document_id: doc.id, organisation_id: STATE.org.id, revision_code:'0',
+        change_description:'Moved from Policies & Procedures', issued_date: todayISO(), uploaded_by: STATE.user.id,
+        ...(approved ? { approval_status:'approved', approved_by: row.approved_by, approved_date: row.approved_date } : {}) });
+      const { data: secs } = await STATE.supabase.from('org_policy_sections').select('*').eq('policy_id', pol.id).order('sort_order', {ascending:true});
+      if(secs && secs.length) await STATE.supabase.from('document_content_sections').insert(secs.map((x,i) => ({
+        organisation_id: STATE.org.id, document_id: doc.id, section_title: x.heading, content: x.body_text || '', sort_order: (i+1)*10 })));
+      await STATE.supabase.from('org_policies').update({ migrated_document_id: doc.id }).eq('id', pol.id);
+      moved++;
+    }
+    await loadDocDepartments(); await loadDocTypes(); await loadDocuments();
+    renderDocSetupTab(); renderDocumentsTable();
+    toast(`${moved} policy/procedure record${moved===1?'':'s'} moved into Documents.`, 'success');
+  } catch(e) { toast('Move failed: ' + e.message, 'error'); }
+  finally { hideLoader(); }
+};
+
 function renderDocSetupTab(){
   const wrap = document.getElementById('doc-subtab-content');
   if(!wrap) return;
   wrap.innerHTML = `
     <div class="detail-card">
       <div class="panel-head"><h3>Departments &amp; Document Types</h3></div>
+      <div style="background:var(--grey-tint); border-radius:8px; padding:12px 16px; margin-bottom:14px; font-size:12.5px; line-height:1.6;">
+        <b>Standard naming convention.</b> Every Watchman client uses the same standard departments and document types (marked 🔒), so every document is numbered and filed the same way: <span class="mono">DEPT-TYPE-NNN_Title</span>, for example <span class="mono">GOV-POL-001_Quality Policy.pdf</span>. You can add your own departments and types for processes unique to your business, but the standard ones stay fixed.
+        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn-small" onclick="printNamingGuide()">Print the naming convention guide</button>
+          ${STATE.myRole==='admin' ? '<button class="btn-small" onclick="restoreStandardNaming()">Restore any missing standard entries</button>' : ''}
+        </div>
+      </div>
       <p style="font-size:12px; color:var(--text-faint); margin-bottom:14px;">These two lists build every document number — e.g. <b>GOV-POL-001</b> is department GOV, type POL, the 1st document in that combination. Edit these to match how your organisation actually classifies documents.</p>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px;">
         <div>
@@ -7229,6 +7575,15 @@ function documentSignoffStatus(d){
   return { label: 'Draft', color: '#B26A16' };
 }
 
+// Register status follows the live review/approval workflow (the old developer/approver sign-off still drives the printed PDF block).
+function documentWorkflowBadge(d){
+  if(d.approval_status === 'approved') return { label:'Approved', color:'#2E5AA8' };
+  const w = d.workflow_status || 'draft';
+  if(w === 'submitted_for_review' || w === 'reviewers_satisfied') return { label:'In Review', color:'#2E7D4F' };
+  if(w === 'submitted_for_approval' || w === 'approver_requested_changes' || w === 'reviewers_finalized') return { label:'Awaiting Approval', color:'#7d3fbf' };
+  return { label: d.ever_approved ? 'Revision in Progress' : 'Draft', color:'#B26A16' };
+}
+
 function renderDocumentsTable(){
   const wrap = document.getElementById('doc-table-wrap');
   if(!wrap) return;
@@ -7236,7 +7591,7 @@ function renderDocumentsTable(){
   const fDept = document.getElementById('doc-filter-department').value;
   const fType = document.getElementById('doc-filter-type').value;
   const rows = STATE.documents.filter(d =>
-    (!fStatus||documentSignoffStatus(d).label===fStatus) && (!fDept||d.department_id===fDept) && (!fType||d.type_id===fType)
+    (!fStatus||documentWorkflowBadge(d).label===fStatus) && (!fDept||d.department_id===fDept) && (!fType||d.type_id===fType)
   );
   if(!rows.length){
     wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z"/><line x1="9" y1="12" x2="17" y2="12"/><line x1="9" y1="16" x2="17" y2="16"/></svg><p>No documents match this filter.</p></div>`;
@@ -7244,20 +7599,21 @@ function renderDocumentsTable(){
   }
   wrap.innerHTML = `<table>
     <tr><th>Document Number</th><th>Document Name</th><th>Revision</th><th>Revision Date</th><th>Next Review</th><th>Developer</th><th>Approver</th><th>Status</th><th></th></tr>
-    ${rows.map(d=>{ const st = documentSignoffStatus(d); return `<tr class="clickable" onclick="openDocumentDetail('${d.id}')">
+    ${rows.map(d=>{ const st = documentWorkflowBadge(d); return `<tr class="clickable" onclick="openDocumentDetail('${d.id}')">
       <td class="mono-cell">${d.doc_number}</td>
       <td class="strong">${d.title}</td>
       <td style="text-align:center;">${d.current_revision}</td>
       <td>${fmtDate(d.current_revision_date)}</td>
       <td>${fmtDate(d.next_review_date)} ${dateStatusBadge(d.next_review_date, ['withdrawn','superseded'].includes(d.status))}</td>
-      <td>${d.developer_id ? memberName(d.developer_id) : '—'}${d.developer_signed_off_at ? ' <span class="mono" style="color:var(--green); font-size:10px;">✓ signed</span>' : ''}</td>
-      <td>${d.approver_id ? memberName(d.approver_id) : '—'}${d.approver_signed_off_at ? ' <span class="mono" style="color:var(--green); font-size:10px;">✓ signed</span>' : ''}</td>
+      <td>${d.created_by ? memberName(d.created_by) : (d.developer_id ? memberName(d.developer_id) : '—')}</td>
+      <td>${(d.approved_by||d.workflow_approver_id||d.approver_id) ? memberName(d.approved_by||d.workflow_approver_id||d.approver_id) : '—'}${d.approval_status==='approved' ? ' <span class="mono" style="color:var(--green); font-size:10px;">✓ approved</span>' : ''}</td>
       <td><span class="sev-badge" style="background:${st.color}; color:#fff;">${st.label}</span></td>
       <td><button class="btn-small" onclick="event.stopPropagation(); downloadDocumentPdf('${d.id}')">View / Print PDF</button>${canDownload() ? ` <button class="btn-small" onclick="event.stopPropagation(); downloadDocumentPdf('${d.id}','download')" title="Download a copy">⬇</button>` : ''}</td>
     </tr>`;}).join('')}
   </table>`;
 }
 window.renderDocumentsTable = renderDocumentsTable;
+{ const _setupBase = renderDocSetupTab; renderDocSetupTab = function(){ _setupBase(); dwAppendPolicyMigration(); }; }
 
 /* ---- Document Management: create -> review -> approval workflow ----
    Replaces the old single-person developer/reviewer/approver sign-off
@@ -7294,7 +7650,13 @@ function renderDocumentWorkflowCard(d, reviewers, comments){
           </div>
         </div>
       </div>
-      <button class="btn-small primary" onclick="submitDocumentForReview('${d.id}')">Submit for review</button>
+      <div class="form-grid" style="margin-bottom:10px;">
+        <div class="field span2"><label>Select the approver</label>
+          <select id="dwf-approver-pre-${d.id}"><option value="">Choose the approver…</option>${STATE.members.filter(m=>m.user_id!==d.created_by || STATE.myRole==='admin').map(m=>`<option value="${m.user_id}" ${m.user_id===d.workflow_approver_id?'selected':''}>${(m.profiles&&m.profiles.name)||'Unknown'}${m.is_approver?' (approver)':''}</option>`).join('')}</select>
+        </div>
+      </div>
+      <p style="font-size:11.5px; color:var(--text-faint); margin:0 0 10px;">Reviewers and the approver are emailed with a link. Once every reviewer is satisfied, the approver is notified automatically. The person who wrote the document cannot approve it (an Admin can override, and the override is recorded).</p>
+      <button class="btn-small primary" onclick="submitDocumentForReview('${d.id}')">Submit for review &amp; approval</button>
     ` : `<p style="font-size:12.5px; color:var(--text-faint);">Still being drafted by ${memberName(d.created_by)}.</p>`;
   }
 
@@ -7325,7 +7687,7 @@ function renderDocumentWorkflowCard(d, reviewers, comments){
       body += `
         <div style="margin-top:10px;">
           <textarea id="dwf-comment-${d.id}" placeholder="Add a comment…" style="width:100%; min-height:60px; font-size:12.5px; padding:8px 10px; border:1px solid var(--border); border-radius:6px;"></textarea>
-          <button class="btn-small" style="margin-top:6px;" onclick="postWorkflowComment('${d.id}')">Post comment</button>
+          <button class="btn-small" style="margin-top:6px;" onclick="postWorkflowComment('${d.id}')">Submit comments (notifies everyone involved)</button>
         </div>
       `;
     }
@@ -7334,7 +7696,7 @@ function renderDocumentWorkflowCard(d, reviewers, comments){
   if(status === 'submitted_for_review' && myReviewerRow){
     body += myReviewerRow.satisfied_at
       ? `<div style="margin-top:12px;"><button class="btn-small" onclick="reopenReviewerSatisfied('${d.id}')">Reopen — I have more to add</button></div>`
-      : `<div style="margin-top:12px;"><button class="btn-small primary" onclick="markReviewerSatisfied('${d.id}')">I'm satisfied with this draft</button></div>`;
+      : `<div style="margin-top:12px;"><button class="btn-small primary" onclick="markReviewerSatisfied('${d.id}')">I'm satisfied: no further comments</button></div>`;
   }
   if(status === 'reviewers_satisfied' && canManage){
     body += `
@@ -7372,25 +7734,46 @@ function renderDocumentWorkflowCard(d, reviewers, comments){
 }
 
 window.submitDocumentForReview = async function(docId){
+  const d = documentById(docId);
   const checked = Array.from(document.querySelectorAll('.dwf-reviewer-cb:checked')).map(el=>el.value);
+  const approverEl = document.getElementById('dwf-approver-pre-'+docId);
+  const approverId = approverEl ? approverEl.value : (d.workflow_approver_id || '');
   if(!checked.length){ alert('Select at least one reviewer.'); return; }
+  if(!approverId){ alert('Select the approver.'); return; }
+  if(checked.includes(approverId)){ alert('The approver cannot also be a reviewer. Choose someone else for one of the roles.'); return; }
+  const sodBreach = approverId === d.created_by;
+  if(sodBreach){
+    if(STATE.myRole !== 'admin'){ alert('The person who wrote the document cannot approve it. Please choose a different approver.'); return; }
+    if(!confirm('You have chosen the author as the approver. This breaks separation of duties and will be recorded on the document. Continue?')) return;
+  }
   await STATE.supabase.from('document_reviewers').delete().eq('document_id', docId);
   const rows = checked.map((uid,i) => ({ organisation_id: STATE.org.id, document_id: docId, reviewer_id: uid, color: DOC_REVIEWER_COLORS[i % DOC_REVIEWER_COLORS.length] }));
   const { error } = await STATE.supabase.from('document_reviewers').insert(rows);
   if(error){ toast('Could not assign reviewers: ' + error.message, 'error'); return; }
-  const { error: updErr } = await STATE.supabase.from('documents').update({ workflow_status: 'submitted_for_review', workflow_approver_id: null }).eq('id', docId);
+  const { error: updErr } = await STATE.supabase.from('documents').update({ workflow_status: 'submitted_for_review', workflow_approver_id: approverId }).eq('id', docId);
   if(updErr){ toast('Could not submit for review: ' + updErr.message, 'error'); return; }
+  if(sodBreach) await logDocumentOverride(docId, 'Separation-of-duties override: the author was nominated as approver by an Admin.');
 
-  const d = documentById(docId);
   await notifyDocumentUsers(checked, `Document review requested: ${d.doc_number}`,
-    `${memberName(STATE.user.id)} has submitted "${d.title}" (${d.doc_number}) for your review in QaSHE Watchman. Please open Document Management to review it.`,
+    `${memberName(STATE.user.id)} has submitted "${d.title}" (${d.doc_number}) for your review in QaSHE Watchman. Please open Document Management, read it, comment, and mark yourself satisfied when done.`,
+    { includeSelf: true });
+  await notifyDocumentUsers([approverId], `You are the approver: ${d.doc_number}`,
+    `"${d.title}" (${d.doc_number}) has been submitted for review. You will be notified automatically when the reviewers are satisfied and it is ready for your approval.`,
     { includeSelf: true });
 
   await loadDocuments();
   openDocumentDetail(docId);
   renderDocumentsTable();
-  toast('Submitted for review — reviewers notified.', 'success');
+  toast('Submitted. Reviewers and the approver have been notified.', 'success');
 };
+
+// Overrides are written to the document's discussion so they sit in the permanent record.
+async function logDocumentOverride(docId, text){
+  await STATE.supabase.from('document_workflow_comments').insert({
+    organisation_id: STATE.org.id, document_id: docId, stage: 'approval', author_id: STATE.user.id,
+    author_role: 'creator', color: '#c0392b', comment_text: '[Recorded override] ' + text,
+  });
+}
 
 window.markReviewerSatisfied = async function(docId){
   const { error } = await STATE.supabase.from('document_reviewers').update({ satisfied_at: new Date().toISOString() }).eq('document_id', docId).eq('reviewer_id', STATE.user.id);
@@ -7399,7 +7782,13 @@ window.markReviewerSatisfied = async function(docId){
   const { data: reviewers } = await STATE.supabase.from('document_reviewers').select('*').eq('document_id', docId);
   const allSatisfied = (reviewers||[]).length && reviewers.every(r=>r.satisfied_at);
   const d = documentById(docId);
-  if(allSatisfied){
+  if(allSatisfied && d.workflow_approver_id){
+    await STATE.supabase.from('documents').update({ workflow_status: 'submitted_for_approval' }).eq('id', docId);
+    await notifyDocumentUsers([d.workflow_approver_id], `Ready for your approval: ${d.doc_number}`,
+      `All reviewers are satisfied with "${d.title}" (${d.doc_number}). Please open Document Management to finalise and approve it.`, { includeSelf: true });
+    await notifyDocumentUsers([d.created_by, d.owner_id], `Reviews complete: ${d.doc_number}`,
+      `All reviewers are satisfied with "${d.title}" (${d.doc_number}). It has gone to ${memberName(d.workflow_approver_id)} for approval.`, { includeSelf: true });
+  } else if(allSatisfied){
     await STATE.supabase.from('documents').update({ workflow_status: 'reviewers_satisfied' }).eq('id', docId);
     await notifyDocumentUsers([d.created_by, d.owner_id], `All reviewers satisfied: ${d.doc_number}`,
       `All reviewers have marked "${d.title}" (${d.doc_number}) as satisfactory. You can now select an approver and send it for approval.`,
@@ -7615,6 +8004,7 @@ async function openDocumentDetail(id){
           revisions.map(r => `<div class="history-item"><span class="h-dot"></span><div>
             <div><b>Rev ${r.revision_code}</b> — ${fmtDate(r.issued_date)}${r.change_description ? ' — '+r.change_description : ''}
               ${r.storage_path ? ` · <a href="#" onclick="downloadFromBucket('documents','${r.storage_path}'); return false;" style="color:var(--red);">download</a>` : ''}
+              ${r.approval_status==='approved' ? ` · <a href="#" onclick="viewRevisionSnapshot('${r.id}'); return false;" style="color:var(--red);">view approved copy &amp; contributors</a>` : ''}
             </div>
             <div style="font-size:11.5px; color:var(--text-faint); margin-top:2px;">
               ${r.approval_status==='approved' ? `Approved by ${memberName(r.approved_by)} on ${fmtDate(r.approved_date)}` : 'Not yet approved'}
@@ -7628,6 +8018,9 @@ async function openDocumentDetail(id){
   renderDocumentToc(sections || []);
   renderReferenceUploadsList(id, referenceUploads || []);
   renderDocumentLinksList(id, links || []);
+  { const fl = (STATE.flowchartDocLinks||[]).filter(l=>l.document_id===id).map(l=>flowchartById(l.flowchart_id)).filter(Boolean);
+    const slot = document.getElementById('document-links-list');
+    if(slot && fl.length) slot.insertAdjacentHTML('beforeend', fl.map(f=>`<div class="evidence-row"><div style="flex:1;"><span class="mono" style="font-size:10.5px; color:var(--text-faint);">PROCESS FLOWCHART</span><div style="font-size:13px;">${escapeHtml(f.title)}</div></div><button class="btn-small" onclick="showModule('process_flowcharts'); setTimeout(()=>openProcessFlowchart('${f.id}'),0)">Open</button></div>`).join('')); }
   renderDocumentAddendumsList(id, addendums || []);
 }
 window.openDocumentDetail = openDocumentDetail;
@@ -9012,12 +9405,37 @@ window.saveDocumentStatus = async function(id){
 window.approveDocumentRevision = async function(id){
   const d = documentById(id);
   if(!d) return;
+  let sodOverride = false;
+  if(d.created_by === STATE.user.id){
+    if(STATE.myRole !== 'admin'){ toast('The person who wrote this document cannot approve it. Ask another approver.', 'error'); return; }
+    if(!confirm('You wrote this document. Approving it yourself breaks separation of duties and will be recorded. Continue?')) return;
+    sodOverride = true;
+  }
   const patch = { approval_status:'approved', approved_by: STATE.user.id, approved_date: todayISO() };
   const { error } = await STATE.supabase.from('documents').update({ ...patch, workflow_status: 'approved', ever_approved: true }).eq('id', id);
   if(error){ toast('Could not approve: ' + error.message, 'error'); return; }
   // Mirror the same approval onto that revision's own history row.
   await STATE.supabase.from('document_revisions').update(patch)
     .eq('document_id', id).eq('revision_code', String(d.current_revision));
+
+  if(sodOverride) await logDocumentOverride(id, 'Separation-of-duties override: the author approved their own document (Admin).');
+
+  // Permanent copy of exactly what was approved, with everyone who contributed.
+  try {
+    const [{ data: secs }, { data: revs }, { data: revRow }] = await Promise.all([
+      STATE.supabase.from('document_content_sections').select('section_title, content, sort_order').eq('document_id', id).order('sort_order', {ascending:true}),
+      STATE.supabase.from('document_reviewers').select('reviewer_id').eq('document_id', id),
+      STATE.supabase.from('document_revisions').select('id').eq('document_id', id).eq('revision_code', String(d.current_revision)).maybeSingle(),
+    ]);
+    const { error: snapErr } = await STATE.supabase.from('document_revision_snapshots').insert({
+      organisation_id: STATE.org.id, document_id: id, revision_id: revRow ? revRow.id : null, revision_code: String(d.current_revision),
+      doc_number: d.doc_number, title: d.title,
+      sections: (secs||[]).map(x => ({ title:x.section_title, content:x.content })),
+      contributors: { author: d.created_by, owner: d.owner_id, reviewers: (revs||[]).map(r=>r.reviewer_id), approver: STATE.user.id, approved_on: todayISO(), override: sodOverride },
+      created_by: STATE.user.id,
+    });
+    if(snapErr) console.warn('Approved copy not stored (has the document-workflow-v2 SQL been run?):', snapErr.message);
+  } catch(e) { console.warn('Approved copy not stored:', e); }
 
   // If this document was promoted from a legacy bulk upload, only now —
   // once the new controlled revision is actually approved, not the moment
@@ -9036,9 +9454,9 @@ window.approveDocumentRevision = async function(id){
   // now approved and official — the "all parties notified" close-out.
   const { data: docReviewers } = await STATE.supabase.from('document_reviewers').select('reviewer_id').eq('document_id', id);
   await notifyDocumentUsers(
-    [d.created_by, d.owner_id, ...(docReviewers||[]).map(r=>r.reviewer_id)],
-    `Approved: ${d.doc_number}`,
-    `"${d.title}" (${d.doc_number}) has been approved and is now official. It is automatically visible in All Documents.`
+    [d.created_by, d.owner_id, STATE.user.id, ...(docReviewers||[]).map(r=>r.reviewer_id)],
+    `Published: ${d.doc_number}, ${d.title}`,
+    `"${d.title}" (${d.doc_number}) has been approved by ${memberName(STATE.user.id)} and is now published. It is available to everyone with access in All Documents, and the Master Documents Register has been updated.`
   );
 
   await loadDocuments();
@@ -9047,6 +9465,27 @@ window.approveDocumentRevision = async function(id){
   openDocumentDetail(id);
   renderDocumentsTable();
   toast('Revision approved.', 'success');
+};
+
+window.viewRevisionSnapshot = async function(revisionId){
+  const { data: snap, error } = await STATE.supabase.from('document_revision_snapshots').select('*').eq('revision_id', revisionId).order('created_at', {ascending:false}).limit(1).maybeSingle();
+  if(error || !snap){ toast('No stored copy for this revision (it was approved before approved copies were kept).', 'error'); return; }
+  const c = snap.contributors || {};
+  const names = ids => (ids||[]).map(memberName).join(', ') || '—';
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:9999; display:flex; align-items:center; justify-content:center; padding:20px;';
+  ov.onclick = e => { if(e.target===ov) ov.remove(); };
+  ov.innerHTML = `<div style="background:var(--panel,#fff); color:inherit; max-width:820px; width:100%; max-height:88vh; overflow:auto; border-radius:12px; padding:24px;">
+    <div style="display:flex; justify-content:space-between; gap:12px;"><h3 style="font-family:'Poppins'; margin:0;">${escapeHtml(snap.doc_number||'')} · ${escapeHtml(snap.title||'')} · Rev ${escapeHtml(snap.revision_code)}</h3><button class="btn-small" id="snap-close">Close</button></div>
+    <div style="font-size:12px; color:var(--text-dim); margin:10px 0 16px; line-height:1.7;">
+      Author: ${escapeHtml(c.author ? memberName(c.author) : '—')} · Owner: ${escapeHtml(c.owner ? memberName(c.owner) : '—')}<br>
+      Reviewers: ${escapeHtml(names(c.reviewers))}<br>
+      Approved by ${escapeHtml(c.approver ? memberName(c.approver) : '—')} on ${escapeHtml(fmtDate(c.approved_on))}${c.override ? ' <b style="color:var(--red);">(separation-of-duties override recorded)</b>' : ''}
+    </div>
+    ${(snap.sections||[]).map(s => `<h4 style="margin:14px 0 4px;">${escapeHtml(s.title||'')}</h4><p style="white-space:pre-wrap; font-size:13px; margin:0;">${escapeHtml(s.content||'')}</p>`).join('') || '<p style="color:var(--text-faint);">No text stored.</p>'}
+  </div>`;
+  document.body.appendChild(ov);
+  document.getElementById('snap-close').onclick = () => ov.remove();
 };
 
 window.submitNewRevision = async function(id){
@@ -14906,9 +15345,14 @@ function renderProcessFlowchartsList(){
     renderProcessFlowchartDetail(STATE._pfOpenId);
     return;
   }
+  const dueKpis = (STATE.orgKpis||[]).filter(k=>k.is_active && kpiInfo(k).overdue).length;
+  if(STATE._pfTab === 'kpis'){ renderKpiMonitor(root, dueKpis); return; }
   root.innerHTML = `
     <div class="toolbar">
-      <div></div>
+      <div class="filters">
+        <button class="btn-small primary" onclick="pfSwitchTab('flowcharts')">Process Flowcharts</button>
+        <button class="btn-small" onclick="pfSwitchTab('kpis')">Process KPIs${dueKpis ? ` (${dueKpis} due)` : ''}</button>
+      </div>
       <div></div>
     </div>
     <div class="panel" style="padding:0; overflow:hidden;">
@@ -14931,6 +15375,286 @@ function renderProcessFlowchartsList(){
   `;
 }
 window.renderProcessFlowchartsList = renderProcessFlowchartsList;
+
+/* ================= Process KPIs: measurement, cadence, reminders, escalation ================= */
+const KPI_FREQ = { weekly:{label:'Weekly', days:7}, monthly:{label:'Monthly', months:1}, quarterly:{label:'Quarterly', months:3}, six_monthly:{label:'Six-monthly', months:6}, annually:{label:'Annually', months:12} };
+const KPI_STATUS_COLOR = { green:'#2E7D4F', amber:'#B8791C', red:'#B3261E' };
+function kpiAddPeriod(iso, freq){
+  const d = new Date(iso + 'T00:00:00Z'); const f = KPI_FREQ[freq] || KPI_FREQ.monthly;
+  if(f.days) d.setUTCDate(d.getUTCDate() + f.days); else d.setUTCMonth(d.getUTCMonth() + f.months);
+  return d.toISOString().slice(0,10);
+}
+function kpiReadingsOf(k){ return (STATE.orgKpiReadings||[]).filter(r=>r.kpi_id===k.id).sort((a,b)=>a.period_date < b.period_date ? 1 : -1); }
+function kpiStatusFor(k, value){
+  const t = Number(k.target_value), tol = (Number(k.amber_tolerance_pct)||10)/100;
+  if(k.target_value == null || isNaN(t) || value == null || isNaN(value)) return null;
+  if(k.direction === 'lower') return value <= t ? 'green' : (value <= t*(1+tol) ? 'amber' : 'red');
+  return value >= t ? 'green' : (value >= t*(1-tol) ? 'amber' : 'red');
+}
+function kpiInfo(k){
+  const rs = kpiReadingsOf(k), latest = rs[0] || null;
+  const base = latest ? latest.period_date : (k.created_at ? k.created_at.slice(0,10) : todayISO());
+  const due = kpiAddPeriod(base, k.frequency);
+  return { latest, readings: rs, status: latest ? latest.status : null, due, overdue: due < todayISO() };
+}
+function kpiPortfolioStats(){
+  const act = (STATE.orgKpis||[]).filter(k=>k.is_active); const o = { total:act.length, green:0, amber:0, red:0, unmeasured:0, overdue:0 };
+  act.forEach(k => { const i = kpiInfo(k); if(i.status) o[i.status]++; else o.unmeasured++; if(i.overdue) o.overdue++; });
+  return o;
+}
+function kpiChip(status){ return status ? `<span class="sev-badge" style="background:${KPI_STATUS_COLOR[status]}; color:#fff; text-transform:capitalize;">${status==='green'?'On target':status==='amber'?'Near target':'Off target'}</span>` : '<span class="sev-badge" style="background:#999; color:#fff;">No reading</span>'; }
+function kpiSpark(k){
+  const rs = kpiReadingsOf(k).slice(0,12).reverse(); if(rs.length < 2) return '';
+  const vs = rs.map(r=>Number(r.value)), min = Math.min(...vs, Number(k.target_value)||vs[0]), max = Math.max(...vs, Number(k.target_value)||vs[0]), span = (max-min)||1;
+  const pts = vs.map((v,i)=>`${(i/(vs.length-1)*118+1).toFixed(1)},${(26-((v-min)/span)*24).toFixed(1)}`).join(' ');
+  const ty = k.target_value!=null ? (26-((Number(k.target_value)-min)/span)*24).toFixed(1) : null;
+  return `<svg viewBox="0 0 120 28" width="120" height="28" style="fill:none; stroke-width:1.5;">${ty!=null?`<line x1="0" x2="120" y1="${ty}" y2="${ty}" stroke="#999" stroke-dasharray="3 3" stroke-width="1"/>`:''}<polyline points="${pts}" stroke="#2166ac"/></svg>`;
+}
+window.pfSwitchTab = function(tab){ STATE._pfTab = tab; STATE._pfOpenId = null; renderProcessFlowchartsList(); };
+
+function kpiOverlay(html){
+  let ov = document.getElementById('kpi-overlay');
+  if(!ov){ ov = document.createElement('div'); ov.id = 'kpi-overlay'; ov.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:9999; display:flex; align-items:flex-start; justify-content:center; padding:24px; overflow:auto;'; ov.onclick = e => { if(e.target===ov) ov.remove(); }; document.body.appendChild(ov); }
+  ov.innerHTML = `<div style="background:var(--panel,#fff); max-width:640px; width:100%; border-radius:12px; padding:24px;">${html}</div>`;
+}
+window.kpiCloseOverlay = function(){ const o = document.getElementById('kpi-overlay'); if(o) o.remove(); };
+function canRecordKpi(){ return ['admin','manager','contributor'].includes(STATE.myRole) || (STATE.profile && STATE.profile.is_platform_staff); }
+
+function kpiCardHtml(k, editable){
+  const i = kpiInfo(k), l = i.latest;
+  const live = k.watchman_metric_key ? computeFlowchartKpiValue(k.watchman_metric_key) : null;
+  return `<div class="detail-card" style="padding:14px; ${k.is_active?'':'opacity:.55;'}">
+    <div style="display:flex; justify-content:space-between; gap:8px; align-items:flex-start;"><div style="font-size:11px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.03em;">${escapeHtml(k.name)}</div>${kpiChip(i.status)}</div>
+    <div style="font-size:24px; font-weight:700; font-family:'Poppins'; margin:4px 0;">${l ? escapeHtml(String(l.value)) + ' <span style="font-size:12px; font-weight:400; color:var(--text-faint);">' + escapeHtml(k.unit||'') + '</span>' : '<span style="font-size:13px; color:var(--text-faint); font-weight:400;">No reading yet</span>'}</div>
+    <div style="font-size:11.5px; color:var(--text-faint);">Target: <b>${k.direction==='lower'?'≤':'≥'} ${k.target_value!=null?escapeHtml(String(k.target_value)):'—'} ${escapeHtml(k.unit||'')}</b> · ${KPI_FREQ[k.frequency].label}${k.owner_id ? ' · ' + escapeHtml(memberName(k.owner_id)) : ''}</div>
+    ${live!=null ? `<div style="font-size:11px; color:var(--text-faint); margin-top:2px;">Live in Watchman now: <b>${escapeHtml(String(live))}</b></div>` : ''}
+    <div style="margin:6px 0;">${kpiSpark(k)}</div>
+    <div style="font-size:11.5px; margin-bottom:8px;">Next reading: ${fmtDate(i.due)} ${dateStatusBadge(i.due, false)}</div>
+    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+      ${canRecordKpi() && k.is_active ? `<button class="btn-small primary" onclick="kpiRecord('${k.id}')">Record reading</button>` : ''}
+      <button class="btn-small" onclick="kpiHistory('${k.id}')">History</button>
+      ${editable ? `<button class="btn-small" onclick="kpiSetup('${k.flowchart_id||''}','${k.id}')">Edit</button>` : ''}
+    </div>
+  </div>`;
+}
+
+function flowchartKpiSectionHtml(f, tplKpis, editable){
+  const mine = (STATE.orgKpis||[]).filter(k=>k.flowchart_id===f.id);
+  const setUp = new Set(mine.map(k=>k.source_flowchart_kpi_id).filter(Boolean));
+  const pending = tplKpis.filter(t=>!setUp.has(t.id));
+  return `<div class="detail-card" style="margin-bottom:18px;">
+    <div class="panel-head" style="display:flex; justify-content:space-between; align-items:center;"><h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600;">KPIs &amp; measurement</h3>${editable ? `<button class="btn-small" onclick="kpiSetup('${f.id}')">+ Add KPI</button>` : ''}</div>
+    <p style="font-size:12px; color:var(--text-faint); margin-bottom:10px;">Each KPI has a target, an owner and a measurement cadence. Readings feed the Compliance Dashboard and Management Review, and an off-target reading can raise a follow-up automatically.</p>
+    <div class="kpi-grid">
+      ${mine.map(k=>kpiCardHtml(k, editable)).join('')}
+      ${pending.map(t => {
+        const live = t.watchman_metric_key ? computeFlowchartKpiValue(t.watchman_metric_key) : null;
+        return `<div class="detail-card" style="padding:14px; border-style:dashed;">
+          <div style="font-size:11px; color:var(--text-faint); text-transform:uppercase;">${escapeHtml(t.name)}</div>
+          <div style="font-size:20px; font-weight:700; font-family:'Poppins'; margin:4px 0;">${live!=null ? escapeHtml(String(live)) : '<span style="font-size:13px; color:var(--text-faint); font-weight:400;">Not measured yet</span>'}</div>
+          <div style="font-size:11px; color:var(--text-faint);">Suggested target: <b>${escapeHtml(t.target_value||'—')}</b></div>
+          ${t.description ? `<div style="font-size:10.5px; color:var(--text-faint); margin-top:4px;">${escapeHtml(t.description)}</div>` : ''}
+          ${editable ? `<button class="btn-small primary" style="margin-top:8px;" onclick="kpiSetup('${f.id}', null, '${t.id}')">Set up measurement</button>` : ''}
+        </div>`; }).join('')}
+    </div>
+    ${(!mine.length && !pending.length) ? '<p style="font-size:12.5px; color:var(--text-faint);">No KPIs on this flowchart yet.</p>' : ''}
+  </div>`;
+}
+
+window.kpiSetup = function(flowchartId, kpiId, tplKpiId){
+  const k = kpiId ? (STATE.orgKpis||[]).find(x=>x.id===kpiId) : null;
+  const t = tplKpiId ? STATE.orgFlowchartKpis.find(x=>x.id===tplKpiId) : null;
+  const num = t ? parseFloat(String(t.target_value||'').replace(/[^0-9.\-]/g,'')) : NaN;
+  const v = k || { name: t?t.name:'', description: t?t.description:'', unit: t?(t.unit||''):'', direction: (t && /[≤<]|max|no more|below|within|less/i.test(t.target_value||'')) ? 'lower' : 'higher',
+    target_value: isNaN(num)?'':num, amber_tolerance_pct:10, frequency:'monthly', owner_id: STATE.user.id, on_red_action:'task', watchman_metric_key: t?t.watchman_metric_key:null, process_id:null };
+  kpiOverlay(`<h3 style="font-family:'Poppins'; margin:0 0 12px;">${k?'Edit KPI':'Set up KPI measurement'}</h3>
+    <div class="form-grid">
+      <div class="field span3"><label>KPI</label><input id="kp-name" value="${escapeHtml(v.name||'')}"></div>
+      <div class="field span3"><label>What it measures</label><textarea id="kp-desc">${escapeHtml(v.description||'')}</textarea></div>
+      <div class="field"><label>Unit</label><input id="kp-unit" value="${escapeHtml(v.unit||'')}" placeholder="% / days / count"></div>
+      <div class="field"><label>Better when</label><select id="kp-dir"><option value="higher" ${v.direction==='higher'?'selected':''}>Higher is better (≥ target)</option><option value="lower" ${v.direction==='lower'?'selected':''}>Lower is better (≤ target)</option></select></div>
+      <div class="field"><label>Target</label><input id="kp-target" type="number" step="any" value="${v.target_value??''}"></div>
+      <div class="field"><label>"Near target" tolerance %</label><input id="kp-tol" type="number" step="any" value="${v.amber_tolerance_pct??10}"></div>
+      <div class="field"><label>Measure</label><select id="kp-freq">${Object.entries(KPI_FREQ).map(([key,f])=>`<option value="${key}" ${v.frequency===key?'selected':''}>${f.label}</option>`).join('')}</select></div>
+      <div class="field"><label>Owner (gets the reminders)</label><select id="kp-owner">${memberOptions(v.owner_id)}</select></div>
+      <div class="field span3"><label>When a reading is off target</label><select id="kp-red">
+        <option value="none" ${v.on_red_action==='none'?'selected':''}>Just show it in red</option>
+        <option value="task" ${v.on_red_action==='task'?'selected':''}>Offer to create a follow-up task</option>
+        <option value="issue" ${v.on_red_action==='issue'?'selected':''}>Offer to raise a ${STATE.org.nc_enabled!==false?'nonconformance':'RAGA alert'} and a task</option></select></div>
+      <div class="field span3"><label>Linked process record (optional)</label><select id="kp-process"><option value="">None</option>${(STATE.processes||[]).map(p=>`<option value="${p.id}" ${v.process_id===p.id?'selected':''}>${escapeHtml(p.ref_code||'')} ${escapeHtml(p.name||'')}</option>`).join('')}</select></div>
+    </div>
+    <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button>${k ? `<button class="btn-small" onclick="kpiToggleActive('${k.id}', ${!k.is_active})">${k.is_active?'Stop measuring':'Resume'}</button>` : ''}<button class="btn-primary" onclick="kpiSaveSetup('${flowchartId||''}','${kpiId||''}','${tplKpiId||''}')">Save</button></div>`);
+};
+window.kpiSaveSetup = async function(flowchartId, kpiId, tplKpiId){
+  const name = document.getElementById('kp-name').value.trim();
+  const target = document.getElementById('kp-target').value;
+  if(!name){ alert('Give the KPI a name.'); return; }
+  if(target === ''){ alert('Set a numeric target so readings can be rated.'); return; }
+  const row = { organisation_id: STATE.org.id, flowchart_id: flowchartId || null, name, description: document.getElementById('kp-desc').value.trim() || null,
+    unit: document.getElementById('kp-unit').value.trim() || null, direction: document.getElementById('kp-dir').value, target_value: Number(target),
+    amber_tolerance_pct: Number(document.getElementById('kp-tol').value) || 10, frequency: document.getElementById('kp-freq').value,
+    owner_id: document.getElementById('kp-owner').value || null, on_red_action: document.getElementById('kp-red').value, process_id: document.getElementById('kp-process').value || null };
+  let error;
+  if(kpiId) ({ error } = await STATE.supabase.from('org_kpis').update(row).eq('id', kpiId));
+  else {
+    row.created_by = STATE.user.id;
+    if(tplKpiId){ row.source_flowchart_kpi_id = tplKpiId; const t = STATE.orgFlowchartKpis.find(x=>x.id===tplKpiId); if(t) row.watchman_metric_key = t.watchman_metric_key || null; }
+    ({ error } = await STATE.supabase.from('org_kpis').insert(row));
+  }
+  if(error){ toast('Could not save the KPI: ' + error.message + (/org_kpis/.test(error.message) ? ' (run the process-kpi-measurement SQL first)' : ''), 'error'); return; }
+  kpiCloseOverlay(); await loadOrgKpis(); renderProcessFlowchartsList(); toast('KPI saved.', 'success');
+};
+window.kpiToggleActive = async function(id, val){
+  const { error } = await STATE.supabase.from('org_kpis').update({ is_active: val }).eq('id', id);
+  if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+  kpiCloseOverlay(); await loadOrgKpis(); renderProcessFlowchartsList();
+};
+
+window.kpiRecord = function(id){
+  const k = STATE.orgKpis.find(x=>x.id===id); if(!k) return;
+  kpiOverlay(`<h3 style="font-family:'Poppins'; margin:0 0 4px;">Record a reading</h3>
+    <p style="font-size:12.5px; color:var(--text-dim); margin-bottom:12px;">${escapeHtml(k.name)} · target ${k.direction==='lower'?'≤':'≥'} ${k.target_value} ${escapeHtml(k.unit||'')}</p>
+    <div class="form-grid">
+      <div class="field"><label>Period / date measured</label><input type="date" id="kr-date" value="${todayISO()}"></div>
+      <div class="field"><label>Value ${k.unit?'('+escapeHtml(k.unit)+')':''}</label><input type="number" step="any" id="kr-value"></div>
+      <div class="field span3"><label>Comment (what explains this result?)</label><textarea id="kr-comment"></textarea></div>
+    </div>
+    ${k.watchman_metric_key ? `<button class="btn-small" onclick="kpiUseLive('${k.id}')">Use the live Watchman value</button>` : ''}
+    <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" onclick="kpiSaveReading('${k.id}')">Save reading</button></div>`);
+};
+window.kpiUseLive = function(id){
+  const k = STATE.orgKpis.find(x=>x.id===id);
+  const n = parseFloat(String(computeFlowchartKpiValue(k.watchman_metric_key)).replace(/[^0-9.\-]/g,''));
+  if(isNaN(n)){ toast('There is no live value for this KPI right now.', 'error'); return; }
+  document.getElementById('kr-value').value = n;
+};
+window.kpiSaveReading = async function(id){
+  const k = STATE.orgKpis.find(x=>x.id===id);
+  const value = parseFloat(document.getElementById('kr-value').value), date = document.getElementById('kr-date').value;
+  if(isNaN(value) || !date){ alert('Enter the date and a numeric value.'); return; }
+  const status = kpiStatusFor(k, value);
+  const comment = document.getElementById('kr-comment').value.trim() || null;
+  const { data: rd, error } = await STATE.supabase.from('org_kpi_readings').upsert({ organisation_id: STATE.org.id, kpi_id: id, period_date: date, value, status, comment, recorded_by: STATE.user.id, recorded_at: new Date().toISOString() }, { onConflict:'kpi_id,period_date' }).select().single();
+  if(error){ toast('Could not save the reading: ' + error.message, 'error'); return; }
+  kpiCloseOverlay();
+  if(status === 'red' && k.on_red_action !== 'none') await kpiEscalate(k, rd, value, comment);
+  await loadOrgKpis(); if(typeof loadTasks === 'function') await loadTasks();
+  renderProcessFlowchartsList(); updateNavBadges();
+  toast(status === 'green' ? 'Reading saved: on target.' : status === 'amber' ? 'Reading saved: near target.' : 'Reading saved: OFF target.', status==='red' ? 'error' : 'success');
+};
+// Off-target reading → follow-up (task, or RAGA alert / nonconformance + task), which in turn feed audits, management review and the dashboard.
+async function kpiEscalate(k, rd, value, comment){
+  const fc = flowchartById(k.flowchart_id);
+  const title = `KPI off target: ${k.name}`.slice(0,120);
+  const desc = `${k.name}${fc ? ' (' + fc.title + ')' : ''} measured ${value} ${k.unit||''} against a target of ${k.direction==='lower'?'≤':'≥'} ${k.target_value} on ${fmtDate(rd.period_date)}.${comment ? ' Comment: ' + comment : ''}`;
+  const owner = k.owner_id || STATE.user.id, due = kpiAddPeriod(todayISO(), 'monthly');
+  const useNc = STATE.org.nc_enabled !== false;
+  const msg = k.on_red_action === 'issue' ? `This reading is off target. Raise ${useNc ? 'a nonconformance' : 'a RAGA alert'} and a follow-up task for ${memberName(owner)}?` : `This reading is off target. Create a follow-up task for ${memberName(owner)}?`;
+  if(!confirm(msg)) return;
+  let linkType = 'none', linkId = null, raisedType = 'task';
+  if(k.on_red_action === 'issue'){
+    if(useNc){
+      const { data: nc, error } = await STATE.supabase.from('nonconformances').insert({ organisation_id: STATE.org.id, title, description: desc, discipline:'governance', source:'inspection', severity:'minor', raised_by: STATE.user.id, owner_id: owner, target_close_date: due }).select().single();
+      if(error){ toast('Could not raise the nonconformance: ' + error.message, 'error'); return; }
+      linkType = 'nonconformance'; linkId = nc.id; raisedType = 'nonconformance'; await loadNCs();
+    } else {
+      const { data: al, error } = await STATE.supabase.from('raga_alerts').insert({ organisation_id: STATE.org.id, alert_type:'red', title, description: desc, raised_by: STATE.user.id, owner_id: owner, target_close_date: due }).select().single();
+      if(error){ toast('Could not raise the RAGA alert: ' + error.message, 'error'); return; }
+      linkType = 'raga_alert'; linkId = al.id; raisedType = 'raga_alert'; await loadRagaAlerts();
+    }
+  }
+  const { data: task } = await STATE.supabase.from('tasks').insert({ organisation_id: STATE.org.id, title: (linkId ? 'Close out: ' : '') + title, description: desc, linked_type: linkType, linked_id: linkId, assignee_id: owner, priority:'high', due_date: due, created_by: STATE.user.id }).select().single();
+  await STATE.supabase.from('org_kpi_readings').update({ raised_type: raisedType, raised_id: linkId || (task && task.id) || null }).eq('id', rd.id);
+}
+
+window.kpiHistory = function(id){
+  const k = STATE.orgKpis.find(x=>x.id===id); if(!k) return;
+  const rs = kpiReadingsOf(k);
+  kpiOverlay(`<div style="display:flex; justify-content:space-between;"><h3 style="font-family:'Poppins'; margin:0;">${escapeHtml(k.name)}: history</h3><button class="btn-small" onclick="kpiCloseOverlay()">Close</button></div>
+    <div style="margin:10px 0;">${kpiSpark(k)}</div>
+    ${rs.length ? `<table><tr><th>Date</th><th>Value</th><th>Status</th><th>By</th><th>Comment</th><th></th></tr>${rs.map(r=>`<tr><td>${fmtDate(r.period_date)}</td><td>${r.value} ${escapeHtml(k.unit||'')}</td><td>${kpiChip(r.status)}</td><td>${r.recorded_by?escapeHtml(memberName(r.recorded_by)):'—'}</td><td style="font-size:12px;">${escapeHtml(r.comment||'')}${r.raised_type ? `<div style="color:var(--red); font-size:11px;">Raised: ${escapeHtml(r.raised_type.replace('_',' '))}</div>` : ''}</td><td>${canEditFlowchart() ? `<button class="btn-small" onclick="kpiDeleteReading('${r.id}','${k.id}')">Delete</button>` : ''}</td></tr>`).join('')}</table>` : '<p style="color:var(--text-faint);">No readings yet.</p>'}`);
+};
+window.kpiDeleteReading = async function(rid, kid){
+  if(!confirm('Delete this reading?')) return;
+  const { error } = await STATE.supabase.from('org_kpi_readings').delete().eq('id', rid);
+  if(error){ toast('Could not delete: ' + error.message, 'error'); return; }
+  await loadOrgKpis(); kpiHistory(kid);
+};
+
+function renderKpiMonitor(root, dueKpis){
+  const st = kpiPortfolioStats();
+  const rows = (STATE.orgKpis||[]).filter(k=>k.is_active).map(k=>({k, i:kpiInfo(k)})).sort((a,b)=> (b.i.overdue - a.i.overdue) || (a.i.due < b.i.due ? -1 : 1));
+  root.innerHTML = `
+    <div class="toolbar"><div class="filters">
+      <button class="btn-small" onclick="pfSwitchTab('flowcharts')">Process Flowcharts</button>
+      <button class="btn-small primary" onclick="pfSwitchTab('kpis')">Process KPIs${dueKpis ? ` (${dueKpis} due)` : ''}</button></div>
+      <div>${canEditFlowchart() && st.overdue ? '<button class="btn-small" onclick="kpiEmailReminders()">Email reminders for overdue KPIs</button>' : ''}</div></div>
+    <div class="mr-stat-row" style="margin-bottom:14px;">
+      ${mrStatCard(st.total, 'KPIs being measured', null, null)}
+      ${mrStatCard(st.green, 'On target', null, 'var(--green)')}
+      ${mrStatCard(st.amber, 'Near target', null, 'var(--amber)')}
+      ${mrStatCard(st.red, 'Off target', null, st.red ? 'var(--red)' : null)}
+      ${mrStatCard(st.overdue, 'Readings overdue', null, st.overdue ? 'var(--red)' : 'var(--green)')}
+    </div>
+    <div class="panel" style="padding:0; overflow:hidden;">
+      ${rows.length ? `<table><tr><th>KPI</th><th>Flowchart</th><th>Latest</th><th>Target</th><th>Status</th><th>Cadence</th><th>Next reading</th><th>Owner</th><th></th></tr>
+      ${rows.map(({k,i})=>{ const fc = flowchartById(k.flowchart_id); return `<tr>
+        <td class="strong">${escapeHtml(k.name)}</td>
+        <td style="font-size:12px;">${fc ? `<a href="#" onclick="openProcessFlowchart('${fc.id}'); return false;" style="color:var(--red);">${escapeHtml(fc.title)}</a>` : '—'}</td>
+        <td>${i.latest ? escapeHtml(String(i.latest.value)) + ' ' + escapeHtml(k.unit||'') : '—'}</td>
+        <td>${k.direction==='lower'?'≤':'≥'} ${k.target_value} ${escapeHtml(k.unit||'')}</td>
+        <td>${kpiChip(i.status)}</td><td>${KPI_FREQ[k.frequency].label}</td>
+        <td>${fmtDate(i.due)} ${dateStatusBadge(i.due, false)}</td>
+        <td>${k.owner_id ? escapeHtml(memberName(k.owner_id)) : '—'}</td>
+        <td style="white-space:nowrap;">${canRecordKpi() ? `<button class="btn-small primary" onclick="kpiRecord('${k.id}')">Record</button>` : ''} <button class="btn-small" onclick="kpiHistory('${k.id}')">History</button></td></tr>`; }).join('')}</table>`
+      : `<div class="empty-state"><p>No KPIs are being measured yet. Open a process flowchart and choose "Set up measurement" on a KPI, or add your own.</p></div>`}
+    </div>`;
+}
+window.kpiEmailReminders = async function(){
+  const due = (STATE.orgKpis||[]).filter(k=>k.is_active && k.owner_id && kpiInfo(k).overdue);
+  if(!due.length){ toast('Nothing is overdue.', 'success'); return; }
+  const byOwner = {}; due.forEach(k => (byOwner[k.owner_id] = byOwner[k.owner_id] || []).push(k));
+  for(const [owner, list] of Object.entries(byOwner)){
+    await notifyDocumentUsers([owner], `KPI readings due: ${list.length} overdue`,
+      `The following KPI readings are overdue in QaSHE Watchman:\n\n${list.map(k => `- ${k.name} (was due ${fmtDate(kpiInfo(k).due)})`).join('\n')}\n\nPlease open Process Flowcharts → Process KPIs and record them.`, { includeSelf: true });
+  }
+  toast(`Reminders sent to ${Object.keys(byOwner).length} owner${Object.keys(byOwner).length===1?'':'s'}.`, 'success');
+};
+
+/* ---- Flowchart ↔ documents ---- */
+function flowchartDocumentsCardHtml(f, editable){
+  const links = (STATE.flowchartDocLinks||[]).filter(l=>l.flowchart_id===f.id);
+  const rows = links.map(l => {
+    const d = l.document_id ? documentById(l.document_id) : null, b = l.bulk_document_id ? (STATE.bulkDocuments||[]).find(x=>x.id===l.bulk_document_id) : null;
+    const label = d ? `${escapeHtml(d.doc_number)}: ${escapeHtml(d.title)}` : (b ? escapeHtml(b.file_name||b.doc_number||'Uploaded document') : 'Document not found');
+    return `<div class="evidence-row"><div style="flex:1; font-size:13px;">${label}<span class="mono" style="font-size:10px; color:var(--text-faint);"> ${d?'CONTROLLED':'UPLOADED'}</span></div>
+      <div class="ev-actions">${d ? `<button class="btn-small" onclick="showModule('documents'); setTimeout(()=>openDocumentDetail('${d.id}'),0)">Open</button>` : ''}${editable ? `<button class="btn-small" onclick="flowchartUnlinkDoc('${l.id}','${f.id}')">Remove</button>` : ''}</div></div>`;
+  }).join('');
+  const used = new Set(links.map(l=>l.document_id||l.bulk_document_id));
+  const opts = [
+    ...(STATE.documents||[]).filter(d=>!used.has(d.id)).map(d=>`<option value="c:${d.id}">${escapeHtml(d.doc_number)}: ${escapeHtml(d.title)}</option>`),
+    ...(STATE.bulkDocuments||[]).filter(b=>!b.archived && !used.has(b.id)).map(b=>`<option value="b:${b.id}">Uploaded: ${escapeHtml(b.file_name||b.doc_number||'')}</option>`),
+  ].join('');
+  return `<div class="detail-card" style="margin-bottom:18px;">
+    <div class="panel-head"><h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600;">Related documents</h3></div>
+    <p style="font-size:12px; color:var(--text-faint); margin-bottom:10px;">The procedures, work instructions, forms and records that support this process. They also appear on the document's own page.</p>
+    ${rows || '<p style="font-size:12.5px; color:var(--text-faint);">No documents linked yet.</p>'}
+    ${editable ? `<div style="display:flex; gap:8px; margin-top:10px;"><select id="fdl-pick-${f.id}" style="flex:1; max-width:520px;"><option value="">Link a document…</option>${opts}</select><button class="btn-small primary" onclick="flowchartLinkDoc('${f.id}')">Link</button></div>` : ''}
+  </div>`;
+}
+window.flowchartLinkDoc = async function(fid){
+  const v = document.getElementById('fdl-pick-'+fid).value; if(!v) return;
+  const [kind, id] = v.split(':');
+  const row = { organisation_id: STATE.org.id, flowchart_id: fid, created_by: STATE.user.id, [kind==='c'?'document_id':'bulk_document_id']: id };
+  const { error } = await STATE.supabase.from('flowchart_document_links').insert(row);
+  if(error){ toast('Could not link: ' + error.message + (/flowchart_document_links/.test(error.message) ? ' (run the process-kpi-measurement SQL first)' : ''), 'error'); return; }
+  await loadOrgKpis(); renderProcessFlowchartDetail(fid);
+};
+window.flowchartUnlinkDoc = async function(linkId, fid){
+  const { error } = await STATE.supabase.from('flowchart_document_links').delete().eq('id', linkId);
+  if(error){ toast('Could not remove: ' + error.message, 'error'); return; }
+  await loadOrgKpis(); renderProcessFlowchartDetail(fid);
+};
 
 window.openProcessFlowchart = function(id){
   STATE._pfOpenId = id;
@@ -15285,20 +16009,8 @@ function renderProcessFlowchartDetail(id){
       ${f.is_stale ? `<div style="margin-top:10px; padding:8px 12px; background:var(--amber-tint,#FBF2DE); border-radius:6px; font-size:12px; color:var(--text-dim);">A newer version of this template has been published in the library. Your edits here are untouched — ask Group QaSHE CG if you'd like the improvements brought across.</div>` : ''}
     </div>
 
-    <div class="detail-card" style="margin-bottom:18px;">
-      <div class="panel-head"><h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600;">KPIs</h3></div>
-      <div class="kpi-grid">
-        ${kpis.map(k=>{
-          const live = k.watchman_metric_key ? computeFlowchartKpiValue(k.watchman_metric_key) : null;
-          return `<div class="detail-card" style="padding:14px;">
-            <div style="font-size:11px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.03em;">${k.name}</div>
-            <div style="font-size:22px; font-weight:700; font-family:'Poppins'; margin:4px 0;">${live!=null ? live : '<span style="font-size:13px; color:var(--text-faint); font-weight:400;">Manually tracked</span>'}</div>
-            <div style="font-size:11px; color:var(--text-faint);">Target: <b>${k.target_value||'—'}</b> ${editable ? `<button class="btn-link" style="font-size:10.5px;" onclick="editFlowchartKpiTarget('${k.id}')">Edit</button>` : ''}</div>
-            ${k.description ? `<div style="font-size:10.5px; color:var(--text-faint); margin-top:4px;">${k.description}</div>` : ''}
-          </div>`;
-        }).join('')}
-      </div>
-    </div>
+    ${flowchartKpiSectionHtml(f, kpis, editable)}
+    ${flowchartDocumentsCardHtml(f, editable)}
 
     <div class="detail-card">
       <div class="panel-head"><h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600;">Process Flow</h3></div>
@@ -19053,6 +19765,7 @@ function renderAllDocsDepartmentsShell(){
       </div>
       <div style="display:flex; gap:8px;">
         <button class="btn-small" onclick="toggleAllDocsSmartUploadPanel()">+ Smart Bulk Upload</button>
+        <button class="btn-small" onclick="openNamingConflicts()">${(()=>{ const n = allDocsConflictAnalysis().length; return n ? `⚠ Naming conflicts (${n})` : 'Naming conflicts'; })()}</button>
         <button class="btn-small" onclick="goToMasterDocRegister()">Master Documents Register</button>
         <button class="btn-small" onclick="exportModuleExcel('all_documents')">Export Excel</button>
         <button class="btn-small" onclick="printCurrentRegister('all_documents','All Documents Register')">Print Register</button>
@@ -20346,11 +21059,11 @@ function renderComplianceDashboard(){
         { label:'Assessed at least once', count: cs.ranAtLeastOnce, color:'green' }, { label:'Never run', count: cs.neverRun, color:'amber' }, { label:'Nonconformances (latest runs)', count: cs.nonconformanceCount, color:'red' },
       ], cs.blendedScorePct!=null ? 'avg conformance '+cs.blendedScorePct.toFixed(0)+'%' : null));
     }
-    if(canAccessModule('policies')){
-      const ps = policyStats();
-      tiles.push(complianceCard('Policies & Procedures', 'policies', [
-        { label:'Published, current', count: ps.current, color:'green' }, { label:'Draft / approved', count: ps.draft + ps.approved, color:'amber' }, { label:'Overdue for review', count: ps.overdueReview, color:'red' },
-      ]));
+    if(canAccessModule('process_flowcharts') && (STATE.orgKpis||[]).some(k=>k.is_active)){
+      const ks = kpiPortfolioStats();
+      tiles.push(complianceCard('Process KPIs', 'process_flowcharts', [
+        { label:'On target', count: ks.green, color:'green' }, { label:'Near target / not yet measured', count: ks.amber + ks.unmeasured, color:'amber' }, { label:'Off target', count: ks.red, color:'red' },
+      ], ks.overdue ? ks.overdue + ' reading' + (ks.overdue===1?'':'s') + ' overdue' : null));
     }
     {
       const suppliers = STATE.suppliers||[];
@@ -20602,23 +21315,18 @@ function renderComplianceDashboard(){
     `);
   }
 
-  // ---- Policies & Procedures ----------------------------------------------------
-  if(canAccessModule('policies')){
-    const ps = policyStats();
-    const byStatus = [
-      { label:'Published', count: ps.published, color:'#2E7D4F' },
-      { label:'Approved (not yet published)', count: ps.approved, color:'#B8791C' },
-      { label:'Draft', count: ps.draft, color:'#A6A6A6' },
-    ];
-    html += mrSection('Policies & Procedures', 'policies', `
+  // ---- Process KPIs ----------------------------------------------------------------
+  if(canAccessModule('process_flowcharts') && (STATE.orgKpis||[]).some(k=>k.is_active)){
+    const ks = kpiPortfolioStats();
+    html += mrSection('Process KPIs', 'process_flowcharts', `
       <div class="mr-stat-row">
-        ${mrStatCard(ps.total, 'Policies & procedures applied', null, null)}
-        ${mrStatCard(ps.total ? Math.round(ps.published/ps.total*100)+'%' : '—', 'Published', null, null)}
-        ${mrStatCard(ps.currencyPct!=null ? ps.currencyPct.toFixed(0)+'%' : '—', 'Current (published, review not overdue)', null, ps.currencyPct!=null ? (ps.currencyPct>=95?'var(--green)':ps.currencyPct>=80?'var(--amber)':'var(--red)') : null)}
-        ${mrStatCard(ps.overdueReview, 'Overdue for review', null, ps.overdueReview>0?'var(--red)':'var(--green)')}
+        ${mrStatCard(ks.total, 'KPIs measured', null, null)}
+        ${mrStatCard(ks.green, 'On target', null, 'var(--green)')}
+        ${mrStatCard(ks.red, 'Off target', null, ks.red?'var(--red)':'var(--green)')}
+        ${mrStatCard(ks.overdue, 'Readings overdue', null, ks.overdue?'var(--red)':'var(--green)')}
       </div>
-      <div class="mr-subhead">By status</div>
-      ${mrBar(byStatus, ps.total)}
+      <div class="mr-subhead">Off-target KPIs</div>
+      ${(STATE.orgKpis||[]).filter(k=>k.is_active && kpiInfo(k).status==='red').map(k=>`<p style="font-size:12.5px; margin:2px 0;">${escapeHtml(k.name)}: ${kpiInfo(k).latest.value} ${escapeHtml(k.unit||'')} (target ${k.direction==='lower'?'≤':'≥'} ${k.target_value})</p>`).join('') || '<p style="font-size:12.5px; color:var(--text-faint);">None.</p>'}
     `);
   }
 
@@ -21291,7 +21999,7 @@ function sfLinkTarget(item){
   const id = item.link_id;
   switch(item.link_type){
     case 'legal_cert': { const c = (STATE.legalCerts||[]).find(x=>x.id===id); return c ? { title:c.title, ref:c.certificate_number||'', expiry:c.expiry_date, archived:!!c.archived, storage_path: canAccessModule('legal_certs') ? c.storage_path : null, bucket:'documents', file_name:c.file_name, open:()=>{ showModule('legal_certs'); }, mod:'legal_certs' } : null; }
-    case 'policy': { const p = (STATE.orgPolicies||[]).find(x=>x.id===id); return p ? { title:p.title, ref:label(p.status||''), review:p.review_date, status:p.status, open:()=>{ showModule('policies'); setTimeout(()=>openPolicy(p.id),0); }, mod:'policies' } : null; }
+    case 'policy': { const p = (STATE.orgPolicies||[]).find(x=>x.id===id); return p ? { title:p.title, ref:label(p.status||''), review:p.review_date, status:p.status, open:()=>{ if(p.migrated_document_id){ showModule('documents'); setTimeout(()=>openDocumentDetail(p.migrated_document_id),0); } else { showModule('documents'); } }, mod:'policies' } : null; }
     case 'document': { const d = (STATE.documents||[]).find(x=>x.id===id); return d ? { title:d.title, ref:`${d.doc_number}-Rev${d.current_revision}`, review:d.next_review_date, status:d.status, open:()=>{ showModule('documents'); setTimeout(()=>openDocumentDetail(d.id),0); }, mod:'documents' } : null; }
     case 'bulletin': { const b = (STATE.bulletins||[]).find(x=>x.id===id); return b ? { title:b.title, ref:b.ref_code||'', open:()=>{ showModule('bulletins'); setTimeout(()=>openBulletinDetail(b.id),0); }, mod:'bulletins' } : null; }
     case 'audit': { const a = (STATE.audits||[]).find(x=>x.id===id); return a ? { title:a.title, ref:a.audit_ref||'', status:a.status, open:()=>{ showModule('audits'); setTimeout(()=>openAuditDetail(a.id),0); }, mod:'audits' } : null; }
