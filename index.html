@@ -2770,6 +2770,9 @@ function fmtFileSize(bytes){
   return (bytes/(1024*1024)).toFixed(1) + ' MB';
 }
 function fileIconSvg(mimeType){
+  if(mimeType && (mimeType === 'message/rfc822' || mimeType === 'application/vnd.ms-outlook')){
+    return '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>';
+  }
   if(mimeType && mimeType.startsWith('image/')){
     return '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
   }
@@ -3903,7 +3906,7 @@ const RENDERERS = {
         <div class="field"><label>Expiry date</label><input type="date" id="lcf-expiry"></div>
         <div class="field" style="justify-content:flex-end;"><label style="display:flex; align-items:center; gap:8px; text-transform:none; font-family:'Inter'; font-size:12.5px; color:var(--text-dim);"><input type="checkbox" id="lcf-noexpiry" style="width:auto;" onchange="lcToggleNoExpiry()"> This certificate does not expire</label></div>
         <div class="field"><label>Responsible for keeping it current</label><select id="lcf-owner"><option value="">None</option>${memberOptions('')}</select></div>
-        <div class="field span2"><label id="lcf-file-label">Certificate file</label><input type="file" id="lcf-file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.heic"><p id="lcf-file-hint" style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">PDF, Word, Excel or image — up to ${EVIDENCE_MAX_SIZE_MB}MB.</p></div>
+        <div class="field span2"><label id="lcf-file-label">Certificate file</label><input type="file" id="lcf-file" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.rtf,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.webp,.heic,.eml,.msg,.mht,.mhtml,.html,.htm,.mp3,.m4a,.wav,.mp4,.mov"><p id="lcf-file-hint" style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">PDF, Word, Excel or image — up to ${EVIDENCE_MAX_SIZE_MB}MB.</p></div>
         <div class="field span3"><label>Notes</label><textarea id="lcf-notes" placeholder="Anything worth knowing — renewal process, who to contact, conditions attached"></textarea></div>
       </div>
       <div class="form-actions">
@@ -6588,7 +6591,29 @@ async function loadEvidence(entityType, entityId){
 }
 
 const EVIDENCE_MAX_SIZE_MB = 10;
-const EVIDENCE_ALLOWED_EXT = ['pdf','doc','docx','xls','xlsx','jpg','jpeg','png','heic'];
+const DOC_ALLOWED_EXT = ['pdf','doc','docx','xls','xlsx','jpg','jpeg','png','heic'];
+// Evidence accepts everything a document register does PLUS saved emails (Outlook .msg,
+// standard .eml, web-archive .mht/.mhtml), plain text, presentations and common
+// message-capture formats (WhatsApp/voice notes, screenshots).
+const EVIDENCE_ALLOWED_EXT = ['pdf','doc','docx','xls','xlsx','csv','txt','rtf','ppt','pptx','jpg','jpeg','png','gif','webp','heic',
+  'eml','msg','mht','mhtml','html','htm','mp3','m4a','wav','mp4','mov'];
+const EVIDENCE_ACCEPT = '.' + EVIDENCE_ALLOWED_EXT.join(',.');
+const EVIDENCE_MIME_BY_EXT = {
+  eml:'message/rfc822', msg:'application/vnd.ms-outlook', mht:'message/rfc822', mhtml:'message/rfc822',
+  txt:'text/plain', csv:'text/csv', rtf:'application/rtf', html:'text/html', htm:'text/html',
+  ppt:'application/vnd.ms-powerpoint', pptx:'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  mp3:'audio/mpeg', m4a:'audio/mp4', wav:'audio/wav', mp4:'video/mp4', mov:'video/quicktime',
+  pdf:'application/pdf', doc:'application/msword', docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls:'application/vnd.ms-excel', xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  gif:'image/gif', webp:'image/webp', heic:'image/heic', jpg:'image/jpeg', jpeg:'image/jpeg', png:'image/png'
+};
+// Browsers report an empty/odd type for .msg/.eml — settle it from the extension so storage and icons behave.
+function evidenceMime(file){
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  return (file.type && !['application/octet-stream',''].includes(file.type) && !['eml','msg','mht','mhtml'].includes(ext)) ? file.type : (EVIDENCE_MIME_BY_EXT[ext] || file.type || 'application/octet-stream');
+}
+function evidenceUploadOpts(file){ return { contentType: evidenceMime(file) }; }
+const EVIDENCE_FORMAT_TEXT = 'PDF, Word, Excel, PowerPoint, images, saved emails (.msg, .eml), text/CSV, audio or video';
 
 function renderEvidenceSection(entityType, entityId, files){
   const rowsHtml = files.length
@@ -6626,11 +6651,11 @@ function renderEvidenceSection(entityType, entityId, files){
     <div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Evidence &amp; Photographs</div>
     ${rowsHtml}
     <div class="evidence-upload">
-      <input type="file" id="ev-file-${entityType}-${entityId}" multiple>
+      <input type="file" id="ev-file-${entityType}-${entityId}" multiple accept="${EVIDENCE_ACCEPT}">
       <input type="text" id="ev-desc-${entityType}-${entityId}" placeholder="Optional caption — applies to all files in this upload; edit any file's label individually afterward">
       <button class="btn-small primary" onclick="uploadEvidence('${entityType}','${entityId}')">Upload</button>
     </div>
-    <p style="font-size:11px; color:var(--text-faint); margin-top:6px;">You can select more than one file at once. Photos (JPG, PNG) appear as real images in the printed report, each with its own label — the rest attach as supporting documents. Maximum size: ${EVIDENCE_MAX_SIZE_MB}MB per file.</p>
+    <p style="font-size:11px; color:var(--text-faint); margin-top:6px;">You can select more than one file at once. Photos (JPG, PNG) appear as real images in the printed report, each with its own label — the rest attach as supporting documents. <b>Emails:</b> drag the message from Outlook (saves as .msg), use Save As in Outlook or Gmail/Outlook web (.eml), or print the email to PDF — all are accepted and keep their original headers (sender, date, recipients) as evidence. Accepted: ${EVIDENCE_FORMAT_TEXT}. Maximum size: ${EVIDENCE_MAX_SIZE_MB}MB per file.</p>
   </div>`;
 }
 
@@ -6738,7 +6763,7 @@ window.uploadEvidence = async function(entityType, entityId){
     return !EVIDENCE_ALLOWED_EXT.includes(ext);
   });
   if(wrongFormat.length){
-    alert(`These files aren't an accepted format (PDF, Word, Excel, JPG, PNG) and won't be uploaded:\n` + wrongFormat.map(f=>f.name).join('\n'));
+    alert(`These files aren't an accepted format (${EVIDENCE_FORMAT_TEXT}) and won't be uploaded:\n` + wrongFormat.map(f=>f.name).join('\n'));
   }
   const toUpload = files.filter(f => !tooLarge.includes(f) && !wrongFormat.includes(f));
   if(!toUpload.length) return;
@@ -6746,7 +6771,7 @@ window.uploadEvidence = async function(entityType, entityId){
   let successCount = 0, failCount = 0;
   for(const file of toUpload){
     const path = `${STATE.org.id}/${entityType}/${entityId}/${Date.now()}-${sanitizeFileName(file.name)}`;
-    const { error: uploadErr } = await STATE.supabase.storage.from('evidence').upload(path, file);
+    const { error: uploadErr } = await STATE.supabase.storage.from('evidence').upload(path, file, evidenceUploadOpts(file));
     if(uploadErr){ failCount++; continue; }
     const { error: rowErr } = await STATE.supabase.from('evidence_files').insert({
       organisation_id: STATE.org.id,
@@ -6754,7 +6779,7 @@ window.uploadEvidence = async function(entityType, entityId){
       entity_id: entityId,
       file_name: file.name,
       storage_path: path,
-      file_type: file.type,
+      file_type: evidenceMime(file),
       file_size: file.size,
       description: descInput.value.trim(),
       uploaded_by: STATE.user.id,
@@ -14431,7 +14456,7 @@ window.submitLegalCert = async function(){
   if(mode !== 'edit' && !file){ alert('Choose the file to upload.'); return; }
   if(file){
     if(file.size > EVIDENCE_MAX_SIZE_MB * 1024 * 1024){ alert(`That file is over ${EVIDENCE_MAX_SIZE_MB}MB.`); return; }
-    if(!EVIDENCE_ALLOWED_EXT.includes(file.name.split('.').pop().toLowerCase())){ alert('That file format is not supported — use PDF, Word, Excel or an image.'); return; }
+    if(!EVIDENCE_ALLOWED_EXT.includes(file.name.split('.').pop().toLowerCase())){ alert(`That file format is not supported — use ${EVIDENCE_FORMAT_TEXT}.`); return; }
   }
 
   const fields = {
@@ -14449,9 +14474,9 @@ window.submitLegalCert = async function(){
     let fileFields = {};
     if(file){
       const path = `${STATE.org.id}/legal-certs/${Date.now()}-${sanitizeFileName(file.name)}`;
-      const { error: upErr } = await STATE.supabase.storage.from('documents').upload(path, file);
+      const { error: upErr } = await STATE.supabase.storage.from('documents').upload(path, file, evidenceUploadOpts(file));
       if(upErr){ toast('Could not upload the file: ' + upErr.message, 'error'); return; }
-      fileFields = { storage_path: path, file_name: file.name, file_type: file.type, file_size: file.size };
+      fileFields = { storage_path: path, file_name: file.name, file_type: evidenceMime(file), file_size: file.size };
     }
 
     if(mode === 'edit'){
@@ -20338,7 +20363,7 @@ window.uploadAllDocsSmart = async function(){
   if(!files.length){ alert('Choose at least one file first.'); return; }
 
   const tooLarge = files.filter(f => f.size > EVIDENCE_MAX_SIZE_MB * 1024 * 1024);
-  const wrongFormat = files.filter(f => !EVIDENCE_ALLOWED_EXT.includes(f.name.split('.').pop().toLowerCase()));
+  const wrongFormat = files.filter(f => !DOC_ALLOWED_EXT.includes(f.name.split('.').pop().toLowerCase()));
   const toUpload = files.filter(f => !tooLarge.includes(f) && !wrongFormat.includes(f));
   if(tooLarge.length) toast(`${tooLarge.length} file(s) over ${EVIDENCE_MAX_SIZE_MB}MB were skipped.`, 'error');
   if(wrongFormat.length) toast(`${wrongFormat.length} file(s) in an unsupported format were skipped.`, 'error');
@@ -20745,7 +20770,7 @@ window.uploadBulkDocuments = async function(){
   if(!files.length){ alert('Choose at least one file first.'); return; }
 
   const tooLarge = files.filter(f => f.size > EVIDENCE_MAX_SIZE_MB * 1024 * 1024);
-  const wrongFormat = files.filter(f => !EVIDENCE_ALLOWED_EXT.includes(f.name.split('.').pop().toLowerCase()));
+  const wrongFormat = files.filter(f => !DOC_ALLOWED_EXT.includes(f.name.split('.').pop().toLowerCase()));
   const toUpload = files.filter(f => !tooLarge.includes(f) && !wrongFormat.includes(f));
   if(tooLarge.length) toast(`${tooLarge.length} file(s) over ${EVIDENCE_MAX_SIZE_MB}MB were skipped.`, 'error');
   if(wrongFormat.length) toast(`${wrongFormat.length} file(s) in an unsupported format were skipped.`, 'error');
@@ -22859,20 +22884,20 @@ function sfScaleOptions(sel, kind){
 function sfMemberOptions(fid, sel, includeBlank){
   return (includeBlank ? '<option value="">—</option>' : '') + sfTeamOf(fid).map(m => `<option value="${m.id}" ${m.id===sel?'selected':''}>${escapeHtml(sfMemberName(m))}${sfMemberRole(m) ? ' — '+escapeHtml(sfMemberRole(m)) : ''}</option>`).join('');
 }
-function sfFileDropHint(){ return `<p style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">PDF, Word, Excel or image — up to ${EVIDENCE_MAX_SIZE_MB}MB.</p>`; }
+function sfFileDropHint(){ return `<p style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">${EVIDENCE_FORMAT_TEXT} — up to ${EVIDENCE_MAX_SIZE_MB}MB.</p>`; }
 function sfValidateFile(file){
   if(!file) return true;
   if(file.size > EVIDENCE_MAX_SIZE_MB * 1024 * 1024){ alert(`That file is over ${EVIDENCE_MAX_SIZE_MB}MB.`); return false; }
-  if(!EVIDENCE_ALLOWED_EXT.includes(file.name.split('.').pop().toLowerCase())){ alert('That file format is not supported — use PDF, Word, Excel or an image.'); return false; }
+  if(!EVIDENCE_ALLOWED_EXT.includes(file.name.split('.').pop().toLowerCase())){ alert(`That file format is not supported — use ${EVIDENCE_FORMAT_TEXT}.`); return false; }
   return true;
 }
 async function sfUploadFile(fileId, file){
   let f = file;
   if(f.type && f.type.startsWith('image/')){ const r = await resizeImageFile(f); if(r.ok) f = r.file; }
   const path = `${STATE.org.id}/site-files/${fileId}/${Date.now()}-${sanitizeFileName(f.name)}`;
-  const { error } = await STATE.supabase.storage.from('documents').upload(path, f);
+  const { error } = await STATE.supabase.storage.from('documents').upload(path, f, evidenceUploadOpts(f));
   if(error){ toast('Could not upload the file: ' + error.message, 'error'); return null; }
-  return { storage_path: path, file_name: f.name, file_type: f.type, file_size: f.size };
+  return { storage_path: path, file_name: f.name, file_type: evidenceMime(f), file_size: f.size };
 }
 async function sfRemoveStored(paths){
   const list = (paths || []).filter(Boolean);
@@ -23380,7 +23405,7 @@ window.sfOpenItemForm = function(fid, optsJson){
         <div class="field"><label>Issue date</label><input type="date" id="sfi-issue"></div>
         <div class="field"><label>Expiry date</label><input type="date" id="sfi-expiry"></div>
         <div class="field span3"><label class="sf-inline"><input type="checkbox" id="sfi-noexp" onchange="document.getElementById('sfi-expiry').disabled=this.checked; if(this.checked) document.getElementById('sfi-expiry').value='';"> This document does not expire</label></div>
-        <div class="field span3"><label>File</label><input type="file" id="sfi-file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.heic">${sfFileDropHint()}</div>
+        <div class="field span3"><label>File</label><input type="file" id="sfi-file" accept="${EVIDENCE_ACCEPT}">${sfFileDropHint()}</div>
         <div class="field span3"><label>Notes</label><textarea id="sfi-notes" rows="2"></textarea></div>
       </div>
     </div>
@@ -24169,7 +24194,7 @@ window.sfOpenApptForm = function(fid, apptId){
       <div id="sfa-comp-note" class="field span3"></div>
       ${a ? `<div class="field"><label class="sf-inline"><input type="checkbox" id="sfa-acc" ${a.accepted?'checked':''}> Accepted and signed by the appointee</label></div>
       <div class="field"><label>Date signed</label><input type="date" id="sfa-acc-date" value="${a.accepted_date||todayISO()}"></div>
-      <div class="field span3"><label>Signed letter (upload)</label><input type="file" id="sfa-file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">${a.file_name ? `<p style="font-size:11.5px; color:var(--text-faint); margin-top:4px;">Current: ${escapeHtml(a.file_name)} — leave empty to keep it.</p>` : sfFileDropHint()}</div>` : ''}
+      <div class="field span3"><label>Signed letter (upload)</label><input type="file" id="sfa-file" accept="${EVIDENCE_ACCEPT}">${a.file_name ? `<p style="font-size:11.5px; color:var(--text-faint); margin-top:4px;">Current: ${escapeHtml(a.file_name)} — leave empty to keep it.</p>` : sfFileDropHint()}</div>` : ''}
       <div class="field span3"><label>Notes</label><input id="sfa-notes" value="${escapeHtml(a ? a.notes||'' : '')}"></div>
     </div>`,
     `<button class="btn-cancel" onclick="sfCloseModal()">Cancel</button><button class="btn-primary" id="sfa-save" onclick="sfSaveAppt('${fid}','${apptId||''}')">Save</button>`, true);
