@@ -1654,6 +1654,7 @@ window.selectOrg = async function(orgId){
     loadAssetChecklistTemplates(),
     loadAssetChecklistItems(),
     loadAssets(),
+    loadAssetMaintenance(),
     loadAssetInspectionsSummary(),
     loadBulletins(),
     loadAttendance(),
@@ -2709,6 +2710,8 @@ const DATE_TRACKED_MODULES = [
   { key:'appraisals', label:'KPIs & Appraisals', list:() => STATE.appraisals, dateField:'period_end', isResolved:x=>x.status==='finalized', titleField:null, getPerson:x=>{const p=personById(x.personnel_id); return p?p.full_name:'—';} },
   { key:'assets', label:'Assets — Inspection Due', list:() => STATE.assets, dateField:'next_inspection_date', isResolved:() => false, titleField:'description', getPerson:x=>{const p=x.responsible_person_id?personById(x.responsible_person_id):null; return p?p.full_name:'—';} },
   { key:'assets', label:'Assets — Certificate Expiry', list:() => STATE.assets, dateField:'certificate_expiry_date', isResolved:() => false, titleField:'description', getPerson:x=>{const p=x.responsible_person_id?personById(x.responsible_person_id):null; return p?p.full_name:'—';} },
+  { key:'assets', label:'Assets — Warranty Expiry', list:() => (STATE.assets||[]).filter(a=>a.lifecycle_status!=='disposed' && a.warranty_expiry_date), dateField:'warranty_expiry_date', isResolved:() => false, titleField:'description', getPerson:x=>{const p=x.responsible_person_id?personById(x.responsible_person_id):null; return p?p.full_name:'—';} },
+  { key:'assets', label:'Assets — Service Due', list:() => (STATE.assets||[]).filter(a=>a.lifecycle_status!=='disposed').map(a=>({...a, _svc: assetNextService(a)})).filter(a=>a._svc), dateField:'_svc', isResolved:() => false, titleField:'description', getPerson:x=>{const p=x.responsible_person_id?personById(x.responsible_person_id):null; return p?p.full_name:'—';} },
   { key:'legal_certs', label:'Legal Documents & Certificates — Expiry', list:() => canAccessModule('legal_certs') ? (STATE.legalCerts||[]).filter(c=>!c.archived) : [], dateField:'expiry_date', isResolved:() => false, titleField:'title', getPerson:x=>x.owner_id ? memberName(x.owner_id) : (x.held_by || '—') },
   { key:'process_flowcharts', label:'Process KPIs — Reading Due', list:() => (canAccessModule('process_flowcharts') ? (STATE.orgKpis||[]).filter(k=>k.is_active).map(k=>({...k, _due: kpiInfo(k).due})) : []), dateField:'_due', isResolved:() => false, titleField:'name', getPerson:x=>x.owner_id ? memberName(x.owner_id) : '—' },
   { key:'management_review', label:'Management Review — Next Meeting Due', list:() => STATE.managementReviews, dateField:'next_meeting_date', isResolved:() => false, titleField:null, getPerson:x=>memberName(x.chair_id) },
@@ -3725,50 +3728,88 @@ const RENDERERS = {
     <div class="toolbar">
       <div class="filters">
         <select id="asset-filter-status" onchange="renderAssetsTable()">
-          <option value="">All statuses</option>
-          ${optionList(ASSET_STATUSES)}
+          <option value="">All assets</option>
+          <option value="healthy">Healthy</option>
+          <option value="attention">Needs attention</option>
+          <option value="overdue">Inspection overdue</option>
+          <option value="quarantine">Quarantined</option>
+        </select>
+        <select id="asset-filter-category" onchange="renderAssetsTable()">
+          <option value="">All categories</option>
+          ${ASSET_CATEGORIES.map(c=>`<option value="${c.key}">${c.label}</option>`).join('')}
         </select>
       </div>
-      <div style="display:flex; gap:8px;">
-        <button class="btn-small" onclick="toggleAssetChecklistsPanel()">Inspection Checklists</button>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn-small" onclick="assetEmailAllDue()">Email due reminders</button>
         <button class="btn-small" onclick="exportModuleExcel('assets')">Export Excel</button>
-      <button class="btn-small" onclick="printCurrentRegister('assets','Assets Register')">Print Register</button>
-      <button class="btn-primary btn-add" onclick="toggleAssetForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Asset</button>
+        <button class="btn-small" onclick="printCurrentRegister('assets','Assets Register')">Print Register</button>
+        <button class="btn-primary btn-add" onclick="toggleAssetForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Asset</button>
       </div>
     </div>
 
-    <div class="form-panel" id="asset-checklists-panel">
-      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:6px;">Inspection checklist templates</h3>
-      <p style="font-size:12px; color:var(--text-faint); margin-bottom:14px;">A checklist is reusable — link it to as many assets as use the same inspection criteria (all your fire extinguishers, all your slings, etc.). Editing it later doesn't rewrite past inspections; each one keeps a snapshot of what was actually checked.</p>
-      <div class="form-grid" style="margin-bottom:10px;">
-        <div class="field span2"><label>New template title</label><input id="acl-new-title" placeholder="e.g. Lifting Equipment Pre-Use Inspection"></div>
-        <button class="btn-small primary" onclick="addAssetChecklistTemplate()" style="align-self:flex-end;">Add template</button>
-      </div>
-      <div class="form-grid" style="margin-bottom:10px;">
-        <div class="field"><label>Template</label><select id="acl-panel-template" onchange="renderAssetChecklistItemsList()">${STATE.assetChecklistTemplates.map(t=>`<option value="${t.id}">${t.title}</option>`).join('')}</select></div>
-      </div>
-      <div id="asset-checklist-items-list" style="margin-bottom:14px;"></div>
-      <div class="form-grid">
-        <div class="field span3"><label>New inspection criterion</label><input id="acl-item-new-text" placeholder="e.g. Hooks free from cracks, deformation or excessive wear"></div>
-      </div>
-      <button class="btn-small primary" onclick="addAssetChecklistItem()">Add criterion</button>
-    </div>
+    <div id="asset-summary"></div>
 
     <div class="form-panel" id="asset-form">
-      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:14px;">Add an asset</h3>
-      <div class="form-grid">
-        <div class="field span2"><label>Description</label><input id="asf-description" placeholder="e.g. 2-Tonne Chain Hoist"></div>
-        <div class="field"><label>Serial number</label><input id="asf-serial"></div>
-        <div class="field"><label>Location</label><input id="asf-location"></div>
-        <div class="field"><label>Responsible person</label><select id="asf-responsible"><option value="">None</option>${STATE.personnel.map(p=>`<option value="${p.id}">${p.full_name}</option>`).join('')}</select></div>
-        <div class="field"><label>Inspection checklist (optional)</label><select id="asf-checklist"><option value="">None</option>${STATE.assetChecklistTemplates.map(t=>`<option value="${t.id}">${t.title}</option>`).join('')}</select></div>
-        <div class="field"><label>Certificate type (optional)</label><input id="asf-cert-type" placeholder="e.g. Load Test Certificate"></div>
-        <div class="field"><label>Certificate expiry date (optional)</label><input type="date" id="asf-cert-expiry"></div>
-        <div class="field span3"><label>Notes</label><textarea id="asf-notes"></textarea></div>
+      <style>
+        .nw-steps{display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;}
+        .nw-step{flex:1; min-width:140px; padding:8px 12px; border-radius:8px; background:var(--grey-tint); font-size:12px; color:var(--text-faint); font-weight:600;}
+        .nw-step.on{background:var(--ink,#111); color:#fff;} .nw-step.done{background:var(--green-tint); color:var(--green);}
+        .nw-tpl{border:1.5px solid var(--border); border-radius:10px; padding:9px 14px; margin-bottom:8px; cursor:pointer; background:var(--panel);}
+        .nw-tpl:hover{border-color:var(--text-faint);} .nw-tpl.sel{border-color:var(--red); background:var(--grey-tint);}
+      </style>
+      <h3 style="font-family:'Poppins'; font-size:15.5px; font-weight:600; margin-bottom:12px;">New asset</h3>
+      <div class="nw-steps">
+        <div class="nw-step on" id="nw-step-1">1 · What is it?</div>
+        <div class="nw-step" id="nw-step-2">2 · Inspection checklist</div>
+        <div class="nw-step" id="nw-step-3">3 · Schedule &amp; create</div>
       </div>
-      <div class="form-actions">
-        <button class="btn-cancel" onclick="toggleAssetForm()">Cancel</button>
-        <button class="btn-primary" onclick="submitAsset()">Add asset</button>
+
+      <div id="nw-pane-1">
+        <div class="form-grid">
+          <div class="field span2"><label>What is the asset called?</label><input id="asf-description" placeholder="e.g. 2-Tonne Chain Hoist, Reception Laptop, Workshop First Aid Box"></div>
+          <div class="field"><label>Category</label><select id="asf-category" onchange="nwCategoryChanged()">${ASSET_CATEGORIES.map(c=>`<option value="${c.key}">${c.label}</option>`).join('')}</select></div>
+          <div class="field span3"><label>What is it used for?</label><textarea id="asf-about" placeholder="Where and how it is used, and anything that makes it a risk (e.g. lifts loads over people, holds company data, used for first aid). The AI assistant uses this to build the checklist."></textarea></div>
+          <div class="field"><label>Serial number</label><input id="asf-serial"></div>
+          <div class="field"><label>Make / model</label><input id="asf-makemodel"></div>
+          <div class="field"><label>Location</label><input id="asf-location"></div>
+          <div class="field"><label>Responsible person (gets the reminders)</label><select id="asf-responsible"><option value="">None</option>${STATE.personnel.map(p=>`<option value="${p.id}">${p.full_name}</option>`).join('')}</select></div>
+          <div class="field"><label>How critical is it?</label><select id="asf-criticality"><option value="">Not rated</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High (safety or production critical)</option></select></div>
+          <div class="field"><label>Purchased</label><input type="date" id="asf-purchase"></div>
+          <div class="field"><label>Warranty expires</label><input type="date" id="asf-warranty"></div>
+          <div class="field"><label>Certificate type (if any)</label><input id="asf-cert-type" placeholder="e.g. Load Test Certificate"></div>
+          <div class="field"><label>Certificate expiry</label><input type="date" id="asf-cert-expiry"></div>
+        </div>
+        <div class="form-actions"><button class="btn-cancel" onclick="toggleAssetForm()">Cancel</button><button class="btn-primary" onclick="nwNext()">Next: inspection checklist</button></div>
+      </div>
+
+      <div id="nw-pane-2" style="display:none;">
+        <p style="font-size:12.5px; color:var(--text-dim); margin-bottom:10px;">Pick a ready-made checklist from the template library, or one you already use, and/or upload an old inspection form so the AI assistant can match your current criteria. Both are optional, and you can edit the checklist afterwards.</p>
+        <div id="nw-mine"></div>
+        <div class="form-grid">
+          <div class="field span2"><label>Search the template library</label><input id="nw-search" placeholder="e.g. fire, sling, forklift, laptop…" oninput="nwRenderTemplates()"></div>
+          <div class="field"><label>Show</label><select id="nw-scope" onchange="nwRenderTemplates()"><option value="assets">Asset checklists</option><option value="all">All checklists</option></select></div>
+        </div>
+        <div id="nw-template-list" style="max-height:280px; overflow-y:auto; margin-bottom:14px;"></div>
+        <div class="field"><label>Upload an existing inspection form for context (.docx or .pdf)</label><input type="file" id="nw-ref-file" accept=".docx,.pdf" onchange="nwRefChosen()"></div>
+        <p id="nw-ref-status" style="font-size:12px; color:var(--text-faint); margin:4px 0 10px;"></p>
+        <div class="form-actions"><button class="btn-cancel" onclick="nwShowStep(1)">Back</button><button class="btn-primary" onclick="nwNext()">Next</button></div>
+      </div>
+
+      <div id="nw-pane-3" style="display:none;">
+        <div class="form-grid">
+          <div class="field"><label>Inspect every</label><select id="asf-freq">${Object.entries(ASSET_FREQ).map(([k,f])=>`<option value="${k}">${f.label}</option>`).join('')}</select></div>
+          <div class="field"><label>Remind the responsible person</label><select id="asf-remind"><option value="3">3 days before</option><option value="7" selected>7 days before</option><option value="14">14 days before</option><option value="30">30 days before</option></select></div>
+          <div class="field"><label>First inspection due</label><input type="date" id="asf-first"></div>
+          <div class="field span3"><label>Notes</label><textarea id="asf-notes"></textarea></div>
+        </div>
+        <div id="nw-summary" style="background:var(--grey-tint); border-radius:8px; padding:12px 16px; font-size:12.5px; margin:6px 0;"></div>
+        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:10px;">
+          <button class="btn-primary" onclick="submitAsset('ai')">Create with the AI assistant (recommended)</button>
+          <button class="btn-small" onclick="submitAsset('pick')">Use the chosen checklist as it is</button>
+          <button class="btn-small" onclick="submitAsset('none')">Create without a checklist</button>
+        </div>
+        <p style="font-size:11.5px; color:var(--text-faint); margin:10px 0;">The asset opens with its QR code, photo, health dial and inspection schedule. Anyone can scan the QR code to complete an inspection on their phone; Watchman updates automatically.</p>
+        <div class="form-actions" style="justify-content:flex-start;"><button class="btn-cancel" onclick="nwShowStep(2)">Back</button></div>
       </div>
     </div>
 
@@ -13219,60 +13260,276 @@ window.deleteAssetChecklistItem = async function(itemId){
   toast('Criterion deleted.', 'success');
 };
 
-/* ---- New asset ---- */
-function toggleAssetForm(){ document.getElementById('asset-form').classList.toggle('open'); }
+/* ---- New asset wizard ---- */
+function toggleAssetForm(){
+  const f = document.getElementById('asset-form');
+  const opening = !f.classList.contains('open');
+  f.classList.toggle('open');
+  if(opening){ STATE._nw = { step:1, pick:null, refFile:null, refText:null }; nwCategoryChanged(); nwShowStep(1); }
+}
 window.toggleAssetForm = toggleAssetForm;
+function nwShowStep(n){
+  STATE._nw = STATE._nw || { step:1, pick:null, refFile:null, refText:null };
+  STATE._nw.step = n;
+  [1,2,3].forEach(i => {
+    const pane = document.getElementById('nw-pane-'+i); if(pane) pane.style.display = (i===n) ? 'block' : 'none';
+    const st = document.getElementById('nw-step-'+i); if(st) st.className = 'nw-step' + (i===n ? ' on' : (i<n ? ' done' : ''));
+  });
+  if(n===2) nwLoadStep2();
+  if(n===3) nwSummary();
+}
+window.nwShowStep = nwShowStep;
+window.nwNext = function(){
+  const n = (STATE._nw && STATE._nw.step) || 1;
+  if(n===1 && !document.getElementById('asf-description').value.trim()){ alert('Please name the asset first.'); return; }
+  nwShowStep(n+1);
+};
+window.nwCategoryChanged = function(){
+  const c = ASSET_CATEGORIES.find(x=>x.key===document.getElementById('asf-category').value);
+  const f = document.getElementById('asf-freq'); if(c && f) f.value = c.freq;
+};
+async function nwLoadStep2(){
+  const list = document.getElementById('nw-template-list'); if(!list) return;
+  if(!STATE.contentTemplates.length){ list.innerHTML = '<p style="font-size:12.5px; color:var(--text-faint);">Loading templates…</p>'; await loadContentTemplates(); }
+  nwRenderMine(); nwRenderTemplates();
+}
+function nwRenderMine(){
+  const el = document.getElementById('nw-mine'); if(!el) return;
+  const sel = STATE._nw.pick;
+  el.innerHTML = STATE.assetChecklistTemplates.length ? `<div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Checklists you already use</div>` +
+    STATE.assetChecklistTemplates.map(t => `<div class="nw-tpl ${sel&&sel.kind==='org'&&sel.id===t.id?'sel':''}" onclick="nwPick('org','${t.id}')"><b style="font-size:13px;">${escapeHtml(t.title)}</b></div>`).join('') + '<div style="height:8px;"></div>' : '';
+}
+window.nwRenderTemplates = function(){
+  const list = document.getElementById('nw-template-list'); if(!list) return;
+  const q = (document.getElementById('nw-search').value||'').toLowerCase(), scope = document.getElementById('nw-scope').value;
+  const cat = ASSET_CATEGORIES.find(x=>x.key===document.getElementById('asf-category').value);
+  const sel = STATE._nw.pick;
+  let rows = (STATE.contentTemplates||[]).filter(t => t.type==='checklist' && (scope==='all' || t.module_key==='assets') && (!q || (t.title||'').toLowerCase().includes(q) || (t.description||'').toLowerCase().includes(q)));
+  const score = t => (cat ? cat.kw.filter(k => (t.title||'').toLowerCase().includes(k.trim())).length : 0);
+  rows = rows.map(t => ({ t, m: score(t) })).sort((a,b)=> b.m - a.m || (a.t.title < b.t.title ? -1 : 1));
+  list.innerHTML = rows.length ? `<div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Template library${cat && cat.kw.length ? ' (best matches for ' + escapeHtml(cat.label) + ' first)' : ''}</div>` + rows.map(({t,m}) => {
+    const n = (STATE.contentTemplateChecklistItems||[]).filter(x=>x.template_id===t.id).length;
+    return `<div class="nw-tpl ${sel&&sel.kind==='gen'&&sel.id===t.id?'sel':''}" onclick="nwPick('gen','${t.id}')"><div style="font-weight:600; font-size:13px;">${escapeHtml(t.title)}${m?' <span style="color:var(--green); font-size:10.5px;">· suggested</span>':''}</div><div style="font-size:12px; color:var(--text-dim);">${escapeHtml(t.description||'')}</div><div style="font-size:11px; color:var(--text-faint);">${n} criteria${(t.standard_refs&&t.standard_refs.length)?' · '+escapeHtml(t.standard_refs.join(', ')):''}</div></div>`;
+  }).join('') : '<p style="font-size:12.5px; color:var(--text-faint);">No templates match. You can still continue and let the AI assistant build the checklist.</p>';
+};
+window.nwPick = function(kind, id){
+  const cur = STATE._nw.pick;
+  STATE._nw.pick = (cur && cur.kind===kind && cur.id===id) ? null : { kind, id };
+  nwRenderMine(); nwRenderTemplates();
+};
+window.nwRefChosen = async function(){
+  const f = document.getElementById('nw-ref-file').files[0], st = document.getElementById('nw-ref-status');
+  STATE._nw.refFile = f || null; STATE._nw.refText = null;
+  if(!f){ st.textContent = ''; return; }
+  st.textContent = 'Reading the form…';
+  STATE._nw.refText = await extractReferenceText(f);
+  st.textContent = STATE._nw.refText ? 'Ready: the AI assistant will use this for context.' : 'No text could be read from this file (scanned image?). Describe the asset in step 1 instead.';
+};
+function nwPickedTitle(){
+  const p = STATE._nw && STATE._nw.pick; if(!p) return null;
+  if(p.kind==='org'){ const t = STATE.assetChecklistTemplates.find(x=>x.id===p.id); return t ? t.title : null; }
+  const t = (STATE.contentTemplates||[]).find(x=>x.id===p.id); return t ? t.title : null;
+}
+function nwSummary(){
+  const el = document.getElementById('nw-summary'); if(!el) return;
+  const w = STATE._nw;
+  el.innerHTML = `<b>${escapeHtml(document.getElementById('asf-description').value.trim())}</b> · ${escapeHtml(assetCategoryLabel(document.getElementById('asf-category').value))}<br>
+    Checklist: ${nwPickedTitle() ? escapeHtml(nwPickedTitle()) : '<span style="color:var(--text-faint);">none chosen</span>'} &nbsp;·&nbsp; Existing form: ${w.refFile ? escapeHtml(w.refFile.name) : '<span style="color:var(--text-faint);">none</span>'}`;
+}
+// Copies a library checklist into this organisation's own asset checklists (reusing it if it is already there).
+async function nwMaterialiseGeneric(templateId){
+  const t = (STATE.contentTemplates||[]).find(x=>x.id===templateId); if(!t) return null;
+  const existing = STATE.assetChecklistTemplates.find(x=>x.title === t.title);
+  if(existing) return existing.id;
+  const items = (STATE.contentTemplateChecklistItems||[]).filter(x=>x.template_id===templateId).sort((a,b)=>a.sort_order-b.sort_order);
+  return await nwCreateChecklist(t.title, items.map(i=>i.item_text));
+}
+async function nwCreateChecklist(title, texts){
+  const { data: tpl, error } = await STATE.supabase.from('asset_checklist_templates').insert({ organisation_id: STATE.org.id, title: title.slice(0,150), created_by: STATE.user.id }).select().single();
+  if(error) throw new Error('Could not create the checklist: ' + error.message);
+  if(texts.length){
+    const { error: e2 } = await STATE.supabase.from('asset_checklist_items').insert(texts.map((tx,i)=>({ organisation_id: STATE.org.id, template_id: tpl.id, item_text: tx, sort_order: (i+1)*10 })));
+    if(e2) throw new Error('Checklist created, but its criteria could not be saved: ' + e2.message);
+  }
+  return tpl.id;
+}
 
-window.submitAsset = async function(){
+window.submitAsset = async function(mode){
+  mode = mode || 'none';
+  const w = STATE._nw || {};
   const description = document.getElementById('asf-description').value.trim();
   if(!description){ alert('Description is required.'); return; }
-  const { data: newAsset, error } = await STATE.supabase.from('assets').insert({
-    organisation_id: STATE.org.id, description,
-    serial_number: document.getElementById('asf-serial').value.trim(),
-    location: document.getElementById('asf-location').value.trim(),
-    responsible_person_id: document.getElementById('asf-responsible').value || null,
-    checklist_template_id: document.getElementById('asf-checklist').value || null,
-    certificate_type: document.getElementById('asf-cert-type').value.trim(),
-    certificate_expiry_date: document.getElementById('asf-cert-expiry').value || null,
-    notes: document.getElementById('asf-notes').value.trim(),
-    created_by: STATE.user.id,
-  }).select().single();
-  if(error){ toast('Could not add asset: ' + error.message, 'error'); return; }
-  toggleAssetForm();
-  document.querySelectorAll('#asset-form input, #asset-form textarea').forEach(el=>el.value='');
-  await loadAssets();
-  renderAssetsTable();
-  updateNavBadges();
-  toast(`${newAsset.ref_code} added.`, 'success');
+  const category = document.getElementById('asf-category').value, about = document.getElementById('asf-about').value.trim();
+  if(mode==='pick' && !w.pick){ alert('Choose a checklist in step 2 first, or pick another option.'); return; }
+  showLoader(mode==='ai' ? 'Building the inspection checklist…' : 'Creating the asset…');
+  try {
+    let checklistId = null;
+    if(mode==='pick' || mode==='ai'){
+      const pick = w.pick;
+      let baseItems = [];
+      if(pick && pick.kind==='org'){
+        if(mode==='pick') checklistId = pick.id;
+        baseItems = STATE.assetChecklistItems.filter(i=>i.template_id===pick.id && i.is_active).map(i=>i.item_text);
+      } else if(pick && pick.kind==='gen'){
+        baseItems = (STATE.contentTemplateChecklistItems||[]).filter(x=>x.template_id===pick.id).sort((a,b)=>a.sort_order-b.sort_order).map(i=>i.item_text);
+        if(mode==='pick') checklistId = await nwMaterialiseGeneric(pick.id);
+      }
+      if(mode==='ai'){
+        const cat = assetCategoryLabel(category);
+        const prompt = `You are writing a practical, ISO 45001-aligned inspection checklist for an organisation's asset.
+Asset: ${description}
+Category: ${cat}
+What it is used for: ${about || 'not stated'}${baseItems.length ? '\n\nStart from these standard criteria (keep what applies, remove what does not, add what is missing for this specific asset):\n' + baseItems.map(x=>'- '+x).join('\n') : ''}${w.refText ? '\n\nThe organisation\'s current inspection form is below. Match its terminology and what it checks, but improve its clarity:\n"""' + w.refText.substring(0,7000) + '"""' : ''}
+
+Write 6 to 14 clear, checkable criteria, each a short statement that can be rated from 1 (perfect) to 5 (write off), covering identification/certification, physical condition, safe operation, safety devices and records where relevant. Return ONLY valid JSON, no other text and no markdown fences, in exactly this shape:
+{"title": "Chain Hoist Inspection Checklist", "items": ["Criterion one", "Criterion two"]}
+The JSON must be strictly valid: escape double quotes inside strings as \\" and do not use line breaks inside strings.`;
+        try {
+          const { data: sd } = await STATE.supabase.auth.getSession();
+          const token = sd && sd.session && sd.session.access_token;
+          let parsed = await requestAiDraftSections(token, prompt);
+          if(!parsed || !Array.isArray(parsed.items) || !parsed.items.length) parsed = await requestAiDraftSections(token, prompt);
+          if(!parsed || !Array.isArray(parsed.items) || !parsed.items.length) throw new Error('unreadable');
+          const items = parsed.items.map(x => typeof x === 'string' ? x : (x && (x.text || x.item_text) || '')).filter(Boolean).slice(0,30);
+          checklistId = await nwCreateChecklist(parsed.title || (description + ' Inspection Checklist'), items);
+        } catch(e) {
+          if(baseItems.length){ checklistId = pick.kind==='org' ? pick.id : await nwMaterialiseGeneric(pick.id); toast('The assistant could not build a checklist, so the chosen template was used instead.', 'error'); }
+          else toast('The assistant could not build a checklist. The asset will be created without one; you can add criteria on its page.', 'error');
+        }
+      }
+    }
+    const freq = document.getElementById('asf-freq').value;
+    const first = document.getElementById('asf-first').value || (() => { const d = new Date(); d.setUTCDate(d.getUTCDate()+7); return d.toISOString().slice(0,10); })();
+    const { data: newAsset, error } = await STATE.supabase.from('assets').insert({
+      organisation_id: STATE.org.id, description, asset_category: category, about: about || null,
+      serial_number: document.getElementById('asf-serial').value.trim(), make_model: document.getElementById('asf-makemodel').value.trim() || null,
+      location: document.getElementById('asf-location').value.trim(),
+      responsible_person_id: document.getElementById('asf-responsible').value || null, criticality: document.getElementById('asf-criticality').value || null,
+      purchase_date: document.getElementById('asf-purchase').value || null, warranty_expiry_date: document.getElementById('asf-warranty').value || null,
+      checklist_template_id: checklistId, certificate_type: document.getElementById('asf-cert-type').value.trim(),
+      certificate_expiry_date: document.getElementById('asf-cert-expiry').value || null,
+      inspection_frequency: freq, inspection_reminder_days: Number(document.getElementById('asf-remind').value) || 7, next_inspection_date: first,
+      notes: document.getElementById('asf-notes').value.trim(), created_by: STATE.user.id,
+    }).select().single();
+    if(error){ toast('Could not add the asset: ' + error.message + (/column/.test(error.message) ? ' (run the assets-revamp SQL first)' : ''), 'error'); return; }
+    toggleAssetForm();
+    document.querySelectorAll('#asset-form input:not([type=file]), #asset-form textarea').forEach(el=>el.value='');
+    await Promise.all([loadAssets(), loadAssetChecklistTemplates(), loadAssetChecklistItems()]);
+    renderAssetsTable(); updateNavBadges();
+    openAssetDetail(newAsset.id);
+    toast(`${newAsset.ref_code} added. Add a photo and print its QR label.`, 'success');
+  } catch(e) { toast(e.message, 'error'); }
+  finally { hideLoader(); }
 };
+
+/* ================= Assets: categories, cadence, health ================= */
+const ASSET_CATEGORIES = [
+  { key:'it', label:'Computers & IT', freq:'annually', kw:['computer','laptop','it '] },
+  { key:'office', label:'Office equipment & furniture', freq:'quarterly', kw:['office'] },
+  { key:'workshop', label:'Workshop machinery & equipment', freq:'daily', kw:['machine','workshop','welding'] },
+  { key:'tools', label:'Hand & power tools', freq:'monthly', kw:['tool'] },
+  { key:'lifting', label:'Lifting equipment (slings, chains, hoists)', freq:'monthly', kw:['lifting','sling'] },
+  { key:'mobile', label:'Vehicles & mobile plant', freq:'daily', kw:['forklift','vehicle','mobile'] },
+  { key:'fire', label:'Fire equipment', freq:'monthly', kw:['fire extinguisher','fire'] },
+  { key:'firstaid', label:'First aid & emergency equipment', freq:'monthly', kw:['first aid','eyewash','emergency'] },
+  { key:'electrical', label:'Electrical & power', freq:'quarterly', kw:['electrical','generator'] },
+  { key:'pressure', label:'Pressure equipment', freq:'monthly', kw:['compressor','pressure'] },
+  { key:'access', label:'Ladders, access & fall protection', freq:'monthly', kw:['ladder','harness','fall'] },
+  { key:'ppe', label:'PPE', freq:'monthly', kw:['ppe'] },
+  { key:'storage', label:'Racking, storage & chemicals', freq:'quarterly', kw:['racking','chemical','storage'] },
+  { key:'environmental', label:'Environmental (spill kits etc.)', freq:'monthly', kw:['spill'] },
+  { key:'measuring', label:'Measuring & calibration equipment', freq:'annually', kw:['calibration','measuring'] },
+  { key:'facilities', label:'Buildings & facilities', freq:'monthly', kw:['emergency','exit','alarm'] },
+  { key:'other', label:'Other', freq:'monthly', kw:[] },
+];
+const ASSET_FREQ = { daily:{label:'Every day'}, weekly:{label:'Every week'}, monthly:{label:'Every month'}, quarterly:{label:'Every quarter'}, six_monthly:{label:'Every six months'}, annually:{label:'Every year'} };
+function assetCategoryLabel(k){ const c = ASSET_CATEGORIES.find(x=>x.key===k); return c ? c.label : '—'; }
+function assetAddPeriod(iso, freq){
+  const d = new Date(iso + 'T00:00:00Z');
+  if(freq === 'daily') d.setUTCDate(d.getUTCDate()+1); else if(freq === 'weekly') d.setUTCDate(d.getUTCDate()+7);
+  else if(freq === 'monthly') d.setUTCMonth(d.getUTCMonth()+1); else if(freq === 'quarterly') d.setUTCMonth(d.getUTCMonth()+3);
+  else if(freq === 'six_monthly') d.setUTCMonth(d.getUTCMonth()+6); else if(freq === 'annually') d.setUTCFullYear(d.getUTCFullYear()+1);
+  else return null;
+  return d.toISOString().slice(0,10);
+}
+function assetScanUrl(a){ return `${window.location.origin}${window.location.pathname.replace(/index\.html$/,'')}qashe-watchman-asset-scan.html?t=${a.qr_token}`; }
+function assetPhotoUrl(a){ if(!a || !a.photo_path) return null; const { data } = STATE.supabase.storage.from('avatars').getPublicUrl(a.photo_path); return data ? data.publicUrl : null; }
+function assetNextService(a){
+  const rs = (STATE.assetMaintenance||[]).filter(m=>m.asset_id===a.id && m.next_service_date).sort((x,y)=>x.maintenance_date<y.maintenance_date?1:-1);
+  return rs.length ? rs[0].next_service_date : null;
+}
+// One health number per asset, from what is actually known about it. The dial shows the number; the reasons say why.
+function assetHealthInfo(a){
+  const today = todayISO(), reasons = [];
+  if(a.lifecycle_status === 'out_of_service') return { pct:null, key:'grey', label:'Out of service', reasons:['Marked out of service'] };
+  const comp = assetComplianceScore(a.id);
+  if(comp === null){
+    if(a.current_status === 'quarantine') return { pct:25, key:'red', label:'Quarantined', reasons:['Quarantined'] };
+    return { pct:null, key:'grey', label:'Not yet inspected', reasons:['No scored inspection yet'] };
+  }
+  let pct = comp; reasons.push('Latest inspection scored ' + comp + '%');
+  if(a.next_inspection_date && a.next_inspection_date < today){ pct -= 15; reasons.push('Inspection overdue'); }
+  const svc = assetNextService(a); if(svc && svc < today){ pct -= 10; reasons.push('Service overdue'); }
+  if(a.certificate_expiry_date && a.certificate_expiry_date < today){ pct = Math.min(pct, 40); reasons.push('Certificate expired'); }
+  if(a.warranty_expiry_date && a.warranty_expiry_date < today) reasons.push('Out of warranty');
+  if(a.current_status === 'quarantine'){ pct = Math.min(pct, 25); reasons.push('Quarantined'); }
+  pct = Math.max(0, Math.min(100, Math.round(pct)));
+  const st = wdStatus(pct);
+  return { pct, key: st.key, label: st.label, reasons };
+}
+function assetIsOverdue(a){ return !!(a.next_inspection_date && a.next_inspection_date < todayISO() && a.lifecycle_status !== 'out_of_service'); }
+window.loadAssetMaintenance = async function(){
+  const { data, error } = await STATE.supabase.from('asset_maintenance_records').select('*').eq('organisation_id', STATE.org.id).order('maintenance_date', {ascending:false});
+  STATE.assetMaintenance = error ? [] : (data || []);
+};
+
+function renderAssetSummary(){
+  const el = document.getElementById('asset-summary'); if(!el) return;
+  const list = STATE.assets.filter(a=>a.lifecycle_status !== 'disposed');
+  const infos = list.map(a => ({ a, h: assetHealthInfo(a) }));
+  const healthy = infos.filter(x=>x.h.key==='green').length, attn = infos.filter(x=>x.h.key==='amber'||x.h.key==='red').length;
+  const overdue = list.filter(assetIsOverdue).length, quar = list.filter(a=>a.current_status==='quarantine').length;
+  const scored = infos.filter(x=>x.h.pct!=null), avg = scored.length ? Math.round(scored.reduce((s,x)=>s+x.h.pct,0)/scored.length) : null;
+  el.innerHTML = `<div class="mr-stat-row" style="margin-bottom:14px;">
+    ${mrStatCard(list.length, 'Assets', null, null)}
+    ${mrStatCard(avg==null?'—':avg+'%', 'Average health', null, avg==null?null:(avg>=85?'var(--green)':avg>=60?'var(--amber)':'var(--red)'))}
+    ${mrStatCard(healthy, 'Healthy', null, 'var(--green)')}
+    ${mrStatCard(attn, 'Need attention', null, attn?'var(--amber)':'var(--green)')}
+    ${mrStatCard(overdue, 'Inspections overdue', null, overdue?'var(--red)':'var(--green)')}
+    ${mrStatCard(quar, 'Quarantined', null, quar?'var(--red)':'var(--green)')}
+  </div>`;
+}
 
 function renderAssetsTable(){
   const wrap = document.getElementById('asset-table-wrap');
   if(!wrap) return;
-  const fStatus = document.getElementById('asset-filter-status').value;
-  const rows = STATE.assets.filter(a => !fStatus || a.current_status === fStatus);
+  renderAssetSummary();
+  const fStatus = document.getElementById('asset-filter-status').value, fCat = document.getElementById('asset-filter-category').value;
+  const rows = STATE.assets.filter(a => a.lifecycle_status !== 'disposed').map(a => ({ a, h: assetHealthInfo(a) })).filter(({a,h}) =>
+    (!fCat || a.asset_category === fCat) &&
+    (!fStatus || (fStatus==='healthy' && h.key==='green') || (fStatus==='attention' && (h.key==='amber'||h.key==='red')) || (fStatus==='overdue' && assetIsOverdue(a)) || (fStatus==='quarantine' && a.current_status==='quarantine')));
   if(!rows.length){
-    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg><p>No assets match this filter.</p></div>`;
+    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg><p>${STATE.assets.length ? 'No assets match this filter.' : 'No assets yet. Add your first asset to start its inspection history.'}</p></div>`;
     return;
   }
   wrap.innerHTML = `<table>
-    <tr><th>Ref</th><th>Description</th><th>Location</th><th>Responsible</th><th>Compliance</th><th>Next inspection</th><th>Certificate</th><th>Status</th></tr>
-    ${rows.map(a=>{
+    <tr><th>Health</th><th>Ref</th><th>Asset</th><th>Category</th><th>Location</th><th>Responsible</th><th>Next inspection</th><th>Certificate</th><th>Status</th></tr>
+    ${rows.map(({a,h})=>{
       const person = a.responsible_person_id ? personById(a.responsible_person_id) : null;
-      const compliance = assetComplianceScore(a.id);
-      const complianceColor = compliance === null ? 'var(--text-faint)' : compliance >= 80 ? 'var(--green)' : compliance >= 60 ? 'var(--amber)' : 'var(--red)';
       return `<tr class="clickable" onclick="openAssetDetail('${a.id}')">
+        <td style="width:62px;" title="${escapeHtml(h.label)}: ${escapeHtml(h.reasons.join('; '))}">${wdDial(h.pct, h.key, 48, {mini:true})}</td>
         <td class="mono-cell">${a.ref_code}</td>
-        <td class="strong">${a.description}</td>
-        <td>${a.location || '—'}</td>
-        <td>${person ? person.full_name : '—'}</td>
-        <td><b style="color:${complianceColor};">${compliance === null ? '—' : compliance+'%'}</b></td>
+        <td class="strong">${escapeHtml(a.description)}</td>
+        <td style="font-size:12px;">${escapeHtml(assetCategoryLabel(a.asset_category))}</td>
+        <td>${escapeHtml(a.location || '—')}</td>
+        <td>${person ? escapeHtml(person.full_name) : '—'}</td>
         <td>${dateStatusBadge(a.next_inspection_date, false)}</td>
         <td>${a.certificate_expiry_date ? dateStatusBadge(a.certificate_expiry_date, false) : '—'}</td>
-        <td>${a.current_status ? `<span class="sev-badge ${a.current_status==='quarantine'?'critical':'minor'}" style="text-transform:capitalize;">${a.current_status}</span>` : '<span class="mono" style="font-size:11px; color:var(--text-faint);">Not yet inspected</span>'}</td>
+        <td>${a.lifecycle_status==='out_of_service' ? '<span class="sev-badge" style="background:#999;color:#fff;">Out of service</span>' : (a.current_status ? `<span class="sev-badge ${a.current_status==='quarantine'?'critical':'minor'}" style="text-transform:capitalize;">${a.current_status}</span>` : '<span class="mono" style="font-size:11px; color:var(--text-faint);">Not yet inspected</span>')}</td>
       </tr>`;
     }).join('')}
   </table>`;
+  if(typeof wdAfterRender === 'function') wdAfterRender(wrap);
 }
 window.renderAssetsTable = renderAssetsTable;
 
@@ -13280,8 +13537,7 @@ window.renderAssetsTable = renderAssetsTable;
 // Reuses the exact same image-API QR generation already proven on the
 // website — no client-side QR library needed, just an image URL.
 function assetQrCodeUrl(asset, sizePx){
-  const publicUrl = `${window.location.origin}${window.location.pathname.replace(/index\.html$/,'')}qashe-watchman-asset-inspection-link.html?asset_token=${asset.qr_token}`;
-  return `https://api.qrserver.com/v1/create-qr-code/?size=${sizePx}x${sizePx}&data=${encodeURIComponent(publicUrl)}`;
+  return `https://api.qrserver.com/v1/create-qr-code/?size=${sizePx}x${sizePx}&data=${encodeURIComponent(assetScanUrl(asset))}`;
 }
 
 // A physical label, not a formal document — deliberately not using
@@ -13315,48 +13571,121 @@ async function openAssetDetail(id){
   const a = assetById(id);
   if(!a) return;
   const person = a.responsible_person_id ? personById(a.responsible_person_id) : null;
-  const { data: inspections, error: iErr } = await STATE.supabase.from('asset_inspections').select('*').eq('asset_id', id).order('inspection_date', {ascending:false});
-  const { files: evidenceFiles } = await loadEvidence('asset', id);
+  const [{ data: inspections, error: iErr }, { files: evidenceFiles }] = await Promise.all([
+    STATE.supabase.from('asset_inspections').select('*').eq('asset_id', id).order('inspection_date', {ascending:false}),
+    loadEvidence('asset', id),
+  ]);
+  const h = assetHealthInfo(a), photo = assetPhotoUrl(a);
+  const maint = (STATE.assetMaintenance||[]).filter(m=>m.asset_id===id).sort((x,y)=>x.maintenance_date<y.maintenance_date?1:-1);
+  const svc = assetNextService(a);
+  const canEdit = ['admin','manager','contributor'].includes(STATE.myRole) || (STATE.profile && STATE.profile.is_platform_staff);
+  const canManage = ['admin','manager'].includes(STATE.myRole) || (STATE.profile && STATE.profile.is_platform_staff);
+  const fact = (l,v) => `<div class="dm-item"><div class="l">${l}</div><div class="v">${v}</div></div>`;
 
   document.getElementById('asset-detail-slot').innerHTML = `
     <div class="detail-panel">
       <div class="detail-head">
-        <div><span class="ref">${a.ref_code}${a.serial_number ? ' · S/N '+a.serial_number : ''}</span><h3>${a.description}</h3></div>
+        <div><span class="ref">${escapeHtml(a.ref_code)}${a.serial_number ? ' · S/N '+escapeHtml(a.serial_number) : ''}</span><h3>${escapeHtml(a.description)}</h3></div>
         <div style="display:flex; gap:8px;">
           <button class="btn-small" onclick="printAsset('${a.id}')">Print / PDF</button>
           <button class="close-btn" onclick="closeAssetDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
       </div>
-      <div class="detail-meta">
-        <div class="dm-item"><div class="l">Location</div><div class="v">${a.location || '—'}</div></div>
-        <div class="dm-item"><div class="l">Responsible</div><div class="v">${person ? person.full_name : '—'}</div></div>
-        <div class="dm-item"><div class="l">Next inspection</div><div class="v">${dateStatusBadge(a.next_inspection_date, false)}</div></div>
-        <div class="dm-item"><div class="l">Status</div><div class="v">${a.current_status ? `<span class="sev-badge ${a.current_status==='quarantine'?'critical':'minor'}" style="text-transform:capitalize;">${a.current_status}</span>` : '—'}</div></div>
-      </div>
-      ${a.certificate_type ? `<div class="detail-card" style="padding:12px 16px; margin-bottom:16px;">
-        <b>${a.certificate_type}</b> — ${a.certificate_expiry_date ? dateStatusBadge(a.certificate_expiry_date, false) : 'no expiry date recorded'}
-      </div>` : ''}
-      ${a.notes ? `<p style="font-size:12.5px; color:var(--text-faint); margin-bottom:16px;">${a.notes}</p>` : ''}
 
-      <div class="detail-card" style="padding:16px; margin-bottom:16px; display:flex; align-items:center; gap:20px;">
-        <img src="${assetQrCodeUrl(a, 220)}" style="width:150px; height:150px; border:1px solid var(--border); border-radius:8px; flex-shrink:0;">
-        <div style="flex:1;">
-          <div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Asset QR Code</div>
-          <p style="font-size:12.5px; color:var(--text-dim); margin-bottom:10px;">Print this and attach it to the physical asset. Scanning it with any phone or tablet camera opens a fresh inspection for this asset — no login needed, and works indefinitely, not just once.</p>
-          <button class="btn-small primary" onclick="printAssetQrLabel('${a.id}')">Print QR Label</button>
+      <div class="detail-card" style="padding:16px; margin-bottom:16px; display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start;">
+        <div style="flex:0 0 auto; text-align:center;">
+          <div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Photo</div>
+          ${photo ? `<img src="${photo}" style="width:150px; height:150px; object-fit:cover; border:1px solid var(--border); border-radius:8px;">`
+                  : `<div style="width:150px; height:150px; border:1px dashed var(--border); border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--text-faint); font-size:11px;">No photo yet</div>`}
+          ${canEdit ? `<div style="margin-top:8px;"><input type="file" id="asset-photo-input" accept="image/*" style="max-width:150px; font-size:10.5px;"></div>
+          <div style="display:flex; gap:6px; justify-content:center; margin-top:6px;"><button class="btn-small primary" onclick="assetUploadPhoto('${a.id}')">Upload</button>${photo ? `<button class="btn-small" onclick="assetRemovePhoto('${a.id}')">Remove</button>` : ''}</div>` : ''}
+        </div>
+        <div style="flex:0 0 auto; text-align:center; min-width:180px;">
+          <div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:2px;">Asset health</div>
+          ${wdDial(h.pct, h.key, 170)}
+          <div style="font-weight:700; font-size:13px; margin-top:-6px;">${escapeHtml(h.label)}</div>
+        </div>
+        <div style="flex:1; min-width:200px;">
+          <div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Why this score</div>
+          <ul style="margin:0 0 12px 16px; font-size:12.5px; color:var(--text-dim); line-height:1.7;">${h.reasons.map(r=>`<li>${escapeHtml(r)}</li>`).join('')}</ul>
+          <div style="display:flex; align-items:center; gap:14px;">
+            <img src="${assetQrCodeUrl(a, 220)}" style="width:110px; height:110px; border:1px solid var(--border); border-radius:8px;">
+            <div style="font-size:12px; color:var(--text-dim);">Attach the QR label to the asset. Anyone can scan it, complete the inspection on their phone, and the asset updates here when they submit. No login needed.<div style="margin-top:8px;"><button class="btn-small primary" onclick="printAssetQrLabel('${a.id}')">Print QR label</button></div></div>
+          </div>
         </div>
       </div>
 
-      <div class="panel-head"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Inspections</h3>
-        <button class="btn-small primary" onclick="toggleNewInspectionForm('${a.id}')">+ New inspection</button>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
+        ${canEdit ? `<button class="btn-small primary" onclick="toggleNewInspectionForm('${a.id}')">+ New inspection</button>
+        <button class="btn-small" onclick="assetEdit('${a.id}')">Edit details</button>
+        <button class="btn-small" onclick="assetSetStatus('${a.id}', '${a.current_status==='quarantine' ? 'compliant' : 'quarantine'}')">${a.current_status==='quarantine' ? 'Release from quarantine' : 'Quarantine'}</button>
+        <button class="btn-small" onclick="assetSetLifecycle('${a.id}', '${a.lifecycle_status==='out_of_service' ? 'in_service' : 'out_of_service'}')">${a.lifecycle_status==='out_of_service' ? 'Return to service' : 'Take out of service'}</button>
+        <button class="btn-small" onclick="assetSendReminder('${a.id}')">Email inspection reminder</button>` : ''}
+        ${canManage ? `<button class="btn-small" onclick="assetSetLifecycle('${a.id}', 'disposed')">Dispose</button>` : ''}
       </div>
       <div id="new-inspection-form-${a.id}"></div>
+
+      <div class="detail-meta">
+        ${fact('Category', escapeHtml(assetCategoryLabel(a.asset_category)))}
+        ${fact('Location', escapeHtml(a.location || '—'))}
+        ${fact('Responsible', person ? escapeHtml(person.full_name) : '—')}
+        ${fact('Criticality', a.criticality ? escapeHtml(label(a.criticality)) : '—')}
+        ${fact('Make / model', escapeHtml(a.make_model || '—'))}
+        ${fact('Purchased', fmtDate(a.purchase_date))}
+        ${fact('Warranty', a.warranty_expiry_date ? dateStatusBadge(a.warranty_expiry_date, false) : '—')}
+        ${fact('Status', a.lifecycle_status==='out_of_service' ? 'Out of service' : (a.current_status ? `<span class="sev-badge ${a.current_status==='quarantine'?'critical':'minor'}" style="text-transform:capitalize;">${a.current_status}</span>` : 'Not yet inspected'))}
+      </div>
+      ${a.about ? `<p style="font-size:12.5px; color:var(--text-dim); margin-bottom:12px;"><b>Used for:</b> ${escapeHtml(a.about)}</p>` : ''}
+      ${a.certificate_type ? `<div class="detail-card" style="padding:12px 16px; margin-bottom:16px;"><b>${escapeHtml(a.certificate_type)}</b>: ${a.certificate_expiry_date ? dateStatusBadge(a.certificate_expiry_date, false) : 'no expiry date recorded'}</div>` : ''}
+      ${a.notes ? `<p style="font-size:12.5px; color:var(--text-faint); margin-bottom:16px;">${escapeHtml(a.notes)}</p>` : ''}
+
+      <div class="detail-card" style="padding:16px; margin-bottom:16px;">
+        <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Inspection schedule</h3></div>
+        <p style="font-size:12px; color:var(--text-faint); margin-bottom:10px;">Each completed inspection, in the app or from a QR scan, sets the next due date from this cadence. ${person ? `${escapeHtml(person.full_name)} is reminded ${a.inspection_reminder_days||7} days before.` : 'Choose a responsible person so someone is reminded.'}</p>
+        <div class="form-grid">
+          <div class="field"><label>Inspect</label><select id="as-freq-${a.id}" ${canEdit?'':'disabled'}><option value="">No fixed cadence</option>${Object.entries(ASSET_FREQ).map(([k,f])=>`<option value="${k}" ${a.inspection_frequency===k?'selected':''}>${f.label}</option>`).join('')}</select></div>
+          <div class="field"><label>Remind before due</label><select id="as-remind-${a.id}" ${canEdit?'':'disabled'}>${[1,3,7,14,30].map(n=>`<option value="${n}" ${(a.inspection_reminder_days||7)===n?'selected':''}>${n} day${n===1?'':'s'}</option>`).join('')}</select></div>
+          <div class="field"><label>Next inspection due</label><input type="date" id="as-next-${a.id}" value="${a.next_inspection_date||''}" ${canEdit?'':'disabled'}></div>
+        </div>
+        <div style="font-size:12px; margin:4px 0 8px;">Last inspected: <b>${fmtDate(a.last_inspection_date)}</b> · Next: ${dateStatusBadge(a.next_inspection_date, false)}${svc ? ' · Next service: ' + dateStatusBadge(svc, false) : ''}</div>
+        ${canEdit ? `<button class="btn-small primary" onclick="assetSaveSchedule('${a.id}')">Save schedule</button>` : ''}
+      </div>
+
+      <div class="detail-card" style="padding:16px; margin-bottom:16px;">
+        <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Inspection checklist</h3></div>
+        <div class="form-grid" style="margin-bottom:8px;">
+          <div class="field span2"><label>Checklist used for this asset</label>
+            <select id="acl-panel-template" onchange="assetChangeChecklist('${a.id}')" ${canEdit?'':'disabled'}><option value="">No checklist (free-form inspection)</option>${STATE.assetChecklistTemplates.map(t=>`<option value="${t.id}" ${a.checklist_template_id===t.id?'selected':''}>${escapeHtml(t.title)}</option>`).join('')}</select></div>
+        </div>
+        <div id="asset-checklist-items-list" style="margin-bottom:10px;"></div>
+        ${canEdit && a.checklist_template_id ? `<div class="form-grid"><div class="field span3"><label>Add a criterion</label><input id="acl-item-new-text" placeholder="e.g. Hooks free from cracks, deformation or excessive wear"></div></div>
+        <button class="btn-small primary" onclick="addAssetChecklistItem()">Add criterion</button>
+        <p style="font-size:11px; color:var(--text-faint); margin-top:6px;">Changes apply to every asset that uses this checklist, and never alter past inspections.</p>` : ''}
+      </div>
+
+      <div class="detail-card" style="padding:16px; margin-bottom:16px;">
+        <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Maintenance history</h3></div>
+        ${maint.length ? `<table><tr><th>Date</th><th>Type</th><th>What was done</th><th>By</th><th>Cost</th><th>Downtime</th><th>Next service</th><th></th></tr>
+          ${maint.map(m=>`<tr><td>${fmtDate(m.maintenance_date)}</td><td style="text-transform:capitalize;">${escapeHtml(m.kind)}</td><td style="font-size:12px;">${escapeHtml(m.description)}</td><td>${escapeHtml(m.performed_by||'—')}</td><td>${m.cost!=null?'R '+Number(m.cost).toLocaleString('en-ZA'):'—'}</td><td>${m.downtime_hours!=null?m.downtime_hours+' h':'—'}</td><td>${m.next_service_date?fmtDate(m.next_service_date):'—'}</td><td>${canManage?`<button class="btn-small" onclick="assetDeleteMaintenance('${m.id}','${a.id}')">Delete</button>`:''}</td></tr>`).join('')}</table>`
+          : '<p style="font-size:12.5px; color:var(--text-faint);">No maintenance recorded yet.</p>'}
+        ${canEdit ? `<div style="margin-top:12px;"><div class="form-grid">
+          <div class="field"><label>Date</label><input type="date" id="am-date-${a.id}" value="${todayISO()}"></div>
+          <div class="field"><label>Type</label><select id="am-kind-${a.id}"><option value="service">Service</option><option value="repair">Repair</option><option value="calibration">Calibration</option><option value="replacement">Part replacement</option><option value="modification">Modification</option><option value="other">Other</option></select></div>
+          <div class="field"><label>Done by</label><input id="am-by-${a.id}" placeholder="Person or company"></div>
+          <div class="field span3"><label>What was done</label><input id="am-desc-${a.id}"></div>
+          <div class="field"><label>Cost (R)</label><input type="number" step="any" id="am-cost-${a.id}"></div>
+          <div class="field"><label>Downtime (hours)</label><input type="number" step="any" id="am-down-${a.id}"></div>
+          <div class="field"><label>Next service due</label><input type="date" id="am-next-${a.id}"></div></div>
+          <button class="btn-small primary" onclick="assetAddMaintenance('${a.id}')">Add maintenance record</button></div>` : ''}
+      </div>
+
+      <div class="panel-head"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Inspection history</h3></div>
       <div id="asset-inspections-list">
         ${iErr ? '<p style="font-size:12.5px; color:var(--text-faint);">Could not load inspections.</p>' :
           (!inspections || !inspections.length) ? '<p style="font-size:12.5px; color:var(--text-faint);">No inspections logged yet.</p>' :
           inspections.map(insp => `<div class="detail-card clickable" style="margin-bottom:8px; padding:12px 16px; cursor:pointer;" onclick="openInspectionDetail('${insp.id}','${a.id}')">
             <div style="display:flex; justify-content:space-between; align-items:center;">
-              <div><b>${fmtDate(insp.inspection_date)}</b>${insp.inspected_by_name ? ' — '+insp.inspected_by_name : ''}</div>
+              <div><b>${fmtDate(insp.inspection_date)}</b>${insp.inspected_by_name ? ' — '+escapeHtml(insp.inspected_by_name) : ''}</div>
               ${insp.status ? `<span class="sev-badge ${insp.status==='quarantine'?'critical':'minor'}" style="text-transform:capitalize;">${insp.status}</span>` : '<span class="mono" style="font-size:11px; color:var(--text-faint);">In progress</span>'}
             </div>
           </div>`).join('')}
@@ -13365,9 +13694,135 @@ async function openAssetDetail(id){
       ${renderEvidenceSection('asset', a.id, evidenceFiles)}
     </div>
   `;
+  renderAssetChecklistItemsList();
+  if(typeof wdAfterRender === 'function') wdAfterRender(document.getElementById('asset-detail-slot'));
   if(typeof sfAppendBacklinks === 'function') sfAppendBacklinks('asset-detail-slot','asset',id);
 }
 window.openAssetDetail = openAssetDetail;
+
+async function assetRefresh(id){ await loadAssets(); await loadAssetMaintenance(); renderAssetsTable(); updateNavBadges(); if(id) openAssetDetail(id); }
+window.assetUploadPhoto = async function(id){
+  const file = document.getElementById('asset-photo-input').files[0];
+  if(!file){ alert('Choose a photo first.'); return; }
+  if(!file.type.startsWith('image/')){ alert('Please choose an image file.'); return; }
+  const r = await resizeImageFile(file, 1200, 0.85);
+  if(!r.ok){ toast('That image could not be processed. Try a JPG or PNG photo.', 'error'); return; }
+  const path = `${STATE.org.id}/asset-photos/${id}/${Date.now()}-${sanitizeFileName(r.file.name)}`;
+  const { error: upErr } = await STATE.supabase.storage.from('avatars').upload(path, r.file);
+  if(upErr){ toast('Could not upload the photo: ' + upErr.message, 'error'); return; }
+  const old = assetById(id).photo_path;
+  const { error } = await STATE.supabase.from('assets').update({ photo_path: path }).eq('id', id);
+  if(error){ toast('Photo uploaded, but could not be saved: ' + error.message, 'error'); return; }
+  if(old) await STATE.supabase.storage.from('avatars').remove([old]);
+  await assetRefresh(id); toast('Photo saved.', 'success');
+};
+window.assetRemovePhoto = async function(id){
+  const a = assetById(id); if(!a || !a.photo_path || !confirm('Remove this photo?')) return;
+  await STATE.supabase.storage.from('avatars').remove([a.photo_path]);
+  await STATE.supabase.from('assets').update({ photo_path: null }).eq('id', id);
+  await assetRefresh(id);
+};
+window.assetSaveSchedule = async function(id){
+  const freq = document.getElementById('as-freq-'+id).value || null;
+  const { error } = await STATE.supabase.from('assets').update({
+    inspection_frequency: freq, inspection_reminder_days: Number(document.getElementById('as-remind-'+id).value) || 7,
+    next_inspection_date: document.getElementById('as-next-'+id).value || null }).eq('id', id);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  await assetRefresh(id); toast('Schedule saved.', 'success');
+};
+window.assetChangeChecklist = async function(id){
+  const v = document.getElementById('acl-panel-template').value || null;
+  const { error } = await STATE.supabase.from('assets').update({ checklist_template_id: v }).eq('id', id);
+  if(error){ toast('Could not change the checklist: ' + error.message, 'error'); return; }
+  await assetRefresh(id);
+};
+window.assetSetStatus = async function(id, status){
+  if(status === 'quarantine' && !confirm('Quarantine this asset? It should not be used until it is released.')) return;
+  const { error } = await STATE.supabase.from('assets').update({ current_status: status }).eq('id', id);
+  if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+  await assetRefresh(id);
+};
+window.assetSetLifecycle = async function(id, state){
+  if(state === 'disposed' && !confirm('Dispose of this asset? It is removed from the active register (its history is kept).')) return;
+  const { error } = await STATE.supabase.from('assets').update({ lifecycle_status: state }).eq('id', id);
+  if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+  if(state === 'disposed'){ closeAssetDetail(); await assetRefresh(null); } else await assetRefresh(id);
+};
+window.assetEdit = function(id){
+  const a = assetById(id); if(!a) return;
+  const v = x => escapeHtml(x||'');
+  kpiOverlay(`<h3 style="font-family:'Poppins'; margin:0 0 12px;">Edit asset</h3><div class="form-grid">
+    <div class="field span3"><label>Name</label><input id="ae-desc" value="${v(a.description)}"></div>
+    <div class="field"><label>Category</label><select id="ae-cat">${ASSET_CATEGORIES.map(c=>`<option value="${c.key}" ${a.asset_category===c.key?'selected':''}>${c.label}</option>`).join('')}</select></div>
+    <div class="field"><label>Location</label><input id="ae-loc" value="${v(a.location)}"></div>
+    <div class="field"><label>Responsible person</label><select id="ae-resp"><option value="">None</option>${STATE.personnel.map(p=>`<option value="${p.id}" ${a.responsible_person_id===p.id?'selected':''}>${escapeHtml(p.full_name)}</option>`).join('')}</select></div>
+    <div class="field"><label>Serial number</label><input id="ae-serial" value="${v(a.serial_number)}"></div>
+    <div class="field"><label>Make / model</label><input id="ae-mm" value="${v(a.make_model)}"></div>
+    <div class="field"><label>Criticality</label><select id="ae-crit"><option value="">Not rated</option>${['low','medium','high'].map(c=>`<option value="${c}" ${a.criticality===c?'selected':''}>${label(c)}</option>`).join('')}</select></div>
+    <div class="field"><label>Purchased</label><input type="date" id="ae-pur" value="${a.purchase_date||''}"></div>
+    <div class="field"><label>Warranty expires</label><input type="date" id="ae-war" value="${a.warranty_expiry_date||''}"></div>
+    <div class="field"><label>Certificate type</label><input id="ae-ct" value="${v(a.certificate_type)}"></div>
+    <div class="field"><label>Certificate expiry</label><input type="date" id="ae-ce" value="${a.certificate_expiry_date||''}"></div>
+    <div class="field span3"><label>Used for</label><textarea id="ae-about">${v(a.about)}</textarea></div>
+    <div class="field span3"><label>Notes</label><textarea id="ae-notes">${v(a.notes)}</textarea></div></div>
+    <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" onclick="assetSaveEdit('${id}')">Save</button></div>`);
+};
+window.assetSaveEdit = async function(id){
+  const desc = document.getElementById('ae-desc').value.trim();
+  if(!desc){ alert('The asset needs a name.'); return; }
+  const g = x => document.getElementById(x).value;
+  const { error } = await STATE.supabase.from('assets').update({ description: desc, asset_category: g('ae-cat'), location: g('ae-loc').trim(),
+    responsible_person_id: g('ae-resp') || null, serial_number: g('ae-serial').trim(), make_model: g('ae-mm').trim() || null, criticality: g('ae-crit') || null,
+    purchase_date: g('ae-pur') || null, warranty_expiry_date: g('ae-war') || null, certificate_type: g('ae-ct').trim(), certificate_expiry_date: g('ae-ce') || null,
+    about: g('ae-about').trim() || null, notes: g('ae-notes').trim() }).eq('id', id);
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  kpiCloseOverlay(); await assetRefresh(id); toast('Saved.', 'success');
+};
+window.assetAddMaintenance = async function(id){
+  const g = x => document.getElementById(x+'-'+id).value;
+  if(!g('am-desc').trim()){ alert('Describe what was done.'); return; }
+  const { error } = await STATE.supabase.from('asset_maintenance_records').insert({ organisation_id: STATE.org.id, asset_id: id, maintenance_date: g('am-date') || todayISO(),
+    kind: g('am-kind'), description: g('am-desc').trim(), performed_by: g('am-by').trim() || null, cost: g('am-cost') === '' ? null : Number(g('am-cost')),
+    downtime_hours: g('am-down') === '' ? null : Number(g('am-down')), next_service_date: g('am-next') || null, created_by: STATE.user.id });
+  if(error){ toast('Could not save: ' + error.message + (/asset_maintenance/.test(error.message) ? ' (run the assets-revamp SQL first)' : ''), 'error'); return; }
+  await assetRefresh(id); toast('Maintenance recorded.', 'success');
+};
+window.assetDeleteMaintenance = async function(mid, id){
+  if(!confirm('Delete this maintenance record?')) return;
+  const { error } = await STATE.supabase.from('asset_maintenance_records').delete().eq('id', mid);
+  if(error){ toast('Could not delete: ' + error.message, 'error'); return; }
+  await assetRefresh(id);
+};
+
+/* ---- Inspection reminders: cadence -> email to the responsible person ---- */
+function assetReminderBody(list){
+  return list.map(a => `- ${a.ref_code} ${a.description}${a.location ? ' (' + a.location + ')' : ''}: ${a.next_inspection_date < todayISO() ? 'OVERDUE since ' : 'due '}${fmtDate(a.next_inspection_date)}\n  Scan the QR label on the asset to inspect it, or open: ${assetScanUrl(a)}`).join('\n');
+}
+window.assetSendReminder = async function(id){
+  const a = assetById(id), p = a && a.responsible_person_id ? personById(a.responsible_person_id) : null;
+  if(!p || !p.email){ toast('Choose a responsible person with an email address first (Edit details, and People).', 'error'); return; }
+  const ok = await sendEmailToAddress(p.email, `Inspection due: ${a.ref_code} ${a.description}`, `Hello ${p.full_name},\n\nThis inspection is due in QaSHE Watchman:\n\n${assetReminderBody([a])}\n\nThank you.`);
+  if(ok) await STATE.supabase.from('assets').update({ last_reminder_sent_at: new Date().toISOString() }).eq('id', id);
+  toast(ok ? `Reminder emailed to ${p.email}.` : 'The email could not be sent.', ok ? 'success' : 'error');
+};
+window.assetEmailAllDue = async function(){
+  const today = todayISO();
+  const due = STATE.assets.filter(a => {
+    if(a.lifecycle_status === 'disposed' || a.lifecycle_status === 'out_of_service' || !a.next_inspection_date) return false;
+    const horizon = new Date(Date.now() + (a.inspection_reminder_days || 7)*86400000).toISOString().slice(0,10);
+    return a.next_inspection_date <= horizon;
+  });
+  const byPerson = {}; let skipped = 0;
+  due.forEach(a => { const p = a.responsible_person_id ? personById(a.responsible_person_id) : null; if(p && p.email) (byPerson[p.id] = byPerson[p.id] || { p, list: [] }).list.push(a); else skipped++; });
+  const entries = Object.values(byPerson);
+  if(!entries.length){ toast(due.length ? `${due.length} due, but none has a responsible person with an email.` : 'Nothing is due.', due.length ? 'error' : 'success'); return; }
+  if(!confirm(`Email ${entries.length} responsible person${entries.length===1?'':'s'} about ${due.length - skipped} asset${due.length - skipped===1?'':'s'} due or overdue?`)) return;
+  for(const { p, list } of entries){
+    const ok = await sendEmailToAddress(p.email, `Inspections due: ${list.length} asset${list.length===1?'':'s'}`, `Hello ${p.full_name},\n\nThese inspections are due or overdue in QaSHE Watchman:\n\n${assetReminderBody(list)}\n\nThank you.`);
+    if(ok) await STATE.supabase.from('assets').update({ last_reminder_sent_at: new Date().toISOString() }).in('id', list.map(x=>x.id));
+  }
+  toast(`Reminders sent to ${entries.length} person${entries.length===1?'':'s'}${skipped ? `; ${skipped} asset${skipped===1?'':'s'} had nobody to email` : ''}.`, 'success');
+};
 function closeAssetDetail(){ document.getElementById('asset-detail-slot').innerHTML = ''; }
 window.closeAssetDetail = closeAssetDetail;
 
@@ -13500,7 +13955,7 @@ async function openInspectionDetail(inspectionId, assetId){
       <div class="detail-card" style="padding:16px; margin-top:16px;">
         <div class="form-grid" style="margin-bottom:10px;">
           <div class="field"><label>Overall result</label><select id="insp-status">${ASSET_STATUSES.map(s=>`<option value="${s}">${label(s)}</option>`).join('')}</select></div>
-          <div class="field"><label>Next inspection due</label><input type="date" id="insp-next-date"></div>
+          <div class="field"><label>Next inspection due</label><input type="date" id="insp-next-date" value="${(()=>{ const aa = assetById(assetId); return aa && aa.inspection_frequency ? assetAddPeriod(todayISO(), aa.inspection_frequency) : ''; })()}"></div>
         </div>
         <div class="field" style="margin-bottom:10px;"><label>Overall notes</label><textarea id="insp-notes"></textarea></div>
         <button class="btn-primary" onclick="completeInspection('${inspectionId}','${assetId}')">Complete inspection</button>
@@ -13709,7 +14164,8 @@ window.emailInspectionLink = async function(inspectionId){
 
 window.completeInspection = async function(inspectionId, assetId){
   const status = document.getElementById('insp-status').value;
-  const nextDate = document.getElementById('insp-next-date').value || null;
+  const asset0 = assetById(assetId);
+  const nextDate = document.getElementById('insp-next-date').value || (asset0 && asset0.inspection_frequency ? assetAddPeriod(todayISO(), asset0.inspection_frequency) : null);
   const notes = document.getElementById('insp-notes').value.trim();
   const { data: insp, error } = await STATE.supabase.from('asset_inspections').update({
     status, next_inspection_date: nextDate, overall_notes: notes, completed_at: new Date().toISOString()
@@ -16972,6 +17428,10 @@ window.openAwAssetDetail = async function(id){
           <div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Asset QR Code</div>
           <img src="${awQrCodeUrl(a, 220)}" style="width:150px; height:150px; border:1px solid var(--border); border-radius:8px;">
           <div style="margin-top:8px;"><button class="btn-small primary" onclick="printAwAssetQrLabel('${a.id}')">Print QR Label</button></div>
+        </div>
+        <div style="flex:0 0 auto; text-align:center; min-width:170px;">
+          <div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:2px;">Asset health</div>
+          ${(() => { const pct = awHealthPercent(a); const st = wdStatus(pct); return wdDial(pct, st.key, 160) + `<div style="font-weight:700; font-size:13px; margin-top:-6px;">${pct==null ? 'Not assessed' : st.label}</div>`; })()}
         </div>
         <div style="flex:1; min-width:220px;">
           <p style="font-size:12.5px; color:var(--text-dim);">Print the QR label and attach it to the physical asset on site. It's ready to scan the moment field data capture (a later stage of Asset Watchman) goes live — nothing will need reprinting.</p>
