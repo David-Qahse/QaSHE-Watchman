@@ -1596,19 +1596,18 @@ window.selectOrg = async function(orgId){
   showBootLoading();
   try {
 
-  const { data: members, error: memErr } = await STATE.supabase
+  // The member list is fetched in the same parallel batch as every register below (nothing
+  // in the registers depends on it), so it no longer costs a round trip of its own.
+  const membersPromise = STATE.supabase
     .from('organisation_members')
     .select('user_id, role, is_approver, module_access, can_download, profiles!organisation_members_user_id_fkey(name)')
     .eq('organisation_id', orgId).eq('status','active');
-  if(memErr){ toast('Could not load organisation members: ' + memErr.message, 'error'); return; }
-  STATE.members = members || [];
-  STATE.memberMap = {};
-  STATE.members.forEach(m => { STATE.memberMap[m.user_id] = (m.profiles && m.profiles.name) || 'Unknown'; });
 
   // Every register loads at the same time rather than one after another — each loader
   // only fills its own slice of STATE, so none depends on another. allSettled means one
   // failing table (each already reports its own error) never blocks the rest.
-  await Promise.allSettled([
+  const [membersResult] = await Promise.allSettled([
+    membersPromise,
     loadNCs(),
     loadRagaAlerts(),
     loadNCTypes(),
@@ -1662,7 +1661,6 @@ window.selectOrg = async function(orgId){
     loadExpenseClaims(),
     loadPersonnelRequests(),
     loadOvertimeRequests(),
-    loadContentTemplates(),
     loadOrgFlowcharts(),
     loadOrgChecklists(),
     loadOrgPolicies(),
@@ -1675,6 +1673,12 @@ window.selectOrg = async function(orgId){
     loadAwSealReplacements(),
     loadSiteFiles(),
   ]);
+
+  const { data: members, error: memErr } = membersResult.status === 'fulfilled' ? membersResult.value : { data: null, error: membersResult.reason };
+  if(memErr){ toast('Could not load organisation members: ' + memErr.message, 'error'); return; }
+  STATE.members = members || [];
+  STATE.memberMap = {};
+  STATE.members.forEach(m => { STATE.memberMap[m.user_id] = (m.profiles && m.profiles.name) || 'Unknown'; });
 
   hideAllGates();
   document.getElementById('view-landing').classList.remove('active');
@@ -1861,11 +1865,13 @@ async function loadPositions(){
   STATE.positions = data || [];
 }
 async function loadDivisions(){
-  const { data, error } = await STATE.supabase.from('divisions').select('*').eq('organisation_id', STATE.org.id).order('name', {ascending:true});
-  if(error){ toast('Could not load divisions: ' + error.message, 'error'); return; }
-  STATE.divisions = data || [];
-  const { data: pd } = await STATE.supabase.from('personnel_divisions').select('*').eq('organisation_id', STATE.org.id);
-  STATE.personnelDivisions = pd || [];
+  const [divs, pd] = await Promise.all([
+    STATE.supabase.from('divisions').select('*').eq('organisation_id', STATE.org.id).order('name', {ascending:true}),
+    STATE.supabase.from('personnel_divisions').select('*').eq('organisation_id', STATE.org.id),
+  ]);
+  if(divs.error){ toast('Could not load divisions: ' + divs.error.message, 'error'); return; }
+  STATE.divisions = divs.data || [];
+  STATE.personnelDivisions = pd.data || [];
 }
 async function loadPersonnel(){
   const { data, error } = await STATE.supabase.from('personnel').select('*').eq('organisation_id', STATE.org.id).order('full_name', {ascending:true});
@@ -2001,49 +2007,50 @@ async function loadOvertimeRequests(){
 // The master library is global reference data — same "load once per
 // session" treatment as checklist_templates, since it never changes
 // within a session and isn't organisation-scoped.
+// The template library is only used by platform staff in Administration → Template Library,
+// so it is NOT loaded when a tenant opens — it loads the first time that tab is shown.
+// Its five queries are independent, so they run together.
 async function loadContentTemplates(){
   if(STATE.contentTemplates.length) return;
-  const { data, error } = await STATE.supabase.from('content_templates').select('*').eq('is_active', true).order('module_key', {ascending:true});
-  if(error){ toast('Could not load the template library: ' + error.message, 'error'); return; }
-  STATE.contentTemplates = data || [];
-  const { data: steps } = await STATE.supabase.from('content_template_steps').select('*').order('sort_order', {ascending:true});
-  STATE.contentTemplateSteps = steps || [];
-  const { data: kpis } = await STATE.supabase.from('content_template_kpis').select('*').order('sort_order', {ascending:true});
-  STATE.contentTemplateKpis = kpis || [];
-  const { data: clItems } = await STATE.supabase.from('content_template_checklist_items').select('*').order('sort_order', {ascending:true});
-  STATE.contentTemplateChecklistItems = clItems || [];
-  const { data: polSections } = await STATE.supabase.from('content_template_policy_sections').select('*').order('sort_order', {ascending:true});
-  STATE.contentTemplatePolicySections = polSections || [];
+  const q = (t, col) => STATE.supabase.from(t).select('*').order(col, {ascending:true});
+  const [tpl, steps, kpis, clItems, polSections] = await Promise.all([
+    STATE.supabase.from('content_templates').select('*').eq('is_active', true).order('module_key', {ascending:true}),
+    q('content_template_steps','sort_order'), q('content_template_kpis','sort_order'),
+    q('content_template_checklist_items','sort_order'), q('content_template_policy_sections','sort_order'),
+  ]);
+  if(tpl.error){ toast('Could not load the template library: ' + tpl.error.message, 'error'); return; }
+  STATE.contentTemplates = tpl.data || [];
+  STATE.contentTemplateSteps = steps.data || [];
+  STATE.contentTemplateKpis = kpis.data || [];
+  STATE.contentTemplateChecklistItems = clItems.data || [];
+  STATE.contentTemplatePolicySections = polSections.data || [];
 }
 async function loadOrgFlowcharts(){
   if(!STATE.org.process_flowcharts_enabled) return;
-  const { data, error } = await STATE.supabase.from('org_process_flowcharts').select('*').eq('organisation_id', STATE.org.id).order('created_at', {ascending:true});
-  if(error){ toast('Could not load process flowcharts: ' + error.message, 'error'); return; }
-  STATE.orgFlowcharts = data || [];
-  const { data: steps } = await STATE.supabase.from('org_process_flowchart_steps').select('*').eq('organisation_id', STATE.org.id).order('sort_order', {ascending:true});
-  STATE.orgFlowchartSteps = steps || [];
-  const { data: kpis } = await STATE.supabase.from('org_process_flowchart_kpis').select('*').eq('organisation_id', STATE.org.id).order('sort_order', {ascending:true});
-  STATE.orgFlowchartKpis = kpis || [];
+  const q = (t, col) => STATE.supabase.from(t).select('*').eq('organisation_id', STATE.org.id).order(col, {ascending:true});
+  const [main, steps, kpis] = await Promise.all([q('org_process_flowcharts','created_at'), q('org_process_flowchart_steps','sort_order'), q('org_process_flowchart_kpis','sort_order')]);
+  if(main.error){ toast('Could not load process flowcharts: ' + main.error.message, 'error'); return; }
+  STATE.orgFlowcharts = main.data || [];
+  STATE.orgFlowchartSteps = steps.data || [];
+  STATE.orgFlowchartKpis = kpis.data || [];
 }
 async function loadOrgChecklists(){
   if(!STATE.org.checklists_enabled) return;
-  const { data, error } = await STATE.supabase.from('org_checklists').select('*').eq('organisation_id', STATE.org.id).order('created_at', {ascending:true});
-  if(error){ toast('Could not load checklists: ' + error.message, 'error'); return; }
-  STATE.orgChecklists = data || [];
-  const { data: items } = await STATE.supabase.from('org_checklist_items').select('*').eq('organisation_id', STATE.org.id).order('sort_order', {ascending:true});
-  STATE.orgChecklistItems = items || [];
-  const { data: runs } = await STATE.supabase.from('org_checklist_runs').select('*').eq('organisation_id', STATE.org.id).order('run_date', {ascending:false});
-  STATE.orgChecklistRuns = runs || [];
-  const { data: runItems } = await STATE.supabase.from('org_checklist_run_items').select('*').eq('organisation_id', STATE.org.id).order('sort_order', {ascending:true});
-  STATE.orgChecklistRunItems = runItems || [];
+  const q = (t, col, asc=true) => STATE.supabase.from(t).select('*').eq('organisation_id', STATE.org.id).order(col, {ascending:asc});
+  const [main, items, runs, runItems] = await Promise.all([q('org_checklists','created_at'), q('org_checklist_items','sort_order'), q('org_checklist_runs','run_date',false), q('org_checklist_run_items','sort_order')]);
+  if(main.error){ toast('Could not load checklists: ' + main.error.message, 'error'); return; }
+  STATE.orgChecklists = main.data || [];
+  STATE.orgChecklistItems = items.data || [];
+  STATE.orgChecklistRuns = runs.data || [];
+  STATE.orgChecklistRunItems = runItems.data || [];
 }
 async function loadOrgPolicies(){
   if(!STATE.org.policies_enabled) return;
-  const { data, error } = await STATE.supabase.from('org_policies').select('*').eq('organisation_id', STATE.org.id).order('created_at', {ascending:true});
-  if(error){ toast('Could not load policies & procedures: ' + error.message, 'error'); return; }
-  STATE.orgPolicies = data || [];
-  const { data: sections } = await STATE.supabase.from('org_policy_sections').select('*').eq('organisation_id', STATE.org.id).order('sort_order', {ascending:true});
-  STATE.orgPolicySections = sections || [];
+  const q = (t, col) => STATE.supabase.from(t).select('*').eq('organisation_id', STATE.org.id).order(col, {ascending:true});
+  const [main, sections] = await Promise.all([q('org_policies','created_at'), q('org_policy_sections','sort_order')]);
+  if(main.error){ toast('Could not load policies & procedures: ' + main.error.message, 'error'); return; }
+  STATE.orgPolicies = main.data || [];
+  STATE.orgPolicySections = sections.data || [];
 }
 
 async function loadAwAssets(){
@@ -18143,7 +18150,7 @@ function renderAdminSubtabContent(tab){
   if(tab === 'processes') renderAdminProcesses();
   if(tab === 'moduleinfo') renderAdminModuleInfo();
   if(tab === 'masterregister') renderAdminMasterDocRegister();
-  if(tab === 'templatelibrary') renderTemplateLibrary();
+  if(tab === 'templatelibrary') loadContentTemplates().then(renderTemplateLibrary);
   if(tab === 'adminconsole') renderAdminConsole();
 }
 
