@@ -1605,71 +1605,76 @@ window.selectOrg = async function(orgId){
   STATE.memberMap = {};
   STATE.members.forEach(m => { STATE.memberMap[m.user_id] = (m.profiles && m.profiles.name) || 'Unknown'; });
 
-  await loadNCs();
-  await loadRagaAlerts();
-  await loadNCTypes();
-  await loadAssessmentTemplates();
-  await loadAssessmentItems();
-  await loadAssessmentRecords();
-  await loadCustomerSurveys();
-  await loadFiveSInspections();
-  await loadProcesses();
-  await loadProcessKpis();
-  await loadManagementReviews();
-  await loadManagementReviewActions();
-  await loadInvites();
-  await loadModuleDescriptions();
-  await loadProcessReviews();
-  await loadTasks();
-  await loadAudits();
-  await loadAuditChecklistTemplates();
-  await loadAuditChecklistItems();
-  await loadAuditTeamMembers();
-  await loadRisks();
-  await loadDocuments();
-  await loadDocDepartments();
-  await loadDocTypes();
-  await loadDocReviewRequests();
-  await loadFormIdentifications();
-  await loadChecklistTemplates();
-  await loadSuppliers();
-  await loadCustomers();
-  await loadSatisfactionQuestions();
-  await loadObjectives();
-  await loadLegalRegister();
-  await loadLegalAiSuggestions();
-  await loadLegalChecklistItems();
-  await loadDocumentRegisterAiFindings();
-  await loadPositions();
-  await loadPersonnel();
-  await loadDivisions();
-  await loadCompetence();
-  await loadTraining();
-  await loadPositionKpis();
-  await loadAppraisals();
-  await loadAssetChecklistTemplates();
-  await loadAssetChecklistItems();
-  await loadAssets();
-  await loadAssetInspectionsSummary();
-  await loadBulletins();
-  await loadAttendance();
-  await loadLeaveTypes();
-  await loadLeaveApplications();
-  await loadExpenseClaims();
-  await loadPersonnelRequests();
-  await loadOvertimeRequests();
-  await loadContentTemplates();
-  await loadOrgFlowcharts();
-  await loadOrgChecklists();
-  await loadOrgPolicies();
-  await loadLegalCerts();
-  await loadAwAssets();
-  await loadAwComponents();
-  await loadAwReadingTypes();
-  await loadAwReadings();
-  await loadAwSiteAssessments();
-  await loadAwSealReplacements();
-  await loadSiteFiles();
+  // Every register loads at the same time rather than one after another — each loader
+  // only fills its own slice of STATE, so none depends on another. allSettled means one
+  // failing table (each already reports its own error) never blocks the rest.
+  await Promise.allSettled([
+    loadNCs(),
+    loadRagaAlerts(),
+    loadNCTypes(),
+    loadAssessmentTemplates(),
+    loadAssessmentItems(),
+    loadAssessmentRecords(),
+    loadCustomerSurveys(),
+    loadFiveSInspections(),
+    loadProcesses(),
+    loadProcessKpis(),
+    loadManagementReviews(),
+    loadManagementReviewActions(),
+    loadInvites(),
+    loadModuleDescriptions(),
+    loadProcessReviews(),
+    loadTasks(),
+    loadAudits(),
+    loadAuditChecklistTemplates(),
+    loadAuditChecklistItems(),
+    loadAuditTeamMembers(),
+    loadRisks(),
+    loadDocuments(),
+    loadDocDepartments(),
+    loadDocTypes(),
+    loadDocReviewRequests(),
+    loadFormIdentifications(),
+    loadChecklistTemplates(),
+    loadSuppliers(),
+    loadCustomers(),
+    loadSatisfactionQuestions(),
+    loadObjectives(),
+    loadLegalRegister(),
+    loadLegalAiSuggestions(),
+    loadLegalChecklistItems(),
+    loadDocumentRegisterAiFindings(),
+    loadPositions(),
+    loadPersonnel(),
+    loadDivisions(),
+    loadCompetence(),
+    loadTraining(),
+    loadPositionKpis(),
+    loadAppraisals(),
+    loadAssetChecklistTemplates(),
+    loadAssetChecklistItems(),
+    loadAssets(),
+    loadAssetInspectionsSummary(),
+    loadBulletins(),
+    loadAttendance(),
+    loadLeaveTypes(),
+    loadLeaveApplications(),
+    loadExpenseClaims(),
+    loadPersonnelRequests(),
+    loadOvertimeRequests(),
+    loadContentTemplates(),
+    loadOrgFlowcharts(),
+    loadOrgChecklists(),
+    loadOrgPolicies(),
+    loadLegalCerts(),
+    loadAwAssets(),
+    loadAwComponents(),
+    loadAwReadingTypes(),
+    loadAwReadings(),
+    loadAwSiteAssessments(),
+    loadAwSealReplacements(),
+    loadSiteFiles(),
+  ]);
 
   hideAllGates();
   document.getElementById('view-landing').classList.remove('active');
