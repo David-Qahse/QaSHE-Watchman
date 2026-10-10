@@ -1340,7 +1340,7 @@ const RISK_CATEGORY_LABELS = {
   health_safety: 'Health & Safety',
 };
 function riskCategoryLabel(c){ return RISK_CATEGORY_LABELS[c] || label(c); }
-function memberName(userId){ return STATE.memberMap[userId] || '—'; }
+function memberName(userId){ return STATE.memberMap[userId] || (STATE.formerMemberMap && STATE.formerMemberMap[userId] ? STATE.formerMemberMap[userId] + ' (former member)' : '—'); }
 function ncById(id){ return STATE.ncs.find(n=>n.id===id); }
 function ragaById(id){ return (STATE.ragaAlerts||[]).find(r=>r.id===id); }
 function taskLinkedRef(t){
@@ -1621,6 +1621,7 @@ window.selectOrg = async function(orgId){
     loadManagementReviews(),
     loadManagementReviewActions(),
     loadInvites(),
+    loadFormerMembers(),
     loadModuleDescriptions(),
     loadProcessReviews(),
     loadTasks(),
@@ -1757,6 +1758,13 @@ async function loadManagementReviewActions(){
   const { data, error } = await STATE.supabase.from('management_review_actions').select('*').eq('organisation_id', STATE.org.id);
   if(error){ toast('Could not load management review actions: ' + error.message, 'error'); return; }
   STATE.managementReviewActions = data || [];
+}
+// People removed from the organisation keep their name on the records they created.
+async function loadFormerMembers(){
+  STATE.formerMemberMap = {};
+  const { data, error } = await STATE.supabase.from('organisation_former_members').select('user_id, name').eq('organisation_id', STATE.org.id);
+  if(error) return; // table not created yet (admin-alignment SQL not run) — nothing to show
+  (data||[]).forEach(f => { STATE.formerMemberMap[f.user_id] = f.name || 'Unknown'; });
 }
 async function loadInvites(){
   const { data, error } = await STATE.supabase.from('invites').select('*').eq('organisation_id', STATE.org.id).order('created_at', {ascending:false});
@@ -2521,21 +2529,32 @@ window.confirmOrgChartPrint = async function(){
   await printRecord(job.title, job.refLine, job.meta || [], bodyHtml, null, null);
 };
 
+// Which organisation-level switch (organisations.<x>) turns each switchable module on.
+// Exported to the invite / edit-access screens so they only offer ticks for modules the client actually has.
+const ORG_MODULE_FLAGS = {
+  nonconformances:'nc_enabled', documents:'document_control_enabled', all_documents:'all_documents_enabled',
+  raga:'raga_enabled', hr:'hr_enabled', asset_watchman:'asset_watchman_enabled', site_files:'site_files_enabled',
+  process_flowcharts:'process_flowcharts_enabled', checklists:'checklists_enabled', policies:'policies_enabled',
+  legal_certs:'legal_certs_enabled',
+};
+function orgHasModule(mod, org){
+  org = org || STATE.org;
+  const f = ORG_MODULE_FLAGS[mod];
+  if(!f) return true;
+  return mod === 'nonconformances' ? org[f] !== false : !!org[f]; // nc defaults to on so no existing client loses it
+}
+
+// One rule for everything: the client must HAVE the module (platform switch) AND the person must be
+// allowed it (Admins automatically; everyone else by their module-access tick). Administration is
+// Admin-role only; platform staff are exempt so the Admin Console can never lock itself out.
 function canAccessModule(mod){
   if(!GATED_MODULES.includes(mod)) return true; // overview, compliance — always visible
-  if(mod === 'all_documents') return !!STATE.org.all_documents_enabled; // org-level switch only — everyone sees it when on, nobody when off
-  if(mod === 'documents') return !!STATE.org.document_control_enabled; // same mechanism — org-level switch only
-  if(mod === 'administration') return (!!STATE.org.administration_enabled && STATE.myRole === 'admin') || (STATE.profile && STATE.profile.is_platform_staff); // org-level switch AND the person's own role must be admin — platform staff stay exempt so the Admin Console that controls this flag is never itself locked out by it
-  if(mod === 'raga') return !!STATE.org.raga_enabled; // same mechanism — org-level switch only
-  if(mod === 'hr') return !!STATE.org.hr_enabled; // same mechanism — org-level switch only
-  if(mod === 'asset_watchman') return !!STATE.org.asset_watchman_enabled; // same mechanism — org-level switch only
-  if(mod === 'site_files') return !!STATE.org.site_files_enabled; // org-level switch — personal documents are further restricted by can_download
-  if(mod === 'process_flowcharts') return !!STATE.org.process_flowcharts_enabled; // same mechanism — org-level switch only
-  if(mod === 'checklists') return !!STATE.org.checklists_enabled;
-  if(mod === 'policies') return !!STATE.org.policies_enabled;
-  // Sensitive company paperwork: needs the org-level switch AND, for anyone who isn't an admin, an explicit module-access tick.
-  if(mod === 'legal_certs') return !!STATE.org.legal_certs_enabled && (STATE.myRole === 'admin' || (STATE.myModuleAccess || []).includes('legal_certs'));
-  if(mod === 'nonconformances') return STATE.org.nc_enabled !== false; // org-level switch — defaults true so no existing client loses access
+  const isStaff = !!(STATE.profile && STATE.profile.is_platform_staff);
+  if(mod === 'administration') return (!!STATE.org.administration_enabled && STATE.myRole === 'admin') || isStaff;
+  if(ORG_MODULE_FLAGS[mod]){
+    if(!orgHasModule(mod)) return false;
+    return STATE.myRole === 'admin' || isStaff || (STATE.myModuleAccess || []).includes(mod);
+  }
   if(STATE.myRole === 'admin') return true;
   return (STATE.myModuleAccess || []).includes(mod);
 }
@@ -3957,6 +3976,7 @@ const RENDERERS = {
         <button class="btn-small ${STATE._adminSubtab==='processes'?'primary':''}" onclick="switchAdminSubtab('processes')">Processes</button>
         <button class="btn-small ${STATE._adminSubtab==='moduleinfo'?'primary':''}" onclick="switchAdminSubtab('moduleinfo')">Module Info</button>
         <button class="btn-small ${STATE._adminSubtab==='masterregister'?'primary':''}" onclick="switchAdminSubtab('masterregister')">Master Documents Register</button>
+        <button class="btn-small ${STATE._adminSubtab==='orgprofile'?'primary':''}" onclick="switchAdminSubtab('orgprofile')">Organisation Profile</button>
         ${STATE.profile.is_platform_staff ? `<button class="btn-small ${STATE._adminSubtab==='templatelibrary'?'primary':''}" onclick="switchAdminSubtab('templatelibrary')">Template Library</button>` : ''}
         ${STATE.profile.is_platform_staff ? `<button class="btn-small ${STATE._adminSubtab==='adminconsole'?'primary':''}" onclick="switchAdminSubtab('adminconsole')">Admin Console</button>` : ''}
       </div>
@@ -18116,6 +18136,8 @@ window.printMR = async function(id){
 
 const ADMIN_INVITE_MODULES = GATED_MODULES.filter(m => m !== 'administration')
   .map(key => ({ key, label: MODULE_META[key] ? MODULE_META[key].title : key }));
+// Only the modules this client actually has — a tick for a module that is switched off would do nothing.
+function adminInviteModules(){ return ADMIN_INVITE_MODULES.filter(m => orgHasModule(m.key)); }
 
 window.switchAdminSubtab = function(tab){
   STATE._adminSubtab = tab;
@@ -18150,6 +18172,7 @@ function renderAdminSubtabContent(tab){
   if(tab === 'processes') renderAdminProcesses();
   if(tab === 'moduleinfo') renderAdminModuleInfo();
   if(tab === 'masterregister') renderAdminMasterDocRegister();
+  if(tab === 'orgprofile') renderAdminOrgProfile();
   if(tab === 'templatelibrary') loadContentTemplates().then(renderTemplateLibrary);
   if(tab === 'adminconsole') renderAdminConsole();
 }
@@ -18494,6 +18517,72 @@ function renderAdminMasterDocRegister(){
 }
 window.renderAdminMasterDocRegister = renderAdminMasterDocRegister;
 
+// Organisation Profile — the client's own details, logo and brand colours, managed by the client's Admin.
+// Saved through a database function that can only touch these profile fields, so an Admin can never switch
+// modules, change the subscription or alter anything platform-controlled from here.
+async function renderAdminOrgProfile(){
+  const wrap = document.getElementById('admin-subtab-content');
+  if(!wrap) return;
+  wrap.innerHTML = '<div class="detail-card"><p style="font-size:12.5px; color:var(--text-faint);">Loading…</p></div>';
+  const { data: o, error } = await STATE.supabase.from('organisations').select('*').eq('id', STATE.org.id).single();
+  if(error || !o){ wrap.innerHTML = '<div class="detail-card"><p style="font-size:12.5px; color:var(--red);">Could not load the organisation profile.</p></div>'; return; }
+  const v = x => escapeHtml(x || '');
+  wrap.innerHTML = `
+    <div class="detail-card">
+      <div class="panel-head"><h3>Organisation Profile</h3></div>
+      <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:14px;">Your company's details, logo and colours. The logo and colours appear across Watchman and on every printed document and report. The reference prefix <b>${escapeHtml(o.ref_prefix||'')}</b> is fixed.</p>
+      <div class="form-grid">
+        <div class="field span2"><label>Organisation name</label><input id="op-name" value="${v(o.name)}"></div>
+        <div class="field"><label>Industry</label><input id="op-industry" value="${v(o.industry)}"></div>
+        <div class="field span2"><label>Address</label><input id="op-address" value="${v(o.address)}"></div>
+        <div class="field"><label>Registration number</label><input id="op-regno" value="${v(o.registration_number)}"></div>
+        <div class="field"><label>Primary contact</label><input id="op-contact-name" value="${v(o.primary_contact_name)}"></div>
+        <div class="field"><label>Contact email</label><input id="op-contact-email" type="email" value="${v(o.primary_contact_email)}"></div>
+        <div class="field"><label>Contact phone</label><input id="op-contact-phone" value="${v(o.primary_contact_phone)}"></div>
+        <div class="field"><label>Brand colour (primary)</label><input id="op-primary" type="color" value="${/^#[0-9a-fA-F]{6}$/.test(o.brand_primary_color||'') ? o.brand_primary_color : '#B21616'}" style="height:38px; padding:2px;"></div>
+        <div class="field"><label>Brand colour (secondary)</label><input id="op-secondary" type="color" value="${/^#[0-9a-fA-F]{6}$/.test(o.brand_secondary_color||'') ? o.brand_secondary_color : '#545454'}" style="height:38px; padding:2px;"></div>
+        <div class="field span3"><label>Logo</label>
+          <div style="display:flex; align-items:center; gap:14px;">
+            ${o.logo_url ? `<img src="${escapeHtml(o.logo_url)}" alt="Current logo" style="max-height:48px; max-width:180px; object-fit:contain;">` : '<span style="font-size:12px; color:var(--text-faint);">No logo yet</span>'}
+            <input type="file" id="op-logo" accept="image/png,image/jpeg,image/svg+xml">
+          </div>
+        </div>
+      </div>
+      <button class="btn-small primary" style="margin-top:12px;" onclick="saveAdminOrgProfile()">Save profile</button>
+    </div>`;
+}
+
+window.saveAdminOrgProfile = async function(){
+  const name = document.getElementById('op-name').value.trim();
+  if(!name){ toast('The organisation name is required.', 'error'); return; }
+  const patch = {
+    name, industry: document.getElementById('op-industry').value.trim(), address: document.getElementById('op-address').value.trim(),
+    registration_number: document.getElementById('op-regno').value.trim(),
+    primary_contact_name: document.getElementById('op-contact-name').value.trim(),
+    primary_contact_email: document.getElementById('op-contact-email').value.trim(),
+    primary_contact_phone: document.getElementById('op-contact-phone').value.trim(),
+    brand_primary_color: document.getElementById('op-primary').value, brand_secondary_color: document.getElementById('op-secondary').value,
+  };
+  const file = document.getElementById('op-logo').files[0];
+  showLoader('Saving…');
+  try {
+    if(file){
+      if(file.size > 3*1024*1024){ toast('That logo is over 3 MB — please use a smaller image.', 'error'); return; }
+      const path = `${STATE.org.id}/logo-${Date.now()}-${sanitizeFileName(file.name)}`;
+      const { error: upErr } = await STATE.supabase.storage.from('branding').upload(path, file, { upsert:true });
+      if(upErr){ toast('Logo upload failed: ' + upErr.message + ' (has the admin-alignment SQL been run?)', 'error'); return; }
+      patch.logo_url = STATE.supabase.storage.from('branding').getPublicUrl(path).data.publicUrl;
+    }
+    const { error } = await STATE.supabase.rpc('admin_update_org_profile', { p_org: STATE.org.id, p_patch: patch });
+    if(error){ toast('Could not save: ' + error.message + (/admin_update_org_profile/.test(error.message) ? ' — run the admin-alignment SQL first.' : ''), 'error'); return; }
+    Object.assign(STATE.org, patch);
+    patchCachedOrgMembership(patch);
+    applyBranding(STATE.org);
+    toast('Organisation profile saved.', 'success');
+    renderAdminOrgProfile();
+  } finally { hideLoader(); }
+};
+
 function renderAdminModuleInfo(){
   const wrap = document.getElementById('admin-subtab-content');
   if(!wrap) return;
@@ -18686,7 +18775,7 @@ function renderAdminTeam(){
       <div class="field">
         <label>Module access <span style="text-transform:none; font-weight:400; color:var(--text-faint);">(Admins see every module regardless of what's ticked here)</span></label>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 16px; margin-top:6px;">
-          ${ADMIN_INVITE_MODULES.map(m => `
+          ${adminInviteModules().map(m => `
             <div style="display:flex; align-items:center; gap:8px;">
               <input type="checkbox" class="admin-inv-module-cb" value="${m.key}" id="admin-inv-mod-${m.key}" style="width:auto;">
               <label for="admin-inv-mod-${m.key}" style="text-transform:none; font-family:'Inter'; font-size:12.5px; color:var(--text-dim);">${m.label}</label>
@@ -18716,14 +18805,15 @@ function renderAdminTeam(){
       <div class="panel-head"><h3>Team Members</h3></div>
       ${!isAdmin ? '<p style="font-size:11.5px; color:var(--text-faint); margin-bottom:10px;">Viewing only — inviting and editing access requires the Admin role.</p>' : ''}
       ${STATE.members.length ? `<table>
-        <tr><th>Name</th><th>Role</th><th>Modules</th>${isAdmin ? '<th></th>' : ''}</tr>
+        <tr><th>Name</th><th>Role</th><th>Modules</th><th>Approver</th>${isAdmin ? '<th></th>' : ''}</tr>
         ${STATE.members.map(m => `<tr>
           <td class="strong">${(m.profiles && m.profiles.name) || 'Unknown'}</td>
           <td style="text-transform:capitalize">${m.role}</td>
           <td style="font-size:12px; color:var(--text-dim);">${m.role==='admin' ? 'All (Admin)' : ((m.module_access||[]).length + ' module' + ((m.module_access||[]).length===1?'':'s'))}</td>
-          ${isAdmin ? `<td style="text-align:right;"><button class="btn-small" onclick="toggleAdminMemberEdit('${m.user_id}')">Edit Access</button></td>` : ''}
+          <td style="font-size:12px; color:${m.is_approver?'var(--green)':'var(--text-faint)'};">${m.is_approver ? 'Yes' : '—'}</td>
+          ${isAdmin ? `<td style="text-align:right; white-space:nowrap;"><button class="btn-small" onclick="toggleAdminMemberEdit('${m.user_id}')">Edit Access</button> ${m.user_id!==STATE.user.id ? `<button class="btn-small" onclick="removeAdminMember('${m.user_id}')">Remove</button>` : ''}</td>` : ''}
         </tr>
-        ${isAdmin ? `<tr id="admin-member-edit-${m.user_id}" style="display:none;"><td colspan="4" style="padding:0;"></td></tr>` : ''}
+        ${isAdmin ? `<tr id="admin-member-edit-${m.user_id}" style="display:none;"><td colspan="5" style="padding:0;"></td></tr>` : ''}
         `).join('')}
       </table>` : '<p style="font-size:12.5px; color:var(--text-faint);">No members yet.</p>'}
     </div>
@@ -18809,7 +18899,7 @@ window.toggleAdminMemberEdit = function(userId){
       <div class="field">
         <label>Module access <span style="text-transform:none; font-weight:400; color:var(--text-faint);">(ignored if role is Admin)</span></label>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 16px; margin-top:6px;">
-          ${ADMIN_INVITE_MODULES.map(mod => `
+          ${adminInviteModules().map(mod => `
             <div style="display:flex; align-items:center; gap:8px;">
               <input type="checkbox" class="admin-edit-module-cb-${userId}" value="${mod.key}" id="admin-edit-mod-${userId}-${mod.key}" style="width:auto;" ${currentModules.includes(mod.key)?'checked':''}>
               <label for="admin-edit-mod-${userId}-${mod.key}" style="text-transform:none; font-family:'Inter'; font-size:12.5px; color:var(--text-dim);">${mod.label}</label>
@@ -18821,6 +18911,10 @@ window.toggleAdminMemberEdit = function(userId){
         <input type="checkbox" id="admin-edit-download-${userId}" style="width:auto;" ${m.can_download?'checked':''}>
         <label for="admin-edit-download-${userId}" style="text-transform:none; font-family:'Inter'; font-size:12.5px; color:var(--text-dim);">Can download files (Word/PDF) — beyond viewing and printing. Admins always have this regardless of this setting.</label>
       </div>
+      <div class="field" style="display:flex; align-items:center; gap:8px; margin-top:6px;">
+        <input type="checkbox" id="admin-edit-approver-${userId}" style="width:auto;" ${m.is_approver?'checked':''}>
+        <label for="admin-edit-approver-${userId}" style="text-transform:none; font-family:'Inter'; font-size:12.5px; color:var(--text-dim);">Approval authority — can be chosen to approve documents, policies and other sign-offs.</label>
+      </div>
       <button class="btn-small primary" onclick="saveAdminMemberAccess('${userId}')">Save</button>
       <button class="btn-small" onclick="toggleAdminMemberEdit('${userId}')">Cancel</button>
     </div>
@@ -18828,19 +18922,59 @@ window.toggleAdminMemberEdit = function(userId){
 };
 
 window.saveAdminMemberAccess = async function(userId){
+  const m = STATE.members.find(x=>x.user_id===userId);
+  if(!m) return;
   const role = document.getElementById('admin-edit-role-'+userId).value;
-  const moduleAccess = Array.from(document.querySelectorAll('.admin-edit-module-cb-'+userId+':checked')).map(el => el.value);
+  const ticked = Array.from(document.querySelectorAll('.admin-edit-module-cb-'+userId+':checked')).map(el => el.value);
   const canDownloadFlag = document.getElementById('admin-edit-download-'+userId).checked;
+  const isApprover = document.getElementById('admin-edit-approver-'+userId).checked;
+  // Ticks for modules the client doesn't currently have aren't shown — keep whatever they already had so switching a module back on restores it.
+  const shown = new Set(adminInviteModules().map(x=>x.key));
+  const hidden = (m.module_access||[]).filter(k => !shown.has(k));
+  const moduleAccess = [...new Set([...ticked, ...hidden])];
   if(role !== 'admin' && !moduleAccess.length){
     toast('Tick at least one module — otherwise this person will have no modules to work in at all.', 'error');
     return;
   }
-  const { error } = await STATE.supabase.from('organisation_members').update({ role, module_access: moduleAccess, can_download: canDownloadFlag }).eq('user_id', userId).eq('organisation_id', STATE.org.id);
+  if(m.role === 'admin' && role !== 'admin'){
+    if(STATE.members.filter(x=>x.role==='admin').length <= 1){
+      toast('This is the only Admin. Make someone else an Admin first, so the organisation is never left without one.', 'error');
+      return;
+    }
+    if(userId === STATE.user.id && !confirm('You are about to remove your own Admin rights. You will lose access to Administration straight away. Continue?')) return;
+  }
+  const { error } = await STATE.supabase.from('organisation_members').update({ role, module_access: moduleAccess, can_download: canDownloadFlag, is_approver: isApprover }).eq('user_id', userId).eq('organisation_id', STATE.org.id);
   if(error){ toast('Could not update access: ' + error.message, 'error'); return; }
   toast('Access updated.', 'success');
+  await reloadAdminMembers();
+  if(userId === STATE.user.id){ STATE.myRole = role; STATE.myModuleAccess = moduleAccess; STATE.myCanDownload = canDownloadFlag; applyModuleAccessToNav(); if(!canAccessModule('administration')){ showModule('overview'); return; } }
+  renderAdminTeam();
+};
+
+async function reloadAdminMembers(){
   const { data: members } = await STATE.supabase.from('organisation_members').select('user_id, role, is_approver, module_access, can_download, profiles!organisation_members_user_id_fkey(name)').eq('organisation_id', STATE.org.id).eq('status','active');
   STATE.members = members || [];
+  STATE.memberMap = {};
+  STATE.members.forEach(x => { STATE.memberMap[x.user_id] = (x.profiles && x.profiles.name) || 'Unknown'; });
+}
+
+// Offboarding: removes the person's access to this organisation completely (not just hides modules).
+// Done by a database function that also refuses to remove yourself or the only Admin, and keeps their
+// name on the records they created.
+window.removeAdminMember = async function(userId){
+  const m = STATE.members.find(x=>x.user_id===userId);
+  if(!m) return;
+  const name = (m.profiles && m.profiles.name) || 'this person';
+  if(userId === STATE.user.id){ toast('You cannot remove yourself.', 'error'); return; }
+  if(m.role === 'admin' && STATE.members.filter(x=>x.role==='admin').length <= 1){ toast('This is the only Admin and cannot be removed.', 'error'); return; }
+  if(!confirm(`Remove ${name} from ${STATE.org.name}?\n\nThey lose all access immediately. Everything they created stays on record under their name. They can be invited again later.`)) return;
+  const { error } = await STATE.supabase.rpc('admin_remove_member', { p_org: STATE.org.id, p_user: userId });
+  if(error){ toast('Could not remove: ' + error.message + (/admin_remove_member/.test(error.message) ? ' — run the admin-alignment SQL first.' : ''), 'error'); return; }
+  STATE.formerMemberMap = STATE.formerMemberMap || {};
+  STATE.formerMemberMap[userId] = (m.profiles && m.profiles.name) || 'Unknown';
+  await reloadAdminMembers();
   renderAdminTeam();
+  toast(`${name} has been removed.`, 'success');
 };
 
 /* ============================================================================
