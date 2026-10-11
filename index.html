@@ -641,7 +641,7 @@
 
   .import-overlay{position:fixed; inset:0; background:rgba(30,28,27,.45); z-index:100; display:none; align-items:flex-start; justify-content:center; overflow-y:auto; padding:40px 20px;}
   .import-overlay.active{display:flex;}
-  .import-modal{background:#fff; border-radius:12px; max-width:720px; width:100%; padding:28px; margin-bottom:40px;}
+  .import-modal{background:#fff; border-radius:12px; max-width:1040px; width:100%; padding:28px; margin-bottom:40px;}
   .import-modal h3{font-family:'Poppins'; font-size:18px; font-weight:700; margin-bottom:6px;}
   .import-modal p.sub{font-size:12.5px; color:var(--text-faint); margin-bottom:18px; line-height:1.5;}
   .import-step{margin-bottom:18px;}
@@ -652,6 +652,7 @@
   .import-table-wrap td{padding:7px 10px; border-bottom:1px solid var(--border-soft); vertical-align:top;}
   .import-row-error td{background:var(--red-tint);}
   .import-row-ok td{background:#fff;}
+  .import-row-skip td{background:#f4f4f2; color:var(--text-faint);}
   .import-summary{font-size:13px; margin:14px 0; padding:12px 14px; border-radius:8px; background:var(--grey-tint);}
   .import-summary.has-errors{background:var(--amber-tint);}
   .import-actions{display:flex; gap:10px; justify-content:flex-end; margin-top:18px;}
@@ -10970,25 +10971,30 @@ const IMPORT_SPECS = {
   personnel: {
     label: 'Personnel & Competence',
     columns: [
-      {key:'full_name', label:'Full Name', required:true, type:'text', example:'Jane Ndlovu'},
-      {key:'company_number', label:'Company Number', required:false, type:'text', example:'EMP-0142'},
-      {key:'employment_type', label:'Full time / Contract', required:true, type:'enum', values:EMPLOYMENT_TYPES, example:'full_time'},
-      {key:'date_started', label:'Date Started', required:false, type:'date', example:'2024-03-01'},
-      {key:'qualifications_experience', label:'Qualifications and/or Experience', required:false, type:'text', example:'Trade tested welder, 8 years experience'},
-      {key:'primary_position', label:'Primary Position (exact title or ref)', required:true, type:'position', example:'Site Welding Supervisor'},
-      {key:'level', label:'Level of Competence (A/B/C/D)', required:true, type:'enum', values:COMPETENCE_LEVELS, example:'B'},
-      {key:'date_validated', label:'Date Validated', required:false, type:'date', example:'2026-01-15'},
-      {key:'validated_by_name', label:'Validated By — Full Name', required:false, type:'text', example:'David Elliott'},
-      {key:'validated_by_company_number', label:'Validated By — Company Number', required:false, type:'text', example:''},
-      {key:'validated_by_position', label:'Validated By — Position', required:false, type:'text', example:'QHSE Manager'},
-      {key:'comments', label:'Comments', required:false, type:'text', example:''},
+      {key:'full_name', label:'Full Name', required:true, type:'text', example:'Jane Ndlovu', aliases:['Name','Employee Name','Full names','Surname and Name','Employee']},
+      {key:'company_number', label:'Company Number', required:false, type:'text', example:'EMP-0142', aliases:['Employee Number','Employee No','Clock Number','Payroll Number','Staff Number','Company No']},
+      {key:'employment_type', label:'Full time / Contract', required:true, type:'enum', values:EMPLOYMENT_TYPES, example:'Full time', aliases:['Employment Type','Type','Contract Type','Employment']},
+      {key:'date_started', label:'Date Started', required:false, type:'date', example:'2024-03-01', aliases:['Start Date','Date Employed','Date of Employment','Date Joined']},
+      {key:'email', label:'Email', required:false, type:'text', example:'jane@company.co.za', aliases:['Email Address','E-mail']},
+      {key:'mobile_number', label:'Mobile Number', required:false, type:'text', example:'082 555 1234', aliases:['Mobile','Cell','Cell Number','Phone','Contact Number']},
+      {key:'line_manager', label:'Line Manager', required:false, type:'text', example:'David Elliott', aliases:['Reports To','Manager','Supervisor']},
+      {key:'department', label:'Department', required:false, type:'text', divType:'department', example:'Operations', aliases:['Departments']},
+      {key:'branch', label:'Branch', required:false, type:'text', divType:'branch', example:'Evander', aliases:['Branches','Site']},
+      {key:'qualifications_experience', label:'Qualifications and/or Experience', required:false, type:'text', example:'Trade tested welder, 8 years experience', aliases:['Qualifications','Experience']},
+      {key:'primary_position', label:'Primary Position', required:true, type:'position', example:'Site Welding Supervisor', aliases:['Position','Job Title','Designation','Role','Position Title']},
+      {key:'level', label:'Level of Competence', required:true, type:'enum', values:COMPETENCE_LEVELS, labels:COMPETENCE_LEVEL_LABELS, example:'B', aliases:['Competence Level','Level','Competence']},
+      {key:'date_validated', label:'Date Validated', required:false, type:'date', example:'2026-01-15', aliases:['Validation Date']},
+      {key:'validated_by_name', label:'Validated By - Full Name', required:false, type:'text', example:'David Elliott', aliases:['Validated By']},
+      {key:'validated_by_company_number', label:'Validated By - Company Number', required:false, type:'text', example:''},
+      {key:'validated_by_position', label:'Validated By - Position', required:false, type:'text', example:'QHSE Manager'},
+      {key:'comments', label:'Comments', required:false, type:'text', example:'', aliases:['Notes','Remarks']},
     ],
-    // Two writes per row — the shared engine's single buildPayload/table
-    // shape doesn't fit, so this spec provides its own insert logic instead.
+    // Two or more writes per row, so this spec supplies its own insert logic.
     customInsert: async (row, resolved) => {
       const { data: newPerson, error: pErr } = await STATE.supabase.from('personnel').insert({
         organisation_id: STATE.org.id, full_name: row.full_name, company_number: row.company_number || '',
         employment_type: row.employment_type, date_started: row.date_started || null,
+        email: row.email || '', mobile_number: row.mobile_number || '',
         qualifications_experience: row.qualifications_experience || '', comments: row.comments || '',
         created_by: STATE.user.id,
       }).select().single();
@@ -11000,7 +11006,24 @@ const IMPORT_SPECS = {
         validated_by_name: row.validated_by_name || '', validated_by_company_number: row.validated_by_company_number || '',
         validated_by_position: row.validated_by_position || '', created_by: STATE.user.id,
       });
-      if(cErr) throw new Error(`Person created but competence record failed: ${cErr.message}`);
+      if(cErr){
+        // Roll back so a half-registered person is not left behind.
+        await STATE.supabase.from('personnel').delete().eq('id', newPerson.id);
+        throw new Error(cErr.message);
+      }
+      const divIds = [...(resolved.department || []), ...(resolved.branch || [])];
+      if(divIds.length) await STATE.supabase.from('personnel_divisions').insert(divIds.map(d => ({ organisation_id: STATE.org.id, personnel_id: newPerson.id, division_id: d })));
+      if(row.line_manager) impPendingManagers.push({ id: newPerson.id, name: row.line_manager, who: row.full_name });
+    },
+    afterAll: async (failures) => {
+      if(!impPendingManagers.length) return;
+      await loadPersonnel();
+      for(const m of impPendingManagers){
+        const boss = impFind(STATE.personnel, m.name, ['full_name','company_number','ref_code']);
+        if(!boss || boss.id === m.id){ failures.push(`${m.who}: imported, but line manager "${m.name}" was not found, so none was set`); continue; }
+        await STATE.supabase.from('personnel').update({ line_manager_id: boss.id }).eq('id', m.id);
+      }
+      impPendingManagers = [];
     }
   },
   training: {
@@ -11027,29 +11050,376 @@ const IMPORT_SPECS = {
   },
 };
 
+let impPendingManagers = [];
 let currentImportModule = null;
 let currentImportValidated = [];
+let currentImportFilter = 'all';
+
+/* =========================== Bulk import engine ===========================
+   Reads .xlsx / .xls / .csv, tolerant of how people really fill in spreadsheets:
+   - headers matched by name or label, any case/spacing, in any order, with title rows above
+   - numbers, Excel date serials, real dates and text dates (2026-03-01, 01/03/2026, 1 Mar 2026)
+   - "Full time", "full-time", "Permanent", "Level B", "b" and similar for coded columns
+   - missing positions can be created automatically; people already registered are skipped
+   Every problem is shown against the row and cell before anything is saved. */
+const IMPORT_MONTHS = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,sept:9,oct:10,nov:11,dec:12, january:1,february:2,march:3,april:4,june:6,july:7,august:8,september:9,october:10,november:11,december:12 };
+function impNorm(s){ return String(s == null ? '' : s).toLowerCase().replace(/\(.*?\)/g,'').replace(/[^a-z0-9]/g,''); }
+function impNormText(s){ return String(s == null ? '' : s).toLowerCase().replace(/\s+/g,' ').trim(); }
+function impCleanLabel(label){ return String(label).replace(/\s*\(.*?\)\s*/g,' ').replace(/\s+/g,' ').trim(); }
+function impIsoFromParts(y, m, d){
+  if(y < 100) y += 2000;
+  const dt = new Date(Date.UTC(y, m-1, d));
+  if(dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m-1 || dt.getUTCDate() !== d) return null;
+  return `${String(y).padStart(4,'0')}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+}
+function impExcelSerialToIso(n){
+  if(!(n > 59 && n < 2958466)) return null;
+  return new Date(Math.round((Math.floor(n) - 25569) * 86400000)).toISOString().slice(0,10);
+}
+// Returns an ISO yyyy-mm-dd string or null. South African day-first order is assumed for numeric dates.
+function impParseDate(v){
+  if(v == null || v === '') return null;
+  if(v instanceof Date && !isNaN(v)) return new Date(v.getTime() - v.getTimezoneOffset()*60000).toISOString().slice(0,10);
+  if(typeof v === 'number') return impExcelSerialToIso(v);
+  const s = String(v).trim().replace(/ /g,' ');
+  if(!s) return null;
+  if(/^\d{5}(\.\d+)?$/.test(s)) return impExcelSerialToIso(parseFloat(s));
+  let m = s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})(?:[T ].*)?$/);
+  if(m) return impIsoFromParts(+m[1], +m[2], +m[3]);
+  m = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2}|\d{4})$/);
+  if(m) return impIsoFromParts(+m[3], +m[2], +m[1]);
+  m = s.match(/^(\d{1,2})(?:st|nd|rd|th)?[\s\-\/.]+([A-Za-z]{3,9})[\s\-\/.,]+(\d{2}|\d{4})$/);
+  if(m && IMPORT_MONTHS[m[2].toLowerCase()]) return impIsoFromParts(+m[3], IMPORT_MONTHS[m[2].toLowerCase()], +m[1]);
+  m = s.match(/^([A-Za-z]{3,9})[\s\-\/.]+(\d{1,2})(?:st|nd|rd|th)?[\s,\-\/.]+(\d{2}|\d{4})$/);
+  if(m && IMPORT_MONTHS[m[1].toLowerCase()]) return impIsoFromParts(+m[3], IMPORT_MONTHS[m[1].toLowerCase()], +m[2]);
+  return null;
+}
+function impCellText(v, isDate){
+  if(v == null) return '';
+  if(isDate){ const iso = impParseDate(v); if(iso) return iso; }
+  if(v instanceof Date) return impParseDate(v) || '';
+  if(typeof v === 'number') return Number.isInteger(v) ? String(v) : String(Math.round(v*1e6)/1e6);
+  return String(v).replace(/ /g,' ').replace(/\s+/g,' ').trim();
+}
+const IMP_ENUM_SYNONYMS = {
+  employment_type: { permanent:'full_time', fulltime:'full_time', ft:'full_time', employee:'full_time', employed:'full_time',
+    contractor:'contract', contracted:'contract', temporary:'contract', temp:'contract', fixedterm:'contract', parttime:'contract', casual:'contract', pt:'contract' },
+  severity: { low:'minor', moderate:'major', medium:'major', high:'major', severe:'critical' },
+  risk_classification: { medium:'low', moderate:'low', critical:'high' },
+  entry_type: { risks:'risk', opportunities:'opportunity' },
+  delivery_type: { inhouse:'internal', 'in-house':'internal', outsourced:'external', thirdparty:'external' },
+};
+function impMatchEnum(col, val){
+  const norm = x => String(x).toLowerCase().replace(/[^a-z0-9]/g,'');
+  const n = norm(val);
+  if(col.key === 'level'){ const m = String(val).trim().match(/^(?:level\s*)?([abcd])\b/i); if(m) return m[1].toUpperCase(); }
+  let hit = col.values.find(v => norm(v) === n);
+  if(!hit && col.labels) hit = col.values.find(v => col.labels[v] && norm(col.labels[v]) === n);
+  if(!hit){ const syn = (IMP_ENUM_SYNONYMS[col.key] || {}); const target = syn[n] || syn[String(val).toLowerCase().trim()]; if(target && col.values.includes(target)) hit = target; }
+  if(!hit){ const starts = col.values.filter(v => n.length >= 3 && norm(v).startsWith(n)); if(starts.length === 1) hit = starts[0]; }
+  return hit || null;
+}
+// Looser name lookup than the exact-match resolvers: case, spacing and punctuation are ignored.
+function impFind(list, val, fields){
+  const n = impNorm(val); if(!n) return null;
+  return list.find(x => fields.some(f => impNorm(typeof f === 'function' ? f(x) : x[f]) === n)) || null;
+}
+function impExplainDbError(msg){
+  const m = String(msg || '');
+  if(/row-level security|violates row-level|permission denied/i.test(m)) return 'You do not have permission to add records here (the Admin, Manager or Contributor role is needed).';
+  if(/duplicate key|unique constraint/i.test(m)) return 'This record already exists.';
+  if(/violates check constraint/i.test(m)) return 'A value is not one the system accepts (' + m.replace(/.*constraint\s*/i,'').slice(0,80) + ').';
+  if(/violates foreign key/i.test(m)) return 'A linked record (position, person or member) no longer exists.';
+  if(/null value in column/i.test(m)) return 'A required field is empty (' + (m.match(/column "([^"]+)"/)||[])[1] + ').';
+  return m;
+}
+
+function validateImportValue(col, rawValue, ctx){
+  const isDate = col.type === 'date';
+  const val = impCellText(rawValue, isDate);
+  if(!val){
+    if(col.required) return { ok:false, error:`${impCleanLabel(col.label)} is required` };
+    return { ok:true, value:'' };
+  }
+  const L = impCleanLabel(col.label);
+  if(col.type === 'enum'){
+    const match = impMatchEnum(col, val);
+    if(!match) return { ok:false, error:`${L}: "${val}" is not valid. Use one of: ${col.values.join(', ')}` };
+    return { ok:true, value:match };
+  }
+  if(col.type === 'date'){
+    const iso = impParseDate(rawValue != null && rawValue !== '' ? rawValue : val) || impParseDate(val);
+    if(!iso) return { ok:false, error:`${L}: "${val}" is not a date I can read. Use a format like 2026-03-01 or 01/03/2026` };
+    return { ok:true, value:iso };
+  }
+  if(col.type === 'scale1to5'){
+    const m = val.match(/^\s*([1-5])(?:\.0+)?\b/);
+    if(!m) return { ok:false, error:`${L}: "${val}" must be a number from 1 to 5` };
+    return { ok:true, value:m[1] };
+  }
+  if(col.type === 'member'){
+    const mem = impFind(STATE.members, val, [ m => (m.profiles && m.profiles.name) || '', m => (m.profiles && m.profiles.email) || '' ]);
+    if(!mem) return { ok:false, error:`${L}: no member named "${val}" in this organisation (they must be invited and have joined first)` };
+    return { ok:true, value:val, resolved:mem.user_id };
+  }
+  if(col.type === 'supplier'){
+    const s = impFind(STATE.suppliers, val, ['ref_code','name']);
+    if(!s) return { ok:false, error:`${L}: no supplier matching "${val}"` };
+    return { ok:true, value:val, resolved:s.id };
+  }
+  if(col.type === 'nc_type'){
+    const t = impFind((STATE.ncTypes||[]).filter(x=>x.is_active), val, ['name']);
+    if(!t) return { ok:false, error:`${L}: no active type named "${val}". Add it under Manage Types first` };
+    return { ok:true, value:val, resolved:t.id };
+  }
+  if(col.type === 'position'){
+    const p = impFind(STATE.positions, val, ['ref_code','title']);
+    if(p) return { ok:true, value:p.title, resolved:p.id };
+    if(ctx && ctx.createPositions) return { ok:true, value:val, newPosition:val, warning:`New position "${val}" will be created` };
+    return { ok:false, error:`${L}: no position matching "${val}". Add it under Manage Positions first, or tick "Create missing positions"` };
+  }
+  if(col.type === 'personnel'){
+    const p = impFind(STATE.personnel, val, ['ref_code','full_name']);
+    if(!p) return { ok:false, error:`${L}: no person matching "${val}". Register them first` };
+    return { ok:true, value:val, resolved:p.id };
+  }
+  if(col.key === 'mobile_number' && /^[1-9]\d{8}$/.test(val)) return { ok:true, value:'0' + val };
+  if(col.divType){
+    const parts = val.split(/[;,\/|]+/).map(s=>s.trim()).filter(Boolean);
+    const pool = divisionsOfType(col.divType);
+    const ids = [], missing = [];
+    parts.forEach(p => { const d = impFind(pool, p, ['name']); if(d) ids.push(d.id); else missing.push(p); });
+    const out = { ok:true, value:val, resolved:ids };
+    if(missing.length) out.warning = `${L}: "${missing.join(', ')}" not set up under Manage ${col.divType === 'branch' ? 'Branches' : 'Departments'}, ignored`;
+    return out;
+  }
+  if(col.key === 'contact_email' || col.key === 'email'){
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) return { ok:true, value:val, warning:`${L}: "${val}" does not look like an email address` };
+  }
+  return { ok:true, value:val };
+}
+
+// Maps sheet columns to spec columns by key or label, ignoring case, spacing, punctuation and bracketed hints.
+function impMapHeaders(headerCells, spec){
+  const lookup = {};
+  spec.columns.forEach(c => { lookup[impNorm(c.key)] = c.key; lookup[impNorm(c.label)] = c.key; if(c.aliases) c.aliases.forEach(a => lookup[impNorm(a)] = c.key); });
+  const colIndex = {}; const unknown = [];
+  headerCells.forEach((h, i) => { const t = impCellText(h); if(!t) return; const key = lookup[impNorm(t)]; if(key && colIndex[key] === undefined) colIndex[key] = i; else if(!key) unknown.push(t); });
+  return { colIndex, unknown };
+}
+function impExistingKeys(spec){
+  const set = new Set();
+  const mod = currentImportModule;
+  if(mod === 'personnel') STATE.personnel.forEach(p => { if(p.company_number) set.add('n:' + impNorm(p.company_number)); set.add('f:' + impNorm(p.full_name)); });
+  if(mod === 'suppliers') STATE.suppliers.forEach(s => set.add(impNorm(s.name)));
+  if(mod === 'customers') STATE.customers.forEach(s => set.add(impNorm(s.name)));
+  if(mod === 'legal') STATE.legalRegister.forEach(s => set.add(impNorm(s.title)));
+  return set;
+}
+function impDupKeys(mod, row){
+  if(mod === 'personnel') return [row.company_number ? 'n:' + impNorm(row.company_number) : null, 'f:' + impNorm(row.full_name)].filter(Boolean);
+  if(mod === 'suppliers' || mod === 'customers') return [impNorm(row.name)];
+  if(mod === 'legal') return [impNorm(row.title)];
+  return [];
+}
+
+window.previewImport = async function(){
+  const fileInput = document.getElementById('import-file-input');
+  const file = fileInput.files[0];
+  const area = document.getElementById('import-preview-area');
+  if(!file){ alert('Choose an Excel file first.'); return; }
+  const spec = IMPORT_SPECS[currentImportModule];
+  area.innerHTML = '<p style="font-size:12.5px; color:var(--text-faint);">Reading the file…</p>';
+  try {
+    const XLSX = await ensureXLSX();
+    const buffer = await file.arrayBuffer();
+    const wb = XLSX.read(buffer, { type:'array' });
+    // Use the sheet called "Import" if there is one, otherwise the first sheet that has data.
+    const names = wb.SheetNames;
+    const order = [...names.filter(n => impNorm(n) === 'import'), ...names.filter(n => impNorm(n) !== 'import')];
+    let grid = null, usedSheet = null;
+    for(const n of order){ const g = XLSX.utils.sheet_to_json(wb.Sheets[n], { header:1, defval:'', raw:true, blankrows:false }); if(g.length){ grid = g; usedSheet = n; break; } }
+    if(!grid){ area.innerHTML = '<p style="font-size:12.5px; color:var(--red);">That file has no data in it.</p>'; return; }
+
+    // Find the header row: the first of the top 10 rows that recognises the most columns.
+    let best = { row:-1, hits:0, map:null };
+    grid.slice(0, 10).forEach((r, i) => { const mp = impMapHeaders(r, spec); const hits = Object.keys(mp.colIndex).length; if(hits > best.hits) best = { row:i, hits, map:mp }; });
+    if(best.row < 0){
+      area.innerHTML = `<p style="font-size:12.5px; color:var(--red);">I could not find the column headings. The first row should contain: <b>${spec.columns.map(c=>impCleanLabel(c.label)).join(', ')}</b>. Download the template to start from the correct layout.</p>`;
+      return;
+    }
+    const { colIndex, unknown } = best.map;
+    const missing = spec.columns.filter(c => c.required && colIndex[c.key] === undefined);
+    if(missing.length){
+      area.innerHTML = `<p style="font-size:12.5px; color:var(--red);">These required columns are missing from the file: <b>${missing.map(c=>impCleanLabel(c.label)).join(', ')}</b>.<br>Columns I found: ${grid[best.row].map(h=>impCellText(h)).filter(Boolean).join(', ') || 'none'}.</p>`;
+      return;
+    }
+
+    const createPos = !!(document.getElementById('import-create-positions') && document.getElementById('import-create-positions').checked);
+    const ctx = { createPositions: createPos };
+    const existing = impExistingKeys(spec);
+    const seen = new Map();
+    const dataRows = grid.slice(best.row + 1);
+    const validated = [];
+    dataRows.forEach((cells, ri) => {
+      if(cells.every(c => impCellText(c) === '')) return;
+      const sheetRow = best.row + 2 + ri;
+      const errors = [], warnings = [], cellErrors = {}, shown = {}, cleanRow = {}, resolved = {}, newPositions = {};
+      spec.columns.forEach(col => {
+        const raw = colIndex[col.key] !== undefined ? cells[colIndex[col.key]] : '';
+        shown[col.key] = impCellText(raw, col.type === 'date');
+        const r = validateImportValue(col, raw, ctx);
+        if(!r.ok){ errors.push(r.error); cellErrors[col.key] = true; }
+        else {
+          cleanRow[col.key] = r.value;
+          if(r.resolved !== undefined) resolved[col.key] = r.resolved;
+          if(r.newPosition) newPositions[col.key] = r.newPosition;
+          if(r.warning) warnings.push(r.warning);
+          if(r.value) shown[col.key] = r.value;
+        }
+      });
+      let skip = null;
+      if(!errors.length){
+        const keys = impDupKeys(currentImportModule, cleanRow);
+        const inFile = keys.find(k => seen.has(k));
+        if(inFile) errors.push(`Duplicate of row ${seen.get(inFile)} in this file`);
+        else if(keys.some(k => existing.has(k))) skip = 'Already registered, will be skipped';
+        keys.forEach(k => { if(!seen.has(k)) seen.set(k, sheetRow); });
+      }
+      validated.push({ idx: sheetRow, shown, cleanRow, resolved, newPositions, errors, warnings, cellErrors, skip });
+    });
+    if(!validated.length){ area.innerHTML = '<p style="font-size:12.5px; color:var(--text-faint);">No data rows found under the headings.</p>'; return; }
+    currentImportValidated = validated; currentImportFilter = 'all';
+    renderImportPreview(validated, spec, { usedSheet, unknown });
+  } catch(err) {
+    console.error('Import preview failed', err);
+    area.innerHTML = `<p style="font-size:12.5px; color:var(--red);">Could not read that file: ${escapeHtml(err.message || String(err))}.<br>Save it as .xlsx (or .csv) and try again.</p>`;
+  }
+};
+
+function renderImportPreview(validated, spec, meta){
+  meta = meta || {};
+  const okRows = validated.filter(v => !v.errors.length && !v.skip);
+  const errCount = validated.filter(v => v.errors.length).length;
+  const skipCount = validated.filter(v => !v.errors.length && v.skip).length;
+  const newPos = [...new Set(okRows.flatMap(v => Object.values(v.newPositions || {})).map(p => p.trim()))];
+  const area = document.getElementById('import-preview-area');
+  const rows = validated.filter(v => currentImportFilter === 'all' || v.errors.length || v.skip || v.warnings.length);
+  area.innerHTML = `
+    <div class="import-summary ${errCount ? 'has-errors' : ''}">
+      ${validated.length} row(s) read${meta.usedSheet ? ` from sheet “${escapeHtml(meta.usedSheet)}”` : ''}: <b>${okRows.length} ready to import</b>${skipCount ? `, ${skipCount} already registered (skipped)` : ''}${errCount ? `, <b>${errCount} with problems (fix and upload again, or import the rest)</b>` : ''}.
+      ${newPos.length ? `<br>New positions to create: <b>${newPos.map(escapeHtml).join(', ')}</b>.` : ''}
+      ${meta.unknown && meta.unknown.length ? `<br><span style="color:var(--text-faint);">Ignored columns: ${meta.unknown.map(escapeHtml).join(', ')}</span>` : ''}
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+      <button class="btn-small ${currentImportFilter==='all'?'primary':''}" onclick="setImportFilter('all')">All rows</button>
+      <button class="btn-small ${currentImportFilter==='issues'?'primary':''}" onclick="setImportFilter('issues')">Rows needing attention</button>
+      ${errCount ? '<button class="btn-small" onclick="downloadImportProblems()">Download problem rows (Excel)</button>' : ''}
+    </div>
+    <div class="import-table-wrap">
+      <table>
+        <tr><th>Row</th>${spec.columns.map(c=>`<th>${escapeHtml(impCleanLabel(c.label))}</th>`).join('')}<th>Result</th></tr>
+        ${rows.map(v => `<tr class="${v.errors.length ? 'import-row-error' : (v.skip ? 'import-row-skip' : 'import-row-ok')}">
+          <td>${v.idx}</td>
+          ${spec.columns.map(c=>`<td style="${v.cellErrors[c.key] ? 'color:var(--red); font-weight:600;' : ''}">${escapeHtml(String(v.shown[c.key]||'').slice(0,40))}</td>`).join('')}
+          <td>${v.errors.length ? escapeHtml(v.errors.join('; ')) : (v.skip ? `<span style="color:var(--text-faint);">${escapeHtml(v.skip)}</span>` : (v.warnings.length ? `<span style="color:var(--amber);">OK · ${escapeHtml(v.warnings.join('; '))}</span>` : '<span style="color:var(--green);">OK</span>'))}</td>
+        </tr>`).join('')}
+      </table>
+    </div>
+    <div class="import-actions">
+      <button class="btn-primary" ${okRows.length===0?'disabled':''} onclick="commitImport()">Import ${okRows.length} valid row(s)</button>
+    </div>
+  `;
+}
+window.setImportFilter = function(f){ currentImportFilter = f; renderImportPreview(currentImportValidated, IMPORT_SPECS[currentImportModule], {}); };
+
+window.downloadImportProblems = async function(){
+  const spec = IMPORT_SPECS[currentImportModule];
+  const bad = currentImportValidated.filter(v => v.errors.length);
+  if(!bad.length) return;
+  const XLSX = await ensureXLSX();
+  const data = bad.map(v => { const o = {}; spec.columns.forEach(c => o[impCleanLabel(c.label)] = v.shown[c.key] || ''); o['What to fix'] = v.errors.join('; '); o['Row in your file'] = v.idx; return o; });
+  const ws = XLSX.utils.json_to_sheet(data), wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Import');
+  XLSX.writeFile(wb, `${currentImportModule}-problem-rows.xlsx`);
+};
+
+window.commitImport = async function(){
+  const spec = IMPORT_SPECS[currentImportModule];
+  const validRows = currentImportValidated.filter(v => !v.errors.length && !v.skip);
+  if(!validRows.length) return;
+  const area = document.getElementById('import-preview-area');
+  const failures = []; let succeeded = 0; const createdPositions = [];
+
+  // 1. Create any missing positions once each.
+  const wanted = new Map();
+  validRows.forEach(v => Object.values(v.newPositions || {}).forEach(t => { const k = impNorm(t); if(k && !wanted.has(k)) wanted.set(k, t.trim()); }));
+  const posIds = {};
+  for(const [k, title] of wanted){
+    area.innerHTML = `<div class="import-summary">Creating position “${escapeHtml(title)}”…</div>`;
+    const { data, error } = await STATE.supabase.from('positions').insert({ organisation_id: STATE.org.id, title, department: '', created_by: STATE.user.id }).select().single();
+    if(error){ failures.push(`Position “${title}” could not be created: ${impExplainDbError(error.message)}`); continue; }
+    posIds[k] = data.id; createdPositions.push(title);
+  }
+  if(wanted.size) await loadPositions();
+
+  // 2. Insert the rows.
+  for(let i = 0; i < validRows.length; i++){
+    const row = validRows[i];
+    area.innerHTML = `<div class="import-summary">Importing ${i+1} of ${validRows.length}…</div>`;
+    try {
+      Object.entries(row.newPositions || {}).forEach(([key, title]) => { const id = posIds[impNorm(title)]; if(!id) throw new Error(`position “${title}” could not be created`); row.resolved[key] = id; });
+      if(spec.customInsert){ await spec.customInsert(row.cleanRow, row.resolved); }
+      else {
+        const payload = spec.buildPayload(row.cleanRow, row.resolved);
+        const { error } = await STATE.supabase.from(spec.table).insert(payload);
+        if(error) throw new Error(impExplainDbError(error.message));
+      }
+      succeeded++;
+    } catch(err){ failures.push(`Row ${row.idx}: ${impExplainDbError(err.message)}`); }
+  }
+
+  if(spec.afterAll){ try{ await spec.afterAll(failures); }catch(e){ failures.push('After-import step: ' + e.message); } }
+  area.innerHTML = `
+    <div class="import-summary ${failures.length ? 'has-errors' : ''}">
+      Imported <b>${succeeded} of ${validRows.length}</b> row(s).${createdPositions.length ? `<br>Positions created: ${createdPositions.map(escapeHtml).join(', ')}.` : ''}
+      ${failures.length ? '<br><br><b>Not imported:</b><br>' + failures.map(escapeHtml).join('<br>') : ''}
+    </div>
+    <div class="import-actions"><button class="btn-primary" onclick="closeImportModal()">Done</button></div>`;
+
+  // Refresh whichever register was just imported into.
+  const m = currentImportModule;
+  if(m === 'nonconformances'){ await loadNCs(); renderNCTable(); }
+  if(m === 'risks'){ await loadRisks(); renderRisksTable(); }
+  if(m === 'suppliers'){ await loadSuppliers(); renderSuppliersTable(); }
+  if(m === 'customers'){ await loadCustomers(); renderCustomersTable(); }
+  if(m === 'objectives'){ await loadObjectives(); renderObjectivesTable(); }
+  if(m === 'legal'){ await loadLegalRegister(); renderLegalTable(); }
+  if(m === 'personnel'){ await loadPersonnel(); await loadDivisions(); await loadCompetence(); renderPersonnelView(); }
+  if(m === 'training'){ await loadTraining(); renderTrainingTable(); }
+  updateNavBadges();
+};
 
 window.openImportModal = function(moduleKey){
-  currentImportModule = moduleKey;
-  currentImportValidated = [];
+  currentImportModule = moduleKey; currentImportValidated = []; currentImportFilter = 'all';
   const spec = IMPORT_SPECS[moduleKey];
+  const hasPos = spec.columns.some(c => c.type === 'position' && c.required);
+  const req = spec.columns.filter(c=>c.required).map(c=>impCleanLabel(c.label)).join(', ');
   document.getElementById('import-modal-content').innerHTML = `
     <h3>Bulk import — ${spec.label}</h3>
-    <p class="sub">Download the template, fill it in (one row per record), then upload it here. Nothing is saved until you review the preview and click Import.</p>
+    <p class="sub">Download the template, fill in one row per record, then upload it here. Nothing is saved until you review the preview and click Import. Required columns: <b>${escapeHtml(req)}</b>. The template has an Instructions sheet and a Lists sheet with the accepted values.</p>
     <div class="import-step">
       <div class="import-step-label">Step 1 — template</div>
       <button class="btn-small" onclick="downloadImportTemplate('${moduleKey}')">Download Excel template</button>
     </div>
     <div class="import-step">
-      <div class="import-step-label">Step 2 — upload your completed file</div>
-      <input type="file" id="import-file-input" accept=".xlsx,.xls">
-      <button class="btn-small primary" style="margin-left:8px;" onclick="previewImport()">Preview</button>
+      <div class="import-step-label">Step 2 — upload your completed file (.xlsx, .xls or .csv)</div>
+      <input type="file" id="import-file-input" accept=".xlsx,.xls,.csv">
+      ${hasPos ? `<label style="display:block; margin-top:8px; font-size:12.5px;"><input type="checkbox" id="import-create-positions" checked> Create any positions that are not on the system yet</label>` : ''}
+      <button class="btn-small primary" style="margin-top:8px;" onclick="previewImport()">Preview</button>
     </div>
     <div id="import-preview-area"></div>
-    <div class="import-actions">
-      <button class="btn-cancel" onclick="closeImportModal()">Close</button>
-    </div>
+    <div class="import-actions"><button class="btn-cancel" onclick="closeImportModal()">Close</button></div>
   `;
   document.getElementById('import-overlay').classList.add('active');
 };
@@ -11059,171 +11429,61 @@ window.closeImportModal = function(){
   currentImportModule = null; currentImportValidated = [];
 };
 
+function impColumnHelp(c){
+  let accepted = 'Free text';
+  if(c.type === 'enum') accepted = 'One of: ' + c.values.map(v => c.labels && c.labels[v] ? `${v} (${c.labels[v]})` : v).join(', ');
+  else if(c.type === 'date') accepted = 'A date, e.g. 2026-03-01 or 01/03/2026 (day first)';
+  else if(c.type === 'scale1to5') accepted = 'A number from 1 to 5';
+  else if(c.type === 'member') accepted = 'Name of a member of this organisation (see Lists sheet)';
+  else if(c.type === 'supplier') accepted = 'Supplier ref or name (see Lists sheet)';
+  else if(c.type === 'nc_type') accepted = 'A nonconformance type (see Lists sheet)';
+  else if(c.type === 'position') accepted = 'Position title or ref (see Lists sheet). Unknown titles can be created automatically';
+  else if(c.type === 'personnel') accepted = 'Full name or ref of a registered person';
+  else if(c.divType) accepted = `${c.divType === 'branch' ? 'Branch' : 'Department'} name(s), separate several with a semicolon (see Lists sheet)`;
+  return accepted;
+}
+
 window.downloadImportTemplate = async function(moduleKey){
-  const spec = IMPORT_SPECS[moduleKey];
-  const XLSX = await ensureXLSX();
-  const headerRow = spec.columns.map(c=>c.key);
-  const exampleRow = spec.columns.map(c=>c.example || '');
-  const ws = XLSX.utils.aoa_to_sheet([headerRow, exampleRow]);
-  ws['!cols'] = headerRow.map(h => ({ wch: Math.max(h.length + 4, 16) }));
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Import');
-  XLSX.writeFile(wb, `${moduleKey}-import-template.xlsx`);
-};
-
-function validateImportValue(col, rawValue){
-  const val = (rawValue || '').trim();
-  if(!val){
-    if(col.required) return { ok:false, error:`${col.label} is required` };
-    return { ok:true, value:'' };
-  }
-  if(col.type === 'enum'){
-    const match = col.values.find(v => v.toLowerCase() === val.toLowerCase().replace(/\s+/g,'_'));
-    if(!match) return { ok:false, error:`${col.label} must be one of: ${col.values.join(', ')}` };
-    return { ok:true, value:match };
-  }
-  if(col.type === 'date'){
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(val) || isNaN(new Date(val).getTime())){
-      return { ok:false, error:`${col.label} must be a date like 2026-09-01` };
-    }
-    return { ok:true, value:val };
-  }
-  if(col.type === 'scale1to5'){
-    const n = parseInt(val,10);
-    if(isNaN(n) || n<1 || n>5) return { ok:false, error:`${col.label} must be a number 1-5` };
-    return { ok:true, value:String(n) };
-  }
-  if(col.type === 'member'){
-    const id = resolveMemberByName(val);
-    if(!id) return { ok:false, error:`No member named "${val}" found in this organisation` };
-    return { ok:true, value:val, resolved:id };
-  }
-  if(col.type === 'supplier'){
-    const id = resolveSupplierByRef(val);
-    if(!id) return { ok:false, error:`No supplier matching "${val}" found` };
-    return { ok:true, value:val, resolved:id };
-  }
-  if(col.type === 'nc_type'){
-    const id = resolveNcTypeByName(val);
-    if(!id) return { ok:false, error:`No active nonconformance type named "${val}" found — add it under Manage Types first` };
-    return { ok:true, value:val, resolved:id };
-  }
-  if(col.type === 'position'){
-    const id = resolvePositionByRef(val);
-    if(!id) return { ok:false, error:`No position matching "${val}" found — add it under Manage Positions first` };
-    return { ok:true, value:val, resolved:id };
-  }
-  if(col.type === 'personnel'){
-    const id = resolvePersonnelByName(val);
-    if(!id) return { ok:false, error:`No personnel matching "${val}" found — register them first` };
-    return { ok:true, value:val, resolved:id };
-  }
-  return { ok:true, value:val };
-}
-
-window.previewImport = async function(){
-  const fileInput = document.getElementById('import-file-input');
-  const file = fileInput.files[0];
-  if(!file){ alert('Choose an Excel file first.'); return; }
-  const spec = IMPORT_SPECS[currentImportModule];
-
   try {
+    const spec = IMPORT_SPECS[moduleKey];
     const XLSX = await ensureXLSX();
-    const buffer = await file.arrayBuffer();
-    const wb = XLSX.read(buffer, { type: 'array' });
-    const firstSheet = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' }); // defval keeps genuinely blank cells as '' rather than dropping the key entirely, matching how the CSV parser always behaved
-
-    if(!rows.length){
-      document.getElementById('import-preview-area').innerHTML = '<p style="font-size:12.5px; color:var(--text-faint);">No rows found in that file.</p>';
-      return;
+    const heads = spec.columns.map(c => impCleanLabel(c.label));
+    const ws = XLSX.utils.aoa_to_sheet([heads]);
+    ws['!cols'] = heads.map(h => ({ wch: Math.max(h.length + 4, 18) }));
+    ws['!freeze'] = { xSplit:0, ySplit:1 };
+    const ins = [['Column','Required?','Accepted values','Example']].concat(spec.columns.map(c => [impCleanLabel(c.label), c.required ? 'Yes' : 'Optional', impColumnHelp(c), c.example || '']));
+    ins.push([]); ins.push(['Notes']);
+    ins.push(['Fill in the "Import" sheet only, starting directly under the headings. Delete nothing from the heading row.']);
+    ins.push(['Dates are read day first (01/03/2026 = 1 March 2026). The format 2026-03-01 is always unambiguous.']);
+    ins.push(['Numbers such as company numbers are fine as numbers or text. Blank rows are ignored.']);
+    const wsI = XLSX.utils.aoa_to_sheet(ins);
+    wsI['!cols'] = [{wch:34},{wch:11},{wch:70},{wch:34}];
+    const lists = [];
+    const addList = (title, arr) => { if(arr && arr.length) lists.push([title, arr]); };
+    const types = new Set(spec.columns.map(c=>c.type));
+    if(types.has('position')) addList('Positions', STATE.positions.map(p=>p.title));
+    if(types.has('member')) addList('Members', STATE.members.map(m=>m.profiles && m.profiles.name).filter(Boolean));
+    if(types.has('supplier')) addList('Suppliers', STATE.suppliers.map(s=>s.name));
+    if(types.has('personnel')) addList('Personnel', STATE.personnel.map(p=>p.full_name));
+    if(types.has('nc_type')) addList('NC types', (STATE.ncTypes||[]).filter(t=>t.is_active).map(t=>t.name));
+    if(spec.columns.some(c=>c.divType==='department')) addList('Departments', divisionsOfType('department').map(d=>d.name));
+    if(spec.columns.some(c=>c.divType==='branch')) addList('Branches', divisionsOfType('branch').map(d=>d.name));
+    spec.columns.filter(c=>c.type==='enum').forEach(c => addList(impCleanLabel(c.label), c.values.map(v => c.labels && c.labels[v] ? `${v} (${c.labels[v]})` : v)));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Import');
+    XLSX.utils.book_append_sheet(wb, wsI, 'Instructions');
+    if(lists.length){
+      const maxLen = Math.max(...lists.map(l=>l[1].length));
+      const aoa = [lists.map(l=>l[0])];
+      for(let i=0;i<maxLen;i++) aoa.push(lists.map(l=>l[1][i] || ''));
+      const wsL = XLSX.utils.aoa_to_sheet(aoa);
+      wsL['!cols'] = lists.map(()=>({wch:28}));
+      XLSX.utils.book_append_sheet(wb, wsL, 'Lists');
     }
-    const validated = rows.map((raw, idx) => {
-      const errors = [];
-      const cleanRow = {};
-      const resolved = {};
-      spec.columns.forEach(col => {
-        const r = validateImportValue(col, raw[col.key]);
-        if(!r.ok){ errors.push(r.error); }
-        else {
-          cleanRow[col.key] = r.value;
-          if(r.resolved !== undefined) resolved[col.key] = r.resolved;
-        }
-      });
-      return { idx, raw, cleanRow, resolved, errors };
-    });
-    currentImportValidated = validated;
-    renderImportPreview(validated, spec);
-  } catch(err) {
-    document.getElementById('import-preview-area').innerHTML = `<p style="font-size:12.5px; color:var(--red);">Could not read that file: ${err.message}</p>`;
-  }
+    XLSX.writeFile(wb, `${moduleKey}-import-template.xlsx`);
+  } catch(err){ console.error(err); toast('Could not build the template: ' + (err.message||err), 'error'); }
 };
 
-function renderImportPreview(validated, spec){
-  const okCount = validated.filter(v=>v.errors.length===0).length;
-  const errCount = validated.length - okCount;
-  const area = document.getElementById('import-preview-area');
-  area.innerHTML = `
-    <div class="import-summary ${errCount ? 'has-errors' : ''}">
-      ${validated.length} row(s) found — <b>${okCount} ready to import</b>${errCount ? `, <b>${errCount} with problems (will be skipped)</b>` : ''}.
-    </div>
-    <div class="import-table-wrap">
-      <table>
-        <tr><th>#</th>${spec.columns.map(c=>`<th>${c.label}</th>`).join('')}<th>Issues</th></tr>
-        ${validated.map(v => `<tr class="${v.errors.length ? 'import-row-error' : 'import-row-ok'}">
-          <td>${v.idx+1}</td>
-          ${spec.columns.map(c=>`<td>${(v.raw[c.key]||'').toString().slice(0,40)}</td>`).join('')}
-          <td>${v.errors.length ? v.errors.join('; ') : '<span style="color:var(--green);">OK</span>'}</td>
-        </tr>`).join('')}
-      </table>
-    </div>
-    <div class="import-actions">
-      <button class="btn-primary" ${okCount===0?'disabled':''} onclick="commitImport()">Import ${okCount} valid row(s)</button>
-    </div>
-  `;
-}
-
-window.commitImport = async function(){
-  const spec = IMPORT_SPECS[currentImportModule];
-  const validRows = currentImportValidated.filter(v => v.errors.length === 0);
-  if(!validRows.length) return;
-
-  let succeeded = 0; const failures = [];
-  for(const row of validRows){
-    if(spec.customInsert){
-      try{
-        await spec.customInsert(row.cleanRow, row.resolved);
-        succeeded++;
-      }catch(err){
-        failures.push(`Row ${row.idx+1}: ${err.message}`);
-      }
-    } else {
-      const payload = spec.buildPayload(row.cleanRow, row.resolved);
-      const { error } = await STATE.supabase.from(spec.table).insert(payload);
-      if(error){ failures.push(`Row ${row.idx+1}: ${error.message}`); }
-      else { succeeded++; }
-    }
-  }
-
-  document.getElementById('import-preview-area').innerHTML = `
-    <div class="import-summary ${failures.length ? 'has-errors' : ''}">
-      Imported ${succeeded} of ${validRows.length} row(s).
-      ${failures.length ? '<br><br>' + failures.join('<br>') : ''}
-    </div>
-    <div class="import-actions"><button class="btn-primary" onclick="closeImportModal()">Done</button></div>
-  `;
-
-  // Refresh whichever register was just imported into.
-  if(currentImportModule === 'nonconformances'){ await loadNCs(); renderNCTable(); }
-  if(currentImportModule === 'risks'){ await loadRisks(); renderRisksTable(); }
-  if(currentImportModule === 'suppliers'){ await loadSuppliers(); renderSuppliersTable(); }
-  if(currentImportModule === 'customers'){ await loadCustomers(); renderCustomersTable(); }
-  if(currentImportModule === 'objectives'){ await loadObjectives(); renderObjectivesTable(); }
-  if(currentImportModule === 'legal'){ await loadLegalRegister(); renderLegalTable(); }
-  if(currentImportModule === 'personnel'){ await loadPersonnel(); await loadCompetence(); renderPersonnelView(); }
-  if(currentImportModule === 'training'){ await loadTraining(); renderTrainingTable(); }
-  updateNavBadges();
-};
 
 /* ============ Legal Compliance ============ */
 function legalById(id){ return STATE.legalRegister.find(l=>l.id===id); }
@@ -22479,7 +22739,18 @@ window.printRegister = printRegister;
 
 let xlsxLib = null;
 async function ensureXLSX(){
-  if(!xlsxLib) xlsxLib = await import('https://esm.sh/xlsx@0.18.5');
+  if(!xlsxLib){
+    const urls = ['https://esm.sh/xlsx@0.18.5', 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/xlsx.mjs'];
+    let lastErr = null;
+    for(const u of urls){
+      try {
+        const mod = await import(u);
+        const lib = (mod && mod.utils && mod.read) ? mod : (mod && mod.default && mod.default.utils ? mod.default : null);
+        if(lib){ xlsxLib = lib; break; }
+      } catch(e){ lastErr = e; }
+    }
+    if(!xlsxLib) throw new Error('The spreadsheet library could not be loaded (' + ((lastErr && lastErr.message) || 'unsupported') + '). Check your internet connection and try again.');
+  }
   return xlsxLib;
 }
 
