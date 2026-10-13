@@ -2173,7 +2173,7 @@ const MODULE_META = {
   legal_certs:{title:'Legal Documents & Certificates', sub:() => 'A repository of registration, tax, B-BBEE, membership and accreditation certificates — with expiry dates, and a reminder 30 days before each one lapses'},
   legal:{title:'Legal Compliance', sub:() => 'MOD-10 · Legal register, compliance reviews, linked to internal audits'},
   personnel:{title:'Personnel & Competence', sub:() => 'MOD-11 · Register, positions, and the organisation competence matrix'},
-  orgchart:{title:'Organisation Chart', sub:() => 'The company-wide chart first, generated from recorded job titles and reporting lines — Departments and Branches unlock once it\'s complete'},
+  orgchart:{title:'Organisation Chart', sub:() => 'The company-wide chart, generated from recorded job titles and reporting lines, with your Departments and Branches set up to match how the company is organised'},
   training:{title:'Training', sub:() => 'MOD-12 · Needs, planning, completion, and certificates'},
   appraisals:{title:'KPIs & Appraisals', sub:() => 'MOD-13 · Position KPIs, self-assessment, and manager review'},
   assets:{title:'Assets Management & Maintenance', sub:() => 'MOD-14 · Register, inspection checklists, certificates'},
@@ -2257,10 +2257,11 @@ function orgChartTreeHTML(peopleInScope, clickable){
 // distinguished by `division_type` ('department' | 'branch'); a person can
 // belong to any number of each via the existing personnel_divisions table.
 //
-// The Departments/Branches management pages are deliberately locked until
-// the company-wide chart is complete — every active person has a job title
-// (a primary position) and a place in the reporting line — so the org chart
-// itself is always established first, before it gets subdivided.
+// The Departments/Branches management pages are always available to an
+// Admin, so a new client can name its departments and branches to match the
+// real company structure at the start (before people are imported or the
+// reporting lines are finished). The chart page only shows a to-do list of
+// what is still missing (job titles, a single top of the organisation).
 // ============================================================================
 
 function divisionsOfType(type){
@@ -2283,8 +2284,7 @@ function isOrgChartComplete(){
   return active.length > 0 && missingTitle.length === 0 && roots.length === 1;
 }
 
-// Shared by the chart page's banner and the locked Departments/Branches
-// pages, so the explanation of what's missing — and the links to fix it —
+// Shared by the chart page's banner (and anywhere else that needs it), so the explanation of what's missing — and the links to fix it —
 // read exactly the same wherever they appear.
 function orgChartGapsHTML(){
   const { active, missingTitle, roots } = orgChartCompletenessIssues();
@@ -2337,10 +2337,10 @@ function renderOrgChartPage(){
   }
 
   const banner = complete
-    ? `<div class="detail-card" style="padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; gap:8px;"><span style="color:var(--green,#2E7D6B); font-weight:600; font-size:12.5px;">✓ Organisation chart complete</span><span style="font-size:12px; color:var(--text-faint);">— every active person has a title and a place in the reporting line. Departments and Branches are unlocked.</span></div>`
+    ? `<div class="detail-card" style="padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; gap:8px;"><span style="color:var(--green,#2E7D6B); font-weight:600; font-size:12.5px;">✓ Organisation chart complete</span><span style="font-size:12px; color:var(--text-faint);">— every active person has a title and a place in the reporting line.</span></div>`
     : `<div class="detail-card" style="padding:14px 16px; margin-bottom:16px; border-color:var(--amber,#B2650F);">
-        <div style="font-weight:600; font-size:13px; color:var(--amber,#B2650F); margin-bottom:6px;">Organisation chart not yet complete</div>
-        <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:8px;">Departments and Branches stay locked until this is sorted out — get the whole company chart right first, then subdivide it.</p>
+        <div style="font-weight:600; font-size:13px; color:var(--amber,#B2650F); margin-bottom:6px;">To finish the organisation chart</div>
+        <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:8px;">The chart builds itself from job titles and reporting lines. You can set up Departments and Branches at any time — they don't have to wait. Still to do:</p>
         ${orgChartGapsHTML()}
       </div>`;
 
@@ -2371,20 +2371,10 @@ function renderOrgDivisionsPage(type, label){
   const wrap = document.getElementById('oc-subtab-content');
   if(!wrap) return;
 
-  if(!isOrgChartComplete()){
-    wrap.innerHTML = `
-      <div class="detail-card">
-        <div class="panel-head"><h3>${label} — locked</h3></div>
-        <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:8px;">${label} can't be set up until the company-wide organisation chart is complete — every active person needs a job title and a place in the reporting line first. Fix the items below, then come back here.</p>
-        ${orgChartGapsHTML()}
-        <button class="btn-small" style="margin-top:10px;" onclick="switchOcSubtab('chart')">Go to Organisation Chart</button>
-      </div>`;
-    return;
-  }
-
   wrap.innerHTML = `
     <div class="detail-card">
       <div class="panel-head"><h3>${label}</h3></div>
+      <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:12px;">Set these up to match how this company is actually organised. Add, rename or delete ${type==='branch'?'branches':'departments'} at any time — people are linked to them from Personnel &amp; Competence (or the bulk import), and the names update everywhere automatically.</p>
       <div class="form-grid" style="margin-bottom:10px;">
         <div class="field"><label>New ${type} name</label><input id="${type}-new-name" placeholder="${type==='branch' ? 'e.g. Johannesburg, Dubai, Perth' : 'e.g. Manufacturing, Corporate Services'}"></div>
       </div>
@@ -11190,7 +11180,10 @@ function validateImportValue(col, rawValue, ctx){
     const ids = [], missing = [];
     parts.forEach(p => { const d = impFind(pool, p, ['name']); if(d) ids.push(d.id); else missing.push(p); });
     const out = { ok:true, value:val, resolved:ids };
-    if(missing.length) out.warning = `${L}: "${missing.join(', ')}" not set up under Manage ${col.divType === 'branch' ? 'Branches' : 'Departments'}, ignored`;
+    if(missing.length && ctx && ctx.createDivisions){
+      out.newDivs = missing.slice();
+      out.warning = `${L}: new ${col.divType === 'branch' ? 'branch(es)' : 'department(s)'} will be created: ${missing.join(', ')}`;
+    } else if(missing.length) out.warning = `${L}: "${missing.join(', ')}" not set up under ${col.divType === 'branch' ? 'Branches' : 'Departments'} yet, ignored. Tick "Create any departments and branches..." to add them automatically`;
     return out;
   }
   if(col.key === 'contact_email' || col.key === 'email'){
@@ -11256,7 +11249,8 @@ window.previewImport = async function(){
     }
 
     const createPos = !!(document.getElementById('import-create-positions') && document.getElementById('import-create-positions').checked);
-    const ctx = { createPositions: createPos };
+    const createDivs = !!(document.getElementById('import-create-divisions') && document.getElementById('import-create-divisions').checked);
+    const ctx = { createPositions: createPos, createDivisions: createDivs };
     const existing = impExistingKeys(spec);
     const seen = new Map();
     const dataRows = grid.slice(best.row + 1);
@@ -11264,7 +11258,7 @@ window.previewImport = async function(){
     dataRows.forEach((cells, ri) => {
       if(cells.every(c => impCellText(c) === '')) return;
       const sheetRow = best.row + 2 + ri;
-      const errors = [], warnings = [], cellErrors = {}, shown = {}, cleanRow = {}, resolved = {}, newPositions = {};
+      const errors = [], warnings = [], cellErrors = {}, shown = {}, cleanRow = {}, resolved = {}, newPositions = {}, newDivisions = {};
       spec.columns.forEach(col => {
         const raw = colIndex[col.key] !== undefined ? cells[colIndex[col.key]] : '';
         shown[col.key] = impCellText(raw, col.type === 'date');
@@ -11274,6 +11268,7 @@ window.previewImport = async function(){
           cleanRow[col.key] = r.value;
           if(r.resolved !== undefined) resolved[col.key] = r.resolved;
           if(r.newPosition) newPositions[col.key] = r.newPosition;
+          if(r.newDivs) newDivisions[col.key] = r.newDivs;
           if(r.warning) warnings.push(r.warning);
           if(r.value) shown[col.key] = r.value;
         }
@@ -11286,7 +11281,7 @@ window.previewImport = async function(){
         else if(keys.some(k => existing.has(k))) skip = 'Already registered, will be skipped';
         keys.forEach(k => { if(!seen.has(k)) seen.set(k, sheetRow); });
       }
-      validated.push({ idx: sheetRow, shown, cleanRow, resolved, newPositions, errors, warnings, cellErrors, skip });
+      validated.push({ idx: sheetRow, shown, cleanRow, resolved, newPositions, newDivisions, errors, warnings, cellErrors, skip });
     });
     if(!validated.length){ area.innerHTML = '<p style="font-size:12.5px; color:var(--text-faint);">No data rows found under the headings.</p>'; return; }
     currentImportValidated = validated; currentImportFilter = 'all';
@@ -11303,12 +11298,16 @@ function renderImportPreview(validated, spec, meta){
   const errCount = validated.filter(v => v.errors.length).length;
   const skipCount = validated.filter(v => !v.errors.length && v.skip).length;
   const newPos = [...new Set(okRows.flatMap(v => Object.values(v.newPositions || {})).map(p => p.trim()))];
+  const newDeptNames = [...new Set(okRows.flatMap(v => (v.newDivisions && v.newDivisions.department) || []).map(p => p.trim()))];
+  const newBranchNames = [...new Set(okRows.flatMap(v => (v.newDivisions && v.newDivisions.branch) || []).map(p => p.trim()))];
   const area = document.getElementById('import-preview-area');
   const rows = validated.filter(v => currentImportFilter === 'all' || v.errors.length || v.skip || v.warnings.length);
   area.innerHTML = `
     <div class="import-summary ${errCount ? 'has-errors' : ''}">
       ${validated.length} row(s) read${meta.usedSheet ? ` from sheet “${escapeHtml(meta.usedSheet)}”` : ''}: <b>${okRows.length} ready to import</b>${skipCount ? `, ${skipCount} already registered (skipped)` : ''}${errCount ? `, <b>${errCount} with problems (fix and upload again, or import the rest)</b>` : ''}.
       ${newPos.length ? `<br>New positions to create: <b>${newPos.map(escapeHtml).join(', ')}</b>.` : ''}
+      ${newDeptNames.length ? `<br>New departments to create: <b>${newDeptNames.map(escapeHtml).join(', ')}</b>.` : ''}
+      ${newBranchNames.length ? `<br>New branches to create: <b>${newBranchNames.map(escapeHtml).join(', ')}</b>.` : ''}
       ${meta.unknown && meta.unknown.length ? `<br><span style="color:var(--text-faint);">Ignored columns: ${meta.unknown.map(escapeHtml).join(', ')}</span>` : ''}
     </div>
     <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
@@ -11363,11 +11362,24 @@ window.commitImport = async function(){
   }
   if(wanted.size) await loadPositions();
 
+  // 1b. Create any missing departments / branches once each (case-insensitive).
+  const wantedDivs = new Map(); // key: type|normalised name
+  validRows.forEach(v => Object.entries(v.newDivisions || {}).forEach(([type, names]) => names.forEach(n => { const k = type + '|' + impNorm(n); if(impNorm(n) && !wantedDivs.has(k)) wantedDivs.set(k, { type, name: n.trim() }); })));
+  const divIds = {}; const createdDivs = [];
+  for(const [k, d] of wantedDivs){
+    area.innerHTML = `<div class="import-summary">Creating ${d.type} “${escapeHtml(d.name)}”…</div>`;
+    const { data, error } = await STATE.supabase.from('divisions').insert({ organisation_id: STATE.org.id, name: d.name, division_type: d.type, created_by: STATE.user.id }).select().single();
+    if(error){ failures.push(`${d.type === 'branch' ? 'Branch' : 'Department'} “${d.name}” could not be created: ${impExplainDbError(error.message)}`); continue; }
+    divIds[k] = data.id; createdDivs.push(d.name);
+  }
+  if(wantedDivs.size) await loadDivisions();
+
   // 2. Insert the rows.
   for(let i = 0; i < validRows.length; i++){
     const row = validRows[i];
     area.innerHTML = `<div class="import-summary">Importing ${i+1} of ${validRows.length}…</div>`;
     try {
+      Object.entries(row.newDivisions || {}).forEach(([type, names]) => { const ids = (row.resolved[type] || []).slice(); names.forEach(n => { const id = divIds[type + '|' + impNorm(n)]; if(id && !ids.includes(id)) ids.push(id); }); row.resolved[type] = ids; });
       Object.entries(row.newPositions || {}).forEach(([key, title]) => { const id = posIds[impNorm(title)]; if(!id) throw new Error(`position “${title}” could not be created`); row.resolved[key] = id; });
       if(spec.customInsert){ await spec.customInsert(row.cleanRow, row.resolved); }
       else {
@@ -11382,7 +11394,7 @@ window.commitImport = async function(){
   if(spec.afterAll){ try{ await spec.afterAll(failures); }catch(e){ failures.push('After-import step: ' + e.message); } }
   area.innerHTML = `
     <div class="import-summary ${failures.length ? 'has-errors' : ''}">
-      Imported <b>${succeeded} of ${validRows.length}</b> row(s).${createdPositions.length ? `<br>Positions created: ${createdPositions.map(escapeHtml).join(', ')}.` : ''}
+      Imported <b>${succeeded} of ${validRows.length}</b> row(s).${createdPositions.length ? `<br>Positions created: ${createdPositions.map(escapeHtml).join(', ')}.` : ''}${createdDivs.length ? `<br>Departments / branches created: ${createdDivs.map(escapeHtml).join(', ')}.` : ''}
       ${failures.length ? '<br><br><b>Not imported:</b><br>' + failures.map(escapeHtml).join('<br>') : ''}
     </div>
     <div class="import-actions"><button class="btn-primary" onclick="closeImportModal()">Done</button></div>`;
@@ -11404,6 +11416,7 @@ window.openImportModal = function(moduleKey){
   currentImportModule = moduleKey; currentImportValidated = []; currentImportFilter = 'all';
   const spec = IMPORT_SPECS[moduleKey];
   const hasPos = spec.columns.some(c => c.type === 'position' && c.required);
+  const hasDiv = spec.columns.some(c => c.divType);
   const req = spec.columns.filter(c=>c.required).map(c=>impCleanLabel(c.label)).join(', ');
   document.getElementById('import-modal-content').innerHTML = `
     <h3>Bulk import — ${spec.label}</h3>
@@ -11416,6 +11429,7 @@ window.openImportModal = function(moduleKey){
       <div class="import-step-label">Step 2 — upload your completed file (.xlsx, .xls or .csv)</div>
       <input type="file" id="import-file-input" accept=".xlsx,.xls,.csv">
       ${hasPos ? `<label style="display:block; margin-top:8px; font-size:12.5px;"><input type="checkbox" id="import-create-positions" checked> Create any positions that are not on the system yet</label>` : ''}
+      ${hasDiv ? `<label style="display:block; margin-top:6px; font-size:12.5px;"><input type="checkbox" id="import-create-divisions" checked> Create any departments and branches that are not on the system yet</label>` : ''}
       <button class="btn-small primary" style="margin-top:8px;" onclick="previewImport()">Preview</button>
     </div>
     <div id="import-preview-area"></div>
