@@ -7670,17 +7670,15 @@ window.applyConflictFix = async function(id){
   toast('Filed.', 'success');
 };
 window.rerunAutoFiling = async function(){
-  let n = 0;
+  const pairs = [];
   for(const b of (STATE.bulkDocuments||[]).filter(x => !x.archived && (!x.department_id || !x.document_type_id))){
     const m = autoDetectDeptType(allDocsCandidateNumber(b));
-    if(m.department_id && m.document_type_id){
-      const { error } = await STATE.supabase.from('bulk_documents').update({ department_id:m.department_id, document_type_id:m.document_type_id }).eq('id', b.id);
-      if(!error) n++;
-    }
+    if(m.department_id && m.document_type_id) pairs.push({ id:b.id, department_id:m.department_id, document_type_id:m.document_type_id });
   }
+  const { n, blocked } = await applyBulkFiling(pairs);
   await renderBulkDocumentsRegister();
   openNamingConflicts();
-  toast(n ? `${n} document${n===1?'':'s'} filed automatically.` : 'Nothing new could be filed automatically.', n ? 'success' : 'error');
+  toast(n ? `${n} document${n===1?'':'s'} filed automatically.` : (blocked ? 'Documents matched but could not be moved (permissions): run qashe-watchman-schema-bulk-filing.sql.' : 'Nothing new could be filed automatically.'), n ? 'success' : 'error');
 };
 window.printNamingConflicts = function(){
   const list = allDocsConflictAnalysis();
@@ -21361,25 +21359,39 @@ window.submitAllDocsAddType = async function(){
 
 /* ============ Naming convention mode (standard | custom) + automatic filing of unassigned documents ============ */
 // Files every unassigned (or half-assigned) All Documents upload whose number now matches a department + type.
+// Moves documents into their department/type. Uses the bulk_file_documents RPC (bypasses per-row permissions),
+// falls back to direct updates, and only counts rows that really changed.
+async function applyBulkFiling(pairs){
+  if(!pairs.length) return { n:0, blocked:0 };
+  const r = await STATE.supabase.rpc('bulk_file_documents', { p_org: STATE.org.id, p_updates: pairs });
+  if(!r.error && typeof r.data === 'number') return { n:r.data, blocked: pairs.length - r.data };
+  let n = 0, blocked = 0;
+  for(const u of pairs){
+    const { data, error } = await STATE.supabase.from('bulk_documents').update({ department_id:u.department_id, document_type_id:u.document_type_id }).eq('id', u.id).select('id');
+    if(!error && data && data.length) n++; else blocked++;
+  }
+  return { n, blocked };
+}
 async function autoFileUnassigned(opts){
   opts = opts || {};
   try{
     const { data, error } = await STATE.supabase.from('bulk_documents').select('id, doc_number, file_name, department_id, document_type_id, archived').eq('organisation_id', STATE.org.id);
     if(error) return 0;
-    let n = 0;
+    const pairs = [];
     for(const b of (data||[]).filter(x => !x.archived && (!x.department_id || !x.document_type_id))){
       const m = autoDetectDeptType(allDocsCandidateNumber(b));
-      if(m.department_id && m.document_type_id){
-        const { error:e2 } = await STATE.supabase.from('bulk_documents').update({ department_id:m.department_id, document_type_id:m.document_type_id }).eq('id', b.id);
-        if(!e2) n++;
-      }
+      if(m.department_id && m.document_type_id) pairs.push({ id:b.id, department_id:m.department_id, document_type_id:m.document_type_id });
     }
+    const { n, blocked } = await applyBulkFiling(pairs);
     if(n){
       toast(`${n} previously unassigned document${n===1?' was':'s were'} filed automatically.`, 'success');
-      if(document.getElementById('alldocs-root')) await renderBulkDocumentsRegister();
-    } else if(opts.report){
+    }
+    if(blocked){
+      toast(`${blocked} document${blocked===1?'':'s'} matched but could not be moved (permissions). Run qashe-watchman-schema-bulk-filing.sql in Supabase, then press Re-check.`, 'error');
+    } else if(!n && opts.report){
       toast('No unassigned documents match the current departments and types yet.', 'error');
     }
+    if(n && document.getElementById('alldocs-root')) await renderBulkDocumentsRegister();
     return n;
   }catch(e){ return 0; }
 }
