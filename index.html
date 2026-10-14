@@ -1515,6 +1515,7 @@ async function enterApp(){
 // already signed in on this device.
 document.addEventListener('DOMContentLoaded', async () => {
   try {
+    if(new URLSearchParams(location.search).get('sp')) return; // supplier portal mode
     await ensureSupabaseLib();
     if(!STATE.supabase) initSupabase(SUPABASE_URL, SUPABASE_ANON_KEY);
     const { data:{ session } } = await STATE.supabase.auth.getSession();
@@ -2813,7 +2814,7 @@ const DATE_TRACKED_MODULES = [
   { key:'nonconformances', label:'Nonconformances', list:() => STATE.ncs, dateField:'target_close_date', isResolved:x=>x.status==='closed', titleField:'title', getPerson:x=>memberName(x.owner_id) },
   { key:'tasks', label:'Tasks', list:() => STATE.tasks, dateField:'due_date', isResolved:x=>x.status==='done', titleField:'title', getPerson:x=>memberName(x.assignee_id) },
   { key:'documents', label:'Document Management', list:() => STATE.documents, dateField:'next_review_date', isResolved:x=>['withdrawn','superseded'].includes(x.status), titleField:'title', getPerson:x=>memberName(x.owner_id) },
-  { key:'suppliers', label:'Suppliers', list:() => STATE.suppliers, dateField:'next_review_date', isResolved:x=>x.status==='removed', titleField:'name', getPerson:x=>memberName(x.owner_id) },
+  { key:'suppliers', label:'Suppliers', list:() => STATE.suppliers, dateField:'next_review_date', isResolved:x=>x.status==='removed', titleField:'name', getPerson:x=>supplierOwnerName(x) },
   { key:'objectives', label:'Objectives & Targets', list:() => STATE.objectives, dateField:'target_date', isResolved:x=>['achieved','not_achieved','discontinued'].includes(x.status), titleField:'specific_statement', getPerson:x=>memberName(x.owner_id) },
   { key:'legal', label:'Legal Compliance', list:() => STATE.legalRegister, dateField:'next_review_due_date', isResolved:() => false, titleField:'title', getPerson:x=>memberName(x.owner_id) },
   { key:'training', label:'Training', list:() => STATE.training, dateField:'due_date', isResolved:x=>['completed','cancelled'].includes(x.status), titleField:'training_required', getPerson:x=>{const p=personById(x.personnel_id); return p?p.full_name:'—';} },
@@ -3440,6 +3441,7 @@ const RENDERERS = {
       <button class="btn-small" onclick="openImportModal('suppliers')">Import Excel</button>
       <button class="btn-small" onclick="exportModuleExcel('suppliers')">Export Excel</button>
       <button class="btn-small" onclick="printCurrentRegister('suppliers','Suppliers Register')">Print Register</button>
+      <button class="btn-small" onclick="printApprovedSupplierList()">Approved Supplier List</button>
       <button class="btn-primary btn-add" onclick="toggleSupplierForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Supplier</button>
     </div>
 
@@ -3455,7 +3457,7 @@ const RENDERERS = {
         <div class="field"><label>Contact name</label><input id="sf-contact-name"></div>
         <div class="field"><label>Contact email</label><input id="sf-contact-email" type="email"></div>
         <div class="field"><label>Contact phone</label><input id="sf-contact-phone"></div>
-        <div class="field"><label>Internal owner</label><select id="sf-owner">${memberOptions(STATE.user.id)}</select></div>
+        <div class="field"><label>Internal owner</label><select id="sf-owner">${supplierOwnerOptions({owner_id:STATE.user.id})}</select></div>
         <div class="field"><label>Department</label><select id="sf-department"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}</select></div>
       </div>
       <div class="form-actions">
@@ -4252,6 +4254,10 @@ window.submitNC = async function(){
   };
   const { error } = await STATE.supabase.from('nonconformances').insert(payload);
   if(error){ toast('Could not raise nonconformance: ' + error.message, 'error'); return; }
+  if(payload.supplier_id){ // prompt a supplier re-assessment (the database trigger does the same for imports and edits)
+    await STATE.supabase.from('suppliers').update({ reassessment_required:true, reassessment_reason:`A nonconformance was raised against this supplier (${fmtDate(todayISO())})`, reassessment_flagged_at:new Date().toISOString() }).eq('id', payload.supplier_id);
+    await loadSuppliers();
+  }
   toggleNCForm();
   document.querySelectorAll('#nc-form input, #nc-form textarea').forEach(el=>el.value='');
   await loadNCs();
@@ -7818,6 +7824,62 @@ function documentWorkflowBadge(d){
   return { label: d.ever_approved ? 'Revision in Progress' : 'Draft', color:'#B26A16' };
 }
 
+function docCanManage(){ return STATE.myRole === 'admin' || STATE.myRole === 'manager'; }
+// Next-review badge: for an Admin or Manager it is a button that opens the date editor.
+function docReviewBadge(d){
+  const resolved = ['withdrawn','superseded'].includes(d.status);
+  const inner = dateStatusBadge(d.next_review_date, resolved);
+  if(!docCanManage() || resolved) return inner;
+  return `<span style="cursor:pointer;" title="Click to change the next review date" onclick="event.stopPropagation(); openReviewDateModal('${d.id}')">${inner}</span>`;
+}
+// Status badge: click it to jump straight to the review / approval section of that document.
+function docStatusBadgeHtml(d, st){
+  const go = ['In Review','Awaiting Approval','Revision in Progress','Draft'].includes(st.label);
+  return `<span class="sev-badge" style="background:${st.color}; color:#fff; ${go?'cursor:pointer;':''}" ${go?`title="Click to open the review and approval section" onclick="event.stopPropagation(); goToDocumentWorkflow('${d.id}')"`:''}>${st.label}${go?' →':''}</span>`;
+}
+window.goToDocumentWorkflow = async function(id){
+  await openDocumentDetail(id);
+  const card = document.getElementById('dwf-card');
+  if(card){ card.scrollIntoView({behavior:'smooth', block:'start'}); card.style.boxShadow = '0 0 0 3px #EF6C00'; setTimeout(()=>{ card.style.boxShadow=''; }, 2500); }
+};
+window.openReviewDateModal = function(id){
+  const d = documentById(id); if(!d) return;
+  if(!docCanManage()){ toast('Only an Admin or Manager can change the review date.', 'error'); return; }
+  const m = document.createElement('div'); m.id = 'review-date-modal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  m.innerHTML = `<div style="background:var(--panel,#fff);border-radius:12px;max-width:460px;width:92%;padding:22px 24px;">
+    <h3 style="margin:0 0 4px;">Next review date</h3>
+    <p style="font-size:12.5px;color:var(--text-faint);margin:0 0 14px;">${escapeHtml(d.doc_number)}: ${escapeHtml(d.title)}<br>Currently ${d.next_review_date ? fmtDate(d.next_review_date) : 'not set'}</p>
+    <div class="field"><label>New next review date</label><input type="date" id="rd-date" value="${d.next_review_date || ''}"></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 12px;">
+      ${[6,12,24,36].map(n=>`<button class="btn-small" onclick="document.getElementById('rd-date').value=addMonthsISO(${n})">+${n} months</button>`).join('')}
+    </div>
+    <div class="field"><label>Reason / outcome of the review (kept on the document record)</label><textarea id="rd-reason" rows="2" placeholder="e.g. Reviewed on site, no changes required"></textarea></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
+      <button class="btn-small" onclick="document.getElementById('review-date-modal').remove()">Cancel</button>
+      <button class="btn-small primary" onclick="saveReviewDate('${d.id}')">Save</button>
+    </div></div>`;
+  document.body.appendChild(m);
+};
+window.addMonthsISO = function(n){ const x = new Date(); x.setMonth(x.getMonth()+n); return x.toISOString().slice(0,10); };
+window.saveReviewDate = async function(id){
+  const d = documentById(id); if(!d) return;
+  const nd = document.getElementById('rd-date').value;
+  const reason = (document.getElementById('rd-reason').value || '').trim();
+  if(!nd){ alert('Choose a date.'); return; }
+  const { error } = await STATE.supabase.from('documents').update({ next_review_date: nd }).eq('id', id);
+  if(error){ toast('Could not change the review date: ' + error.message, 'error'); return; }
+  await STATE.supabase.from('document_workflow_comments').insert({
+    organisation_id: STATE.org.id, document_id: id, stage: 'review', author_id: STATE.user.id, author_role: 'creator', color: '#2166ac',
+    comment_text: `[Recorded] Next review date changed from ${d.next_review_date ? fmtDate(d.next_review_date) : 'not set'} to ${fmtDate(nd)} by ${memberName(STATE.user.id)}${reason ? '. ' + reason : '.'}`,
+  });
+  const mm = document.getElementById('review-date-modal'); if(mm) mm.remove();
+  await loadDocuments();
+  renderDocumentsTable();
+  if(document.getElementById('doc-detail-slot') && document.getElementById('doc-detail-slot').innerHTML.trim()) openDocumentDetail(id);
+  updateNavBadges();
+  toast('Next review date updated: ' + fmtDate(nd), 'success');
+};
 function renderDocumentsTable(){
   const wrap = document.getElementById('doc-table-wrap');
   if(!wrap) return;
@@ -7838,10 +7900,10 @@ function renderDocumentsTable(){
       <td class="strong">${d.title}</td>
       <td style="text-align:center;">${d.current_revision}</td>
       <td>${fmtDate(d.current_revision_date)}</td>
-      <td>${fmtDate(d.next_review_date)} ${dateStatusBadge(d.next_review_date, ['withdrawn','superseded'].includes(d.status))}</td>
+      <td>${fmtDate(d.next_review_date)} ${docReviewBadge(d)}</td>
       <td>${d.created_by ? memberName(d.created_by) : (d.developer_id ? memberName(d.developer_id) : '—')}</td>
       <td>${(d.approved_by||d.workflow_approver_id||d.approver_id) ? memberName(d.approved_by||d.workflow_approver_id||d.approver_id) : '—'}${d.approval_status==='approved' ? ' <span class="mono" style="color:var(--green); font-size:10px;">✓ approved</span>' : ''}</td>
-      <td><span class="sev-badge" style="background:${st.color}; color:#fff;">${st.label}</span></td>
+      <td>${docStatusBadgeHtml(d, st)}</td>
       <td><button class="btn-small" onclick="event.stopPropagation(); downloadDocumentPdf('${d.id}')">View / Print PDF</button>${canDownload() ? ` <button class="btn-small" onclick="event.stopPropagation(); downloadDocumentPdf('${d.id}','download')" title="Download a copy">⬇</button>` : ''}</td>
     </tr>`;}).join('')}
   </table>`;
@@ -7959,7 +8021,7 @@ function renderDocumentWorkflowCard(d, reviewers, comments){
   }
 
   return `
-    <div class="detail-card" style="padding:16px; margin-bottom:16px;">
+    <div class="detail-card" id="dwf-card" style="padding:16px; margin-bottom:16px; transition:box-shadow .3s;">
       <div class="panel-head" style="margin-bottom:10px;"><h3 style="font-family:'Poppins'; font-size:15px; font-weight:600;">Review &amp; Approval Workflow</h3></div>
       <div style="background:var(--grey-tint); border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:12.5px;"><b>${DOC_WORKFLOW_LABELS[status] || label(status)}</b></div>
       ${body}
@@ -7988,17 +8050,18 @@ window.submitDocumentForReview = async function(docId){
   if(updErr){ toast('Could not submit for review: ' + updErr.message, 'error'); return; }
   if(sodBreach) await logDocumentOverride(docId, 'Separation-of-duties override: the author was nominated as approver by an Admin.');
 
-  await notifyDocumentUsers(checked, `Document review requested: ${d.doc_number}`,
+  const mailRev = await notifyDocumentUsers(checked, `Document review requested: ${d.doc_number}`,
     `${memberName(STATE.user.id)} has submitted "${d.title}" (${d.doc_number}) for your review in QaSHE Watchman. Please open Document Management, read it, comment, and mark yourself satisfied when done.`,
     { includeSelf: true });
-  await notifyDocumentUsers([approverId], `You are the approver: ${d.doc_number}`,
+  const mailApp = await notifyDocumentUsers([approverId], `You are the approver: ${d.doc_number}`,
     `"${d.title}" (${d.doc_number}) has been submitted for review. You will be notified automatically when the reviewers are satisfied and it is ready for your approval.`,
     { includeSelf: true });
 
   await loadDocuments();
   openDocumentDetail(docId);
   renderDocumentsTable();
-  toast('Submitted. Reviewers and the approver have been notified.', 'success');
+  const mailAll = { sent:[...mailRev.sent, ...mailApp.sent], failed:[...mailRev.failed, ...mailApp.failed] };
+  toast('Submitted for review.' + emailSummary(mailAll), mailAll.failed.length ? 'error' : 'success');
 };
 
 // Overrides are written to the document's discussion so they sit in the permanent record.
@@ -8135,6 +8198,7 @@ async function openDocumentDetail(id){
       <div class="detail-head">
         <div><span class="ref">${d.doc_number}${dept && type ? ' · '+dept.name+' / '+type.name : ''}</span><h3>${d.title}</h3></div>
         <div style="display:flex; gap:8px;">
+          ${docCanManage() ? `<button class="btn-small" onclick="openReviewDateModal('${d.id}')" title="Change the next review date">Review date: ${d.next_review_date ? fmtDate(d.next_review_date) : 'set'}</button>` : ''}
           <button class="btn-small" onclick="printDocumentContent('${d.id}')" title="Editable copy for review and drafting">Download Word (Review Copy)</button>
           <button class="btn-small primary" onclick="downloadDocumentPdf('${d.id}')" title="Final, non-editable copy for printing">View / Print PDF (Final)</button>
           ${canDownload() ? `<button class="btn-small" onclick="downloadDocumentPdf('${d.id}','download')" title="Download a copy of the final PDF">Download PDF</button>` : ''}
@@ -9520,10 +9584,19 @@ async function sendEmailToAddress(toEmail, subject, message){
 async function notifyDocumentUsers(userIds, subject, message, opts){
   const includeSelf = !!(opts && opts.includeSelf);
   const unique = [...new Set((userIds||[]).filter(Boolean))];
+  const result = { sent: [], failed: [] };
   for(const uid of unique){
     if(uid === STATE.user.id && !includeSelf) continue;
-    await sendNotificationEmail(uid, subject, message);
+    const ok = await sendNotificationEmail(uid, subject, message);
+    (ok ? result.sent : result.failed).push(memberName(uid));
   }
+  return result;
+}
+function emailSummary(r){
+  if(!r) return '';
+  if(r.failed.length && !r.sent.length) return ` No emails could be sent (${r.failed.join(', ')}): tell them directly, and check the send-notification-email function and the recipients' profile email addresses.`;
+  if(r.failed.length) return ` Emailed ${r.sent.join(', ')}; could not email ${r.failed.join(', ')}.`;
+  return r.sent.length ? ` Emailed ${r.sent.join(', ')}.` : '';
 }
 
 window.saveDocumentSignoffAssignment = async function(docId){
@@ -9879,6 +9952,33 @@ window.approveAuditReport = async function(auditId){
 
 /* ============ Supplier & Subcontractor Management ============ */
 function supplierById(id){ return STATE.suppliers.find(s=>s.id===id); }
+// Owner options: every person on the personnel register, plus any login user who has no personnel record.
+function supplierOwnerOptions(s){
+  const linked = new Set((STATE.personnel||[]).map(p=>p.linked_profile_id).filter(Boolean));
+  const selP = s && s.owner_personnel_id ? 'p:'+s.owner_personnel_id : (s && s.owner_id ? ((STATE.personnel||[]).find(p=>p.linked_profile_id===s.owner_id) ? 'p:'+(STATE.personnel.find(p=>p.linked_profile_id===s.owner_id)).id : 'u:'+s.owner_id) : '');
+  const people = (STATE.personnel||[]).filter(p=>!p.status || p.status==='active').map(p=>`<option value="p:${p.id}" ${selP==='p:'+p.id?'selected':''}>${escapeHtml(p.full_name)}${p.linked_profile_id?'':' (no login)'}</option>`).join('');
+  const users = (STATE.members||[]).filter(m=>!linked.has(m.user_id)).map(m=>`<option value="u:${m.user_id}" ${selP==='u:'+m.user_id?'selected':''}>${escapeHtml((m.profiles&&m.profiles.name)||'Unknown')} (user)</option>`).join('');
+  return `<option value="">Select owner…</option>${people ? `<optgroup label="Personnel">${people}</optgroup>` : ''}${users ? `<optgroup label="Users without a personnel record">${users}</optgroup>` : ''}`;
+}
+// Turns a dropdown value into the two columns we store. owner_id must be a login user, so a person without a login falls back to whoever is saving.
+function supplierOwnerFromValue(v){
+  if(!v) return { owner_id: STATE.user.id, owner_personnel_id: null };
+  if(v.startsWith('u:')) return { owner_id: v.slice(2), owner_personnel_id: null };
+  const pid = v.slice(2); const p = (STATE.personnel||[]).find(x=>x.id===pid);
+  return { owner_id: (p && p.linked_profile_id) || STATE.user.id, owner_personnel_id: pid };
+}
+function supplierOwnerName(s){
+  if(s.owner_personnel_id){ const p = (STATE.personnel||[]).find(x=>x.id===s.owner_personnel_id); if(p) return p.full_name; }
+  return memberName(s.owner_id);
+}
+// A supplier needs re-assessing when flagged (scope / risk change, new NC) or when an NC was raised after its latest assessment.
+function supplierReassessmentReason(s, latestAssessmentDate){
+  if(s.reassessment_required) return s.reassessment_reason || 'Flagged for re-assessment';
+  const cutoff = latestAssessmentDate ? new Date(latestAssessmentDate) : null;
+  const ncs = (STATE.ncs||[]).filter(n=>n.supplier_id===s.id && n.status!=='closed' && (!cutoff || new Date(n.raised_date) > cutoff));
+  if(ncs.length && cutoff) return `${ncs.length} open nonconformance${ncs.length===1?'':'s'} raised since the last assessment (${ncs.map(n=>n.ref_code).join(', ')})`;
+  return null;
+}
 
 function toggleSupplierForm(){ document.getElementById('sup-form').classList.toggle('open'); }
 window.toggleSupplierForm = toggleSupplierForm;
@@ -9894,7 +9994,7 @@ window.submitSupplier = async function(){
     contact_name: document.getElementById('sf-contact-name').value.trim(),
     contact_email: document.getElementById('sf-contact-email').value.trim(),
     contact_phone: document.getElementById('sf-contact-phone').value.trim(),
-    owner_id: document.getElementById('sf-owner').value,
+    ...supplierOwnerFromValue(document.getElementById('sf-owner').value),
     department_id: document.getElementById('sf-department').value || null,
     created_by: STATE.user.id,
   };
@@ -9919,15 +10019,16 @@ function renderSuppliersTable(){
     return;
   }
   wrap.innerHTML = `<table>
-    <tr><th>Ref</th><th>Name</th><th>Scope</th><th>Risk</th><th>Owner</th><th>Review</th><th>Status</th></tr>
+    <tr><th>Ref</th><th>Name</th><th>Scope</th><th>Risk</th><th>Owner</th><th>Review</th><th>Score</th><th>Status</th></tr>
     ${rows.map(s=>`<tr class="clickable" onclick="openSupplierDetail('${s.id}')">
       <td class="mono-cell">${s.ref_code}</td>
       <td class="strong">${s.name}</td>
       <td>${s.scope_of_supply||'—'}</td>
       <td><span class="sev-badge ${s.risk_classification==='high'?'critical':'minor'}" style="text-transform:capitalize;">${s.risk_classification}</span></td>
-      <td>${memberName(s.owner_id)}</td>
+      <td>${escapeHtml(supplierOwnerName(s))}</td>
       <td>${dateStatusBadge(s.next_review_date, s.status==='removed')}</td>
-      <td>${pill(s.status)}</td>
+      <td>${supScorePill(s)}</td>
+      <td>${pill(s.status)}${supPendingCount(s.id) ? ` <span class="sev-badge major" title="Certificates uploaded by the supplier are waiting for your review">${supPendingCount(s.id)} to review</span>` : ''}${s.reassessment_required || supplierReassessmentReason(s, null) ? ' <span class="sev-badge critical" title="Re-assessment required">Re-assess</span>' : ''}</td>
     </tr>`).join('')}
   </table>`;
 }
@@ -9941,10 +10042,12 @@ async function openSupplierDetail(id){
     const { data } = await STATE.supabase.from('supplier_reviews').select('*').eq('supplier_id', id).order('review_number', {ascending:true});
     reviews = data || [];
   }
-  const { data: excCount } = await STATE.supabase.from('nonconformances').select('id', {count:'exact', head:true}).eq('supplier_id', id);
+  const { count: excCount } = await STATE.supabase.from('nonconformances').select('id', {count:'exact', head:true}).eq('supplier_id', id);
   const { data: assessments } = await STATE.supabase.from('assessment_records').select('*').eq('entity_type','supplier').eq('entity_id', id).order('assessment_date', {ascending:false});
 
   const qualAudit = s.qualification_audit_id ? STATE.audits.find(a=>a.id===s.qualification_audit_id) : null;
+  const reassessWhy = supplierReassessmentReason(s, (assessments||[])[0] ? assessments[0].assessment_date : null);
+  const canEditSup = STATE.myRole === 'admin' || STATE.myRole === 'manager';
 
   document.getElementById('sup-detail-slot').innerHTML = `
     <div class="detail-panel">
@@ -9957,13 +10060,15 @@ async function openSupplierDetail(id){
       </div>
       <div class="detail-meta">
         <div class="dm-item"><div class="l">Scope of supply</div><div class="v">${s.scope_of_supply || '—'}</div></div>
-        <div class="dm-item"><div class="l">Owner</div><div class="v">${memberName(s.owner_id)}</div></div>
+        <div class="dm-item"><div class="l">Owner</div><div class="v">${escapeHtml(supplierOwnerName(s))}</div></div>
         <div class="dm-item"><div class="l">Contact</div><div class="v">${s.contact_name || '—'}</div></div>
         <div class="dm-item"><div class="l">Total NCs logged</div><div class="v">${excCount ?? 0}</div></div>
         <div class="dm-item"><div class="l">Department</div><div class="v">${s.department_id ? (STATE.docDepartments.find(x=>x.id===s.department_id)||{}).name||'—' : '—'}</div></div>
       </div>
       <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:16px;">${s.contact_email||''}${s.contact_email && s.contact_phone ? ' · ' : ''}${s.contact_phone||''}</p>
 
+      ${reassessWhy ? `<div class="warn-note" style="margin-bottom:14px; background:#fdecea; border:2px solid #D50000;"><div><b style="color:#D50000;">Re-assessment required.</b> ${escapeHtml(reassessWhy)}.<br><button class="btn-small primary" style="margin-top:8px;" onclick="toggleNewAssessmentForm('supplier','${s.id}'); document.getElementById('new-assessment-form-supplier-${s.id}') && document.getElementById('new-assessment-form-supplier-${s.id}').scrollIntoView({behavior:'smooth'});">Start the re-assessment now</button> <span style="font-size:11.5px;">Saving a new assessment clears this flag.</span></div></div>` : ''}
+      ${canEditSup ? `<div style="margin-bottom:14px;"><button class="btn-small" onclick="toggleSupplierEdit('${s.id}')">Edit supplier details</button><div id="sup-edit-slot"></div></div>` : ''}
       <div class="status-row">
         <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase;">Status</label>
         <select id="sd-status">${SUPPLIER_STATUSES.map(st=>`<option value="${st}" ${s.status===st?'selected':''}>${label(st)}</option>`).join('')}</select>
@@ -10139,7 +10244,11 @@ window.submitAssessment = async function(entityType, entityId){
   if(respErr){ toast('Assessment saved, but the item scores could not be recorded: ' + respErr.message, 'error'); }
 
   toggleNewAssessmentForm(entityType, entityId);
-  if(entityType === 'supplier') openSupplierDetail(entityId); else openCustomerDetail(entityId);
+  if(entityType === 'supplier'){
+    await STATE.supabase.from('suppliers').update({ reassessment_required:false, reassessment_reason:null, reassessment_flagged_at:null }).eq('id', entityId);
+    await loadSuppliers(); renderSuppliersTable();
+    openSupplierDetail(entityId);
+  } else openCustomerDetail(entityId);
   toast(`Assessment saved: ${outcome.text}.`, 'success');
 };
 
@@ -10370,6 +10479,44 @@ window.saveSupplierStatus = async function(supplierId){
   toast('Status updated.', 'success');
 };
 
+window.toggleSupplierEdit = function(id){
+  const slot = document.getElementById('sup-edit-slot'); if(!slot) return;
+  if(slot.innerHTML.trim()){ slot.innerHTML = ''; return; }
+  const s = supplierById(id); if(!s) return;
+  slot.innerHTML = `<div class="form-panel open" style="margin-top:10px;">
+    <div class="form-grid">
+      <div class="field span2"><label>Name</label><input id="se-name" value="${escapeHtml(s.name||'')}"></div>
+      <div class="field"><label>Risk classification</label><select id="se-risk"><option value="low" ${s.risk_classification==='low'?'selected':''}>Low risk to business</option><option value="high" ${s.risk_classification==='high'?'selected':''}>High risk to business</option></select></div>
+      <div class="field span3"><label>Scope of supply <span style="font-weight:400;color:var(--text-faint);">(changing it prompts a re-assessment)</span></label><input id="se-scope" value="${escapeHtml(s.scope_of_supply||'')}"></div>
+      <div class="field"><label>Internal owner (all personnel)</label><select id="se-owner">${supplierOwnerOptions(s)}</select></div>
+      <div class="field"><label>Contact name</label><input id="se-cname" value="${escapeHtml(s.contact_name||'')}"></div>
+      <div class="field"><label>Contact email</label><input id="se-cemail" value="${escapeHtml(s.contact_email||'')}"></div>
+      <div class="field"><label>Contact phone</label><input id="se-cphone" value="${escapeHtml(s.contact_phone||'')}"></div>
+    </div>
+    <div class="form-actions"><button class="btn-cancel" onclick="toggleSupplierEdit('${id}')">Cancel</button><button class="btn-primary" onclick="saveSupplierEdit('${id}')">Save changes</button></div>
+  </div>`;
+};
+window.saveSupplierEdit = async function(id){
+  const s = supplierById(id); if(!s) return;
+  const name = document.getElementById('se-name').value.trim();
+  if(!name){ alert('Name is required.'); return; }
+  const scope = document.getElementById('se-scope').value.trim();
+  const risk = document.getElementById('se-risk').value;
+  const patch = { name, scope_of_supply: scope, risk_classification: risk,
+    contact_name: document.getElementById('se-cname').value.trim(), contact_email: document.getElementById('se-cemail').value.trim(), contact_phone: document.getElementById('se-cphone').value.trim(),
+    ...supplierOwnerFromValue(document.getElementById('se-owner').value) };
+  const reasons = [];
+  if((s.scope_of_supply||'') !== scope) reasons.push(`Scope of supply changed from "${s.scope_of_supply||'not set'}" to "${scope||'not set'}"`);
+  if(s.risk_classification !== risk) reasons.push(`Risk classification changed from ${s.risk_classification} to ${risk}`);
+  if(reasons.length){ patch.reassessment_required = true; patch.reassessment_reason = reasons.join('; ') + ' (' + fmtDate(todayISO()) + ', ' + memberName(STATE.user.id) + ')'; patch.reassessment_flagged_at = new Date().toISOString(); }
+  let { error } = await STATE.supabase.from('suppliers').update(patch).eq('id', id);
+  if(error && /reassessment|owner_personnel/.test(error.message)){
+    toast('Run qashe-watchman-schema-supplier-docs-upgrade.sql in Supabase first (new supplier columns).', 'error'); return;
+  }
+  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  await loadSuppliers(); renderSuppliersTable(); updateNavBadges(); openSupplierDetail(id);
+  toast(reasons.length ? 'Saved. A re-assessment is now required because the ' + (reasons.length>1?'scope and risk':(reasons[0].startsWith('Scope')?'scope of supply':'risk classification')) + ' changed.' : 'Supplier details saved.', 'success');
+};
 window.saveSupplierDepartment = async function(supplierId){
   const department_id = document.getElementById('sd-department').value || null;
   const { error } = await STATE.supabase.from('suppliers').update({ department_id }).eq('id', supplierId);
@@ -21077,6 +21224,11 @@ window.renderAllDocsView = renderAllDocsView;
 // document — see promoteBulkDocument/checkArchiveSupersededBulkDoc) are
 // excluded from the normal counts and register so the folder shows one
 // current copy of each document, not a stale duplicate sitting alongside it.
+// A controlled document counts as published once it has been approved at least once, however that approval was recorded.
+function allDocsIsPublished(d){ return !!(d.ever_approved || d.approval_status === 'approved' || d.workflow_status === 'approved' || d.approver_signed_off_at); }
+function allDocsControlledCount(deptId, typeId){
+  return (STATE.documents||[]).filter(d => allDocsIsPublished(d) && (deptId === null || d.department_id === deptId) && (typeId === null || d.type_id === typeId || d.document_type_id === typeId)).length;
+}
 function allDocsDeptDocs(deptId){
   const active = STATE.bulkDocuments.filter(d=>!d.archived);
   return deptId === '' ? active.filter(d=>!d.department_id) : active.filter(d=>d.department_id===deptId);
@@ -21099,7 +21251,7 @@ function allDocsControlledDocs(deptId, typeId){
   // visible here permanently (see ever_approved) even while a later
   // amendment is back in review/approval — renderAllDocsControlledSection
   // shows a badge for that in-progress state rather than hiding the document.
-  return STATE.documents.filter(d=>d.department_id===deptId && (d.type_id===typeId || d.document_type_id===typeId) && d.ever_approved);
+  return STATE.documents.filter(d=>d.department_id===deptId && (d.type_id===typeId || d.document_type_id===typeId) && allDocsIsPublished(d));
 }
 
 /* ---- Level 1: Departments ---- */
@@ -21145,7 +21297,7 @@ function renderAllDocsDepartmentsShell(){
     ${!depts.length ? `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg><p>No departments set up yet: add one above (e.g. Operations, Quality, HR) to start organising documents by department and type.</p></div>` : `
     <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px;">
       ${depts.map(d => {
-        const count = allDocsDeptDocs(d.id).length;
+        const count = allDocsDeptDocs(d.id).length + allDocsControlledCount(d.id, null);
         return `<div class="oc-card" onclick="allDocsOpenDept('${d.id}')">
           <div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:4px;">${escapeHtml(d.code)}</div>
           <div style="font-family:'Poppins'; font-weight:600; font-size:15px; margin-bottom:6px;">${escapeHtml(d.name)}</div>
@@ -21332,7 +21484,7 @@ function renderAllDocsTypesShell(deptId){
     ${!types.length ? `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg><p>No document types set up yet: add one above (e.g. Policies, Procedures, Forms, Registers, Checklists).</p></div>` : `
     <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px;">
       ${types.map(t => {
-        const count = allDocsTypeDocs(deptId, t.id).length;
+        const count = allDocsTypeDocs(deptId, t.id).length + allDocsControlledCount(deptId, t.id);
         return `<div class="oc-card" onclick="allDocsOpenType('${t.id}')">
           <div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:4px;">${escapeHtml(t.code)}</div>
           <div style="font-family:'Poppins'; font-weight:600; font-size:15px; margin-bottom:6px;">${escapeHtml(t.name)}</div>
@@ -26444,6 +26596,325 @@ if(typeof DATE_TRACKED_MODULES !== 'undefined'){
     { key:'site_files', label:'Site SHERQ Files: Planned End', list:() => sfEnabled() ? (STATE.siteFiles||[]).filter(f => ['approved','active'].includes(f.status)).map(f => ({ ...f, title_safe: escapeHtml(`${f.ref_code}: ${f.title}`) })) : [], dateField:'end_date', isResolved:() => false, titleField:'title_safe', getPerson:x => { const p = x.project_manager_id ? personById(x.project_manager_id) : null; return p ? escapeHtml(p.full_name) : '—'; } },
   );
 }
+
+
+/* ============================================================================
+   SUPPLIER SUITE: certificates, contracts, annual re-assessment, scorecard,
+   Approved Supplier List and the supplier self-service portal.
+   Needs qashe-watchman-schema-supplier-suite.sql (everything degrades quietly without it).
+   ============================================================================ */
+STATE.supplierCerts = []; STATE.supplierContracts = []; STATE.supplierAssessments = [];
+const SUP_CERT_CATS = {
+  company_registration:'Company registration (CIPC)', bbbee:'B-BBEE certificate', tax_compliance:'Tax compliance status (SARS)',
+  coida:'COIDA letter of good standing', insurance:'Insurance', iso:'ISO / management system certificate',
+  professional:'Professional registration / accreditation', licence:'Licence / permit', other:'Other',
+};
+const SUP_EXPECTED = { high:['company_registration','bbbee','tax_compliance','coida','insurance'], low:['company_registration','tax_compliance'] };
+const SUP_CONTRACT_TYPES = { contract:'Contract', sla:'Service level agreement', purchase_order:'Purchase order', nda:'NDA', other:'Other' };
+
+async function loadSupplierExtras(){
+  try{
+    const org = STATE.org.id, sb = STATE.supabase;
+    const [c, k, a] = await Promise.all([
+      sb.from('supplier_certificates').select('*').eq('organisation_id', org),
+      sb.from('supplier_contracts').select('*').eq('organisation_id', org),
+      sb.from('assessment_records').select('entity_id, assessment_date, overall_score, outcome').eq('organisation_id', org).eq('entity_type', 'supplier'),
+    ]);
+    STATE.supplierCerts = c.error ? [] : (c.data || []);
+    STATE.supplierContracts = k.error ? [] : (k.data || []);
+    STATE.supplierAssessments = a.error ? [] : (a.data || []);
+  }catch(e){ /* tables not created yet */ }
+}
+{ const _ls = loadSuppliers; loadSuppliers = async function(){ await _ls(); await loadSupplierExtras(); }; }
+
+const supName = id => { const s = (STATE.suppliers||[]).find(x=>x.id===id); return s ? s.name : 'Supplier'; };
+function supLatestAssessment(sid){
+  return (STATE.supplierAssessments||[]).filter(a=>a.entity_id===sid).sort((a,b)=> new Date(b.assessment_date)-new Date(a.assessment_date))[0] || null;
+}
+function supCerts(sid, includePending){ return (STATE.supplierCerts||[]).filter(c=>c.supplier_id===sid && !c.archived && c.review_status!=='rejected' && (includePending || c.review_status==='accepted')); }
+function supCertValid(c){ return !c.expiry_date || new Date(c.expiry_date+'T00:00:00') >= new Date(todayISO()+'T00:00:00'); }
+function supPendingCount(sid){ return (STATE.supplierCerts||[]).filter(c=>c.supplier_id===sid && c.review_status==='pending' && !c.archived).length; }
+function supAddDays(iso, n){ const d = new Date(iso+'T00:00:00'); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
+// Annual re-assessment for high-risk suppliers (12 months after the last assessment, or after approval if never assessed)
+function supplierAnnualDue(s){
+  if(s.risk_classification !== 'high' || !['approved','conditional'].includes(s.status)) return null;
+  const la = supLatestAssessment(s.id);
+  const base = la ? la.assessment_date : (s.approved_date || (s.created_at||'').slice(0,10));
+  return base ? supAddDays(String(base).slice(0,10), 365) : null;
+}
+{ const _srr = supplierReassessmentReason;
+  supplierReassessmentReason = function(s, d){
+    const r = _srr(s, d); if(r) return r;
+    const due = supplierAnnualDue(s);
+    if(due && due < todayISO()) return `The annual re-assessment of this high-risk supplier was due on ${fmtDate(due)}`;
+    return null;
+  }; }
+
+// Scorecard: weighted average of whatever can be measured (quality 40, assessment 30, documents 20, currency 10)
+function supplierScore(s){
+  const SEV = { 1:25, 2:20, 3:15, 4:10, 5:0 };
+  const ncs = (STATE.ncs||[]).filter(n=>n.supplier_id===s.id);
+  let quality = 100;
+  ncs.forEach(n => { quality -= n.supplier_impact_severity ? (SEV[n.supplier_impact_severity]||0) : (n.status!=='closed' ? 5 : 0); });
+  quality = Math.max(0, quality);
+  const la = supLatestAssessment(s.id);
+  const assess = la ? Math.round(Math.max(0, Math.min(100, (5 - Number(la.overall_score)) / 4 * 100))) : null;
+  const expected = SUP_EXPECTED[s.risk_classification] || SUP_EXPECTED.low;
+  const have = supCerts(s.id).filter(supCertValid).map(c=>c.category);
+  const docs = Math.round(expected.filter(k=>have.includes(k)).length / expected.length * 100);
+  const reason = supplierReassessmentReason(s, la ? la.assessment_date : null);
+  const current = reason ? 0 : 100;
+  const parts = [[quality,40],[assess,30],[docs,20],[current,10]].filter(p=>p[0]!==null);
+  const total = Math.round(parts.reduce((t,p)=>t+p[0]*p[1],0) / parts.reduce((t,p)=>t+p[1],0));
+  const band = total>=85 ? {t:'Preferred',c:'#1B8E3E'} : total>=70 ? {t:'Approved',c:'#1565C0'} : total>=50 ? {t:'Watch',c:'#EF6C00'} : {t:'At risk',c:'#D50000'};
+  return { total, quality, assess, docs, current, band, ncCount: ncs.length, expected, have };
+}
+function supScorePill(s){ const sc = supplierScore(s); return `<span class="sev-badge" style="background:${sc.band.c}; color:#fff;" title="${sc.band.t}">${sc.total}%</span>`; }
+
+// Reminders pop-up: certificate expiry, contract end, annual re-assessment
+DATE_TRACKED_MODULES.push(
+  { key:'suppliers', label:'Suppliers: Certificate Expiry', list:() => (STATE.supplierCerts||[]).filter(c=>!c.archived && c.review_status==='accepted' && c.expiry_date).map(c=>({ ...c, _t: escapeHtml(`${supName(c.supplier_id)}: ${SUP_CERT_CATS[c.category]||c.category}`) })), dateField:'expiry_date', isResolved:()=>false, titleField:'_t', getPerson:x=>escapeHtml(x.title||'') },
+  { key:'suppliers', label:'Suppliers: Contract End', list:() => (STATE.supplierContracts||[]).filter(c=>c.end_date).map(c=>({ ...c, _t: escapeHtml(`${supName(c.supplier_id)}: ${c.title}`) })), dateField:'end_date', isResolved:x=>x.status!=='active', titleField:'_t', getPerson:x=>escapeHtml(x.reference||SUP_CONTRACT_TYPES[x.contract_type]||'') },
+  { key:'suppliers', label:'Suppliers: Annual Re-assessment', list:() => (STATE.suppliers||[]).map(s=>({ ...s, _due: supplierAnnualDue(s) })).filter(s=>s._due), dateField:'_due', isResolved:()=>false, titleField:'name', getPerson:x=>escapeHtml(supplierOwnerName(x)) },
+);
+
+// ---- Supplier detail: extra sections ----
+{ const _osd = openSupplierDetail;
+  openSupplierDetail = window.openSupplierDetail = async function(id){
+    await _osd(id);
+    const panel = document.querySelector('#sup-detail-slot .detail-panel'); const s = supplierById(id);
+    if(!panel || !s) return;
+    const div = document.createElement('div'); div.id = 'sup-suite';
+    div.innerHTML = supplierSuiteHtml(s);
+    panel.appendChild(div);
+  }; }
+
+function supCanEdit(){ return ['admin','manager'].includes(STATE.myRole); }
+function supCanAdd(){ return ['admin','manager','contributor'].includes(STATE.myRole); }
+
+function supplierSuiteHtml(s){
+  const sc = supplierScore(s);
+  const bar = (label, v, w) => `<div style="margin:6px 0;"><div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;"><span>${label} <span style="color:var(--text-faint);font-weight:400;">(${w}%)</span></span><span>${v===null?'Not assessed yet':v+'%'}</span></div><div style="height:10px;background:#eee;border-radius:6px;overflow:hidden;"><div style="height:100%;width:${v||0}%;background:${v===null?'#bbb':(v>=85?'#1B8E3E':v>=70?'#1565C0':v>=50?'#EF6C00':'#D50000')};"></div></div></div>`;
+  const certs = (STATE.supplierCerts||[]).filter(c=>c.supplier_id===s.id && !c.archived).sort((a,b)=> (a.review_status==='pending'?-1:1) - (b.review_status==='pending'?-1:1));
+  const missing = sc.expected.filter(k=>!sc.have.includes(k));
+  const contracts = (STATE.supplierContracts||[]).filter(c=>c.supplier_id===s.id).sort((a,b)=> String(b.end_date||'9999').localeCompare(String(a.end_date||'9999')));
+  const link = s.portal_enabled && s.portal_token ? `${location.origin}${location.pathname}?sp=${s.portal_token}` : '';
+  const H = t => `<div class="l" style="font-family:'JetBrains Mono'; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">${t}</div>`;
+  return `
+  <div style="margin:22px 0;"><div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:10px;">
+      <div style="min-width:96px;text-align:center;border-radius:14px;padding:12px 14px;color:#fff;background:${sc.band.c};font-family:Arial;"><div style="font-size:34px;font-weight:900;line-height:1;">${sc.total}%</div><div style="font-size:11px;font-weight:800;text-transform:uppercase;">${sc.band.t}</div></div>
+      <div style="flex:1;min-width:260px;">${H('Supplier scorecard')}
+        ${bar('Quality (nonconformances)', sc.quality, 40)}${bar('Latest assessment', sc.assess, 30)}${bar('Certificates on file', sc.docs, 20)}${bar('Assessment up to date', sc.current, 10)}</div></div></div>
+
+  <div style="margin:22px 0;">${H('Certificates and compliance documents')}
+    ${missing.length ? `<div class="warn-note" style="margin-bottom:10px;"><div><b>Missing or expired:</b> ${missing.map(k=>SUP_CERT_CATS[k]).join(', ')}</div></div>` : ''}
+    ${certs.length ? `<table><tr><th>Document</th><th>Number</th><th>Expiry</th><th>Source</th><th></th></tr>${certs.map(c=>`<tr>
+      <td class="strong">${escapeHtml(SUP_CERT_CATS[c.category]||c.category)}<div style="font-size:11.5px;font-weight:400;color:var(--text-faint);">${escapeHtml(c.title||'')}</div></td>
+      <td>${escapeHtml(c.certificate_number||'')}</td>
+      <td>${c.review_status==='pending' ? '<span class="sev-badge major">Awaiting review</span>' : (c.expiry_date ? fmtDate(c.expiry_date)+' '+dateStatusBadge(c.expiry_date,false) : 'No expiry')}</td>
+      <td>${c.source==='portal' ? 'Supplier portal' : 'Internal'}</td>
+      <td style="text-align:right;white-space:nowrap;">
+        ${c.storage_path ? `<button class="btn-small" onclick="supViewFile('${c.storage_bucket||'documents'}','${c.storage_path}')">View file</button>` : ''}
+        ${c.review_status==='pending' && supCanEdit() ? `<button class="btn-small primary" onclick="supReviewCert('${c.id}','accepted')">Accept</button> <button class="btn-small" onclick="supReviewCert('${c.id}','rejected')">Reject</button>` : ''}
+        ${supCanEdit() && c.review_status!=='pending' ? `<button class="btn-small" onclick="supArchiveCert('${c.id}')">Archive</button>` : ''}
+      </td></tr>`).join('')}</table>` : '<p style="font-size:12.5px;color:var(--text-faint);">No certificates on file yet.</p>'}
+    ${supCanAdd() ? `<div style="margin-top:10px;"><button class="btn-small" onclick="supToggle('sup-cert-form')">+ Add certificate</button>
+      <div class="form-panel" id="sup-cert-form"><div class="form-grid">
+        <div class="field"><label>Type</label><select id="sc-cat">${Object.entries(SUP_CERT_CATS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div>
+        <div class="field span2"><label>Title</label><input id="sc-title" placeholder="e.g. B-BBEE Level 2 certificate"></div>
+        <div class="field"><label>Certificate number</label><input id="sc-number"></div>
+        <div class="field"><label>Issuing body</label><input id="sc-issuer"></div>
+        <div class="field"><label>Issue date</label><input type="date" id="sc-issue"></div>
+        <div class="field"><label>Expiry date</label><input type="date" id="sc-expiry"></div>
+        <div class="field span2"><label>File</label><input type="file" id="sc-file"></div></div>
+        <div class="form-actions"><button class="btn-cancel" onclick="supToggle('sup-cert-form')">Cancel</button><button class="btn-primary" onclick="supSaveCert('${s.id}')">Save certificate</button></div></div></div>` : ''}
+  </div>
+
+  <div style="margin:22px 0;">${H('Contracts, SLAs and purchase orders')}
+    ${contracts.length ? `<table><tr><th>Reference</th><th>Title</th><th>Type</th><th>Ends</th><th>Value</th><th>Status</th><th></th></tr>${contracts.map(c=>`<tr>
+      <td class="mono-cell">${escapeHtml(c.reference||'')}</td><td class="strong">${escapeHtml(c.title)}</td><td>${SUP_CONTRACT_TYPES[c.contract_type]||''}</td>
+      <td>${c.end_date ? fmtDate(c.end_date)+' '+dateStatusBadge(c.end_date, c.status!=='active') : 'Open ended'}</td>
+      <td>${c.value_amount!=null ? escapeHtml(c.currency)+' '+Number(c.value_amount).toLocaleString('en-ZA') : ''}</td><td>${pill(c.status)}</td>
+      <td style="text-align:right;white-space:nowrap;">${c.storage_path ? `<button class="btn-small" onclick="supViewFile('documents','${c.storage_path}')">View file</button>` : ''}
+        ${supCanEdit() && c.status==='active' ? `<button class="btn-small" onclick="supSetContract('${c.id}','terminated')">Terminate</button>` : ''}
+        ${supCanEdit() ? `<button class="btn-small" onclick="supDeleteContract('${c.id}')">Delete</button>` : ''}</td></tr>`).join('')}</table>` : '<p style="font-size:12.5px;color:var(--text-faint);">No contracts or orders recorded.</p>'}
+    ${supCanAdd() ? `<div style="margin-top:10px;"><button class="btn-small" onclick="supToggle('sup-con-form')">+ Add contract / order</button>
+      <div class="form-panel" id="sup-con-form"><div class="form-grid">
+        <div class="field"><label>Type</label><select id="sk-type">${Object.entries(SUP_CONTRACT_TYPES).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div>
+        <div class="field"><label>Reference / PO number</label><input id="sk-ref"></div>
+        <div class="field"><label>Title</label><input id="sk-title"></div>
+        <div class="field"><label>Start date</label><input type="date" id="sk-start"></div>
+        <div class="field"><label>End date</label><input type="date" id="sk-end"></div>
+        <div class="field"><label>Value (ZAR)</label><input type="number" step="any" id="sk-value"></div>
+        <div class="field span2"><label>File (optional)</label><input type="file" id="sk-file"></div></div>
+        <div class="form-actions"><button class="btn-cancel" onclick="supToggle('sup-con-form')">Cancel</button><button class="btn-primary" onclick="supSaveContract('${s.id}')">Save</button></div></div></div>` : ''}
+  </div>
+
+  <div style="margin:22px 0;">${H('Supplier portal')}
+    <p style="font-size:12.5px;color:var(--text-dim);">Give ${escapeHtml(s.name)} a private link so it can upload its own certificates. Uploads wait here for you to accept or reject; nothing else in Watchman is visible to the supplier.</p>
+    ${link ? `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0;"><input readonly value="${link}" style="flex:1;min-width:260px;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:12px;" onclick="this.select()">
+      <button class="btn-small primary" onclick="supCopyLink('${s.id}')">Copy link</button>
+      ${supCanEdit() ? `<button class="btn-small" onclick="supPortal('${s.id}','new')">New link</button><button class="btn-small" onclick="supPortal('${s.id}','off')">Switch off</button>` : ''}</div>`
+      : (supCanEdit() ? `<button class="btn-small primary" onclick="supPortal('${s.id}','on')">Switch the portal on</button>` : '<p style="font-size:12px;color:var(--text-faint);">The portal is off.</p>')}
+  </div>`;
+}
+window.supToggle = id => { const e = document.getElementById(id); if(e) e.classList.toggle('open'); };
+window.supViewFile = async function(bucket, path){
+  const { data, error } = await STATE.supabase.storage.from(bucket).createSignedUrl(path, 3600);
+  if(error || !data){ toast('Could not open the file: ' + (error ? error.message : ''), 'error'); return; }
+  window.open(data.signedUrl, '_blank');
+};
+async function supUpload(file, folder, sid){
+  if(!file) return { path:null, name:null };
+  if(file.size > EVIDENCE_MAX_SIZE_MB * 1024 * 1024){ alert(`That file is over ${EVIDENCE_MAX_SIZE_MB}MB.`); return null; }
+  const path = `${STATE.org.id}/${folder}/${sid}/${Date.now()}-${sanitizeFileName(file.name)}`;
+  const { error } = await STATE.supabase.storage.from('documents').upload(path, file, evidenceUploadOpts(file));
+  if(error){ toast('Could not upload the file: ' + error.message, 'error'); return null; }
+  return { path, name:file.name };
+}
+window.supSaveCert = async function(sid){
+  const g = id => document.getElementById(id);
+  const cat = g('sc-cat').value, title = g('sc-title').value.trim() || SUP_CERT_CATS[cat];
+  const issue = g('sc-issue').value || null, expiry = g('sc-expiry').value || null;
+  if(issue && expiry && expiry < issue){ alert('The expiry date is before the issue date.'); return; }
+  const up = await supUpload(g('sc-file').files[0], 'supplier-certs', sid); if(up === null) return;
+  const { error } = await STATE.supabase.from('supplier_certificates').insert({ organisation_id:STATE.org.id, supplier_id:sid, category:cat, title,
+    certificate_number:g('sc-number').value.trim()||null, issuing_body:g('sc-issuer').value.trim()||null, issue_date:issue, expiry_date:expiry,
+    storage_bucket:'documents', storage_path:up.path, file_name:up.name, review_status:'accepted', source:'internal', created_by:STATE.user.id });
+  if(error){ toast('Could not save: ' + error.message + (/supplier_certificates/.test(error.message)?' (run qashe-watchman-schema-supplier-suite.sql first)':''), 'error'); return; }
+  // a renewal replaces the earlier certificate of the same type
+  const older = (STATE.supplierCerts||[]).filter(c=>c.supplier_id===sid && c.category===cat && !c.archived && c.review_status==='accepted');
+  if(older.length && cat !== 'other') await STATE.supabase.from('supplier_certificates').update({ archived:true }).in('id', older.map(c=>c.id));
+  await loadSupplierExtras(); renderSuppliersTable(); openSupplierDetail(sid); toast('Certificate saved.', 'success');
+};
+window.supReviewCert = async function(id, decision){
+  const c = (STATE.supplierCerts||[]).find(x=>x.id===id); if(!c) return;
+  const { error } = await STATE.supabase.from('supplier_certificates').update({ review_status:decision }).eq('id', id);
+  if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+  if(decision === 'accepted' && c.category !== 'other'){
+    const older = (STATE.supplierCerts||[]).filter(x=>x.supplier_id===c.supplier_id && x.category===c.category && x.id!==id && !x.archived && x.review_status==='accepted');
+    if(older.length) await STATE.supabase.from('supplier_certificates').update({ archived:true }).in('id', older.map(x=>x.id));
+  }
+  await loadSupplierExtras(); renderSuppliersTable(); openSupplierDetail(c.supplier_id);
+  toast(decision==='accepted' ? 'Certificate accepted.' : 'Certificate rejected.', 'success');
+};
+window.supArchiveCert = async function(id){
+  const c = (STATE.supplierCerts||[]).find(x=>x.id===id); if(!c) return;
+  if(!confirm('Archive this certificate? It stays on file but stops counting and stops raising reminders.')) return;
+  await STATE.supabase.from('supplier_certificates').update({ archived:true }).eq('id', id);
+  await loadSupplierExtras(); renderSuppliersTable(); openSupplierDetail(c.supplier_id);
+};
+window.supSaveContract = async function(sid){
+  const g = id => document.getElementById(id);
+  const title = g('sk-title').value.trim(); if(!title){ alert('Enter a title.'); return; }
+  const up = await supUpload(g('sk-file').files[0], 'supplier-contracts', sid); if(up === null) return;
+  const v = g('sk-value').value;
+  const { error } = await STATE.supabase.from('supplier_contracts').insert({ organisation_id:STATE.org.id, supplier_id:sid, contract_type:g('sk-type').value,
+    reference:g('sk-ref').value.trim()||null, title, start_date:g('sk-start').value||null, end_date:g('sk-end').value||null, value_amount: v!=='' ? parseFloat(v) : null,
+    storage_path:up.path, file_name:up.name, created_by:STATE.user.id });
+  if(error){ toast('Could not save: ' + error.message + (/supplier_contracts/.test(error.message)?' (run qashe-watchman-schema-supplier-suite.sql first)':''), 'error'); return; }
+  await loadSupplierExtras(); openSupplierDetail(sid); toast('Saved.', 'success');
+};
+window.supSetContract = async function(id, status){
+  const c = (STATE.supplierContracts||[]).find(x=>x.id===id); if(!c) return;
+  await STATE.supabase.from('supplier_contracts').update({ status }).eq('id', id);
+  await loadSupplierExtras(); openSupplierDetail(c.supplier_id);
+};
+window.supDeleteContract = async function(id){
+  const c = (STATE.supplierContracts||[]).find(x=>x.id===id); if(!c) return;
+  if(!confirm('Delete this contract record?')) return;
+  await STATE.supabase.from('supplier_contracts').delete().eq('id', id);
+  await loadSupplierExtras(); openSupplierDetail(c.supplier_id);
+};
+window.supPortal = async function(id, action){
+  const patch = action==='off' ? { portal_enabled:false } : { portal_enabled:true, portal_token: (action==='new' || !(supplierById(id)||{}).portal_token) ? (crypto.randomUUID().replace(/-/g,'') + crypto.randomUUID().replace(/-/g,'').slice(0,12)) : supplierById(id).portal_token };
+  if(action==='new' && !confirm('The old link will stop working. Continue?')) return;
+  const { error } = await STATE.supabase.from('suppliers').update(patch).eq('id', id);
+  if(error){ toast('Could not update the portal: ' + error.message + (/portal/.test(error.message)?' (run qashe-watchman-schema-supplier-suite.sql first)':''), 'error'); return; }
+  await loadSuppliers(); openSupplierDetail(id);
+  toast(action==='off' ? 'Portal switched off.' : 'Portal link ready: copy it and send it to the supplier.', 'success');
+};
+window.supCopyLink = async function(id){
+  const s = supplierById(id); const link = `${location.origin}${location.pathname}?sp=${s.portal_token}`;
+  try{ await navigator.clipboard.writeText(link); toast('Link copied.', 'success'); }catch(e){ prompt('Copy this link:', link); }
+};
+
+// ---- Register: score column + pending-review badge ----
+// ---- Approved Supplier List (printable) ----
+window.printApprovedSupplierList = function(){
+  const list = (STATE.suppliers||[]).filter(s=>['approved','conditional'].includes(s.status)).sort((a,b)=>a.name.localeCompare(b.name));
+  if(!list.length){ toast('There are no approved suppliers yet.', 'error'); return; }
+  const rows = list.map(s => {
+    const sc = supplierScore(s); const la = supLatestAssessment(s.id);
+    const certs = supCerts(s.id).filter(c=>c.expiry_date);
+    const exp = certs.length ? certs.map(c=>c.expiry_date).sort()[0] : null;
+    const certTxt = sc.docs === 100 ? 'Complete' : `${sc.docs}% complete`;
+    const con = (STATE.supplierContracts||[]).filter(c=>c.supplier_id===s.id && c.status==='active' && c.end_date).map(c=>c.end_date).sort()[0];
+    return [s.ref_code, escapeHtml(s.name), escapeHtml(s.scope_of_supply||''), label(s.risk_classification), label(s.status), escapeHtml(supplierOwnerName(s)),
+      la ? fmtDate(la.assessment_date) : 'Not assessed', `${sc.total}% ${sc.band.t}`, certTxt + (exp ? `<br>next expiry ${fmtDate(exp)}` : ''), con ? fmtDate(con) : '—'];
+  });
+  const pref = list.filter(s=>supplierScore(s).total>=85).length;
+  printRecord('Approved Supplier List', `ASL · ${fmtDate(todayISO())}`, [['Approved suppliers', list.length], ['Preferred (85%+)', pref], ['Needing re-assessment', list.filter(s=>supplierReassessmentReason(s,null)).length]],
+    printTable(['Ref','Supplier','Scope of supply','Risk','Status','Owner','Last assessed','Score','Certificates','Contract ends'], rows), null, null);
+};
+
+// ---- Public supplier portal (?sp=<token>) ----
+async function renderSupplierPortal(token){
+  await ensureSupabaseLib();
+  if(!STATE.supabase) initSupabase(SUPABASE_URL, SUPABASE_ANON_KEY);
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  const ov = document.createElement('div'); ov.id = 'supplier-portal';
+  ov.style.cssText = 'position:fixed;inset:0;background:#f4f4f4;z-index:100000;overflow:auto;font-family:Arial,Helvetica,sans-serif;color:#1c1c1c;';
+  document.body.appendChild(ov);
+  const { data: info } = await STATE.supabase.rpc('supplier_portal_info', { p_token: token });
+  if(!info || !info.ok){ ov.innerHTML = '<div style="max-width:520px;margin:80px auto;background:#fff;border-radius:14px;padding:30px;text-align:center;"><h2>This link is not active</h2><p>Please contact the company that sent it to you.</p></div>'; return; }
+  const E = escapeHtml, exp = SUP_EXPECTED[info.risk] || SUP_EXPECTED.low;
+  const draw = (msg) => {
+    const have = (info.certificates||[]).filter(c=>c.review_status!=='rejected');
+    ov.innerHTML = `<div style="max-width:720px;margin:0 auto;padding:24px 16px 60px;">
+      <div style="background:linear-gradient(135deg,#1c1c1c,#3a0a0a);color:#fff;border-radius:16px;padding:26px 28px;">
+        ${info.logo_url ? `<img src="${E(info.logo_url)}" style="max-height:44px;margin-bottom:10px;display:block;">` : ''}
+        <div style="font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#ffd9d9;">${E(info.organisation_name)} · Supplier portal</div>
+        <h1 style="margin:6px 0 4px;font-size:26px;font-weight:900;">${E(info.supplier_name)}</h1>
+        <div style="font-size:13px;font-weight:700;">Upload your compliance documents securely. They are reviewed by ${E(info.organisation_name)}.</div></div>
+      ${msg ? `<div style="margin-top:14px;background:${msg.ok?'#E9F5EE':'#fdecea'};border:2px solid ${msg.ok?'#1B8E3E':'#D50000'};border-radius:12px;padding:12px 16px;font-weight:700;">${E(msg.text)}</div>` : ''}
+      <div style="background:#fff;border-radius:14px;padding:20px 24px;margin-top:14px;">
+        <div style="font-weight:900;margin-bottom:8px;">Documents we hold for you</div>
+        ${have.length ? have.map(c=>`<div style="display:flex;justify-content:space-between;gap:10px;border-top:1px solid #eee;padding:8px 0;font-size:14px;"><span><b>${E(SUP_CERT_CATS[c.category]||c.category)}</b><br><span style="color:#666;font-size:12px;">${E(c.title||'')}</span></span><span style="text-align:right;font-weight:800;color:${c.review_status==='pending'?'#EF6C00':'#1B8E3E'};">${c.review_status==='pending'?'Awaiting review':'Accepted'}<br><span style="color:#666;font-weight:400;font-size:12px;">${c.expiry_date?'Expires '+E(c.expiry_date):'No expiry'}</span></span></div>`).join('') : '<div style="color:#666;font-size:13px;">Nothing uploaded yet.</div>'}
+        <div style="margin-top:10px;font-size:12.5px;color:#444;"><b>Usually required:</b> ${exp.map(k=>E(SUP_CERT_CATS[k])).join(', ')}</div></div>
+      <div style="background:#fff;border-radius:14px;padding:20px 24px;margin-top:14px;">
+        <div style="font-weight:900;margin-bottom:10px;">Upload a document</div>
+        <label style="font-size:12px;font-weight:800;">Type</label><select id="sp-cat" style="width:100%;padding:10px;margin:4px 0 10px;border:1px solid #ccc;border-radius:8px;">${Object.entries(SUP_CERT_CATS).map(([k,v])=>`<option value="${k}">${E(v)}</option>`).join('')}</select>
+        <label style="font-size:12px;font-weight:800;">Title</label><input id="sp-title" placeholder="e.g. B-BBEE Level 2 certificate" style="width:100%;padding:10px;margin:4px 0 10px;border:1px solid #ccc;border-radius:8px;box-sizing:border-box;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div><label style="font-size:12px;font-weight:800;">Certificate number</label><input id="sp-number" style="width:100%;padding:10px;margin:4px 0 10px;border:1px solid #ccc;border-radius:8px;box-sizing:border-box;"></div>
+          <div><label style="font-size:12px;font-weight:800;">Issued by</label><input id="sp-issuer" style="width:100%;padding:10px;margin:4px 0 10px;border:1px solid #ccc;border-radius:8px;box-sizing:border-box;"></div>
+          <div><label style="font-size:12px;font-weight:800;">Issue date</label><input type="date" id="sp-issue" style="width:100%;padding:10px;margin:4px 0 10px;border:1px solid #ccc;border-radius:8px;box-sizing:border-box;"></div>
+          <div><label style="font-size:12px;font-weight:800;">Expiry date</label><input type="date" id="sp-expiry" style="width:100%;padding:10px;margin:4px 0 10px;border:1px solid #ccc;border-radius:8px;box-sizing:border-box;"></div></div>
+        <label style="font-size:12px;font-weight:800;">File (PDF, Word or image, max 10MB)</label><input type="file" id="sp-file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" style="width:100%;margin:6px 0 14px;">
+        <button id="sp-send" style="background:#D50000;color:#fff;border:0;border-radius:99px;padding:12px 26px;font-size:15px;font-weight:900;cursor:pointer;">Send document</button></div></div>`;
+    document.getElementById('sp-send').onclick = async () => {
+      const f = document.getElementById('sp-file').files[0];
+      const title = document.getElementById('sp-title').value.trim();
+      if(!f){ alert('Choose the file to upload.'); return; }
+      if(!title){ alert('Enter a title for the document.'); return; }
+      if(f.size > 10*1024*1024){ alert('That file is over 10MB.'); return; }
+      if(!/\.(pdf|docx?|jpe?g|png)$/i.test(f.name)){ alert('Please upload a PDF, Word document or image.'); return; }
+      const btn = document.getElementById('sp-send'); btn.disabled = true; btn.textContent = 'Sending…';
+      const path = `${info.organisation_id}/${info.supplier_id}/${Date.now()}-${f.name.replace(/[^A-Za-z0-9._-]/g,'_')}`;
+      const up = await STATE.supabase.storage.from('supplier-portal').upload(path, f, { contentType: f.type || 'application/octet-stream' });
+      if(up.error){ draw({ok:false, text:'The file could not be uploaded: ' + up.error.message}); return; }
+      const { data: r } = await STATE.supabase.rpc('supplier_portal_submit', { p_token: token, p_category: document.getElementById('sp-cat').value, p_title: title,
+        p_number: document.getElementById('sp-number').value.trim(), p_issuer: document.getElementById('sp-issuer').value.trim(),
+        p_issue: document.getElementById('sp-issue').value || null, p_expiry: document.getElementById('sp-expiry').value || null, p_path: path, p_file_name: f.name });
+      if(!r || !r.ok){ draw({ok:false, text:(r && r.error) || 'Could not record the document.'}); return; }
+      info.certificates = [{ category: document.getElementById('sp-cat').value, title, expiry_date: document.getElementById('sp-expiry').value || null, review_status:'pending' }, ...(info.certificates||[])];
+      draw({ok:true, text:'Thank you. Your document has been sent and is awaiting review.'});
+    };
+  };
+  draw(null);
+}
+(function(){ const sp = new URLSearchParams(location.search).get('sp'); if(sp) document.addEventListener('DOMContentLoaded', () => renderSupplierPortal(sp)); })();
 
 function sfComplianceTile(){
   const files = (STATE.siteFiles||[]).filter(sfIsLive);
