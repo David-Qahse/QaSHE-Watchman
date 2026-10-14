@@ -7682,10 +7682,12 @@ function renderDocSetupTab(){
     <div class="detail-card">
       <div class="panel-head"><h3>Departments &amp; Document Types</h3></div>
       <div style="background:var(--grey-tint); border-radius:8px; padding:12px 16px; margin-bottom:14px; font-size:12.5px; line-height:1.6;">
-        <b>Standard naming convention.</b> Every Watchman client uses the same standard departments and document types (marked 🔒), so every document is numbered and filed the same way: <span class="mono">DEPT-TYPE-NNN_Title</span>, for example <span class="mono">GOV-POL-001_Quality Policy.pdf</span>. You can add your own departments and types for processes unique to your business, but the standard ones stay fixed.
+        ${STATE.org && STATE.org.naming_mode==='custom'
+          ? `<b>Your own naming convention.</b> This organisation builds its document numbers from its own departments and document types (<span class="mono">DEPT-TYPE-NNN_Title</span>). Add, rename or deactivate them freely. Any uploaded document that could not be filed is assigned automatically as soon as a matching department and type exist.`
+          : `<b>Standard naming convention.</b> Every Watchman client uses the same standard departments and document types (marked 🔒), so every document is numbered and filed the same way: <span class="mono">DEPT-TYPE-NNN_Title</span>, for example <span class="mono">GOV-POL-001_Quality Policy.pdf</span>. You can add your own departments and types for processes unique to your business, but the standard ones stay fixed.`}
         <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
           <button class="btn-small" onclick="printNamingGuide()">Print the naming convention guide</button>
-          ${STATE.myRole==='admin' ? '<button class="btn-small" onclick="restoreStandardNaming()">Restore any missing standard entries</button>' : ''}
+          ${STATE.myRole==='admin' && !(STATE.org && STATE.org.naming_mode==='custom') ? '<button class="btn-small" onclick="restoreStandardNaming()">Restore any missing standard entries</button>' : ''}
         </div>
       </div>
       <p style="font-size:12px; color:var(--text-faint); margin-bottom:14px;">These two lists build every document number — e.g. <b>GOV-POL-001</b> is department GOV, type POL, the 1st document in that combination. Edit these to match how your organisation actually classifies documents.</p>
@@ -21278,6 +21280,95 @@ window.submitAllDocsAddType = async function(){
   toast('Document type added.', 'success');
   renderAllDocsView();
 };
+
+/* ============ Naming convention mode (standard | custom) + automatic filing of unassigned documents ============ */
+// Files every unassigned (or half-assigned) All Documents upload whose number now matches a department + type.
+async function autoFileUnassigned(opts){
+  opts = opts || {};
+  try{
+    const { data, error } = await STATE.supabase.from('bulk_documents').select('id, doc_number, file_name, department_id, document_type_id, archived').eq('organisation_id', STATE.org.id);
+    if(error) return 0;
+    let n = 0;
+    for(const b of (data||[]).filter(x => !x.archived && (!x.department_id || !x.document_type_id))){
+      const m = autoDetectDeptType(allDocsCandidateNumber(b));
+      if(m.department_id && m.document_type_id){
+        const { error:e2 } = await STATE.supabase.from('bulk_documents').update({ department_id:m.department_id, document_type_id:m.document_type_id }).eq('id', b.id);
+        if(!e2) n++;
+      }
+    }
+    if(n){
+      toast(`${n} previously unassigned document${n===1?' was':'s were'} filed automatically.`, 'success');
+      if(document.getElementById('alldocs-root')) await renderBulkDocumentsRegister();
+    } else if(opts.report){
+      toast('No unassigned documents match the current departments and types yet.', 'error');
+    }
+    return n;
+  }catch(e){ return 0; }
+}
+window.autoFileUnassigned = autoFileUnassigned;
+window.recheckUnassignedDocs = async function(){ await loadDocDepartments(); await loadDocTypes(); await autoFileUnassigned({report:true}); };
+
+// Any change to the convention triggers a re-check of unassigned documents.
+['addDocDepartment','addDocType','saveDeptName','saveTypeName','toggleDeptActive','toggleTypeActive','restoreStandardNaming','submitAllDocsAddDept','submitAllDocsAddType'].forEach(nm=>{
+  const orig = window[nm]; if(typeof orig !== 'function') return;
+  window[nm] = async function(){ const r = await orig.apply(this, arguments); await autoFileUnassigned(); return r; };
+});
+
+window.openNamingModeDialog = function(target){
+  const custom = target === 'custom';
+  const m = document.createElement('div'); m.className='modal-backdrop open'; m.id='naming-mode-modal';
+  m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  m.innerHTML = `<div style="background:var(--bg,#fff);border-radius:12px;max-width:540px;width:92%;padding:22px 24px;max-height:90vh;overflow:auto;">
+    <h3 style="margin:0 0 10px;">${custom ? 'Switch to your own naming convention' : 'Switch back to the standard naming convention'}</h3>
+    ${custom ? `
+      <p style="font-size:13px;line-height:1.6;">Use this for an established client that already numbers its documents its own way. You then build the departments and document types to match, and bulk upload.</p>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin:12px 0;"><input type="radio" name="nm-clear" value="1" checked style="margin-top:3px;"> <span><b>Clear everything and start from scratch</b> (recommended). All preset departments and document types are removed. Existing documents are <b>not deleted</b> — they become unassigned and file themselves automatically once your departments and types exist.</span></label>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin:12px 0;"><input type="radio" name="nm-clear" value="0" style="margin-top:3px;"> <span><b>Keep the current list but unlock it</b>, so you can rename, edit and add to it.</span></label>
+      <p style="font-size:12px;color:var(--text-faint);">Type <b>CUSTOM</b> to confirm:</p>
+      <input id="nm-confirm" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:8px;" placeholder="CUSTOM">`
+    : `<p style="font-size:13px;line-height:1.6;">The standard departments and document types (GOV, QUA, HSE … / POL, PRO, WIN …) are restored and locked again. Anything you added yourself is kept. Unassigned documents that match are filed automatically.</p>`}
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+      <button class="btn-small" onclick="document.getElementById('naming-mode-modal').remove()">Cancel</button>
+      <button class="btn-small primary" onclick="applyNamingMode('${target}')">${custom ? 'Switch and clear' : 'Switch to standard'}</button>
+    </div></div>`;
+  document.body.appendChild(m);
+};
+window.applyNamingMode = async function(target){
+  let clear = false;
+  if(target === 'custom'){
+    const v = (document.getElementById('nm-confirm')||{}).value || '';
+    if(v.trim().toUpperCase() !== 'CUSTOM'){ toast('Type CUSTOM to confirm.', 'error'); return; }
+    const r = document.querySelector('input[name="nm-clear"]:checked'); clear = !r || r.value === '1';
+  }
+  const { data, error } = await STATE.supabase.rpc('set_naming_mode', { p_org: STATE.org.id, p_mode: target, p_clear: clear });
+  if(error){ toast('Could not switch: ' + error.message + (/set_naming_mode/.test(error.message) ? ' (run the naming-mode SQL first)' : ''), 'error'); return; }
+  STATE.org.naming_mode = target;
+  const mem = (STATE.memberships||[]).find(x => x.organisation_id === STATE.org.id); if(mem && mem.organisations) mem.organisations.naming_mode = target;
+  const mm = document.getElementById('naming-mode-modal'); if(mm) mm.remove();
+  await loadDocDepartments(); await loadDocTypes();
+  renderDocSetupTab();
+  toast(target === 'custom' ? (clear ? 'Cleared. Build your departments and document types — unassigned documents will file automatically.' : 'Switched to your own convention — the list is now unlocked.') : 'Standard naming convention restored.', 'success');
+  await autoFileUnassigned();
+};
+
+// Mode panel at the top of Departments & Document Types (Admin only) + recheck button
+{ const _base = renderDocSetupTab; renderDocSetupTab = function(){
+    _base();
+    const wrap = document.getElementById('doc-subtab-content'); if(!wrap) return;
+    const card = wrap.querySelector('.detail-card'); if(!card) return;
+    const custom = STATE.org && STATE.org.naming_mode === 'custom';
+    const admin = STATE.myRole === 'admin';
+    const panel = document.createElement('div');
+    panel.style.cssText = 'border:1px solid var(--border); border-radius:8px; padding:12px 16px; margin-bottom:14px; font-size:12.5px; line-height:1.6;';
+    panel.innerHTML = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <b>Naming convention mode:</b>
+        <span class="mono" style="font-size:11px;padding:2px 8px;border-radius:10px;background:${custom?'#fdecea':'var(--grey-tint)'};">${custom ? 'YOUR OWN' : 'STANDARD (recommended for new clients)'}</span>
+        ${admin ? (custom ? '<button class="btn-small" onclick="openNamingModeDialog(\'standard\')">Switch back to standard</button>' : '<button class="btn-small" onclick="openNamingModeDialog(\'custom\')">Use the client\'s own convention…</button>') : ''}
+        <button class="btn-small" onclick="recheckUnassignedDocs()">Re-check unassigned documents</button>
+      </div>
+      <div style="font-size:11.5px;color:var(--text-faint);margin-top:6px;">${custom ? 'Departments and document types are fully editable. Documents that could not be filed are assigned automatically whenever you add or change them.' : 'New clients start on the standard so every IMS is built the same way. Established clients with their own numbering can switch to their own convention.'}</div>`;
+    card.insertBefore(panel, card.children[1] || null);
+  }; }
 
 /* ---- Level 3: The register — the actual documents for this
    department + type, where bulk upload happens (already tagged with
