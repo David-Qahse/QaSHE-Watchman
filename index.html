@@ -7093,7 +7093,7 @@ function renderEvidenceSection(entityType, entityId, files){
           </div>
         </div>
         <div class="ev-actions">
-          <button class="btn-small" onclick="downloadEvidence('${f.storage_path}','${f.file_name.replace(/'/g,"\\'")}')">Download</button>
+          <button class="btn-small" onclick="downloadEvidence('${f.storage_path}','${f.file_name.replace(/'/g,"\\'")}')">View Document</button>
           <button class="btn-small" onclick="deleteEvidence('${f.id}','${f.storage_path}','${entityType}','${entityId}')">Delete</button>
         </div>
       </div>`;
@@ -8566,7 +8566,7 @@ async function openDocumentDetail(id){
         <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase;">Status</label>
         <select id="dd-status">${DOC_STATUSES.map(s=>`<option value="${s}" ${d.status===s?'selected':''}>${label(s)}</option>`).join('')}</select>
         <button class="btn-small primary" onclick="saveDocumentStatus('${d.id}')">Update status</button>
-        ${d.storage_path ? `<button class="btn-small" onclick="downloadFromBucket('documents','${d.storage_path}')">Download current file</button>` : ''}
+        ${d.storage_path ? `<button class="btn-small" onclick="downloadFromBucket('documents','${d.storage_path}')">View Document</button>` : ''}
       </div>
 
       <div class="panel-head" style="margin-top:10px;"><h3 style="font-family:Arial,Helvetica,sans-serif; font-size:15px; font-weight:600;">Issue a new revision</h3></div>
@@ -8585,7 +8585,7 @@ async function openDocumentDetail(id){
           (!revisions || !revisions.length) ? '<p style="font-size:12.5px; color:var(--text-faint);">No revisions recorded.</p>' :
           revisions.map(r => `<div class="history-item"><span class="h-dot"></span><div>
             <div><b>Rev ${r.revision_code}</b>: ${fmtDate(r.issued_date)}${r.change_description ? ', '+r.change_description : ''}
-              ${r.storage_path ? ` · <a href="#" onclick="downloadFromBucket('documents','${r.storage_path}'); return false;" style="color:var(--red);">download</a>` : ''}
+              ${r.storage_path ? ` · <a href="#" onclick="downloadFromBucket('documents','${r.storage_path}'); return false;" style="color:var(--red);">view document</a>` : ''}
               ${r.approval_status==='approved' ? ` · <a href="#" onclick="viewRevisionSnapshot('${r.id}'); return false;" style="color:var(--red);">view approved copy &amp; contributors</a>` : ''}
             </div>
             <div style="font-size:11.5px; color:var(--text-faint); margin-top:2px;">
@@ -8874,7 +8874,7 @@ function renderDocumentAddendumsList(docId, addendums){
       <div style="flex:1;">
         <b>${String.fromCharCode(65+idx)}. ${a.title}</b>
         ${a.content ? `<p style="font-size:12.5px; color:var(--text-dim); margin-top:4px;">${a.content}</p>` : ''}
-        ${a.storage_path ? `<a onclick="downloadFromBucket('documents','${a.storage_path}')" style="font-size:11.5px; color:var(--red); cursor:pointer;">Download attached file</a>` : ''}
+        ${a.storage_path ? `<a onclick="downloadFromBucket('documents','${a.storage_path}')" style="font-size:11.5px; color:var(--red); cursor:pointer;">View Document</a>` : ''}
       </div>
       <button class="btn-small" onclick="deleteDocumentAddendum('${a.id}','${a.storage_path||''}','${docId}')">Remove</button>
     </div>`).join('') : '<p style="font-size:12.5px; color:var(--text-faint);">No addendums yet.</p>';
@@ -14910,7 +14910,7 @@ async function openInspectionDetail(inspectionId, assetId){
           <div id="inspection-certificates-list">
             ${(certificates||[]).length ? certificates.map(c => `<div class="evidence-row">
               <div style="flex:1; font-size:12.5px;">${c.file_name}</div>
-              <button class="btn-small" onclick="downloadFromBucket('documents','${c.storage_path}')">Download</button>
+              <button class="btn-small" onclick="downloadFromBucket('documents','${c.storage_path}')">View Document</button>
               <button class="btn-small" onclick="deleteInspectionCertificate('${c.id}','${c.storage_path}','${inspectionId}','${assetId}')">Remove</button>
             </div>`).join('') : '<p style="font-size:12px; color:var(--text-faint);">None uploaded yet.</p>'}
           </div>
@@ -21600,7 +21600,7 @@ window.allDocsGlobalSearch = function(term){
             <td>${escapeHtml(d.file_name || '—')}</td>
             <td>${dept ? escapeHtml(dept.name) : '<span style="color:var(--text-faint);">Unfiled</span>'}</td>
             <td>${type ? escapeHtml(type.name) : '<span style="color:var(--text-faint);">No type</span>'}</td>
-            <td style="text-align:right;"><button class="btn-small" onclick="downloadFromBucket('documents','${d.storage_path}')">Download</button></td>
+            <td style="text-align:right;"><button class="btn-small" onclick="downloadFromBucket('documents','${d.storage_path}')">View Document</button></td>
           </tr>`;
         }).join('')}
       </table>
@@ -22023,7 +22023,7 @@ function renderBulkDocumentsTable(searchTerm){
       <td>${d.approved_status ? pill('yes') : pill('no')}</td>
       <td style="text-align:right; white-space:nowrap;">
         <button class="btn-small" onclick="toggleEditBulkDoc('${d.id}')">Edit</button>
-        <button class="btn-small" onclick="downloadFromBucket('documents','${d.storage_path}')">Download</button>
+        <button class="btn-small" onclick="downloadFromBucket('documents','${d.storage_path}')">View Document</button>
         <button class="btn-small" onclick="openReviewRequestForm('bulk_document','${d.id}','${d.department_id||''}','${d.document_type_id||''}')">Request update</button>
         <button class="btn-small" onclick="deleteBulkDocument('${d.id}','${d.storage_path}')">Delete</button>
       </td>
@@ -28811,7 +28811,7 @@ async function mgRenderPage(id){
       : kind === 'pdf' ? `<div class="pv" onclick="mgView('${u}','pdf','${safe}')"><iframe src="${u}#toolbar=0&navpanes=0" title="${nm}" loading="lazy"></iframe></div>`
       : kind === 'video' ? `<div class="pv file" onclick="mgView('${u}','video','${safe}')">&#9654;</div>`
       : `<div class="pv file" onclick="window.open('${u}','_blank')">&#128196;</div>`;
-    return `<div class="mg-att">${pv}<div class="nm">${nm}</div>${f.description ? `<div style="padding:0 12px 4px; font-size:11.5px; color:#777;">${ROH(f.description)}</div>` : ''}<div class="ac">${kind ? `<button onclick="mgView('${u}','${kind}','${safe}')">View larger</button>` : ''}<a class="alt" href="${u}" target="_blank" rel="noopener">${kind?'Open in tab':'Download'}</a></div></div>`;
+    return `<div class="mg-att">${pv}<div class="nm">${nm}</div>${f.description ? `<div style="padding:0 12px 4px; font-size:11.5px; color:#777;">${ROH(f.description)}</div>` : ''}<div class="ac">${kind ? `<button onclick="mgView('${u}','${kind}','${safe}')">View larger</button>` : ''}<a class="alt" href="${u}" target="_blank" rel="noopener">${kind?'Open in tab':'View Document'}</a></div></div>`;
   };
   page.innerHTML = `
     <span class="mg-kick ${b.type==='toolbox_talk'?'talk':''}">${ROH(BULLETIN_TYPE_LABELS[b.type]||'Bulletin')}</span>
@@ -28819,7 +28819,7 @@ async function mgRenderPage(id){
     <div class="mg-meta">Published ${fmtDate(b.published_date)} · ${ROH(b.ref_code||'')}${b.created_by ? ' · ' + ROH(memberName(b.created_by)) : ''}</div>
     ${heroImg ? `<div class="mg-hero" onclick="mgView('${imgUrl}','image','${ROH(b.title).replace(/'/g,'')}')"><img src="${imgUrl}" alt="">${cap ? `<div class="mg-cap">${ROH(cap)}</div>` : ''}</div>` : ''}
     <div class="mg-body">${paras}</div>
-    ${files.length ? `<div class="mg-att-h">Attachments and downloads</div><div class="mg-atts">${files.map(tile).join('')}</div>` : ''}`;
+    ${files.length ? `<div class="mg-att-h">Attachments and documents</div><div class="mg-atts">${files.map(tile).join('')}</div>` : ''}`;
   const main = document.getElementById('mg-main'); if(main) main.scrollTop = 0;
 }
 window.closeBulletinMagazine = function(){ const o = document.getElementById('mg-overlay'); if(o) o.classList.remove('active'); };
@@ -28868,7 +28868,7 @@ window.mgPrint = function(id){ printBulletin(id); };
         const btns = files.filter(f=>urls[f.storage_path]).map(f => {
           const kind = mgIsPdf(f) ? 'pdf' : mgIsVideo(f) ? 'video' : mgIsImage(f) ? 'image' : null;
           return kind ? `<button onclick="mgView('${urls[f.storage_path]}','${kind}','${String(f.file_name).replace(/'/g,'')}')">View: ${ROH(roTrunc(f.file_name,28))}</button>`
-                      : `<button onclick="window.open('${urls[f.storage_path]}','_blank')">Download: ${ROH(roTrunc(f.file_name,28))}</button>`; }).join('');
+                      : `<button onclick="window.open('${urls[f.storage_path]}','_blank')">View Document: ${ROH(roTrunc(f.file_name,28))}</button>`; }).join('');
         if(btns) note.insertAdjacentHTML('beforebegin', `<div class="rm-bul-atts">${btns}</div>`);
       });
     }catch(e){ console.warn(e); }
@@ -31623,6 +31623,299 @@ window.brandFromLogo = function(){
   nav();
   const _sg=window.showGate;
   if(typeof _sg==='function'){ showGate=function(){ const r=_sg.apply(this,arguments); try{nav()}catch(e){} return r; }; window.showGate=showGate; }
+})();
+
+/* ===== b26: faded logo behind the radar everywhere, and the landing page restyled to match the website ===== */
+(function(){
+  const logoEl=document.querySelector('#view-landing .watch img');
+  const LOGO=logoEl?logoEl.src:'';
+  const css=document.createElement('style'); css.textContent=`
+  .ga-radar-logo{position:absolute!important;left:15%;top:15%;width:70%!important;height:70%!important;border-radius:50%;object-fit:contain;opacity:.14;pointer-events:none;z-index:0}
+  .ga-radar svg{z-index:1}
+  .ga-radar.big{width:min(400px,80vw)!important}
+  /* landing */
+  #view-landing{background:#F5F4F2;font-family:Arial,Helvetica,sans-serif}
+  #view-landing .land-nav{position:sticky;top:0;z-index:50;height:74px;padding:0 5vw;background:rgba(20,23,31,.94);backdrop-filter:blur(10px);border-bottom:1px solid rgba(255,255,255,.08)}
+  #view-landing .brand-name{color:#fff;font-size:17px;font-weight:700}
+  #view-landing .brand-name span{color:#FF6B5E!important}
+  #view-landing .brand-sub{color:#A9B0BE;letter-spacing:.18em;font-size:10.5px}
+  #view-landing .land-nav-links span{color:#A9B0BE;letter-spacing:.14em;font-weight:700}
+  #view-landing .btn-primary{border-radius:999px;padding:12px 24px;font-weight:700;font-size:14px}
+  #view-landing .btn-ghost{border-radius:999px;padding:12px 24px;font-weight:700;font-size:14px;background:transparent;color:#fff;border:2px solid rgba(255,255,255,.35)}
+  #view-landing .btn-ghost:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.6)}
+  #view-landing .nav-logo{width:46px;height:46px;border-radius:50%;background:#fff;padding:2px;display:block}
+  #view-landing .hero{position:relative;overflow:hidden;color:#fff;text-align:left;padding:84px 5vw 96px;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);column-gap:clamp(24px,4vw,64px);align-items:center;align-content:center;grid-auto-rows:min-content;background:radial-gradient(1200px 600px at 85% -10%,rgba(178,22,22,.35),transparent 60%),linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(160deg,#14171F 0%,#1B2130 60%,#222a3b 100%);background-size:auto,56px 56px,56px 56px,auto}
+  #view-landing .hero-left{grid-column:1;align-self:center}
+  #view-landing .hero-eyebrow{font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#FF8A80;margin-bottom:6px}
+  #view-landing .hero h1{color:#fff;font-size:clamp(40px,5.4vw,68px);margin:14px 0 0}
+  #view-landing .hero h1 .hl{color:#FF6B5E}
+  #view-landing .hero p.lead{color:#C9CFDB;margin:22px 0 0;max-width:560px;font-size:18px}
+  #view-landing .hero-ctas{justify-content:flex-start;margin-top:34px}
+  #view-landing .watch-wrap{grid-column:2;grid-row:1;margin:0;align-items:center}
+  #view-landing .watch-wrap .watch{display:none}
+  #view-landing .watch-readout{color:#A9B0BE;margin-top:22px;letter-spacing:.14em}
+  #view-landing .watch-readout b{color:#6EE07A}
+  #view-landing .icon-strip{justify-content:center;margin:18px 0 0}
+  #view-landing .icon-strip-item{color:#C9CFDB}
+  #view-landing .icon-strip-item svg{stroke:#FF8A80}
+  #view-landing .landing-legend{display:flex;gap:22px;flex-wrap:wrap;justify-content:center;margin-top:20px;font-size:13px;color:#C9CFDB}
+  #view-landing .landing-legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:8px}
+  #view-landing .section-head{padding:88px 5vw 0;max-width:1280px;margin:0 auto}
+  #view-landing .section-label{font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-family:Arial,Helvetica,sans-serif}
+  #view-landing .section-title{font-size:clamp(28px,3.4vw,40px);font-weight:800;max-width:760px;line-height:1.12;letter-spacing:-.01em;margin-top:10px}
+  #view-landing .iso-grid,#view-landing .module-strip{max-width:1280px;margin:0 auto}
+  #view-landing .iso-card{border-radius:16px;border-color:#E3E0DB;padding:20px 22px;transition:.18s}
+  #view-landing .iso-card:hover{transform:translateY(-3px);box-shadow:0 14px 34px rgba(20,23,31,.08)}
+  #view-landing .mod-card{border-radius:18px;padding:26px;border-color:#E3E0DB}
+  #view-landing .mod-card.live:hover{border-color:var(--red);box-shadow:0 18px 40px rgba(20,23,31,.10)}
+  #view-landing .mod-card h3{font-size:17px;font-weight:700}
+  #view-landing .land-footer{background:#0E1118;border-top:1px solid rgba(255,255,255,.08);color:#8E97A8;padding:24px 5vw}
+  #view-landing .land-footer a{color:#D5D9E2!important}
+  @media(max-width:980px){#view-landing .hero{grid-template-columns:1fr;text-align:center}#view-landing .hero>*{grid-column:1!important}#view-landing .watch-wrap{grid-row:2;margin-top:44px}#view-landing .hero-ctas{justify-content:center}#view-landing .hero p.lead{margin-left:auto;margin-right:auto}}
+  @media(max-width:640px){#view-landing .land-nav-links span{display:none}}
+  body:has(#view-landing.active) #watchman-chat-fab,body:has(#view-landing.active) .watchman-chat-hint{display:none!important}
+  /* opening overlay and loader */
+  .boot-loading-overlay{background:rgba(20,23,31,.95)!important}
+  .boot-loading-overlay .boot-loading-card>div:nth-child(2){color:#fff!important}
+  .boot-loading-overlay .boot-loading-card>div:nth-child(3){color:#A9B0BE!important}
+  .boot-loading-overlay .gate-watch-ring,#global-loader .gate-watch-ring{border-color:rgba(255,255,255,.28)!important}
+  #global-loader{background:rgba(20,23,31,.88)!important}
+  #global-loader-text{color:#C9CFDB!important}
+  `; document.head.appendChild(css);
+  function addLogo(){
+    if(!LOGO) return;
+    document.querySelectorAll('.ga-radar').forEach(r=>{ if(r.querySelector('.ga-radar-logo')) return; const i=document.createElement('img'); i.className='ga-radar-logo'; i.alt=''; i.src=LOGO; r.insertBefore(i,r.firstChild); });
+  }
+  const blips=[[205,95,'#2E7D32','Documents',0],[225,185,'#EF6C00','Audits',.5],[150,235,'#2E7D32','Legal',1],[85,200,'#B21616','Risks',1.5],[88,110,'#EF6C00','Actions',2],[150,70,'#2E7D32','Processes',.8]];
+  const svg=`<svg viewBox="0 0 300 300" style="stroke:none" aria-hidden="true"><defs><linearGradient id="gaWedge2" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FF6B5E" stop-opacity="0"/><stop offset="1" stop-color="#FF6B5E" stop-opacity=".55"/></linearGradient></defs>
+    <g fill="none" stroke="rgba(255,255,255,.18)" stroke-width="1"><circle cx="150" cy="150" r="140"/><circle cx="150" cy="150" r="105"/><circle cx="150" cy="150" r="70"/><circle cx="150" cy="150" r="35"/><path d="M150 10V290M10 150H290" stroke="rgba(255,255,255,.10)"/></g>
+    <g class="ga-sweep"><path d="M150 150 L150 10 A140 140 0 0 0 52 50 Z" fill="url(#gaWedge2)" stroke="none"/><line x1="150" y1="150" x2="150" y2="10" stroke="#FF6B5E" stroke-width="2.2"/></g>
+    ${blips.map(b=>`<g><circle class="ga-blip" style="animation-delay:${b[4]}s" cx="${b[0]}" cy="${b[1]}" r="6" fill="${b[2]}" stroke="none"/><circle cx="${b[0]}" cy="${b[1]}" r="11" fill="none" stroke="${b[2]}" stroke-opacity=".4" stroke-width="1"/><text x="${b[0]}" y="${b[1]+24}" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="10.5" font-weight="700" fill="#E8EBF2" stroke="none">${b[3]}</text></g>`).join('')}
+    <circle cx="150" cy="150" r="6" fill="#fff" stroke="none"/><circle cx="150" cy="150" r="3" fill="#B21616" stroke="none"/></svg>`;
+  function landing(){
+    const L=document.getElementById('view-landing'); if(!L||L.dataset.v2) return; L.dataset.v2=1;
+    const rm=L.querySelector('.ring-mark'); if(rm&&LOGO){ rm.innerHTML='<img class="nav-logo" src="'+LOGO+'" alt="Group QaSHE CG">'; }
+    const h=L.querySelector('.hero h1'); if(h) h.insertAdjacentHTML('beforebegin','<div class="hero-eyebrow">Governance you can evidence. Compliance you can defend.</div>');
+    const hero=L.querySelector('.hero'); if(hero){ const left=document.createElement('div'); left.className='hero-left'; ['.hero-eyebrow','h1','p.lead','.hero-ctas'].forEach(q=>{ const e=hero.querySelector(':scope > '+q); if(e) left.appendChild(e); }); hero.insertBefore(left,hero.firstChild); }
+    const ww=L.querySelector('.watch-wrap'); if(ww){
+      ww.insertAdjacentHTML('afterbegin','<div class="ga-radar big">'+svg+'</div>');
+      const ro=ww.querySelector('.watch-readout'); if(ro) ro.insertAdjacentHTML('beforebegin','<div class="landing-legend"><span><i style="background:#2E7D32"></i>On track</span><span><i style="background:#EF6C00"></i>Due soon</span><span><i style="background:#B21616"></i>Needs attention</span></div>');
+    }
+    L.querySelectorAll('.section-label').forEach(e=>{ e.textContent=e.textContent.replace(/^\/\/\s*/,''); });
+    addLogo();
+  }
+  landing(); addLogo();
+  const _sg=window.showGate;
+  if(typeof _sg==='function'){ showGate=function(){ const r=_sg.apply(this,arguments); try{addLogo()}catch(e){} return r; }; window.showGate=showGate; }
+})();
+
+/* ===== b27: centred toasts, document search boxes, 5S checklists via the Templates Repository, Master Documents Register page ===== */
+(function(){
+  /* ---------- 1. centred confirmations and errors ---------- */
+  const css=document.createElement('style'); css.textContent=`
+  #toast-root{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;pointer-events:none;z-index:2147483000}
+  .toast{position:static!important;pointer-events:auto;display:flex!important;align-items:center;gap:14px;min-width:280px;max-width:min(540px,90vw)!important;padding:18px 26px!important;border-radius:16px!important;font-size:15px!important;font-weight:700;line-height:1.4;box-shadow:0 24px 70px rgba(0,0,0,.38)!important;cursor:pointer;animation:wmToastIn .22s ease both}
+  .toast .ti{flex:none;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800}
+  .toast.out{animation:wmToastOut .25s ease both}
+  @keyframes wmToastIn{from{opacity:0;transform:translateY(10px) scale(.96)}to{opacity:1;transform:none}}
+  @keyframes wmToastOut{to{opacity:0;transform:scale(.96)}}
+  /* document search box beside link dropdowns */
+  .ds-wrap{position:relative;display:block;flex:1;min-width:200px}
+  .ds-wrap input{width:100%;padding:10px 12px;border:1.5px solid #D9D6D1;border-radius:10px;font-size:13px;font-family:Arial,Helvetica,sans-serif}
+  .ds-wrap input:focus{outline:none;border-color:var(--red)}
+  .ds-list{position:absolute;left:0;right:0;top:calc(100% + 4px);background:#fff;border:1px solid #D9D6D1;border-radius:12px;box-shadow:0 18px 40px rgba(20,23,31,.18);max-height:260px;overflow:auto;z-index:400;display:none}
+  .ds-list.open{display:block}
+  .ds-item{padding:9px 12px;font-size:12.5px;cursor:pointer;border-bottom:1px solid #F0EEEA}
+  .ds-item:last-child{border-bottom:0}.ds-item:hover,.ds-item.act{background:#FBEDED}
+  .ds-empty{padding:10px 12px;font-size:12.5px;color:#888}
+  .ds-hint{font-size:11px;color:#8a8a8a;margin-top:3px}
+  /* master register page */
+  .mr2-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:14px 0 4px}
+  .mr2-tile{border-radius:14px;padding:14px 16px;background:#14171F;color:#fff}
+  .mr2-tile b{display:block;font-size:26px}.mr2-tile span{font-size:11.5px;color:#B7BECC;text-transform:uppercase;letter-spacing:.06em}
+  .mr2-tile.g b{color:#6EE07A}.mr2-tile.r b{color:#FF8A80}.mr2-tile.o b{color:#FFB74D}
+  `; document.head.appendChild(css);
+  const _t=toast;
+  toast=function(msg,kind){
+    const root=document.getElementById('toast-root'); if(!root) return _t(msg,kind);
+    const el=document.createElement('div'); el.className='toast'+(kind?' '+kind:'');
+    const ic=kind==='error'?'!':(kind==='success'?'✓':'i');
+    const i=document.createElement('span'); i.className='ti'; i.textContent=ic;
+    const m=document.createElement('span'); m.textContent=msg;
+    el.appendChild(i); el.appendChild(m); root.appendChild(el);
+    const kill=()=>{ if(!el.isConnected) return; el.classList.add('out'); setTimeout(()=>el.remove(),260); };
+    el.addEventListener('click',kill);
+    setTimeout(kill, kind==='error'?8000:(kind==='success'?3600:5000));
+  };
+  window.toast=toast;
+
+  /* ---------- 3. search box beside document link dropdowns ---------- */
+  const DOCNUM=/^[A-Z0-9]{2,}(?:-[A-Z0-9]+)+\s*[:\-]/i;
+  function isDocSelect(sel){
+    if(sel.dataset.ds||sel.multiple) return false;
+    const opts=[...sel.options].filter(o=>o.value);
+    if(opts.length<4) return false;
+    const hits=opts.filter(o=>DOCNUM.test(o.text.trim())||/^Uploaded:/i.test(o.text.trim())).length;
+    if(hits/opts.length<0.6) return false;
+    const ctx=((sel.closest('.field')||sel.parentElement||{}).textContent||'').slice(0,400)+' '+(sel.options[0]?sel.options[0].text:'');
+    return /document|policy|procedure|uploaded/i.test(ctx) || opts.some(o=>/^Uploaded:/i.test(o.text.trim()));
+  }
+  function enhance(sel){
+    sel.dataset.ds=1;
+    const wrap=document.createElement('div'); wrap.className='ds-wrap';
+    wrap.innerHTML='<input type="search" placeholder="Search by subject or number…" autocomplete="off" aria-label="Search documents"><div class="ds-list"></div>';
+    sel.parentNode.insertBefore(wrap,sel);
+    const inp=wrap.querySelector('input'), list=wrap.querySelector('.ds-list');
+    let act=-1, cur=[];
+    const show=()=>{
+      const q=inp.value.trim().toLowerCase(); if(!q){ list.classList.remove('open'); return; }
+      const words=q.split(/\s+/);
+      cur=[...sel.options].filter(o=>o.value && words.every(w=>o.text.toLowerCase().includes(w))).slice(0,12);
+      list.innerHTML=cur.length?cur.map((o,k)=>`<div class="ds-item" data-k="${k}">${o.text.replace(/</g,'&lt;')}</div>`).join(''):'<div class="ds-empty">No matching documents.</div>';
+      act=-1; list.classList.add('open');
+    };
+    const pick=k=>{ const o=cur[k]; if(!o) return; sel.value=o.value; inp.value=o.text; list.classList.remove('open'); sel.dispatchEvent(new Event('change',{bubbles:true})); sel.style.outline='2px solid #2E7D32'; setTimeout(()=>sel.style.outline='',1200); };
+    inp.addEventListener('input',show); inp.addEventListener('focus',show);
+    inp.addEventListener('keydown',e=>{
+      const items=list.querySelectorAll('.ds-item');
+      if(e.key==='ArrowDown'){ e.preventDefault(); act=Math.min(items.length-1,act+1); }
+      else if(e.key==='ArrowUp'){ e.preventDefault(); act=Math.max(0,act-1); }
+      else if(e.key==='Enter'){ e.preventDefault(); pick(act>=0?act:0); return; }
+      else if(e.key==='Escape'){ list.classList.remove('open'); return; }
+      else return;
+      items.forEach((n,k)=>n.classList.toggle('act',k===act));
+    });
+    list.addEventListener('mousedown',e=>{ const it=e.target.closest('.ds-item'); if(it){ e.preventDefault(); pick(+it.dataset.k); } });
+    inp.addEventListener('blur',()=>setTimeout(()=>list.classList.remove('open'),150));
+    sel.addEventListener('change',()=>{ const o=sel.options[sel.selectedIndex]; if(o&&o.value&&inp.value!==o.text) inp.value=o.text; if(!sel.value) inp.value=''; });
+  }
+  let tm=null;
+  new MutationObserver(()=>{ clearTimeout(tm); tm=setTimeout(()=>{ document.querySelectorAll('select:not([data-ds])').forEach(s=>{ try{ if(isDocSelect(s)) enhance(s); }catch(e){} }); },150); }).observe(document.body,{childList:true,subtree:true});
+
+  /* ---------- 4. 5S: checklist is managed in the Templates Repository and chosen when raising an inspection ---------- */
+  const _r5=RENDERERS.five_s;
+  RENDERERS.five_s=function(){
+    let h=_r5();
+    h=h.replace(/<button class="btn-small" onclick="toggleFiveSChecklistPanel\(\)">Manage Checklist<\/button>\s*/,'');
+    h=h.replace('<div class="form-panel" id="manage-assessment-items-5s_inspection"></div>','');
+    const at=h.indexOf('id="fives-form"'); const fa=h.indexOf('<div class="form-actions">',at);
+    if(at>-1&&fa>-1){
+      const picker=`<div class="form-grid" style="margin-bottom:10px;"><div class="field span3"><label>Checklist</label>
+        <select id="fs-checklist" onchange="fsChecklistChanged()"><option value="standard">Standard 5S inspection checklist</option><option value="repo">Choose from the Templates Repository…</option></select></div>
+        <div class="field span3" id="fs-repo-panel" style="display:none;"><label>Templates Repository</label>
+          <input id="fs-repo-search" placeholder="Search checklists, e.g. housekeeping, fire, forklift, workshop…" oninput="fsRenderRepo()" autocomplete="off">
+          <div id="fs-repo-chosen" style="margin:8px 0;font-size:12.5px;font-weight:700;color:var(--green);"></div>
+          <input type="hidden" id="fs-repo-id">
+          <div id="fs-repo-list" style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:10px;"></div>
+        </div></div>`;
+      h=h.slice(0,fa)+picker+h.slice(fa);
+    }
+    return h;
+  };
+  window.fsChecklistChanged=async function(){
+    const v=document.getElementById('fs-checklist').value, p=document.getElementById('fs-repo-panel');
+    p.style.display=v==='repo'?'block':'none';
+    if(v==='repo'){ try{ await loadContentTemplates(); }catch(e){} fsRenderRepo(); }
+  };
+  window.fsRenderRepo=function(){
+    const el=document.getElementById('fs-repo-list'); if(!el) return;
+    const q=(document.getElementById('fs-repo-search').value||'').toLowerCase().trim(); const words=q?q.split(/\s+/):[];
+    const rows=(STATE.contentTemplates||[]).filter(t=>t.type==='checklist' && words.every(w=>((t.title||'')+' '+(t.description||'')+' '+(t.module_key||'')).toLowerCase().includes(w))).slice(0,60);
+    el.innerHTML=rows.length?rows.map(t=>{ const n=(STATE.contentTemplateChecklistItems||[]).filter(x=>x.template_id===t.id).length;
+      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border-soft);"><div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:13px;">${escapeHtml(t.title)}</div><div style="font-size:11px;color:var(--text-faint);">${escapeHtml((t.module_key||'general').replace(/_/g,' '))} · ${n} criteria</div></div><button type="button" class="btn-small primary" onclick="fsPickRepo('${t.id}')">Select</button></div>`; }).join(''):'<p style="padding:12px;font-size:12.5px;color:var(--text-faint);">No matching checklists in the Templates Repository.</p>';
+  };
+  window.fsPickRepo=function(id){
+    const t=(STATE.contentTemplates||[]).find(x=>x.id===id); if(!t) return;
+    document.getElementById('fs-repo-id').value=id; document.getElementById('fs-repo-chosen').textContent='Selected: '+t.title;
+  };
+  function fsCat(t){ const k=((t&&t.module_key)||'')+' '+((t&&t.title)||''); k.toLowerCase();
+    const m=[['safety','safety'],['health','health'],['environment','environment'],['info','information_security'],['risk','risk'],['legal','legal_compliance'],['governance','governance'],['opportunit','opportunity']];
+    const low=k.toLowerCase(); for(const [a,b] of m){ if(low.includes(a)) return b; } return 'quality'; }
+  const _sub=window.submitFiveSInspection;
+  window.submitFiveSInspection=async function(){
+    const sel=document.getElementById('fs-checklist'); const useRepo=sel&&sel.value==='repo';
+    if(!useRepo) return _sub.apply(this,arguments);
+    const repoId=document.getElementById('fs-repo-id').value;
+    const area=document.getElementById('fs-area').value.trim(), scheduled=document.getElementById('fs-scheduled').value;
+    if(!area||!scheduled){ toast('Area and scheduled date are required.','error'); return; }
+    if(!repoId){ toast('Select a checklist from the Templates Repository first.','error'); return; }
+    const tpl=(STATE.contentTemplates||[]).find(x=>x.id===repoId);
+    const items=(STATE.contentTemplateChecklistItems||[]).filter(x=>x.template_id===repoId).sort((a,b)=>a.sort_order-b.sort_order);
+    const { data: inspection, error: insErr } = await STATE.supabase.from('five_s_inspections').insert({
+      organisation_id: STATE.org.id, area, inspector_id: document.getElementById('fs-inspector').value, scheduled_date: scheduled, status:'scheduled', created_by: STATE.user.id }).select().single();
+    if(insErr){ toast('Could not raise the inspection: '+insErr.message,'error'); return; }
+    const cat=fsCat(tpl);
+    if(items.length){
+      const { error } = await STATE.supabase.from('five_s_inspection_items').insert(items.map(it=>({ inspection_id: inspection.id, checklist_item_id: null, item_text_snapshot: it.item_text, five_s_category: cat })));
+      if(error) toast('Inspection created, but the checklist items could not be attached: '+error.message,'error');
+    }
+    toggleFiveSForm(); document.getElementById('fs-area').value=''; sel.value='standard'; document.getElementById('fs-repo-panel').style.display='none';
+    await loadFiveSInspections(); renderFiveSTable(); toast('Inspection raised.','success'); openFiveSDetail(inspection.id);
+  };
+  // the standard 5S checklist editor now lives with the Templates Repository (Audits, Checklists)
+  const _rac=window.renderAuditChecklists;
+  window.renderAuditChecklists=renderAuditChecklists=function(){
+    _rac.apply(this,arguments);
+    const list=document.getElementById('ac-repo-list'); const card=list&&list.closest('.detail-card');
+    if(card && !document.getElementById('manage-assessment-items-5s_inspection')){
+      card.insertAdjacentHTML('afterend',`<div class="detail-card"><div class="panel-head"><h3>5S inspection checklist</h3></div>
+        <p style="font-size:12.5px;color:var(--text-faint);margin-bottom:12px;">The standard checklist offered when a 5S inspection is raised. Edit it here. When raising an inspection, anyone can instead choose any checklist from the Templates Repository above.</p>
+        <div id="manage-assessment-items-5s_inspection"></div></div>`);
+      try{ renderAssessmentItemsManager('5s_inspection'); }catch(e){}
+    }
+  };
+
+  /* ---------- 5. Master Documents Register: its own page for everyone; working on it stays in Admin ---------- */
+  MODULE_META.master_register={title:'Master Documents Register',sub:()=>'Every controlled document number in one place: view and search it here. Administrators maintain it in the Admin console.'};
+  RENDERERS.master_register=()=>'<div id="mr2-root"></div>';
+  const nav=document.querySelector('.nav-item[data-mod="documents"]');
+  if(nav && !document.querySelector('.nav-item[data-mod="master_register"]')){
+    nav.insertAdjacentHTML('afterend','<div class="nav-item" data-mod="master_register" onclick="showModule(\'master_register\')"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 4v16"/></svg> Master Documents Register</div>');
+  }
+  const _sm=showModule;
+  showModule=function(mod){ const r=_sm.apply(this,arguments); if(mod==='master_register') try{ renderMasterRegisterPage(); }catch(e){ console.error(e); } return r; };
+  window.showModule=showModule;
+  window.goToMasterDocRegister=function(){ showModule('master_register'); };
+  window.goToMasterDocRegisterAdmin=function(){ showModule('administration'); setTimeout(()=>switchAdminSubtab('masterregister'),0); };
+  const dn=id=>{ const d=(STATE.docDepartments||[]).find(x=>x.id===id); return d?d.name:'Unfiled'; };
+  const tn=id=>{ const t=(STATE.docTypes||[]).find(x=>x.id===id); return t?t.name:''; };
+  function mrRows(){
+    const ctl=(STATE.documents||[]).filter(d=>d.doc_number).map(d=>({src:'Document Management',num:d.doc_number,title:d.title||'',dept:dn(d.department_id),deptId:d.department_id||'',type:tn(d.type_id),rev:d.current_revision||'',status:(d.approval_status==='approved'?'Approved':(d.approval_status||d.status||'Draft')),id:d.id,kind:'c'}));
+    const bulk=(STATE.bulkDocuments||[]).filter(d=>d.doc_number&&!d.archived).map(d=>({src:'All Documents',num:d.doc_number,title:d.file_name||'',dept:dn(d.department_id),deptId:d.department_id||'',type:tn(d.document_type_id),rev:'',status:d.approved_status?'Approved':(d.current_status===false?'Superseded':'Filed'),id:d.id,path:d.storage_path,kind:'b'}));
+    return [...ctl,...bulk].sort((a,b)=>String(a.num).localeCompare(String(b.num),undefined,{numeric:true}));
+  }
+  window.renderMasterRegisterPage=function(){
+    const root=document.getElementById('mr2-root'); if(!root) return;
+    const rows=mrRows(); const isAdmin=STATE.myRole==='admin'||(STATE.profile&&STATE.profile.is_platform_staff);
+    let seqs=[]; try{ seqs=masterDocRegistryData().sequences; }catch(e){}
+    const gaps=seqs.reduce((s,g)=>s+g.gaps.length,0), dups=seqs.reduce((s,g)=>s+g.duplicates.length,0);
+    const depts=[...new Set(rows.map(r=>r.dept))].sort();
+    root.innerHTML=`<div class="detail-card">
+      <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;"><h3>Master Documents Register</h3>${isAdmin?'<button class="btn-small primary" onclick="goToMasterDocRegisterAdmin()">Work on the register in the Admin console</button>':''}</div>
+      <p style="font-size:12.5px;color:var(--text-faint);">Every document number in the system, from Document Management and All Documents combined. This page is for viewing and searching. ${isAdmin?'Gaps, duplicates and clean-up are worked on in the Admin console.':'Changes to the register are made by your administrator.'}</p>
+      <div class="mr2-tiles"><div class="mr2-tile"><b>${rows.length}</b><span>Document numbers</span></div>
+        <div class="mr2-tile g"><b>${rows.filter(r=>r.kind==='c').length}</b><span>Document Management</span></div>
+        <div class="mr2-tile"><b>${rows.filter(r=>r.kind==='b').length}</b><span>All Documents</span></div>
+        <div class="mr2-tile ${gaps?'o':'g'}"><b>${gaps}</b><span>Gaps in sequence</span></div>
+        <div class="mr2-tile ${dups?'r':'g'}"><b>${dups}</b><span>Duplicate numbers</span></div></div></div>
+    <div class="toolbar"><div class="filters"><input id="mr2-q" placeholder="Search number or title…" oninput="mr2Render()" style="min-width:260px;">
+      <select id="mr2-dept" onchange="mr2Render()"><option value="">All departments</option>${depts.map(d=>`<option>${escapeHtml(d)}</option>`).join('')}</select>
+      <select id="mr2-src" onchange="mr2Render()"><option value="">All sources</option><option>Document Management</option><option>All Documents</option></select></div>
+      <button class="btn-small" onclick="exportMasterRegister()">Export Excel</button></div>
+    <div class="panel" style="padding:0;overflow:hidden;"><div id="mr2-table"></div></div>
+    <div class="detail-card" style="margin-top:18px;"><div class="panel-head"><h3>Next available numbers</h3></div>
+      ${seqs.length?`<table><tr><th>Department</th><th>Type</th><th>Count</th><th>Gaps</th><th>Next available number</th></tr>${seqs.map(g=>`<tr><td>${escapeHtml(g.dept.name)}</td><td>${escapeHtml(g.type.name)}</td><td>${g.entries.length}</td><td>${g.gaps.length?'<span style="color:var(--red)">'+g.gaps.join(', ')+'</span>':'<span style="color:var(--green)">None</span>'}</td><td class="mono-cell strong">${escapeHtml(g.nextNumber)}</td></tr>`).join('')}</table>`:'<p style="font-size:12.5px;color:var(--text-faint);">No correctly numbered documents yet.</p>'}</div>`;
+    mr2Render();
+  };
+  window.mr2Render=function(){
+    const w=document.getElementById('mr2-table'); if(!w) return;
+    const q=(document.getElementById('mr2-q').value||'').toLowerCase().trim(), d=document.getElementById('mr2-dept').value, s=document.getElementById('mr2-src').value;
+    const rows=mrRows().filter(r=>(!d||r.dept===d)&&(!s||r.src===s)&&(!q||(r.num+' '+r.title).toLowerCase().includes(q)));
+    w.innerHTML=rows.length?`<table><tr><th>Document Number</th><th>Title</th><th>Department</th><th>Type</th><th>Rev</th><th>Status</th><th>Source</th><th></th></tr>${rows.slice(0,500).map(r=>`<tr><td class="mono-cell">${escapeHtml(r.num)}</td><td class="strong">${escapeHtml(r.title)}</td><td>${escapeHtml(r.dept)}</td><td>${escapeHtml(r.type)}</td><td style="text-align:center;">${escapeHtml(String(r.rev))}</td><td>${escapeHtml(r.status)}</td><td>${r.src}</td><td style="text-align:right;">${r.kind==='c'?`<button class="btn-small" onclick="downloadDocumentPdf('${r.id}')">View Document</button>`:(r.path?`<button class="btn-small" onclick="downloadFromBucket('documents','${r.path}')">View Document</button>`:'')}</td></tr>`).join('')}</table>${rows.length>500?'<p style="padding:10px;font-size:12px;color:var(--text-faint);">Showing the first 500: refine your search to narrow the list.</p>':''}`:'<div class="empty-state"><p>No documents match.</p></div>';
+  };
+  window.exportMasterRegister=async function(){
+    try{ const XLSX=await ensureXLSX(); const rows=mrRows(); const ws=XLSX.utils.json_to_sheet(rows.map(r=>({'Document Number':r.num,'Title':r.title,'Department':r.dept,'Type':r.type,'Revision':r.rev,'Status':r.status,'Source':r.src}))); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Master Register'); XLSX.writeFile(wb,'master-documents-register.xlsx'); }catch(e){ toast('Export is not available right now.','error'); }
+  };
 })();
 
 </script>
