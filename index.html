@@ -31918,6 +31918,1007 @@ window.brandFromLogo = function(){
   };
 })();
 
+/* ===== b28: Audits overhaul: disciplines, edition-correct standards, several checklists, audit programme, clause suggestions ===== */
+(function(){
+  const colon=t=>String(t==null?'':t).replace(/\s[-–—]\s/g,': ');
+  window.wmColon=colon;
+  const STDS=[
+    ['ISO 9001:2015','Quality management'],['ISO 14001:2015','Environmental management'],['ISO 45001:2018','Occupational health and safety'],
+    ['ISO/IEC 27001:2022','Information security management (certifiable)'],['ISO/IEC 27002:2022','Information security controls (guidance)'],
+    ['ISO 37000:2021','Governance of organizations (guidance)'],['ISO 37001:2016','Anti-bribery management'],['ISO 31000:2018','Risk management guidelines'],
+    ['ISO 22301:2019','Business continuity management'],['ISO 3834 (Parts 1 to 5)','Quality requirements for welding'],
+    ['Legal and regulatory requirements','Legal register obligations'],['Customer requirements','Contract and customer specifications'],['Internal policies and procedures','Your own documented system']];
+  const DISC=['Quality','Occupational health and safety','Environment','Information security','Legal compliance','Anti-bribery and ethics','Corporate governance','Risk management','Business continuity','Welding and fabrication','Supplier (second party)'];
+  const css=document.createElement('style'); css.textContent=`
+  .wm-chip{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;padding:2px 8px;border-radius:99px;background:#EFEDE9;color:#444;margin:3px 4px 0 0}
+  .wm-chip.is{background:#E3ECF8;color:#1F3F7F}.wm-chip.lg{background:#F3E8D6;color:#8A5200}
+  .wm-hint{font-size:11.5px;color:var(--text-faint);margin-top:4px;line-height:1.45}
+  .prog-grid{display:grid;grid-template-columns:minmax(220px,1.4fr) repeat(4,1fr) 130px;gap:0;border:1px solid var(--border);border-radius:14px;overflow:hidden;background:#fff}
+  .prog-grid>div{padding:11px 12px;border-bottom:1px solid #EFECE8;font-size:12.5px;display:flex;align-items:center}
+  .prog-grid .h{background:#14171F;color:#fff;font-weight:700;font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+  .prog-c{justify-content:center;gap:6px;flex-wrap:wrap}.prog-b{display:inline-block;min-width:24px;text-align:center;border-radius:99px;padding:3px 9px;font-weight:700;font-size:11.5px;color:#fff}
+  .prog-b.done{background:#2E7D32}.prog-b.plan{background:#EF6C00}.prog-b.over{background:#C62828}
+  .prog-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:12px 0 16px}
+  .prog-t{border-radius:14px;padding:14px 16px;background:#14171F;color:#fff}.prog-t b{display:block;font-size:26px}.prog-t span{font-size:11px;color:#B7BECC;text-transform:uppercase;letter-spacing:.06em}
+  `; document.head.appendChild(css);
+
+  /* ---------- plan form ---------- */
+  const _plan=renderAuditPlan;
+  renderAuditPlan=function(){
+    _plan.apply(this,arguments);
+    try{
+      const stdCb=document.querySelector('.af-std-cb'); const stdField=stdCb&&stdCb.closest('.field');
+      if(stdField){
+        stdField.innerHTML=`<label>Standards and criteria <span style="text-transform:none;font-weight:400;color:var(--text-faint);">(tick all that apply: one audit can cover several)</span></label>${checkboxMultiSelect('af-std',STDS.map(s=>({id:s[0],label:s[0]+': '+s[1]})),[])}
+          <input id="af-std-other" placeholder="Another standard or criterion (optional)" style="margin-top:8px;">
+          <div class="wm-hint">ISO/IEC 27001 is the certifiable standard. 27002 and 37000 are guidance: audit against them to evidence alignment.</div>`;
+        const disc=document.createElement('div'); disc.className='field';
+        disc.innerHTML=`<label>Audit discipline <span style="text-transform:none;font-weight:400;color:var(--text-faint);">(what is being audited)</span></label>${checkboxMultiSelect('af-disc',DISC.map(d=>({id:d,label:d})),[])}
+          <div class="wm-hint">Choose Information security or Legal compliance to run those audits. For Legal compliance, assess the legal register items and link them to this audit: they appear in its report.</div>`;
+        stdField.parentNode.insertBefore(disc,stdField);
+      }
+      const chk=document.getElementById('af-checklist'); const chkField=chk&&chk.closest('.field');
+      if(chkField){
+        chkField.innerHTML=`<label>Checklists <span style="text-transform:none;font-weight:400;color:var(--text-faint);">(tick one or more)</span></label>${checkboxMultiSelect('af-chk',(STATE.auditChecklistTemplates||[]).map(t=>({id:t.id,label:colon(t.title)})),[])}`;
+      }
+      const tl=document.querySelector('label[for="af-type"]'); // audit type label stays; clarify it
+      const typeSel=document.getElementById('af-type'); if(typeSel){ const f=typeSel.closest('.field'); const l=f&&f.querySelector('label'); if(l) l.innerHTML='Audit type <span style="text-transform:none;font-weight:400;color:var(--text-faint);">(who audits)</span>'; }
+    }catch(e){ console.error(e); }
+    decorateAuditRows();
+  };
+  window.renderAuditPlan=renderAuditPlan;
+  function decorateAuditRows(){
+    document.querySelectorAll('#content-root tr.clickable[onclick^="openAuditDetail"]').forEach(tr=>{
+      if(tr.dataset.wm) return; tr.dataset.wm=1;
+      const m=(tr.getAttribute('onclick')||'').match(/openAuditDetail\('([^']+)'/); if(!m) return;
+      const a=(STATE.audits||[]).find(x=>x.id===m[1]); if(!a) return;
+      const c0=tr.cells[0]; if(c0&&a.disciplines&&a.disciplines.length) c0.insertAdjacentHTML('beforeend','<div>'+a.disciplines.map(d=>`<span class="wm-chip ${/security/i.test(d)?'is':(/legal/i.test(d)?'lg':'')}">${escapeHtml(d)}</span>`).join('')+'</div>');
+      const ids=(a.checklist_template_ids&&a.checklist_template_ids.length)?a.checklist_template_ids:(a.audit_checklist_template_id?[a.audit_checklist_template_id]:[]);
+      const names=ids.map(i=>{const t=(STATE.auditChecklistTemplates||[]).find(x=>x.id===i); return t?colon(t.title):null;}).filter(Boolean);
+      if(tr.cells[4]) tr.cells[4].textContent=names.length?names.join('; '):'—';
+    });
+  }
+  const _list=renderAuditsList; renderAuditsList=function(){ _list.apply(this,arguments); decorateAuditRows(); }; window.renderAuditsList=renderAuditsList;
+
+  /* ---------- schedule ---------- */
+  const NEWCOLS=/disciplines|checklist_template_ids|source_checklist|schema cache|column/i;
+  window.submitAuditPlan=async function(){
+    const title=document.getElementById('af-title').value.trim(); const planned_date=document.getElementById('af-planned').value;
+    if(!title||!planned_date){ toast('Title and scheduled date are required.','error'); return; }
+    const audit_type=document.getElementById('af-type').value; const isExternal=['external','certification','surveillance'].includes(audit_type);
+    const other=(document.getElementById('af-std-other')||{}).value; let standards=getCheckedValues('af-std'); if(other&&other.trim()) standards.push(other.trim());
+    const chkIds=getCheckedValues('af-chk'); const disciplines=getCheckedValues('af-disc');
+    const base={ organisation_id:STATE.org.id,title,scope:document.getElementById('af-scope').value.trim(),criteria:document.getElementById('af-criteria').value.trim(),
+      standard:standards[0]||null,standards,department_ids:getCheckedValues('af-dept'),process_ids:getCheckedValues('af-proc'),supplier_ids:getCheckedValues('af-supp'),
+      other_scope:document.getElementById('af-other').value.trim(),audit_type,auditor_id:isExternal?null:document.getElementById('af-auditor').value,
+      external_auditor_name:isExternal?document.getElementById('af-auditor-external').value.trim():null,planned_date,
+      audit_checklist_template_id:chkIds[0]||null,created_by:STATE.user.id };
+    let notice='';
+    let { data:newAudit, error }=await STATE.supabase.from('audits').insert(Object.assign({},base,{disciplines,checklist_template_ids:chkIds})).select().single();
+    if(error && NEWCOLS.test(error.message||'')){
+      ({ data:newAudit, error }=await STATE.supabase.from('audits').insert(base).select().single());
+      notice=' Disciplines and extra checklists were not saved: run the audits SQL file first.';
+    }
+    if(error){ toast('Could not schedule audit: '+error.message,'error'); return; }
+    const team=getCheckedValues('af-team'); let teamWarning='';
+    if(team.length){ const { error:te }=await STATE.supabase.from('audit_team_members').insert(team.map(u=>({organisation_id:STATE.org.id,audit_id:newAudit.id,user_id:u}))); if(te) teamWarning=' The audit team could not be saved: '+te.message; }
+    const { error:taskErr }=await STATE.supabase.from('tasks').insert({ organisation_id:STATE.org.id,title:`Conduct audit: ${title}`,description:'Scheduled audit. Open this task, then start the audit from the Audits module.',linked_type:'audit',linked_id:newAudit.id,assignee_id:base.auditor_id||STATE.user.id,due_date:planned_date,created_by:STATE.user.id });
+    const taskWarning=taskErr?' The follow-up task could not be created: '+taskErr.message:'';
+    await loadAudits(); await loadAuditTeamMembers(); await loadTasks(); renderAuditPlan(); updateNavBadges();
+    const bad=teamWarning||taskWarning||notice;
+    toast(bad?`${newAudit.audit_ref} scheduled.${teamWarning}${taskWarning}${notice}`:`${newAudit.audit_ref} scheduled, with a task to start it on the day.`, bad?'error':'success');
+  };
+
+  /* ---------- start: attach every ticked checklist ---------- */
+  window.startAudit=async function(auditId){
+    const audit=STATE.audits.find(a=>a.id===auditId); if(!audit) return;
+    const { error }=await STATE.supabase.from('audits').update({status:'in_progress',actual_date:todayISO()}).eq('id',auditId);
+    if(error){ toast('Could not start the audit: '+error.message,'error'); return; }
+    const ids=(audit.checklist_template_ids&&audit.checklist_template_ids.length)?audit.checklist_template_ids:(audit.audit_checklist_template_id?[audit.audit_checklist_template_id]:[]);
+    let rows=[]; let g=0;
+    ids.forEach(tid=>{ const t=(STATE.auditChecklistTemplates||[]).find(x=>x.id===tid); const its=(STATE.auditChecklistItems||[]).filter(i=>i.template_id===tid&&i.is_active);
+      its.forEach(i=>rows.push({organisation_id:STATE.org.id,audit_id:auditId,item_text:i.item_text,sort_order:g*10000+(i.sort_order||0),source_checklist:t?colon(t.title):null})); g++; });
+    if(rows.length){
+      let { error:rErr }=await STATE.supabase.from('audit_checklist_item_responses').insert(rows);
+      if(rErr && /source_checklist|schema cache|column/i.test(rErr.message||'')){ ({ error:rErr }=await STATE.supabase.from('audit_checklist_item_responses').insert(rows.map(r=>{const c=Object.assign({},r); delete c.source_checklist; return c;}))); }
+      if(rErr) toast('Audit started, but the checklist could not be attached: '+rErr.message,'error');
+    }
+    await loadAudits(); openAuditDetail(auditId); updateNavBadges(); toast('Audit started.','success');
+  };
+
+  /* ---------- detail: group by checklist, standards and disciplines in the header, clause suggestions ---------- */
+  const _sec=renderNewAuditChecklistSection;
+  renderNewAuditChecklistSection=function(audit,responses){
+    if(!responses.some(r=>r.source_checklist)) return _sec(audit,responses);
+    const groups=[]; responses.forEach(r=>{ const k=r.source_checklist||'Checklist'; let g=groups.find(x=>x.k===k); if(!g){ g={k,rows:[]}; groups.push(g); } g.rows.push(r); });
+    return groups.map(g=>_sec(audit,g.rows).replace(/>Checklist<\/h3>/,'>'+escapeHtml(g.k)+'</h3>')).join('');
+  };
+  const CL=[['Clause 4: Context of the organization'],['Clause 5: Leadership'],['Clause 6: Planning'],['Clause 7: Support'],['Clause 8: Operation'],['Clause 9: Performance evaluation'],['Clause 10: Improvement']];
+  function clauseOptions(audit){
+    const out=[]; const st=(audit.standards&&audit.standards.length)?audit.standards:(audit.standard?[audit.standard]:[]);
+    st.forEach(s=>{
+      if(/9001|14001|45001|27001|37001/.test(s)) CL.forEach(c=>out.push(s+': '+c[0]));
+      if(/27001/.test(s)) ['Annex A: Organizational controls','Annex A: People controls','Annex A: Physical controls','Annex A: Technological controls','Statement of Applicability','Risk treatment plan'].forEach(x=>out.push(s+': '+x));
+      if(/27002/.test(s)) ['Organizational controls','People controls','Physical controls','Technological controls'].forEach(x=>out.push(s+': '+x));
+      if(/37000/.test(s)) ['Purpose','Value generation','Strategy','Oversight','Accountability','Stakeholder engagement','Leadership','Data and decisions','Risk governance','Social responsibility','Viability and performance over time'].forEach(x=>out.push(s+': Principle: '+x));
+    });
+    return out;
+  }
+  const _open=openAuditDetail;
+  openAuditDetail=async function(id){
+    const r=await _open.apply(this,arguments);
+    try{
+      const a=(STATE.audits||[]).find(x=>x.id===id); if(!a) return r;
+      const ref=document.querySelector('#audit-detail-slot .detail-head .ref');
+      if(ref){ const st=(a.standards&&a.standards.length)?a.standards.join(', '):(a.standard||'No standard set'); ref.textContent=`${a.audit_ref} · ${label(a.audit_type)} · ${st}`;
+        if(a.disciplines&&a.disciplines.length) ref.insertAdjacentHTML('afterend','<div>'+a.disciplines.map(d=>`<span class="wm-chip ${/security/i.test(d)?'is':(/legal/i.test(d)?'lg':'')}">${escapeHtml(d)}</span>`).join('')+'</div>'); }
+      const ff=document.getElementById('ff-clause'); const opts=clauseOptions(a);
+      if(ff&&opts.length){ ff.setAttribute('list','wm-clause-list'); let dl=document.getElementById('wm-clause-list'); if(!dl){ dl=document.createElement('datalist'); dl.id='wm-clause-list'; document.body.appendChild(dl); } dl.innerHTML=opts.map(o=>`<option value="${o.replace(/"/g,'&quot;')}">`).join(''); ff.placeholder='Start typing a clause or control, or enter your own'; }
+    }catch(e){ console.error(e); }
+    return r;
+  };
+  window.openAuditDetail=openAuditDetail;
+
+  /* ---------- Audit Programme tab ---------- */
+  const _rt=RENDERERS.audits;
+  RENDERERS.audits=function(){ let h=_rt(); return h.replace(/(<button class="btn-small[^"]*" onclick="switchAuditSubtab\('checklists'\)">Checklists<\/button>)/,`$1\n        <button class="btn-small ${STATE._auditSubtab==='programme'?'primary':''}" onclick="switchAuditSubtab('programme')">Audit Programme</button>`); };
+  const _rc=renderAuditSubtabContent; renderAuditSubtabContent=function(tab){ if(tab==='programme') return renderAuditProgramme(); return _rc.apply(this,arguments); };
+  window.renderAuditProgramme=function(yr){
+    const wrap=document.getElementById('audit-subtab-content'); if(!wrap) return;
+    const now=new Date(); const year=Number(yr)||Number(STATE._progYear)||now.getFullYear(); STATE._progYear=year; const today=todayISO();
+    const when=a=>(['completed','report_issued'].includes(a.status)&&a.actual_date)?a.actual_date:a.planned_date;
+    const all=STATE.audits||[]; const inYear=all.filter(a=>when(a)&&new Date(when(a)).getFullYear()===year);
+    const done=inYear.filter(a=>['completed','report_issued'].includes(a.status)), over=inYear.filter(a=>a.status==='planned'&&a.planned_date<today);
+    const keys=new Set(); all.forEach(a=>{ (a.standards&&a.standards.length?a.standards:(a.standard?[a.standard]:[])).forEach(s=>keys.add('S|'+s)); (a.disciplines||[]).forEach(d=>keys.add('D|'+d)); });
+    const has=(a,k)=>{ const [t,v]=[k[0],k.slice(2)]; return t==='S'?((a.standards&&a.standards.includes(v))||a.standard===v):(a.disciplines||[]).includes(v); };
+    const rows=[...keys].sort((x,y)=>x.localeCompare(y));
+    const yrs=[year-1,year,year+1].map(y=>`<option ${y===year?'selected':''}>${y}</option>`).join('');
+    const cell=(k,q)=>{ const list=inYear.filter(a=>has(a,k)&&Math.floor(new Date(when(a)).getMonth()/3)===q); if(!list.length) return '<div class="prog-c" style="color:#bbb">—</div>';
+      const d=list.filter(a=>['completed','report_issued'].includes(a.status)).length, o=list.filter(a=>a.status==='planned'&&a.planned_date<today).length, p=list.length-d-o;
+      return `<div class="prog-c" title="${escapeHtml(list.map(a=>a.audit_ref).join(', '))}">${d?`<span class="prog-b done">${d}</span>`:''}${p?`<span class="prog-b plan">${p}</span>`:''}${o?`<span class="prog-b over">${o}</span>`:''}</div>`; };
+    wrap.innerHTML=`<div class="detail-card"><div class="panel-head"><h3>Audit Programme</h3>
+        <div style="display:flex;gap:8px;align-items:center;"><select onchange="renderAuditProgramme(this.value)">${yrs}</select><button class="btn-small primary" onclick="switchAuditSubtab('plan'); setTimeout(()=>{ var f=document.getElementById('af-title'); if(f&&!f.offsetParent&&typeof toggleScheduleAuditForm==='function') toggleScheduleAuditForm(); },50)">Plan an audit</button></div></div>
+      <p class="wm-hint" style="margin-bottom:6px;">Coverage across the year by standard and discipline, built from your planned and completed audits. Hover a cell for the audit references. Green: completed. Orange: planned. Red: overdue.</p>
+      <div class="prog-tiles"><div class="prog-t"><b>${inYear.length}</b><span>Audits in ${year}</span></div><div class="prog-t"><b style="color:#6EE07A">${done.length}</b><span>Completed</span></div><div class="prog-t"><b style="color:${over.length?'#FF8A80':'#6EE07A'}">${over.length}</b><span>Overdue</span></div><div class="prog-t"><b>${rows.filter(k=>inYear.some(a=>has(a,k))).length}/${rows.length}</b><span>Covered this year</span></div></div>
+      ${rows.length?`<div class="prog-grid"><div class="h">Standard or discipline</div><div class="h" style="justify-content:center">Q1</div><div class="h" style="justify-content:center">Q2</div><div class="h" style="justify-content:center">Q3</div><div class="h" style="justify-content:center">Q4</div><div class="h">${year} status</div>
+        ${rows.map(k=>{ const cov=inYear.some(a=>has(a,k)); const dn=inYear.some(a=>has(a,k)&&['completed','report_issued'].includes(a.status));
+          return `<div><b>${escapeHtml(k.slice(2))}</b>${k[0]==='D'?' <span class="wm-chip" style="margin-left:6px">discipline</span>':''}</div>${cell(k,0)}${cell(k,1)}${cell(k,2)}${cell(k,3)}<div>${dn?'<span class="prog-b done">Covered</span>':(cov?'<span class="prog-b plan">Planned</span>':'<span class="prog-b over">No audit</span>')}</div>`; }).join('')}</div>`
+        :'<div class="empty-state"><p>No audits yet. Plan one to start building the programme.</p></div>'}
+      <p class="wm-hint" style="margin-top:10px;">Rows appear once a standard or discipline has been used in an audit. A row marked "No audit" was audited before but has nothing planned in ${year}.</p></div>`;
+  };
+  /* ---------- tidy checklist titles in the Checklists tab ---------- */
+  const _rac=renderAuditChecklists; renderAuditChecklists=function(){ _rac.apply(this,arguments);
+    document.querySelectorAll('#ac-panel-template option').forEach(o=>o.textContent=colon(o.textContent)); };
+  window.renderAuditChecklists=renderAuditChecklists;
+  const _rrl=renderAuditRepoList; window.renderAuditRepoList=function(){ _rrl.apply(this,arguments);
+    document.querySelectorAll('#ac-repo-list div[style*="font-weight:600"]').forEach(d=>d.textContent=colon(d.textContent)); };
+})();
+
+
+/* ===== b29: Statement of Applicability (ISO/IEC 27002:2022 controls) and security incident logging ===== */
+(function(){
+  const E=s=>escapeHtml(String(s==null?'':s));
+  const SOA_THEMES={'5':'Organizational','6':'People','7':'Physical','8':'Technological'};
+  const RAW={
+  '5':['Policies for information security','Information security roles and responsibilities','Segregation of duties','Management responsibilities','Contact with authorities','Contact with special interest groups','Threat intelligence','Information security in project management','Inventory of information and associated assets','Acceptable use of information and assets','Return of assets','Classification of information','Labelling of information','Information transfer','Access control','Identity management','Authentication information','Access rights','Information security in supplier relationships','Addressing security within supplier agreements','Managing security in the ICT supply chain','Monitoring, review and change management of supplier services','Information security for use of cloud services','Incident management planning and preparation','Assessment and decision on information security events','Response to information security incidents','Learning from information security incidents','Collection of evidence','Information security during disruption','ICT readiness for business continuity','Legal, statutory, regulatory and contractual requirements','Intellectual property rights','Protection of records','Privacy and protection of personal information','Independent review of information security','Compliance with policies, rules and standards','Documented operating procedures'],
+  '6':['Screening','Terms and conditions of employment','Awareness, education and training','Disciplinary process','Responsibilities after termination or change of employment','Confidentiality or non-disclosure agreements','Remote working','Information security event reporting'],
+  '7':['Physical security perimeters','Physical entry','Securing offices, rooms and facilities','Physical security monitoring','Protecting against physical and environmental threats','Working in secure areas','Clear desk and clear screen','Equipment siting and protection','Security of assets off premises','Storage media','Supporting utilities','Cabling security','Equipment maintenance','Secure disposal or re-use of equipment'],
+  '8':['User endpoint devices','Privileged access rights','Information access restriction','Access to source code','Secure authentication','Capacity management','Protection against malware','Management of technical vulnerabilities','Configuration management','Information deletion','Data masking','Data leakage prevention','Information backup','Redundancy of information processing facilities','Logging','Monitoring activities','Clock synchronization','Use of privileged utility programs','Installation of software on operational systems','Network security','Security of network services','Segregation of networks','Web filtering','Use of cryptography','Secure development life cycle','Application security requirements','Secure system architecture and engineering principles','Secure coding','Security testing in development and acceptance','Outsourced development','Separation of development, test and production environments','Change management','Test information','Protection of information systems during audit testing']};
+  const SOA_CONTROLS=[]; Object.keys(RAW).forEach(g=>RAW[g].forEach((t,i)=>SOA_CONTROLS.push({ref:'A.'+g+'.'+(i+1),theme:SOA_THEMES[g],title:t,g})));
+  window.SOA_CONTROLS=SOA_CONTROLS;
+  const ST=[['not_started','Not started'],['planned','Planned'],['partial','Partly implemented'],['implemented','Implemented'],['effective','Implemented and reviewed']];
+  const stLabel=v=>(ST.find(s=>s[0]===v)||[0,'Not started'])[1];
+  const stColour={not_started:'#9aa3ad',planned:'#e0a100',partial:'#f07a1a',implemented:'#2e9e5b',effective:'#1b7a43'};
+  STATE.soa=STATE.soa||[]; STATE.soaVersions=STATE.soaVersions||[]; STATE.secIncidents=STATE.secIncidents||[];
+  const tableMissing=e=>e&&/does not exist|relation|schema cache|Could not find/i.test(e.message||'');
+
+  async function loadSoa(){
+    STATE._soaMissing=false;
+    const a=await STATE.supabase.from('soa_controls').select('*').eq('organisation_id',STATE.org.id);
+    if(a.error){ if(tableMissing(a.error)) STATE._soaMissing=true; STATE.soa=[]; } else STATE.soa=a.data||[];
+    const b=await STATE.supabase.from('soa_versions').select('*').eq('organisation_id',STATE.org.id).order('version_no',{ascending:false});
+    STATE.soaVersions=b.error?[]:(b.data||[]);
+  }
+  async function loadSecIncidents(){
+    const r=await STATE.supabase.from('security_incidents').select('*').eq('organisation_id',STATE.org.id);
+    STATE.secIncidents=r.error?[]:(r.data||[]);
+  }
+  const rowFor=ref=>(STATE.soa||[]).find(r=>r.control_ref===ref);
+  const eff=c=>{ const r=rowFor(c.ref)||{}; return {applicable:r.applicable!==false,justification:r.justification||'',status:r.status||'not_started',owner_id:r.owner_id||'',review_date:r.review_date||'',evidence:r.evidence_document_ids||[],risks:r.risk_ids||[],notes:r.notes||'',saved:!!r.id}; };
+
+  /* ---------- module registration ---------- */
+  MODULE_META.soa={title:'Statement of Applicability',sub:()=>'Every ISO/IEC 27002:2022 control: applicable or not, why, how far implemented, who owns it and the evidence.'};
+  RENDERERS.soa=()=>'<div id="soa-root"></div>';
+  const navAnchor=document.querySelector('.nav-item[data-mod="master_register"]')||document.querySelector('.nav-item[data-mod="documents"]');
+  if(navAnchor && !document.querySelector('.nav-item[data-mod="soa"]')){
+    navAnchor.insertAdjacentHTML('afterend','<div class="nav-item" data-mod="soa" onclick="showModule(\'soa\')"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg> Statement of Applicability</div>');
+  }
+  const _sm2=showModule;
+  showModule=function(mod){ const r=_sm2.apply(this,arguments); if(mod==='soa') renderSoaPage(); return r; };
+  window.showModule=showModule;
+
+  /* ---------- SoA page ---------- */
+  STATE._soaF=STATE._soaF||{theme:'',status:'',q:'',app:''};
+  window.soaSet=function(k,v){ STATE._soaF[k]=v; renderSoaTable(); };
+  async function renderSoaPage(){
+    const root=document.getElementById('soa-root'); if(!root) return;
+    root.innerHTML='<p style="padding:24px;color:var(--text-faint);">Loading…</p>';
+    await loadSoa(); try{ await loadSecIncidents(); }catch(e){} try{ if(window.loadThreatsData) await window.loadThreatsData(); }catch(e){} try{ if(window.loadTasks) await loadTasks(); }catch(e){}
+    try{ if(!(STATE.documents||[]).length) await loadDocuments(); }catch(e){}
+    try{ if(!(STATE.risks||[]).length) await loadRisks(); }catch(e){}
+    const isAdmin=STATE.myRole==='admin'||(STATE.profile&&STATE.profile.is_platform_staff);
+    const tiles=soaTiles();
+    root.innerHTML=`
+    ${STATE._soaMissing?'<div class="panel" style="padding:14px 18px;border-left:4px solid #f07a1a;margin-bottom:14px;font-size:13px;">The Statement of Applicability tables are not set up yet. Run <b>qashe-watchman-schema-isms.sql</b> in the Supabase SQL editor, then refresh.</div>':''}
+    <div id="soa-tiles" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px;">${tiles}</div>
+    <div class="toolbar">
+      <div class="filters">
+        <input id="soa-q" placeholder="Search control number or name" oninput="soaSet('q',this.value)" style="min-width:230px;" value="${E(STATE._soaF.q)}">
+        <select onchange="soaSet('theme',this.value)"><option value="">All themes</option>${Object.values(SOA_THEMES).map(t=>`<option ${STATE._soaF.theme===t?'selected':''}>${t}</option>`).join('')}</select>
+        <select onchange="soaSet('status',this.value)"><option value="">All statuses</option>${ST.map(s=>`<option value="${s[0]}" ${STATE._soaF.status===s[0]?'selected':''}>${s[1]}</option>`).join('')}</select>
+        <select onchange="soaSet('app',this.value)"><option value="">Applicable and not</option><option value="y" ${STATE._soaF.app==='y'?'selected':''}>Applicable only</option><option value="n" ${STATE._soaF.app==='n'?'selected':''}>Not applicable only</option><option value="gap" ${STATE._soaF.app==='gap'?'selected':''}>Gaps: applicable but not implemented</option></select>
+      </div>
+      <button class="btn-small" onclick="soaExportExcel()">Export Excel</button>
+      <button class="btn-small" onclick="soaPrint()">Print / PDF</button>
+      ${isAdmin?'<button class="btn-primary btn-add" onclick="soaIssueVersion()">Issue a new version</button>':''}
+    </div>
+    <div id="soa-edit-slot"></div>
+    <div class="panel" style="padding:0;overflow:hidden;"><div id="soa-table-wrap"></div></div>
+    <div class="panel" style="margin-top:16px;"><div class="panel-head"><h3>Issued versions</h3></div><div id="soa-versions"></div></div>
+    <p style="font-size:11.5px;color:var(--text-faint);margin-top:12px;">Control numbers follow ISO/IEC 27002:2022 and the Annex A list in ISO/IEC 27001:2022. Control names are shown as short titles only; refer to the published standard for the full control wording. Remember that a control is only "not applicable" when your risk assessment and legal obligations support it, and the justification must say so.</p>`;
+    renderSoaTable(); renderSoaVersions();
+  }
+  window.renderSoaPage=renderSoaPage;
+  function soaTiles(){
+    const rows=SOA_CONTROLS.map(c=>eff(c)); const app=rows.filter(r=>r.applicable);
+    const done=app.filter(r=>r.status==='implemented'||r.status==='effective').length;
+    const noOwner=app.filter(r=>!r.owner_id).length;
+    const today=new Date().toISOString().slice(0,10);
+    const overdue=app.filter(r=>r.review_date&&r.review_date<today).length;
+    const noJust=rows.filter(r=>!r.applicable&&!r.justification.trim()).length;
+    const t=(n,l,c)=>`<div class="panel" style="padding:14px 16px;border-top:4px solid ${c};"><div style="font-size:28px;font-weight:800;line-height:1;">${n}</div><div style="font-size:11.5px;color:var(--text-faint);margin-top:6px;">${l}</div></div>`;
+    return t(SOA_CONTROLS.length,'controls in ISO/IEC 27002:2022','#0b1f3a')+t(app.length,'applicable','#2e9e5b')+t(SOA_CONTROLS.length-app.length,'not applicable','#9aa3ad')+t(app.length?Math.round(done/app.length*100)+'%':'0%','of applicable controls implemented','#2e9e5b')+t(noOwner,'applicable without an owner',noOwner?'#f07a1a':'#2e9e5b')+t(overdue,'reviews overdue',overdue?'#d4262c':'#2e9e5b')+t(noJust,'exclusions without a justification',noJust?'#d4262c':'#2e9e5b');
+  }
+  function filtered(){
+    const f=STATE._soaF, q=(f.q||'').toLowerCase();
+    return SOA_CONTROLS.filter(c=>{ const e=eff(c);
+      if(f.theme&&c.theme!==f.theme) return false;
+      if(f.status&&e.status!==f.status) return false;
+      if(f.app==='y'&&!e.applicable) return false; if(f.app==='n'&&e.applicable) return false;
+      if(f.app==='gap'&&!(e.applicable&&e.status!=='implemented'&&e.status!=='effective')) return false;
+      if(q&&!(c.ref.toLowerCase().includes(q)||c.title.toLowerCase().includes(q))) return false; return true; });
+  }
+  function renderSoaTable(){
+    const w=document.getElementById('soa-table-wrap'); if(!w) return;
+    const rows=filtered();
+    const tl=document.getElementById('soa-tiles'); if(tl) tl.innerHTML=soaTiles();
+    w.innerHTML=rows.length?`<table><tr><th>Control</th><th>Theme</th><th>Applicable</th><th>Status</th><th>Owner</th><th>Evidence</th><th>Review</th></tr>
+    ${rows.map(c=>{ const e=eff(c); return `<tr class="clickable" onclick="soaEdit('${c.ref}')">
+      <td><span class="mono-cell">${c.ref}</span> <span class="strong">${E(c.title)}</span></td><td>${c.theme}</td>
+      <td>${e.applicable?'<b style="color:#2e9e5b">Yes</b>':'<b style="color:#9aa3ad">No</b>'}</td>
+      <td>${e.applicable?`<span style="display:inline-flex;align-items:center;gap:6px;"><i style="width:9px;height:9px;border-radius:50%;background:${stColour[e.status]};display:inline-block"></i>${stLabel(e.status)}</span>`:'<span style="color:var(--text-faint)">Excluded</span>'}</td>
+      <td>${e.owner_id?E(memberName(e.owner_id)):'<span style="color:#d4262c">Unassigned</span>'}</td>
+      <td>${e.evidence.length+e.risks.length?e.evidence.length+' doc, '+e.risks.length+' risk':'<span style="color:var(--text-faint)">None</span>'}</td>
+      <td>${e.review_date?fmtDate(e.review_date):'—'}</td></tr>`; }).join('')}</table>`:'<div class="empty-state"><p>No controls match this filter.</p></div>';
+    try{ window.soaDecorate&&window.soaDecorate(); }catch(e){}
+  }
+  window.soaEdit=function(ref){
+    const c=SOA_CONTROLS.find(x=>x.ref===ref); if(!c) return; const e=eff(c);
+    const docs=(STATE.documents||[]).map(d=>({id:d.id,label:E((d.doc_number?d.doc_number+': ':'')+(d.title||d.name||''))}));
+    const risks=(STATE.risks||[]).map(r=>({id:r.id,label:E((r.ref_code?r.ref_code+': ':'')+(r.title||''))}));
+    document.getElementById('soa-edit-slot').innerHTML=`<div class="detail-panel" style="margin-bottom:16px;" id="soa-edit-panel" data-ref="${ref}">
+      <div class="detail-head"><div><span class="ref">${ref}</span><h3>${E(c.title)}</h3></div><button class="close-btn" onclick="document.getElementById('soa-edit-slot').innerHTML=''"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+      <div class="form-grid">
+        <div class="field"><label>Applicable to our scope?</label><select id="soa-app" onchange="soaAppChanged()"><option value="y" ${e.applicable?'selected':''}>Yes, applicable</option><option value="n" ${!e.applicable?'selected':''}>No, not applicable</option></select></div>
+        <div class="field"><label>Implementation status</label><select id="soa-status">${ST.map(s=>`<option value="${s[0]}" ${e.status===s[0]?'selected':''}>${s[1]}</option>`).join('')}</select></div>
+        <div class="field"><label>Control owner</label><select id="soa-owner"><option value="">Unassigned</option>${memberOptions(e.owner_id)}</select></div>
+        <div class="field span3"><label id="soa-just-l">${e.applicable?'Justification for inclusion and how it is implemented':'Justification for exclusion (required)'}</label><textarea id="soa-just" placeholder="Risk assessment result, legal or contractual driver, or the reason it does not apply">${E(e.justification)}</textarea></div>
+        <div class="field"><label>Next review date</label><input type="date" id="soa-review" value="${e.review_date||''}"></div>
+        <div class="field span2"><label>Notes</label><input id="soa-notes" value="${E(e.notes)}" placeholder="Optional"></div>
+        <div class="field span3"><label>Evidence: controlled documents</label>${checkboxMultiSelect('soa-doc',docs,e.evidence)}</div>
+        <div class="field span3"><label>Linked risks (treated by this control)</label>${checkboxMultiSelect('soa-risk',risks,e.risks)}</div>
+      </div>
+      <div class="form-actions"><button class="btn-cancel" onclick="document.getElementById('soa-edit-slot').innerHTML=''">Cancel</button><button class="btn-primary" onclick="soaSave()">Save control</button></div></div>`;
+    try{ window.soaAfterEdit&&window.soaAfterEdit(ref); }catch(e){}
+    document.getElementById('soa-edit-slot').scrollIntoView({behavior:'smooth',block:'start'});
+  };
+  window.soaAppChanged=function(){ const y=document.getElementById('soa-app').value==='y'; document.getElementById('soa-just-l').textContent=y?'Justification for inclusion and how it is implemented':'Justification for exclusion (required)'; };
+  window.soaSave=async function(){
+    const p=document.getElementById('soa-edit-panel'); const ref=p.dataset.ref;
+    const applicable=document.getElementById('soa-app').value==='y'; const just=document.getElementById('soa-just').value.trim();
+    if(!applicable&&!just){ toast('Give a justification for excluding this control.','error'); return; }
+    const row={organisation_id:STATE.org.id,control_ref:ref,applicable,justification:just,status:document.getElementById('soa-status').value,
+      owner_id:document.getElementById('soa-owner').value||null,review_date:document.getElementById('soa-review').value||null,notes:document.getElementById('soa-notes').value.trim(),
+      evidence_document_ids:getCheckedValues('soa-doc'),risk_ids:getCheckedValues('soa-risk'),updated_by:STATE.user.id,updated_at:new Date().toISOString()};
+    const { error }=await STATE.supabase.from('soa_controls').upsert(row,{onConflict:'organisation_id,control_ref'});
+    if(error){ toast(tableMissing(error)?'Run qashe-watchman-schema-isms.sql first, then try again.':'Could not save: '+error.message,'error'); return; }
+    await loadSoa(); document.getElementById('soa-edit-slot').innerHTML=''; renderSoaTable(); toast('Control '+ref+' saved.','success');
+  };
+
+  /* ---------- versions, export, print ---------- */
+  function snapshot(){ return SOA_CONTROLS.map(c=>{ const e=eff(c); return {ref:c.ref,title:c.title,theme:c.theme,applicable:e.applicable,justification:e.justification,status:e.status,owner:e.owner_id?memberName(e.owner_id):'',review_date:e.review_date||'',evidence:e.evidence.map(id=>{ const d=(STATE.documents||[]).find(x=>x.id===id); return d?(d.doc_number||d.title):id; }),risks:e.risks.map(id=>{ const r=(STATE.risks||[]).find(x=>x.id===id); return r?(r.ref_code||r.title):id; })}; }); }
+  window.soaIssueVersion=async function(){
+    const missing=SOA_CONTROLS.filter(c=>{ const e=eff(c); return !e.applicable&&!e.justification.trim(); }).length;
+    if(missing){ toast(missing+' excluded control(s) have no justification. Complete these before issuing.','error'); return; }
+    const by=prompt('Approved by (name and role), for example "David Elliott, Managing Director":'); if(!by) return;
+    const notes=prompt('What changed in this version? (optional)')||'';
+    const next=((STATE.soaVersions[0]&&STATE.soaVersions[0].version_no)||0)+1;
+    const { error }=await STATE.supabase.from('soa_versions').insert({organisation_id:STATE.org.id,version_no:next,issued_by:STATE.user.id,approved_by_name:by.trim(),change_notes:notes.trim(),snapshot:snapshot()});
+    if(error){ toast(tableMissing(error)?'Run qashe-watchman-schema-isms.sql first.':'Could not issue: '+error.message,'error'); return; }
+    await loadSoa(); renderSoaVersions(); toast('Statement of Applicability version '+next+' issued.','success');
+  };
+  function renderSoaVersions(){
+    const w=document.getElementById('soa-versions'); if(!w) return;
+    w.innerHTML=STATE.soaVersions.length?`<table><tr><th>Version</th><th>Issued</th><th>Approved by</th><th>Applicable</th><th>What changed</th><th></th></tr>${STATE.soaVersions.map(v=>{ const s=v.snapshot||[]; return `<tr><td class="mono-cell">v${v.version_no}</td><td>${fmtDate((v.created_at||'').slice(0,10))}</td><td>${E(v.approved_by_name)}</td><td>${s.filter(x=>x.applicable).length} of ${s.length}</td><td>${E(v.change_notes||'')}</td><td><button class="btn-small" onclick="soaPrint(${v.version_no})">View / PDF</button></td></tr>`; }).join('')}</table>`:'<p style="padding:14px 18px;font-size:12.5px;color:var(--text-faint);">No version issued yet. An administrator issues a version once the controls are reviewed; each version is a frozen, approved copy for the auditor.</p>';
+  }
+  function dataset(ver){ if(ver){ const v=STATE.soaVersions.find(x=>x.version_no===ver); if(v) return {rows:v.snapshot||[],meta:v}; } return {rows:snapshot(),meta:null}; }
+  window.soaExportExcel=async function(){
+    const rows=dataset().rows.map(r=>({'Control':r.ref,'Name':r.title,'Theme':r.theme,'Applicable':r.applicable?'Yes':'No','Justification':r.justification,'Status':r.applicable?stLabel(r.status):'Excluded','Owner':r.owner,'Next review':r.review_date,'Evidence documents':(r.evidence||[]).join('; '),'Linked risks':(r.risks||[]).join('; ')}));
+    const XLSX=await ensureXLSX(); const ws=XLSX.utils.json_to_sheet(rows); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Statement of Applicability'); XLSX.writeFile(wb,'Statement-of-Applicability.xlsx');
+  };
+  window.soaPrint=function(ver){
+    const d=dataset(ver); const w=window.open('','_blank'); if(!w){ toast('Allow pop-ups to print.','error'); return; }
+    const org=E(STATE.org&&STATE.org.name||''); const title='Statement of Applicability'+(d.meta?' v'+d.meta.version_no:' (working draft)');
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>body{font-family:Arial,Helvetica,sans-serif;font-size:11px;margin:24px;color:#111}h1{font-size:20px;margin:0}table{border-collapse:collapse;width:100%;margin-top:14px}th,td{border:1px solid #bbb;padding:5px 6px;vertical-align:top;text-align:left}th{background:#0b1f3a;color:#fff}.no{color:#777}</style></head><body><h1>${title}</h1><p>${org}: ISO/IEC 27001:2022 Annex A / ISO/IEC 27002:2022 controls.${d.meta?' Approved by '+E(d.meta.approved_by_name)+' on '+fmtDate((d.meta.created_at||'').slice(0,10))+'.':''}</p>
+    <table><tr><th>Control</th><th>Applicable</th><th>Justification</th><th>Status</th><th>Owner</th><th>Evidence</th></tr>${d.rows.map(r=>`<tr class="${r.applicable?'':'no'}"><td><b>${r.ref}</b> ${E(r.title)}</td><td>${r.applicable?'Yes':'No'}</td><td>${E(r.justification)}</td><td>${r.applicable?stLabel(r.status):'Excluded'}</td><td>${E(r.owner)}</td><td>${E((r.evidence||[]).join(', '))}</td></tr>`).join('')}</table><script>setTimeout(function(){window.print()},400)<\/script></body></html>`);
+    w.document.close();
+  };
+
+  /* ---------- security incidents inside nonconformances ---------- */
+  const INC_TYPES=['Unauthorised access','Malware or ransomware','Phishing or social engineering','Lost or stolen device or media','Misdirected or disclosed information','Loss of availability or system outage','Data corruption or unauthorised change','Physical security breach','Supplier or third party breach','Policy breach by personnel','Other'];
+  const incFields=(p,s)=>{ s=s||{}; const dt=v=>v?String(v).slice(0,16):'';
+    const cb=(k,l)=>`<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;"><input type="checkbox" id="${p}-${k}" style="width:auto;" ${s[k]?'checked':''}> ${l}</label>`;
+    return `<div class="form-grid">
+    <div class="field"><label>Incident type</label><select id="${p}-type">${INC_TYPES.map(t=>`<option ${s.incident_type===t?'selected':''}>${t}</option>`).join('')}</select></div>
+    <div class="field span2"><label>Security properties affected</label><div style="display:flex;gap:18px;padding-top:6px;">${cb('conf','Confidentiality')}${cb('integ','Integrity')}${cb('avail','Availability')}</div></div>
+    <div class="field"><label>Detected</label><input type="datetime-local" id="${p}-det" value="${dt(s.detected_at)}"></div>
+    <div class="field"><label>Reported internally</label><input type="datetime-local" id="${p}-rep" value="${dt(s.reported_at)}"></div>
+    <div class="field"><label>Contained</label><input type="datetime-local" id="${p}-con" value="${dt(s.contained_at)}"></div>
+    <div class="field"><label>Resolved and recovered</label><input type="datetime-local" id="${p}-res" value="${dt(s.resolved_at)}"></div>
+    <div class="field span2"><label>Systems, information or assets affected</label><input id="${p}-sys" value="${E(s.systems_affected||'')}" placeholder="For example: finance server, client database, laptop"></div>
+    <div class="field span3"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="${p}-pii" style="width:auto;" ${s.personal_info_involved?'checked':''} onchange="secPiiToggle('${p}')"> Personal information may be involved (POPIA)</label>
+      <div id="${p}-popia" style="display:${s.personal_info_involved?'grid':'none'};grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:8px;">
+        <div class="field"><label>Approx. number of data subjects</label><input type="number" id="${p}-cnt" value="${s.record_count||''}"></div>
+        <div class="field"><label>Information Regulator notified</label><input type="datetime-local" id="${p}-reg" value="${dt(s.regulator_notified_at)}"></div>
+        <div class="field"><label>Data subjects notified</label><input type="datetime-local" id="${p}-sub" value="${dt(s.subjects_notified_at)}"></div>
+        <p style="grid-column:1/-1;font-size:11.5px;color:var(--text-faint);margin:0;">POPIA section 22 requires notification of the Information Regulator and the affected data subjects as soon as reasonably possible after a compromise of personal information is discovered. Record the dates here as evidence.</p>
+      </div></div>
+    <div class="field span3"><label>Lessons learned</label><textarea id="${p}-less" placeholder="What will change so this does not recur?">${E(s.lessons_learned||'')}</textarea></div>
+    <div class="field span3"><label>Controls that failed or need strengthening (Statement of Applicability)</label>${checkboxMultiSelect(p+'-ctl',SOA_CONTROLS.map(c=>({id:c.ref,label:c.ref+' '+E(c.title)})),s.soa_control_refs||[])}</div>
+    </div>`; };
+  window.secPiiToggle=function(p){ document.getElementById(p+'-popia').style.display=document.getElementById(p+'-pii').checked?'grid':'none'; };
+  const iso=v=>v?new Date(v).toISOString():null;
+  const readInc=p=>({incident_type:document.getElementById(p+'-type').value,confidentiality:document.getElementById(p+'-conf').checked,integrity:document.getElementById(p+'-integ').checked,availability:document.getElementById(p+'-avail').checked,
+    detected_at:iso(document.getElementById(p+'-det').value),reported_at:iso(document.getElementById(p+'-rep').value),contained_at:iso(document.getElementById(p+'-con').value),resolved_at:iso(document.getElementById(p+'-res').value),
+    systems_affected:document.getElementById(p+'-sys').value.trim(),personal_info_involved:document.getElementById(p+'-pii').checked,
+    record_count:parseInt(document.getElementById(p+'-cnt').value,10)||null,regulator_notified_at:iso(document.getElementById(p+'-reg').value),subjects_notified_at:iso(document.getElementById(p+'-sub').value),
+    lessons_learned:document.getElementById(p+'-less').value.trim(),soa_control_refs:getCheckedValues(p+'-ctl')});
+
+  // raise form: optional security-incident section
+  const _rn=RENDERERS.nonconformances;
+  RENDERERS.nonconformances=function(){ let h=_rn.apply(this,arguments);
+    const slot=`<div class="field span3" id="f-sec-wrap"><label style="display:flex;gap:8px;align-items:center;font-weight:700;"><input type="checkbox" id="f-sec-on" style="width:auto;" onchange="document.getElementById('f-sec-body').style.display=this.checked?'block':'none'"> This is an information security incident</label><div id="f-sec-body" style="display:none;margin-top:10px;padding:12px;border:1px solid var(--border);border-radius:10px;">${incFields('fsec')}</div></div>`;
+    return h.replace(/(<div class="field" id="f-supplier-severity-field")/,slot+'$1'); };
+  const _sub=window.submitNC;
+  window.submitNC=submitNC=async function(){
+    const on=document.getElementById('f-sec-on')&&document.getElementById('f-sec-on').checked;
+    const inc=on?readInc('fsec'):null; const before=new Set((STATE.ncs||[]).map(n=>n.id));
+    await _sub.apply(this,arguments);
+    if(!inc) return;
+    const fresh=(STATE.ncs||[]).find(n=>!before.has(n.id));
+    if(!fresh){ return; }
+    const { error }=await STATE.supabase.from('security_incidents').insert(Object.assign({organisation_id:STATE.org.id,nonconformance_id:fresh.id},inc));
+    if(error) toast(tableMissing(error)?'The nonconformance was raised, but the security incident details could not be saved: run qashe-watchman-schema-isms.sql first.':'Security details not saved: '+error.message,'error');
+    else{ await loadSecIncidents(); renderNCTable(); toast('Security incident details recorded.','success'); }
+  };
+  // detail view card
+  const _ond=openNCDetail;
+  window.openNCDetail=openNCDetail=async function(id){
+    await _ond.apply(this,arguments);
+    try{ await loadSecIncidents(); }catch(e){}
+    const panel=document.querySelector('#nc-detail-slot .detail-panel'); if(!panel) return;
+    const s=(STATE.secIncidents||[]).find(x=>x.nonconformance_id===id);
+    const card=document.createElement('div'); card.className='detail-card'; card.id='sec-inc-card';
+    const clock=s&&s.personal_info_involved&&(!s.regulator_notified_at||!s.subjects_notified_at)?`<div style="padding:10px 12px;border-radius:8px;background:#fdeceb;color:#8a1b17;font-size:12.5px;margin-bottom:12px;"><b>POPIA notification outstanding:</b> ${!s.regulator_notified_at?'the Information Regulator has not been notified. ':''}${!s.subjects_notified_at?'The affected data subjects have not been notified. ':''}Notify as soon as reasonably possible and record the date below.</div>`:'';
+    const dur=s&&s.detected_at&&s.resolved_at?` · detected to resolved: ${Math.round((new Date(s.resolved_at)-new Date(s.detected_at))/36e5*10)/10} hours`:'';
+    card.innerHTML=`<div class="panel-head"><h3>Information security incident${s?'':' (not classified)'}</h3></div>${s?clock+`<p style="font-size:12.5px;margin-bottom:10px;">${E(s.incident_type)} · ${[s.confidentiality&&'Confidentiality',s.integrity&&'Integrity',s.availability&&'Availability'].filter(Boolean).join(', ')||'No property ticked'}${dur}</p>`:'<p style="font-size:12.5px;color:var(--text-faint);margin-bottom:10px;">Tick this nonconformance as an information security incident to log the timeline, POPIA notifications and the failed controls.</p>'}
+      <div id="sec-inc-form">${incFields('esec',s?Object.assign({},s):{})}</div>
+      <div class="form-actions"><button class="btn-primary" onclick="secIncSave('${id}')">${s?'Save incident details':'Record as security incident'}</button>${s?`<button class="btn-small" style="margin-left:8px" onclick="secIncRemove('${id}')">Remove classification</button>`:''}</div>`;
+    const anchor=panel.querySelector('.detail-card')||panel.lastElementChild; panel.insertBefore(card,anchor?anchor:null);
+  };
+  window.secIncSave=async function(id){
+    const row=Object.assign({organisation_id:STATE.org.id,nonconformance_id:id},readInc('esec'));
+    const { error }=await STATE.supabase.from('security_incidents').upsert(row,{onConflict:'nonconformance_id'});
+    if(error){ toast(tableMissing(error)?'Run qashe-watchman-schema-isms.sql first.':'Could not save: '+error.message,'error'); return; }
+    toast('Security incident details saved.','success'); await openNCDetail(id); renderNCTable();
+  };
+  window.secIncRemove=async function(id){
+    if(!confirm('Remove the security incident classification from this nonconformance? The nonconformance itself stays.')) return;
+    const { error }=await STATE.supabase.from('security_incidents').delete().eq('nonconformance_id',id);
+    if(error){ toast('Could not remove: '+error.message,'error'); return; }
+    await openNCDetail(id); renderNCTable();
+  };
+  // badge in the register
+  const _rnt=renderNCTable;
+  window.renderNCTable=renderNCTable=function(){ _rnt.apply(this,arguments);
+    document.querySelectorAll('#nc-table-wrap tr.clickable').forEach(tr=>{
+      const m=(tr.getAttribute('onclick')||'').match(/'([^']+)'/); if(!m) return;
+      if((STATE.secIncidents||[]).some(s=>s.nonconformance_id===m[1])){ const td=tr.querySelector('.strong'); if(td&&!td.querySelector('.sec-chip')) td.insertAdjacentHTML('beforeend',' <span class="sec-chip" style="background:#0b1f3a;color:#fff;border-radius:10px;padding:1px 8px;font-size:10.5px;font-weight:700;">Security</span>'); }
+    }); };
+  const _lnc=loadNCs; window.loadNCs=loadNCs=async function(){ const r=await _lnc.apply(this,arguments); try{ await loadSecIncidents(); }catch(e){} return r; };
+})();
+
+
+/* ===== b30: Information Asset Register, AI-assisted Threat Intelligence, Risk Treatment Plan ===== */
+(function(){
+  const E=s=>escapeHtml(String(s==null?'':s));
+  const tableMissing=e=>e&&/does not exist|relation|schema cache|Could not find/i.test(e.message||'');
+  const isAdmin=()=>STATE.myRole==='admin'||(STATE.profile&&STATE.profile.is_platform_staff);
+  STATE.infoAssets=STATE.infoAssets||[]; STATE.threats=STATE.threats||[];
+  const ICON_ASSET='<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="1"/><rect x="3" y="14" width="18" height="6" rx="1"/><path d="M7 7h.01M7 17h.01"/></svg>';
+  const ICON_TI='<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>';
+  const anchor=document.querySelector('.nav-item[data-mod="soa"]');
+  if(anchor){
+    if(!document.querySelector('.nav-item[data-mod="info_assets"]')) anchor.insertAdjacentHTML('afterend',`<div class="nav-item" data-mod="info_assets" onclick="showModule('info_assets')">${ICON_ASSET} Information Asset Register</div>`);
+    if(!document.querySelector('.nav-item[data-mod="threat_intel"]')) document.querySelector('.nav-item[data-mod="info_assets"]').insertAdjacentHTML('afterend',`<div class="nav-item" data-mod="threat_intel" onclick="showModule('threat_intel')">${ICON_TI} Threat Intelligence</div>`);
+  }
+  MODULE_META.info_assets={title:'Information Asset Register',sub:()=>'The information, systems, hardware, services and people that carry your information, with an owner and a classification for each (ISO/IEC 27002 control 5.9).'};
+  MODULE_META.threat_intel={title:'Threat Intelligence',sub:()=>'AI-assisted threat briefings and advisory triage, reviewed by a person and tied to your controls (ISO/IEC 27002 control 5.7).'};
+  RENDERERS.info_assets=()=>'<div id="ia-root"></div>';
+  RENDERERS.threat_intel=()=>'<div id="ti-root"></div>';
+  const _sm3=showModule;
+  showModule=function(mod){ const r=_sm3.apply(this,arguments);
+    if(mod==='info_assets') renderIaPage(); if(mod==='threat_intel') renderTiPage();
+    if(mod==='soa') setTimeout(addTreatmentButton,60); return r; };
+  window.showModule=showModule;
+
+  /* ---------------- Information Asset Register ---------------- */
+  const IA_TYPES=['Information (data, records)','Software or system','Hardware or device','Service or cloud platform','People and skills','Facility or site'];
+  const IA_CLASS=['Public','Internal','Confidential','Restricted'];
+  const LMH=[[1,'Low'],[2,'Medium'],[3,'High']];
+  async function loadIa(){ const r=await STATE.supabase.from('information_assets').select('*').eq('organisation_id',STATE.org.id).order('name'); STATE._iaMissing=!!(r.error&&tableMissing(r.error)); STATE.infoAssets=r.error?[]:(r.data||[]); }
+  async function renderIaPage(){
+    const root=document.getElementById('ia-root'); if(!root) return; root.innerHTML='<p style="padding:24px;color:var(--text-faint);">Loading…</p>';
+    await loadIa();
+    const a=STATE.infoAssets; const crit=a.filter(x=>x.criticality>=3||x.classification==='Restricted').length; const noOwner=a.filter(x=>!x.owner_id).length; const pii=a.filter(x=>x.personal_info).length;
+    const t=(n,l,c)=>`<div class="panel" style="padding:14px 16px;border-top:4px solid ${c};"><div style="font-size:28px;font-weight:800;line-height:1;">${n}</div><div style="font-size:11.5px;color:var(--text-faint);margin-top:6px;">${l}</div></div>`;
+    root.innerHTML=`${STATE._iaMissing?'<div class="panel" style="padding:14px 18px;border-left:4px solid #f07a1a;margin-bottom:14px;font-size:13px;">Run <b>qashe-watchman-schema-threat-intel.sql</b> in the Supabase SQL editor, then refresh.</div>':''}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px;">${t(a.length,'assets registered','#0b1f3a')}${t(crit,'critical or restricted','#d4262c')}${t(pii,'hold personal information','#f07a1a')}${t(noOwner,'without an owner',noOwner?'#f07a1a':'#2e9e5b')}</div>
+    <div class="toolbar"><div class="filters"><input id="ia-q" placeholder="Search assets" oninput="iaRenderTable()" style="min-width:220px;"></div>
+      <button class="btn-small" onclick="iaImportAssets()">Import from Assets and Maintenance</button><button class="btn-small" onclick="iaExport()">Export Excel</button><button class="btn-primary btn-add" onclick="iaEdit('')">Add asset</button></div>
+    <div id="ia-edit-slot"></div><div class="panel" style="padding:0;overflow:hidden;"><div id="ia-table"></div></div>`;
+    iaRenderTable();
+  }
+  window.iaRenderTable=function(){
+    const w=document.getElementById('ia-table'); if(!w) return; const q=((document.getElementById('ia-q')||{}).value||'').toLowerCase();
+    const rows=STATE.infoAssets.filter(x=>!q||(x.name+' '+(x.asset_type||'')+' '+(x.location||'')).toLowerCase().includes(q));
+    w.innerHTML=rows.length?`<table><tr><th>Asset</th><th>Type</th><th>Classification</th><th>Value (C / I / A)</th><th>Owner</th><th>Personal info</th></tr>${rows.map(x=>`<tr class="clickable" onclick="iaEdit('${x.id}')"><td class="strong">${E(x.name)}${x.maintenance_asset_id?' <span style="background:#e8eef7;border-radius:10px;padding:1px 8px;font-size:10.5px;">Linked to Assets</span>':''}${(x.risk_ids||[]).length?' <span style="background:#fdeceb;border-radius:10px;padding:1px 8px;font-size:10.5px;">'+x.risk_ids.length+' risk'+(x.risk_ids.length>1?'s':'')+'</span>':''}</td><td>${E(x.asset_type||'')}</td><td>${E(x.classification||'')}</td><td>${x.c_value||'-'} / ${x.i_value||'-'} / ${x.a_value||'-'}</td><td>${x.owner_id?E(memberName(x.owner_id)):'<span style="color:#d4262c">Unassigned</span>'}</td><td>${x.personal_info?'Yes':'No'}</td></tr>`).join('')}</table>`:'<div class="empty-state"><p>No assets yet. Start with your key systems, client data, laptops and cloud services.</p></div>';
+  };
+  window.iaEdit=function(id){
+    const x=STATE.infoAssets.find(a=>a.id===id)||{}; const sel=(arr,v)=>arr.map(o=>`<option ${o===v?'selected':''}>${o}</option>`).join(''); const lmh=v=>LMH.map(o=>`<option value="${o[0]}" ${o[0]===(v||2)?'selected':''}>${o[1]}</option>`).join('');
+    document.getElementById('ia-edit-slot').innerHTML=`<div class="detail-panel" style="margin-bottom:16px;"><div class="detail-head"><div><h3>${id?'Edit asset':'Add an information asset'}</h3></div><button class="close-btn" onclick="document.getElementById('ia-edit-slot').innerHTML=''"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="form-grid"><div class="field span2"><label>Asset name</label><input id="ia-name" value="${E(x.name||'')}" placeholder="For example: Client project database"></div>
+    <div class="field"><label>Type</label><select id="ia-type">${sel(IA_TYPES,x.asset_type)}</select></div>
+    <div class="field"><label>Classification</label><select id="ia-class">${sel(IA_CLASS,x.classification||'Internal')}</select></div>
+    <div class="field"><label>Owner</label><select id="ia-owner"><option value="">Unassigned</option>${memberOptions(x.owner_id)}</select></div>
+    <div class="field"><label>Location or platform</label><input id="ia-loc" value="${E(x.location||'')}" placeholder="Office server, Microsoft 365, Supabase"></div>
+    <div class="field"><label>Confidentiality value</label><select id="ia-c">${lmh(x.c_value)}</select></div>
+    <div class="field"><label>Integrity value</label><select id="ia-i">${lmh(x.i_value)}</select></div>
+    <div class="field"><label>Availability value</label><select id="ia-a">${lmh(x.a_value)}</select></div>
+    <div class="field"><label>Supplier or custodian</label><input id="ia-sup" value="${E(x.custodian||'')}"></div>
+    <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="ia-pii" style="width:auto;" ${x.personal_info?'checked':''}> Holds personal information (POPIA)</label></div>
+    <div class="field span2"><label>Linked record in Assets and Maintenance</label><select id="ia-asset"><option value="">Not linked</option>${(STATE.assets||[]).filter(a=>a.lifecycle_status!=='disposed').map(a=>`<option value="${a.id}" ${a.id===x.maintenance_asset_id?'selected':''}>${E((a.ref_code||'')+': '+(a.description||''))}</option>`).join('')}</select></div>
+    <div class="field"><label>Supplier who hosts or supports it</label><select id="ia-supp"><option value="">None</option>${(STATE.suppliers||[]).map(sp=>`<option value="${sp.id}" ${sp.id===x.supplier_id?'selected':''}>${E((sp.ref_code?sp.ref_code+': ':'')+sp.name)}</option>`).join('')}</select></div>
+    <div class="field span3"><label>Risks this asset is exposed to</label>${checkboxMultiSelect('ia-rk',(STATE.risks||[]).map(r=>({id:r.id,label:E((r.ref_code?r.ref_code+': ':'')+(r.title||''))})),x.risk_ids||[])}</div>
+    <div class="field span3"><label>Notes</label><input id="ia-notes" value="${E(x.notes||'')}"></div></div>
+    <div id="ia-backlinks" style="margin:6px 0 12px;"></div>
+    <div class="form-actions">${id?`<button class="btn-small" style="margin-right:auto" onclick="iaDelete('${id}')">Delete</button>`:''}<button class="btn-cancel" onclick="document.getElementById('ia-edit-slot').innerHTML=''">Cancel</button><button class="btn-primary" onclick="iaSave('${id}')">Save asset</button></div></div>`;
+    try{ window.iaAfterEdit&&window.iaAfterEdit(id); }catch(e){}
+    document.getElementById('ia-edit-slot').scrollIntoView({behavior:'smooth',block:'start'});
+  };
+  window.iaSave=async function(id){
+    const name=document.getElementById('ia-name').value.trim(); if(!name){ toast('Give the asset a name.','error'); return; }
+    const c=+document.getElementById('ia-c').value,i=+document.getElementById('ia-i').value,a=+document.getElementById('ia-a').value;
+    const row={organisation_id:STATE.org.id,name,asset_type:document.getElementById('ia-type').value,classification:document.getElementById('ia-class').value,owner_id:document.getElementById('ia-owner').value||null,location:document.getElementById('ia-loc').value.trim(),c_value:c,i_value:i,a_value:a,criticality:Math.max(c,i,a),custodian:document.getElementById('ia-sup').value.trim(),personal_info:document.getElementById('ia-pii').checked,notes:document.getElementById('ia-notes').value.trim()};
+    const link={maintenance_asset_id:document.getElementById('ia-asset').value||null,supplier_id:document.getElementById('ia-supp').value||null,risk_ids:getCheckedValues('ia-rk')};
+    const run=async r=>{ const q=STATE.supabase.from('information_assets'); return id?await q.update(r).eq('id',id):await q.insert(r); };
+    let { error }=await run(Object.assign({},row,link));
+    if(error&&/column|schema cache/i.test(error.message||'')){ ({ error }=await run(row)); if(!error) toast('Saved, but the link fields need qashe-watchman-schema-linking.sql.','error'); }
+    if(error){ toast(tableMissing(error)?'Run qashe-watchman-schema-threat-intel.sql first.':'Could not save: '+error.message,'error'); return; }
+    toast('Asset saved.','success'); renderIaPage();
+  };
+  window.iaDelete=async function(id){ if(!confirm('Delete this asset from the register?')) return; const { error }=await STATE.supabase.from('information_assets').delete().eq('id',id); if(error){ toast('Could not delete: '+error.message,'error'); return; } renderIaPage(); };
+  window.iaExport=async function(){ const rows=STATE.infoAssets.map(x=>({'Asset':x.name,'Type':x.asset_type,'Classification':x.classification,'Confidentiality':x.c_value,'Integrity':x.i_value,'Availability':x.a_value,'Owner':x.owner_id?memberName(x.owner_id):'','Location':x.location,'Custodian':x.custodian,'Personal information':x.personal_info?'Yes':'No','Notes':x.notes})); const XLSX=await ensureXLSX(); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Information assets'); XLSX.writeFile(wb,'Information-Asset-Register.xlsx'); };
+
+  /* ---------------- Threat Intelligence ---------------- */
+  const TI_STATUS=[['new','New: awaiting review'],['assessing','Being assessed'],['mitigating','Mitigation under way'],['accepted','Risk accepted'],['closed','Closed']];
+  const tiLabel=v=>(TI_STATUS.find(s=>s[0]===v)||[0,v])[1];
+  const score=t=>(t.likelihood||0)*(t.impact||0);
+  const scoreColour=s=>s>=15?'#d4262c':s>=8?'#f07a1a':'#2e9e5b';
+  const ctxKey=()=>'wm_ti_ctx_'+(STATE.org&&STATE.org.id);
+  const getCtx=()=>{ try{ return JSON.parse(localStorage.getItem(ctxKey())||'{}'); }catch(e){ return {}; } };
+  const setCtx=o=>{ try{ localStorage.setItem(ctxKey(),JSON.stringify(o)); }catch(e){} };
+  async function loadTi(){ const r=await STATE.supabase.from('threat_intel_items').select('*').eq('organisation_id',STATE.org.id).order('created_at',{ascending:false}); STATE._tiMissing=!!(r.error&&tableMissing(r.error)); STATE.threats=r.error?[]:(r.data||[]); }
+  async function renderTiPage(){
+    const root=document.getElementById('ti-root'); if(!root) return; root.innerHTML='<p style="padding:24px;color:var(--text-faint);">Loading…</p>';
+    await loadTi(); try{ if(!(STATE.risks||[]).length) await loadRisks(); }catch(e){}
+    const c=getCtx(); const th=STATE.threats; const open=th.filter(t=>t.status!=='closed'&&t.status!=='accepted');
+    const unrev=th.filter(t=>!t.reviewed_at).length; const high=open.filter(t=>score(t)>=15).length; const today=new Date().toISOString().slice(0,10); const over=open.filter(t=>t.due_date&&t.due_date<today).length;
+    const last=th.filter(t=>t.source==='ai_briefing')[0]; const days=last?Math.floor((Date.now()-new Date(last.created_at))/864e5):null;
+    const tile=(n,l,col)=>`<div class="panel" style="padding:14px 16px;border-top:4px solid ${col};"><div style="font-size:28px;font-weight:800;line-height:1;">${n}</div><div style="font-size:11.5px;color:var(--text-faint);margin-top:6px;">${l}</div></div>`;
+    root.innerHTML=`${STATE._tiMissing?'<div class="panel" style="padding:14px 18px;border-left:4px solid #f07a1a;margin-bottom:14px;font-size:13px;">Run <b>qashe-watchman-schema-threat-intel.sql</b> in the Supabase SQL editor, then refresh.</div>':''}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px;">${tile(open.length,'open threats','#0b1f3a')}${tile(high,'high priority (score 15 or more)',high?'#d4262c':'#2e9e5b')}${tile(unrev,'AI items awaiting human review',unrev?'#f07a1a':'#2e9e5b')}${tile(over,'actions overdue',over?'#d4262c':'#2e9e5b')}${tile(days==null?'Never':days+' d','since the last AI briefing',days==null||days>30?'#f07a1a':'#2e9e5b')}</div>
+    <div class="panel" style="padding:16px 18px;margin-bottom:16px;"><div class="panel-head"><h3>Your context (sharpens the analysis)</h3></div>
+      <div class="form-grid"><div class="field span2"><label>Country and sector</label><input id="ti-sector" value="${E(c.sector||'')}" placeholder="For example: South Africa, engineering and consulting services"></div>
+      <div class="field span3"><label>Technologies and services in use</label><input id="ti-tech" value="${E(c.tech||'')}" placeholder="Microsoft 365, Windows laptops, Supabase, WhatsApp, Sage, mobile phones"></div></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;"><button class="btn-primary" onclick="tiBrief()">Brief me: AI threat briefing</button><button class="btn-small" onclick="tiTriageOpen()">Triage an advisory or news item</button><button class="btn-small" onclick="tiEdit('')">Add a threat manually</button><button class="btn-small" onclick="tiExport()">Export Excel</button></div>
+      <p style="font-size:11.5px;color:var(--text-faint);margin:10px 0 0;"><b>How this works:</b> the AI has no live threat feed. A briefing comes from general knowledge of the threat landscape, tailored to the context above and your asset register. Triage analyses the advisory text you paste. Every AI item is marked and stays "awaiting review" until a person confirms it. Keep verifying against current sources such as your national CSIRT, vendor security bulletins and your IT provider. Context text is saved in this browser only.</p></div>
+    <div id="ti-ai-slot"></div><div id="ti-edit-slot"></div>
+    <div class="toolbar"><div class="filters"><select id="ti-fs" onchange="tiRenderTable()"><option value="">All statuses</option>${TI_STATUS.map(s=>`<option value="${s[0]}">${s[1]}</option>`).join('')}</select></div></div>
+    <div class="panel" style="padding:0;overflow:hidden;"><div id="ti-table"></div></div>`;
+    tiRenderTable();
+  }
+  window.tiRenderTable=function(){
+    const w=document.getElementById('ti-table'); if(!w) return; const fs=(document.getElementById('ti-fs')||{}).value;
+    const rows=STATE.threats.filter(t=>!fs||t.status===fs).sort((a,b)=>score(b)-score(a));
+    w.innerHTML=rows.length?`<table><tr><th>Threat</th><th>Category</th><th>Score</th><th>Status</th><th>Owner</th><th>Due</th><th>Controls</th></tr>${rows.map(t=>`<tr class="clickable" onclick="tiEdit('${t.id}')"><td class="strong">${E(t.title)} ${t.source&&t.source.startsWith('ai')?`<span style="background:#0b1f3a;color:#fff;border-radius:10px;padding:1px 8px;font-size:10.5px;font-weight:700;">AI-assisted${t.reviewed_at?', reviewed':', not reviewed'}</span>`:''}</td><td>${E(t.category||'')}</td><td><b style="color:${scoreColour(score(t))}">${score(t)||'-'}</b> <span style="color:var(--text-faint);font-size:11px;">(${t.likelihood||'-'} x ${t.impact||'-'})</span></td><td>${tiLabel(t.status)}</td><td>${t.owner_id?E(memberName(t.owner_id)):'<span style="color:#d4262c">Unassigned</span>'}</td><td>${t.due_date?fmtDate(t.due_date):'-'}</td><td>${E((t.soa_control_refs||[]).join(', '))}${(t.asset_ids||[]).length?' <span style="color:var(--text-faint);font-size:11px;">· '+t.asset_ids.length+' asset'+(t.asset_ids.length>1?'s':'')+'</span>':''}</td></tr>`).join('')}</table>`:'<div class="empty-state"><p>No threats logged yet. Ask for an AI briefing to get started, then review what it suggests.</p></div>';
+  };
+  function aiContext(){
+    const sector=(document.getElementById('ti-sector')||{}).value||'', tech=(document.getElementById('ti-tech')||{}).value||''; setCtx({sector,tech});
+    const gaps=(window.SOA_CONTROLS||[]).filter(c=>{ const r=(STATE.soa||[]).find(x=>x.control_ref===c.ref)||{}; return r.applicable!==false&&!['implemented','effective'].includes(r.status||'not_started'); }).slice(0,40).map(c=>c.ref+' '+c.title).join('; ');
+    return {org_name:STATE.org.name,sector,technologies:tech,assets:(STATE.infoAssets||[]).slice(0,40).map(a=>a.name+(a.classification?' ('+a.classification+')':'')).join('; '),gaps,existing:(STATE.threats||[]).slice(0,40).map(t=>t.title).join('; ')};
+  }
+  async function callAi(mode,extra){
+    const { data, error }=await STATE.supabase.functions.invoke('threat-intelligence',{body:Object.assign({organisation_id:STATE.org.id,mode,context:aiContext()},extra||{})});
+    if(error||!data||!data.ok){ let m=(data&&data.error)||(error&&error.message)||'Unknown error'; if(/not found|404|Failed to send/i.test(m)) m+=' (deploy the threat-intelligence edge function first)'; throw new Error(m); }
+    return data.result;
+  }
+  const busy=(on,msg)=>{ const s=document.getElementById('ti-ai-slot'); if(s) s.innerHTML=on?`<div class="panel" style="padding:18px;margin-bottom:16px;font-size:13px;">${msg}</div>`:''; };
+  window.tiBrief=async function(){
+    if(!(STATE.infoAssets||[]).length){ try{ await loadIa(); }catch(e){} }
+    busy(true,'Preparing your threat briefing… this takes about 20 seconds.');
+    try{ const r=await callAi('briefing'); STATE._tiSuggest=(r.threats||[]).map(t=>Object.assign(t,{_src:'ai_briefing'})); STATE._tiCaveat=r.caveat||''; tiShowSuggestions(); }
+    catch(e){ busy(true,'<b style="color:#d4262c">Briefing failed:</b> '+E(e.message)); }
+  };
+  window.tiTriageOpen=function(){
+    document.getElementById('ti-ai-slot').innerHTML=`<div class="detail-panel" style="margin-bottom:16px;"><div class="detail-head"><div><h3>Triage an advisory or news item</h3></div><button class="close-btn" onclick="document.getElementById('ti-ai-slot').innerHTML=''"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+      <div class="field"><label>Paste the advisory, alert, vendor bulletin or article text</label><textarea id="ti-adv" style="min-height:160px;" placeholder="Paste text from a CSIRT advisory, a vendor security bulletin, or a news article about an attack"></textarea></div>
+      <div class="form-actions"><button class="btn-primary" onclick="tiTriage()">Analyse for our organisation</button></div></div>`;
+  };
+  window.tiTriage=async function(){
+    const adv=document.getElementById('ti-adv').value; if(adv.trim().length<30){ toast('Paste the advisory text first.','error'); return; }
+    busy(true,'Analysing the advisory against your context…');
+    try{ const r=await callAi('triage',{advisory:adv}); STATE._tiSuggest=[Object.assign({description:r.summary,why_relevant:r.relevance_reason,early_warning_signs:'',_src:'ai_triage',_adv:adv.slice(0,4000),_deadline:r.action_deadline,_rel:r.relevant,_conf:r.confidence,_notes:r.notes},r)]; STATE._tiCaveat='AI triage of the text you supplied. Confidence: '+(r.confidence||'unstated')+'.'+(r.notes?' '+r.notes:''); tiShowSuggestions(); }
+    catch(e){ busy(true,'<b style="color:#d4262c">Analysis failed:</b> '+E(e.message)); }
+  };
+  function tiShowSuggestions(){
+    const s=STATE._tiSuggest||[];
+    document.getElementById('ti-ai-slot').innerHTML=`<div class="panel" style="padding:16px 18px;margin-bottom:16px;border-left:4px solid #0b1f3a;"><div class="panel-head"><h3>AI suggestions: review before adding</h3><button class="btn-small" onclick="document.getElementById('ti-ai-slot').innerHTML=''">Close</button></div>
+      <p style="font-size:12px;color:var(--text-faint);margin-bottom:12px;">${E(STATE._tiCaveat||'')}</p>
+      ${s.length?s.map((t,i)=>{ const sc=(+t.likelihood||0)*(+t.impact||0); return `<div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;"><div style="display:flex;justify-content:space-between;gap:10px;"><b>${E(t.title)}</b><span style="font-weight:800;color:${scoreColour(sc)}">${sc||'-'}</span></div>
+      <div style="font-size:11.5px;color:var(--text-faint);margin:2px 0 6px;">${E(t.category||'')}${t._rel===false?' · AI judges this NOT relevant to you':''}</div>
+      <p style="font-size:12.5px;margin:0 0 6px;">${E(t.description||'')}</p>${t.why_relevant?`<p style="font-size:12.5px;margin:0 0 6px;"><b>Why it matters here:</b> ${E(t.why_relevant)}</p>`:''}
+      <p style="font-size:12.5px;margin:0 0 6px;"><b>Actions:</b> ${E(t.recommended_actions||'')}${t._deadline?' <i>('+E(t._deadline)+')</i>':''}</p><p style="font-size:11.5px;color:var(--text-faint);margin:0 0 8px;">Controls: ${E((t.soa_controls||[]).join(', ')||'none suggested')}</p>
+      <button class="btn-small primary" onclick="tiAdd(${i})">Add to register</button> <button class="btn-small" onclick="STATE._tiSuggest.splice(${i},1);tiShowSuggestions()">Dismiss</button></div>`; }).join(''):'<p style="font-size:13px;">Nothing further to suggest.</p>'}</div>`;
+  }
+  window.tiAdd=async function(i){
+    const t=STATE._tiSuggest[i]; if(!t) return; const valid=new Set((window.SOA_CONTROLS||[]).map(c=>c.ref));
+    const row={organisation_id:STATE.org.id,title:String(t.title||'Untitled threat').slice(0,200),category:t.category||'Other',description:t.description||'',why_relevant:t.why_relevant||'',likelihood:Math.min(5,Math.max(1,+t.likelihood||3)),impact:Math.min(5,Math.max(1,+t.impact||3)),early_warning_signs:t.early_warning_signs||'',recommended_actions:t.recommended_actions||'',soa_control_refs:(t.soa_controls||[]).filter(r=>valid.has(r)),source:t._src||'ai_briefing',source_text:t._adv||null,status:'new',due_date:null,created_by:STATE.user.id};
+    const names=(t.affected_assets||[]).map(n=>String(n).toLowerCase().trim()); const matched=(STATE.infoAssets||[]).filter(a=>names.includes(String(a.name).toLowerCase().trim())).map(a=>a.id);
+    let { error }=await STATE.supabase.from('threat_intel_items').insert(Object.assign({},row,{asset_ids:matched}));
+    if(error&&/column|schema cache/i.test(error.message||'')) ({ error }=await STATE.supabase.from('threat_intel_items').insert(row));
+    if(error){ toast(tableMissing(error)?'Run qashe-watchman-schema-threat-intel.sql first.':'Could not add: '+error.message,'error'); return; }
+    STATE._tiSuggest.splice(i,1); await loadTi(); tiRenderTable(); tiShowSuggestions(); toast('Added to the register. Please review it.','success');
+  };
+  window.tiEdit=function(id){
+    const t=STATE.threats.find(x=>x.id===id)||{status:'new',likelihood:3,impact:3,soa_control_refs:[]}; const n=(v,sel)=>[1,2,3,4,5].map(k=>`<option ${k===(v||3)?'selected':''}>${k}</option>`).join('');
+    const risks=(STATE.risks||[]).map(r=>`<option value="${r.id}" ${r.id===t.linked_risk_id?'selected':''}>${E((r.ref_code?r.ref_code+': ':'')+(r.title||''))}</option>`).join('');
+    document.getElementById('ti-edit-slot').innerHTML=`<div class="detail-panel" style="margin-bottom:16px;" id="ti-edit-panel"><div class="detail-head"><div><h3>${id?'Threat':'Add a threat'}</h3></div><button class="close-btn" onclick="document.getElementById('ti-edit-slot').innerHTML=''"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="form-grid"><div class="field span2"><label>Title</label><input id="tie-title" value="${E(t.title||'')}"></div><div class="field"><label>Category</label><input id="tie-cat" value="${E(t.category||'')}"></div>
+    <div class="field span3"><label>Description</label><textarea id="tie-desc">${E(t.description||'')}</textarea></div>
+    <div class="field span3"><label>Why it matters to us</label><textarea id="tie-why">${E(t.why_relevant||'')}</textarea></div>
+    <div class="field"><label>Likelihood (1 to 5)</label><select id="tie-l">${n(t.likelihood)}</select></div><div class="field"><label>Impact (1 to 5)</label><select id="tie-i">${n(t.impact)}</select></div>
+    <div class="field"><label>Status</label><select id="tie-st">${TI_STATUS.map(s=>`<option value="${s[0]}" ${s[0]===t.status?'selected':''}>${s[1]}</option>`).join('')}</select></div>
+    <div class="field span3"><label>Actions</label><textarea id="tie-act">${E(t.recommended_actions||'')}</textarea></div>
+    <div class="field span3"><label>Early warning signs</label><input id="tie-ews" value="${E(t.early_warning_signs||'')}"></div>
+    <div class="field"><label>Owner</label><select id="tie-own"><option value="">Unassigned</option>${memberOptions(t.owner_id)}</select></div><div class="field"><label>Action due</label><input type="date" id="tie-due" value="${t.due_date||''}"></div>
+    <div class="field"><label>Linked risk in the register</label><select id="tie-risk"><option value="">None</option>${risks}</select></div>
+    <div class="field span3"><label>Information assets affected</label>${checkboxMultiSelect('tie-ast',(STATE.infoAssets||[]).map(a=>({id:a.id,label:E(a.name)})),t.asset_ids||[])}</div>
+    <div class="field span3"><label>Controls involved (Statement of Applicability)</label>${checkboxMultiSelect('tie-ctl',(window.SOA_CONTROLS||[]).map(c=>({id:c.ref,label:c.ref+' '+E(c.title)})),t.soa_control_refs||[])}</div>
+    ${t.source_text?`<div class="field span3"><label>Source text analysed</label><textarea readonly style="min-height:90px;">${E(t.source_text)}</textarea></div>`:''}
+    ${t.source&&t.source.startsWith('ai')?`<div class="field span3"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="tie-rev" style="width:auto;" ${t.reviewed_at?'checked':''}> I have reviewed this AI-assisted item and confirm it is accurate and relevant${t.reviewed_at?' (reviewed '+fmtDate(String(t.reviewed_at).slice(0,10))+')':''}</label></div>`:''}</div>
+    <div id="ti-tasks" style="margin:6px 0 12px;"></div>
+    <div class="form-actions">${id?`<button class="btn-small" onclick="tiCreateTask('${id}')">Create a task from this</button>`:''}${id&&isAdmin()?`<button class="btn-small" style="margin-right:auto" onclick="tiDelete('${id}')">Delete</button>`:''}<button class="btn-cancel" onclick="document.getElementById('ti-edit-slot').innerHTML=''">Cancel</button><button class="btn-primary" onclick="tiSave('${id}')">Save</button></div></div>`;
+    try{ window.tiAfterEdit&&window.tiAfterEdit(id); }catch(e){}
+    document.getElementById('ti-edit-slot').scrollIntoView({behavior:'smooth',block:'start'});
+  };
+  window.tiSave=async function(id){
+    const title=document.getElementById('tie-title').value.trim(); if(!title){ toast('Give the threat a title.','error'); return; }
+    const old=STATE.threats.find(x=>x.id===id); const rev=document.getElementById('tie-rev');
+    const row={organisation_id:STATE.org.id,title,category:document.getElementById('tie-cat').value.trim(),description:document.getElementById('tie-desc').value.trim(),why_relevant:document.getElementById('tie-why').value.trim(),likelihood:+document.getElementById('tie-l').value,impact:+document.getElementById('tie-i').value,status:document.getElementById('tie-st').value,recommended_actions:document.getElementById('tie-act').value.trim(),early_warning_signs:document.getElementById('tie-ews').value.trim(),owner_id:document.getElementById('tie-own').value||null,due_date:document.getElementById('tie-due').value||null,linked_risk_id:document.getElementById('tie-risk').value||null,soa_control_refs:getCheckedValues('tie-ctl')};
+    const aids=getCheckedValues('tie-ast');
+    if(rev){ if(rev.checked){ if(!(old&&old.reviewed_at)){ row.reviewed_at=new Date().toISOString(); row.reviewed_by=STATE.user.id; } } else { row.reviewed_at=null; row.reviewed_by=null; } }
+    if(!id){ row.source='manual'; row.created_by=STATE.user.id; }
+    const run=async r=>{ const q=STATE.supabase.from('threat_intel_items'); return id?await q.update(r).eq('id',id):await q.insert(r); };
+    let { error }=await run(Object.assign({},row,{asset_ids:aids}));
+    if(error&&/column|schema cache/i.test(error.message||'')){ ({ error }=await run(row)); if(!error) toast('Saved, but the asset link needs qashe-watchman-schema-linking.sql.','error'); }
+    if(error){ toast(tableMissing(error)?'Run qashe-watchman-schema-threat-intel.sql first.':'Could not save: '+error.message,'error'); return; }
+    document.getElementById('ti-edit-slot').innerHTML=''; await loadTi(); tiRenderTable(); toast('Threat saved.','success');
+  };
+  window.tiDelete=async function(id){ if(!confirm('Delete this threat entry?')) return; const { error }=await STATE.supabase.from('threat_intel_items').delete().eq('id',id); if(error){ toast('Could not delete: '+error.message,'error'); return; } document.getElementById('ti-edit-slot').innerHTML=''; await loadTi(); tiRenderTable(); };
+  window.tiExport=async function(){ const rows=STATE.threats.map(t=>({'Threat':t.title,'Category':t.category,'Likelihood':t.likelihood,'Impact':t.impact,'Score':score(t),'Status':tiLabel(t.status),'Owner':t.owner_id?memberName(t.owner_id):'','Due':t.due_date,'Actions':t.recommended_actions,'Controls':(t.soa_control_refs||[]).join('; '),'Source':t.source==='manual'?'Manual':'AI-assisted','Human reviewed':t.reviewed_at?'Yes':'No'})); const XLSX=await ensureXLSX(); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Threat register'); XLSX.writeFile(wb,'Threat-Intelligence-Register.xlsx'); };
+
+  /* ---------------- Risk treatment plan (from the Statement of Applicability) ---------------- */
+  function addTreatmentButton(){
+    const tb=document.querySelector('#soa-root .toolbar'); if(!tb||document.getElementById('soa-rtp-btn')) return;
+    tb.insertAdjacentHTML('beforeend','<button class="btn-small" id="soa-rtp-btn" onclick="soaTreatmentPlan()">Risk treatment plan</button>');
+  }
+  window.soaTreatmentPlan=function(){
+    const rows=(window.SOA_CONTROLS||[]).map(c=>{ const r=(STATE.soa||[]).find(x=>x.control_ref===c.ref)||{}; return {c,applicable:r.applicable!==false,status:r.status||'not_started',owner:r.owner_id?memberName(r.owner_id):'',target:r.review_date||'',risks:(r.risk_ids||[]).map(id=>{ const k=(STATE.risks||[]).find(x=>x.id===id); return k?(k.ref_code||k.title):''; }).filter(Boolean),just:r.justification||''}; }).filter(x=>x.applicable&&!['implemented','effective'].includes(x.status));
+    const lbl={not_started:'Not started',planned:'Planned',partial:'Partly implemented'}; const w=window.open('','_blank'); if(!w){ toast('Allow pop-ups to print.','error'); return; }
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Information Security Risk Treatment Plan</title><style>body{font-family:Arial,Helvetica,sans-serif;font-size:11px;margin:24px;color:#111}h1{font-size:20px;margin:0}table{border-collapse:collapse;width:100%;margin-top:14px}th,td{border:1px solid #bbb;padding:5px 6px;vertical-align:top;text-align:left}th{background:#0b1f3a;color:#fff}.sig{margin-top:40px;display:flex;gap:60px}.sig div{border-top:1px solid #111;padding-top:4px;width:240px}</style></head><body><h1>Information Security Risk Treatment Plan</h1><p>${E(STATE.org.name)}: treatment of applicable ISO/IEC 27002:2022 controls not yet implemented, per the Statement of Applicability. Prepared ${new Date().toISOString().slice(0,10)}. ${rows.length} controls outstanding.</p>
+    <table><tr><th>Control</th><th>Status</th><th>Linked risks</th><th>Treatment owner</th><th>Target date</th><th>Notes</th></tr>${rows.map(x=>`<tr><td><b>${x.c.ref}</b> ${E(x.c.title)}</td><td>${lbl[x.status]||x.status}</td><td>${E(x.risks.join(', '))||'<i>None linked</i>'}</td><td>${E(x.owner)||'<i>Unassigned</i>'}</td><td>${x.target||'<i>Not set</i>'}</td><td>${E(x.just)}</td></tr>`).join('')}</table>
+    <p style="margin-top:14px;">Residual risk accepted by the risk owners on completion of the treatments above.</p><div class="sig"><div>Risk owner: name, signature, date</div><div>Top management: name, signature, date</div></div><script>setTimeout(function(){window.print()},400)<\/script></body></html>`); w.document.close();
+  };
+})();
+
+
+/* ===== b31: linking pass: asset, risk and control backlinks, tasks, due-date tracking, Overview panel ===== */
+(function(){
+  const E=s=>escapeHtml(String(s==null?'':s));
+  const soaRows=()=>STATE.soa||[]; const refTitle=ref=>{ const c=(window.SOA_CONTROLS||[]).find(x=>x.ref===ref); return c?ref+' '+c.title:ref; };
+  const chip=(label,onclick)=>`<span class="linked-task-chip" style="cursor:pointer;margin:0 6px 6px 0;display:inline-block;" onclick="${onclick}">${label}</span>`;
+  const head=t=>`<div style="font-family:Arial,Helvetica,sans-serif;font-size:10px;color:var(--text-faint);text-transform:uppercase;margin:8px 0 6px;">${t}</div>`;
+  const none=t=>`<p style="font-size:12.5px;color:var(--text-faint);margin:0 0 6px;">${t}</p>`;
+
+  /* ---------- loaders (once per organisation, quietly) ---------- */
+  async function loadThreatsData(){ const r=await STATE.supabase.from('threat_intel_items').select('*').eq('organisation_id',STATE.org.id).order('created_at',{ascending:false}); STATE.threats=r.error?[]:(r.data||[]); }
+  window.loadThreatsData=loadThreatsData;
+  async function loadIsmsData(){
+    if(!STATE.org||STATE._ismsFor===STATE.org.id) return; STATE._ismsFor=STATE.org.id;
+    try{ const a=await STATE.supabase.from('soa_controls').select('*').eq('organisation_id',STATE.org.id); STATE.soa=a.error?[]:(a.data||[]); }catch(e){}
+    try{ await loadThreatsData(); }catch(e){}
+    try{ const r=await STATE.supabase.from('information_assets').select('*').eq('organisation_id',STATE.org.id); STATE.infoAssets=r.error?[]:(r.data||[]); }catch(e){}
+  }
+  const _lnc2=loadNCs; window.loadNCs=loadNCs=async function(){ const r=await _lnc2.apply(this,arguments); loadIsmsData(); return r; };
+
+  /* ---------- due dates feed the Reminders pop-up and "needs attention" panels ---------- */
+  if(typeof DATE_TRACKED_MODULES!=='undefined'){
+    DATE_TRACKED_MODULES.push(
+      {key:'threat_intel',label:'Threat Intelligence: Actions Due',list:()=>STATE.threats||[],dateField:'due_date',isResolved:x=>['closed','accepted'].includes(x.status),titleField:'title',getPerson:x=>memberName(x.owner_id)},
+      {key:'soa',label:'Statement of Applicability: Control Reviews',list:()=>soaRows().filter(r=>r.applicable!==false&&r.review_date).map(r=>Object.assign({},r,{title:refTitle(r.control_ref)})),dateField:'review_date',isResolved:()=>false,titleField:'title',getPerson:x=>x.owner_id?memberName(x.owner_id):'Unassigned'},
+      {key:'nonconformances',label:'Security Incidents: POPIA Notification Outstanding',list:()=>(STATE.secIncidents||[]).filter(s=>s.personal_info_involved&&(!s.regulator_notified_at||!s.subjects_notified_at)).map(s=>{ const n=(STATE.ncs||[]).find(x=>x.id===s.nonconformance_id)||{}; return Object.assign({},s,{title:(n.ref_code||'Incident')+': '+(n.title||''),_d:(s.detected_at||s.created_at||'').slice(0,10)}); }),dateField:'_d',isResolved:()=>false,titleField:'title',getPerson:x=>{ const n=(STATE.ncs||[]).find(y=>y.id===x.nonconformance_id); return n?memberName(n.owner_id):'-'; }}
+    );
+  }
+
+  /* ---------- tasks created from threats and controls ---------- */
+  const addDays=n=>{ const d=new Date(); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
+  async function makeTask(o){
+    const { error }=await STATE.supabase.from('tasks').insert({organisation_id:STATE.org.id,title:o.title.slice(0,120),description:o.description||'',linked_type:o.type,linked_id:o.id,assignee_id:o.assignee||STATE.user.id,priority:o.priority||'medium',due_date:o.due||addDays(14),created_by:STATE.user.id});
+    if(error){ toast('Could not create the task: '+error.message,'error'); return false; }
+    try{ await loadTasks(); }catch(e){} toast('Task created and linked.','success'); return true;
+  }
+  const tasksFor=(type,id)=>(STATE.tasks||[]).filter(t=>t.linked_type===type&&t.linked_id===id);
+  const taskChips=(type,id)=>{ const l=tasksFor(type,id); return head('Linked tasks')+(l.length?l.map(t=>chip(E(t.title)+' ('+(t.status==='done'?'done':'due '+fmtDate(t.due_date))+')',"showModule('tasks')")).join(''):none('No tasks yet.')); };
+  window.tiCreateTask=async function(id){
+    const t=(STATE.threats||[]).find(x=>x.id===id); if(!t) return;
+    const sc=(t.likelihood||0)*(t.impact||0);
+    if(await makeTask({title:'Threat action: '+t.title,description:t.recommended_actions||t.description||'',type:'threat',id:t.id,assignee:t.owner_id,priority:sc>=15?'high':'medium',due:t.due_date})){ window.tiAfterEdit(id); }
+  };
+  window.tiAfterEdit=function(id){ const el=document.getElementById('ti-tasks'); if(el&&id) el.innerHTML=taskChips('threat',id); };
+  window.soaCreateTask=async function(ref){
+    const r=soaRows().find(x=>x.control_ref===ref); if(!r||!r.id){ toast('Save the control first, then create the task.','error'); return; }
+    if(await makeTask({title:'Implement control '+refTitle(ref),description:r.justification||'',type:'soa_control',id:r.id,assignee:r.owner_id,priority:'medium',due:r.review_date})){ window.soaEdit(ref); }
+  };
+
+  /* ---------- Statement of Applicability: where each control is used ---------- */
+  window.soaAfterEdit=function(ref){
+    const panel=document.getElementById('soa-edit-panel'); if(!panel) return;
+    const row=soaRows().find(x=>x.control_ref===ref)||{};
+    const inc=(STATE.secIncidents||[]).filter(s=>(s.soa_control_refs||[]).includes(ref)); const thr=(STATE.threats||[]).filter(t=>(t.soa_control_refs||[]).includes(ref));
+    const ncOf=s=>(STATE.ncs||[]).find(n=>n.id===s.nonconformance_id)||{};
+    const warn=inc.length&&['implemented','effective'].includes(row.status)?`<div style="padding:10px 12px;border-radius:8px;background:#fff4e5;color:#7a4300;font-size:12.5px;margin-bottom:10px;"><b>Review effectiveness:</b> this control is marked implemented, yet ${inc.length} security incident${inc.length>1?'s cite':' cites'} it as failed or weak. Re-test it and record the outcome.</div>`:'';
+    const card=document.createElement('div'); card.id='soa-used'; card.style.cssText='margin:6px 0 12px;';
+    card.innerHTML=warn+head('Security incidents citing this control')+(inc.length?inc.map(s=>{ const n=ncOf(s); return chip(E((n.ref_code||'Incident')+': '+(n.title||'')),`showModule('nonconformances');setTimeout(()=>openNCDetail('${s.nonconformance_id}'),400)`); }).join(''):none('None.'))
+      +head('Threats citing this control')+(thr.length?thr.map(t=>chip(E(t.title),"showModule('threat_intel');setTimeout(()=>tiEdit('"+t.id+"'),500)")).join(''):none('None.'))
+      +head('Audit findings and clauses')+'<div id="soa-find">'+none('Looking…')+'</div>'
+      +(row.id?taskChips('soa_control',row.id):'');
+    const acts=panel.querySelector('.form-actions'); panel.insertBefore(card,acts);
+    if(acts&&row.id) acts.insertAdjacentHTML('afterbegin',`<button class="btn-small" onclick="soaCreateTask('${ref}')">Create a task for this control</button>`);
+    // audit findings whose clause reference quotes this control number
+    (async()=>{ const ids=(STATE.audits||[]).map(a=>a.id); const el=document.getElementById('soa-find'); if(!el) return; if(!ids.length){ el.innerHTML=none('None.'); return; }
+      try{ const { data }=await STATE.supabase.from('audit_findings').select('id,audit_id,clause_reference,finding_type').in('audit_id',ids);
+        const hit=(data||[]).filter(f=>f.clause_reference&&new RegExp('(^|[^0-9.])'+ref.replace(/\./g,'\\.')+'([^0-9]|$)','i').test(f.clause_reference)||f.clause_reference&&f.clause_reference.replace(/^A\./i,'').trim()===ref.replace(/^A\./,''));
+        el.innerHTML=hit.length?hit.map(f=>{ const a=(STATE.audits||[]).find(x=>x.id===f.audit_id)||{}; return chip(E((a.audit_ref||'Audit')+': '+f.finding_type.replace('_',' ')+' at '+f.clause_reference),"showModule('audits')"); }).join(''):none('None. Quote the control number (for example '+ref+') in the clause field of an audit finding to link it here.'); }catch(e){ el.innerHTML=none('Not available.'); } })();
+  };
+  window.soaDecorate=function(){
+    document.querySelectorAll('#soa-table-wrap tr.clickable').forEach(tr=>{
+      const m=(tr.getAttribute('onclick')||'').match(/'([^']+)'/); if(!m) return; const ref=m[1];
+      const i=(STATE.secIncidents||[]).filter(s=>(s.soa_control_refs||[]).includes(ref)).length, t=(STATE.threats||[]).filter(x=>(x.soa_control_refs||[]).includes(ref)).length;
+      const td=tr.querySelector('td'); if(!td||td.querySelector('.soa-mk')||!(i||t)) return;
+      td.insertAdjacentHTML('beforeend',` <span class="soa-mk" style="font-size:10.5px;color:#7a4300;background:#fff4e5;border-radius:10px;padding:1px 8px;">${i?i+' incident'+(i>1?'s':''):''}${i&&t?', ':''}${t?t+' threat'+(t>1?'s':''):''}</span>`);
+    });
+  };
+  // security incident card: controls become clickable links into the Statement of Applicability
+  const _ond2=openNCDetail; window.openNCDetail=openNCDetail=async function(id){
+    await _ond2.apply(this,arguments);
+    const s=(STATE.secIncidents||[]).find(x=>x.nonconformance_id===id); const card=document.getElementById('sec-inc-card'); if(!card||!s||!(s.soa_control_refs||[]).length) return;
+    card.insertAdjacentHTML('beforeend',head('Controls cited: open in the Statement of Applicability')+s.soa_control_refs.map(r=>chip(E(refTitle(r)),`showModule('soa');setTimeout(()=>soaEdit('${r}'),600)`)).join(''));
+  };
+
+  /* ---------- Information Asset Register: import, backlinks ---------- */
+  window.iaImportAssets=async function(){
+    const linked=new Set((STATE.infoAssets||[]).map(a=>a.maintenance_asset_id).filter(Boolean));
+    const todo=(STATE.assets||[]).filter(a=>a.lifecycle_status!=='disposed'&&!linked.has(a.id));
+    if(!todo.length){ toast('Every active asset is already in the register.','success'); return; }
+    if(!confirm('Add '+todo.length+' asset'+(todo.length>1?'s':'')+' from Assets and Maintenance to the Information Asset Register? You can set the classification and owner afterwards.')) return;
+    const rows=todo.map(a=>({organisation_id:STATE.org.id,name:(a.ref_code?a.ref_code+': ':'')+(a.description||'Asset'),asset_type:'Hardware or device',classification:'Internal',c_value:2,i_value:2,a_value:2,criticality:2,location:a.location||'',maintenance_asset_id:a.id,personal_info:false}));
+    let { error }=await STATE.supabase.from('information_assets').insert(rows);
+    if(error){ toast(/column|schema cache/i.test(error.message||'')?'Run qashe-watchman-schema-linking.sql first.':'Could not import: '+error.message,'error'); return; }
+    toast(rows.length+' asset'+(rows.length>1?'s':'')+' imported.','success'); showModule('info_assets');
+  };
+  window.iaAfterEdit=function(id){
+    const el=document.getElementById('ia-backlinks'); if(!el||!id) return;
+    const thr=(STATE.threats||[]).filter(t=>(t.asset_ids||[]).includes(id)); const a=(STATE.infoAssets||[]).find(x=>x.id===id)||{};
+    el.innerHTML=head('Threats affecting this asset')+(thr.length?thr.map(t=>chip(E(t.title),"showModule('threat_intel');setTimeout(()=>tiEdit('"+t.id+"'),500)")).join(''):none('None logged.'))
+      +(a.maintenance_asset_id?head('Maintenance record')+chip('Open in Assets and Maintenance',"showModule('assets');setTimeout(()=>openAssetDetail('"+a.maintenance_asset_id+"'),500)"):'');
+  };
+  // Assets and Maintenance: show or create the information-asset record
+  const _oad=openAssetDetail; window.openAssetDetail=openAssetDetail=async function(id){
+    await _oad.apply(this,arguments);
+    const panel=document.querySelector('#asset-detail-slot .detail-panel'); if(!panel) return;
+    if(STATE._ismsFor!==STATE.org.id) await loadIsmsData();
+    const ia=(STATE.infoAssets||[]).find(x=>x.maintenance_asset_id===id);
+    const thr=ia?(STATE.threats||[]).filter(t=>(t.asset_ids||[]).includes(ia.id)):[];
+    const d=document.createElement('div'); d.className='detail-card'; d.id='asset-ia-card';
+    d.innerHTML=`<div class="panel-head"><h3>Information security</h3></div>`+(ia?`<p style="font-size:12.5px;margin:0 0 8px;">In the Information Asset Register as <b>${E(ia.name)}</b>, classified ${E(ia.classification||'Internal')}${(ia.risk_ids||[]).length?', exposed to '+ia.risk_ids.length+' risk(s)':''}.</p>`+chip('Open the register record',"showModule('info_assets');setTimeout(()=>iaEdit('"+ia.id+"'),500)")+(thr.length?head('Threats affecting it')+thr.map(t=>chip(E(t.title),"showModule('threat_intel');setTimeout(()=>tiEdit('"+t.id+"'),500)")).join(''):'')
+      :`<p style="font-size:12.5px;color:var(--text-faint);margin:0 0 8px;">This asset is not in the Information Asset Register yet.</p><button class="btn-small primary" onclick="iaFromAsset('${id}')">Add to the Information Asset Register</button>`);
+    panel.appendChild(d);
+  };
+  window.iaFromAsset=async function(id){
+    const a=(STATE.assets||[]).find(x=>x.id===id); if(!a) return;
+    const { error }=await STATE.supabase.from('information_assets').insert({organisation_id:STATE.org.id,name:(a.ref_code?a.ref_code+': ':'')+(a.description||'Asset'),asset_type:'Hardware or device',classification:'Internal',c_value:2,i_value:2,a_value:2,criticality:2,location:a.location||'',maintenance_asset_id:a.id,personal_info:false});
+    if(error){ toast(/column|schema cache/i.test(error.message||'')?'Run qashe-watchman-schema-linking.sql first.':'Could not add: '+error.message,'error'); return; }
+    STATE._ismsFor=null; await loadIsmsData(); toast('Added to the Information Asset Register.','success'); openAssetDetail(id);
+  };
+
+  /* ---------- Risk detail: what is linked to this risk from information security ---------- */
+  const _ord=openRiskDetail; window.openRiskDetail=openRiskDetail=async function(id){
+    await _ord.apply(this,arguments);
+    const panel=document.querySelector('#risk-detail-slot .detail-panel'); if(!panel) return;
+    if(STATE._ismsFor!==STATE.org.id) await loadIsmsData();
+    const ctl=soaRows().filter(r=>(r.risk_ids||[]).includes(id)); const thr=(STATE.threats||[]).filter(t=>t.linked_risk_id===id); const ast=(STATE.infoAssets||[]).filter(a=>(a.risk_ids||[]).includes(id));
+    if(!ctl.length&&!thr.length&&!ast.length) return;
+    const d=document.createElement('div'); d.style.cssText='margin-top:14px;';
+    d.innerHTML=head('Information security links')+ctl.map(r=>chip('Control '+E(refTitle(r.control_ref)),`showModule('soa');setTimeout(()=>soaEdit('${r.control_ref}'),600)`)).join('')
+      +thr.map(t=>chip('Threat: '+E(t.title),"showModule('threat_intel');setTimeout(()=>tiEdit('"+t.id+"'),500)")).join('')
+      +ast.map(a=>chip('Asset: '+E(a.name),"showModule('info_assets');setTimeout(()=>iaEdit('"+a.id+"'),500)")).join('');
+    panel.appendChild(d);
+  };
+
+  /* ---------- Overview: information security at a glance ---------- */
+  function ismsPanel(){
+    const soa=soaRows(); const app=(window.SOA_CONTROLS||[]).map(c=>soa.find(r=>r.control_ref===c.ref)||{applicable:true,status:'not_started'}).filter(r=>r.applicable!==false);
+    const done=app.filter(r=>['implemented','effective'].includes(r.status)).length; const pct=app.length&&soa.length?Math.round(done/app.length*100):null;
+    const th=(STATE.threats||[]).filter(t=>!['closed','accepted'].includes(t.status)); const hi=th.filter(t=>(t.likelihood||0)*(t.impact||0)>=15).length; const unrev=(STATE.threats||[]).filter(t=>String(t.source||'').startsWith('ai')&&!t.reviewed_at).length;
+    const inc=(STATE.secIncidents||[]).filter(s=>{ const n=(STATE.ncs||[]).find(x=>x.id===s.nonconformance_id); return n&&n.status!=='closed'; }).length;
+    const popia=(STATE.secIncidents||[]).filter(s=>s.personal_info_involved&&(!s.regulator_notified_at||!s.subjects_notified_at)).length;
+    const noOwn=(STATE.infoAssets||[]).filter(a=>!a.owner_id).length;
+    if(!soa.length&&!(STATE.threats||[]).length&&!(STATE.secIncidents||[]).length&&!(STATE.infoAssets||[]).length) return '';
+    const k=(n,l,c,m)=>`<div onclick="showModule('${m}')" style="cursor:pointer;padding:12px 14px;border-radius:10px;border:1px solid var(--border);border-top:4px solid ${c};"><div style="font-size:24px;font-weight:800;line-height:1;">${n}</div><div style="font-size:11.5px;color:var(--text-faint);margin-top:5px;">${l}</div></div>`;
+    return `<div class="panel" id="isms-glance"><div class="panel-head"><h3 style="margin-bottom:0;">Information security at a glance</h3><button class="btn-small" onclick="showModule('soa')">Statement of Applicability</button></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:10px;">${k(pct==null?'-':pct+'%','applicable controls implemented','#2e9e5b','soa')}${k(hi,'high priority threats',hi?'#d4262c':'#2e9e5b','threat_intel')}${k(unrev,'AI threat items to review',unrev?'#f07a1a':'#2e9e5b','threat_intel')}${k(inc,'open security incidents',inc?'#f07a1a':'#2e9e5b','nonconformances')}${k(popia,'POPIA notifications outstanding',popia?'#d4262c':'#2e9e5b','nonconformances')}${k(noOwn,'information assets without an owner',noOwn?'#f07a1a':'#2e9e5b','info_assets')}</div></div>`;
+  }
+  const _sm4=showModule; showModule=function(mod){ const r=_sm4.apply(this,arguments);
+    if(mod==='overview'){ const go=()=>{ const root=document.getElementById('content-root'); if(!root||document.getElementById('isms-glance')) return; const h=ismsPanel(); if(!h) return; const grid=root.querySelector('.kpi-grid'); if(grid) grid.insertAdjacentHTML('afterend',h); else root.insertAdjacentHTML('afterbegin',h); };
+      go(); loadIsmsData().then(()=>{ const old=document.getElementById('isms-glance'); if(old) old.remove(); go(); }); }
+    return r; };
+  window.showModule=showModule;
+})();
+
+
+/* ===== b32: Governance and Ethics pack: ISO 37000 principles assessment plus governance, conflict of interest, gifts and hospitality registers (supports ISO 37001) ===== */
+(function(){
+  const E=s=>escapeHtml(String(s==null?'':s));
+  const tableMissing=e=>e&&/does not exist|relation|schema cache|Could not find/i.test(e.message||'');
+  const isAdmin=()=>STATE.myRole==='admin'||(STATE.profile&&STATE.profile.is_platform_staff);
+  STATE.govRecords=STATE.govRecords||[]; STATE.govAssess=STATE.govAssess||[];
+  const PRINCIPLES=[
+    ['purpose','Purpose','The reason the organisation exists is clear, agreed by the governing body and used to guide decisions.'],
+    ['value','Value generation','The organisation creates lasting value for itself and its stakeholders, and can show how.'],
+    ['strategy','Strategy','Strategy is set deliberately, ties back to purpose and is reviewed as conditions change.'],
+    ['oversight','Oversight','The governing body oversees performance and conduct with reliable information and sufficient independence.'],
+    ['accountability','Accountability','Anyone holding authority answers for how it is used, and roles and delegations are clear.'],
+    ['stakeholders','Stakeholder engagement','Stakeholder needs and views are understood and fairly weighed in decisions.'],
+    ['leadership','Leadership','Capable, ethical leadership sets the culture and models the behaviour expected of everyone.'],
+    ['data','Data and decisions','Decisions rest on dependable, timely data and sound analysis.'],
+    ['risk','Risk governance','Risk appetite is set and risk is overseen as part of governance, not left to operations.'],
+    ['society','Social responsibility','The organisation understands and manages its effect on society and the environment.'],
+    ['viability','Viability and performance over time','The organisation stays viable and performs today and over the long term.']];
+  const LEVELS=['Not in place','Ad hoc','Defined','Managed and measured','Optimised'];
+  const lvlColour=n=>['#d4262c','#f07a1a','#e0a100','#2e9e5b','#1b7a43'][n]||'#9aa3ad';
+
+  /* ---------- generic register definitions ---------- */
+  const KINDS={
+    resolution:{tab:'Resolutions and actions',noun:'resolution',statuses:[['open','Open'],['in_progress','In progress'],['completed','Completed'],['lapsed','Lapsed']],
+      d1:'Meeting date',d2:'Action due',titleL:'Resolution',ownerL:'Action owner',
+      fields:[['forum','Forum','text','For example: Board, Executive committee, Management review'],['decision','Decision and reasons','area'],['proposed','Proposed by','text'],['seconded','Seconded by','text'],['action','Action required','area']],
+      cols:r=>[r.data.forum||'',r.owner_id?memberName(r.owner_id):'Unassigned',r.date2?fmtDate(r.date2):'-'],heads:['Forum','Action owner','Action due'],ex:['Forum','Decision','Action']},
+    delegation:{tab:'Delegations of authority',noun:'delegation',statuses:[['active','Active'],['expired','Expired'],['revoked','Revoked']],
+      d1:'Effective from',d2:'Review or expiry date',titleL:'Authority delegated',ownerL:'Delegated to',
+      fields:[['limit','Limit or threshold','text','For example: purchases up to R50,000'],['conditions','Conditions and exclusions','area'],['by','Delegated by','text'],['basis','Basis (resolution, policy or contract)','text']],
+      cols:r=>[r.owner_id?memberName(r.owner_id):'Unassigned',r.data.limit||'',r.date2?fmtDate(r.date2):'-'],heads:['Delegated to','Limit','Review or expiry'],ex:['Limit','Conditions','Delegated by','Basis']},
+    coi:{tab:'Conflicts of interest',noun:'declaration',statuses:[['declared','Declared'],['managed','Managed'],['closed','Closed']],
+      d1:'Date declared',d2:'Next review',titleL:'Nature of the interest',ownerL:'Declarant',
+      fields:[['itype','Type of interest','select',['Financial interest','Family or personal relationship','Outside directorship or employment','Gift or hospitality','Supplier or customer connection','Other']],['party','Person or entity concerned','text'],['mitigation','How it is managed (recusal, disclosure, approval)','area']],
+      cols:r=>[r.owner_id?memberName(r.owner_id):'Unassigned',r.data.itype||'',r.date2?fmtDate(r.date2):'-'],heads:['Declarant','Type','Next review'],ex:['Type','Concerned','Management']},
+    gift:{tab:'Gifts and hospitality',noun:'entry',statuses:[['pending','Awaiting approval'],['approved','Approved'],['declined','Declined'],['returned','Returned or refused']],
+      d1:'Date',d2:null,titleL:'Description of gift or hospitality',ownerL:'Person involved',
+      fields:[['dir','Given or received','select',['Received','Given']],['party','Counterparty','text'],['value','Estimated value (R)','number'],['reason','Business reason','area'],['approver','Approved by','text']],
+      cols:r=>[r.owner_id?memberName(r.owner_id):'Unassigned',(r.data.dir||'')+(r.data.party?' : '+r.data.party:''),r.data.value!=null&&r.data.value!==''?'R '+r.data.value:'-'],heads:['Person','Direction and counterparty','Value'],ex:['Direction','Counterparty','Value','Reason','Approver']},
+    stakeholder:{tab:'Stakeholders',noun:'stakeholder',statuses:[['active','Active'],['dormant','Dormant']],
+      d1:'Last engaged',d2:'Next engagement',titleL:'Stakeholder',ownerL:'Relationship owner',
+      fields:[['cat','Category','select',['Customers','Owners and shareholders','Employees','Suppliers and partners','Regulators and government','Community','Lenders and insurers','Other']],['needs','Needs and expectations','area'],['method','Engagement method and frequency','text']],
+      cols:r=>[r.data.cat||'',r.owner_id?memberName(r.owner_id):'Unassigned',r.date2?fmtDate(r.date2):'-'],heads:['Category','Owner','Next engagement'],ex:['Category','Needs','Method']}};
+  const kindsOrder=['resolution','delegation','coi','gift','stakeholder'];
+  const giftThreshold=()=>{ try{ return +localStorage.getItem('wm_gift_thr_'+STATE.org.id)||1000; }catch(e){ return 1000; } };
+  const stLabel=(k,v)=>((KINDS[k].statuses.find(s=>s[0]===v))||[0,v])[1];
+
+  /* ---------- loading ---------- */
+  async function loadGov(){
+    const a=await STATE.supabase.from('gov_records').select('*').eq('organisation_id',STATE.org.id).order('created_at',{ascending:false});
+    STATE._govMissing=!!(a.error&&tableMissing(a.error)); STATE.govRecords=a.error?[]:(a.data||[]).map(r=>Object.assign({data:{}},r,{data:r.data||{}}));
+    const b=await STATE.supabase.from('gov_assessments').select('*').eq('organisation_id',STATE.org.id).order('created_at',{ascending:false}); STATE.govAssess=b.error?[]:(b.data||[]);
+  }
+  window.loadGovData=loadGov;
+  const _lnc3=loadNCs; window.loadNCs=loadNCs=async function(){ const r=await _lnc3.apply(this,arguments); if(STATE.org&&STATE._govFor!==STATE.org.id){ STATE._govFor=STATE.org.id; loadGov().catch(()=>{}); } return r; };
+
+  /* ---------- navigation ---------- */
+  const anchor=document.querySelector('.nav-item[data-mod="threat_intel"]')||document.querySelector('.nav-item[data-mod="soa"]');
+  if(anchor&&!document.querySelector('.nav-item[data-mod="governance"]')) anchor.insertAdjacentHTML('afterend','<div class="nav-item" data-mod="governance" onclick="showModule(\'governance\')"><svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V10M10 21V10M14 21V10M19 21V10M2 10l10-6 10 6z"/></svg> Governance and Ethics</div>');
+  MODULE_META.governance={title:'Governance and Ethics',sub:()=>'ISO 37000 principles assessment, resolutions, delegations of authority, conflicts of interest, gifts and hospitality and stakeholders: evidence for ISO 37000 and your anti-bribery controls.'};
+  RENDERERS.governance=()=>'<div id="gov-root"></div>';
+  const _sm5=showModule; showModule=function(mod){ const r=_sm5.apply(this,arguments); if(mod==='governance') renderGov(); return r; }; window.showModule=showModule;
+  if(typeof STATE._govTab!=='string'||!STATE._govTab) STATE._govTab='principles';
+  window.govTab=function(t){ STATE._govTab=t; renderGov(true); };
+
+  /* ---------- page shell ---------- */
+  async function renderGov(noReload){
+    const root=document.getElementById('gov-root'); if(!root) return;
+    if(!noReload){ root.innerHTML='<p style="padding:24px;color:var(--text-faint);">Loading…</p>'; await loadGov(); }
+    const today=new Date().toISOString().slice(0,10), yr=new Date().getFullYear(); const R=k=>STATE.govRecords.filter(r=>r.kind===k);
+    const overDel=R('delegation').filter(r=>r.status==='active'&&r.date2&&r.date2<today).length;
+    const coiThisYear=R('coi').filter(r=>(r.date1||'').startsWith(String(yr))).length;
+    const openRes=R('resolution').filter(r=>['open','in_progress'].includes(r.status)).length; const overRes=R('resolution').filter(r=>['open','in_progress'].includes(r.status)&&r.date2&&r.date2<today).length;
+    const gp=R('gift').filter(r=>r.status==='pending').length; const last=STATE.govAssess.find(a=>a.status==='final'); const avg=last?avgOf(last.scores):null;
+    const t=(n,l,c)=>`<div class="panel" style="padding:14px 16px;border-top:4px solid ${c};"><div style="font-size:28px;font-weight:800;line-height:1;">${n}</div><div style="font-size:11.5px;color:var(--text-faint);margin-top:6px;">${l}</div></div>`;
+    root.innerHTML=`${STATE._govMissing?'<div class="panel" style="padding:14px 18px;border-left:4px solid #f07a1a;margin-bottom:14px;font-size:13px;">Run <b>qashe-watchman-schema-governance.sql</b> in the Supabase SQL editor, then refresh.</div>':''}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px;">${t(avg==null?'-':avg.toFixed(1)+' / 4','governance maturity (last signed assessment)',avg==null?'#9aa3ad':lvlColour(Math.round(avg)))}${t(openRes,'open resolutions',overRes?'#d4262c':'#0b1f3a')}${t(overDel,'delegations past review or expiry',overDel?'#d4262c':'#2e9e5b')}${t(coiThisYear,'conflict declarations this year','#0b1f3a')}${t(gp,'gifts awaiting approval',gp?'#f07a1a':'#2e9e5b')}</div>
+    <div class="toolbar"><div class="filters" style="flex-wrap:wrap;">${[['principles','ISO 37000 principles']].concat(kindsOrder.map(k=>[k,KINDS[k].tab])).map(x=>`<button class="btn-small ${STATE._govTab===x[0]?'primary':''}" onclick="govTab('${x[0]}')">${x[1]}</button>`).join('')}</div></div>
+    <div id="gov-body"></div>`;
+    if(STATE._govTab==='principles') renderPrinciples(); else renderRegister(STATE._govTab);
+  }
+  const avgOf=sc=>{ const v=PRINCIPLES.map(p=>((sc||{})[p[0]]||{}).score).filter(x=>x!=null&&x!==''); return v.length?v.reduce((a,b)=>a+(+b),0)/v.length:0; };
+
+  /* ---------- ISO 37000 principles assessment ---------- */
+  function radar(scores,prev){
+    const n=PRINCIPLES.length,cx=150,cy=150,R=110; const pt=(i,v)=>{ const a=-Math.PI/2+i*2*Math.PI/n; return [cx+Math.cos(a)*R*v/4,cy+Math.sin(a)*R*v/4]; };
+    const poly=sc=>PRINCIPLES.map((p,i)=>pt(i,+((sc||{})[p[0]]||{}).score||0).map(x=>x.toFixed(1)).join(',')).join(' ');
+    const rings=[1,2,3,4].map(v=>`<polygon points="${PRINCIPLES.map((p,i)=>pt(i,v).map(x=>x.toFixed(1)).join(',')).join(' ')}" fill="none" stroke="#d5dbe3" stroke-width="1"/>`).join('');
+    const labels=PRINCIPLES.map((p,i)=>{ const a=-Math.PI/2+i*2*Math.PI/n; const x=cx+Math.cos(a)*(R+16),y=cy+Math.sin(a)*(R+16); return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="9" font-family="Arial" fill="#5b6672" text-anchor="${Math.cos(a)>0.3?'start':Math.cos(a)<-0.3?'end':'middle'}" stroke="none">${i+1}</text>`; }).join('');
+    return `<svg viewBox="0 0 300 300" style="stroke:none;width:300px;height:300px;max-width:100%;">${rings}${prev?`<polygon points="${poly(prev)}" fill="#9aa3ad" fill-opacity=".18" stroke="#9aa3ad" stroke-width="1.5" stroke-dasharray="4 3"/>`:''}<polygon points="${poly(scores)}" fill="#d4262c" fill-opacity=".22" stroke="#d4262c" stroke-width="2"/>${labels}</svg>`;
+  }
+  function workingCopy(){
+    const latest=STATE.govAssess[0]; const lastFinal=STATE.govAssess.find(a=>a.status==='final');
+    if(latest&&latest.status==='draft') return {id:latest.id,name:latest.name||'',scores:JSON.parse(JSON.stringify(latest.scores||{})),prev:lastFinal&&lastFinal.id!==latest.id?lastFinal.scores:null,draft:true};
+    return {id:null,name:'Governance assessment '+new Date().getFullYear(),scores:lastFinal?JSON.parse(JSON.stringify(lastFinal.scores||{})):{},prev:lastFinal?lastFinal.scores:null,draft:false,fromFinal:!!lastFinal};
+  }
+  function renderPrinciples(){
+    const w=STATE._govWC=(STATE._govWC&&STATE._govWC.scores)?STATE._govWC:workingCopy(); const b=document.getElementById('gov-body');
+    const rows=PRINCIPLES.map((p,i)=>{ const s=w.scores[p[0]]||{}; const pv=w.prev&&w.prev[p[0]]?+w.prev[p[0]].score:null;
+      return `<tr><td style="min-width:230px;"><b>${i+1}. ${p[1]}</b><div style="font-size:11.5px;color:var(--text-faint);margin-top:2px;">${p[2]}</div></td>
+      <td><select data-gp="${p[0]}" data-f="score" onchange="govPSet(this)"><option value="">Rate</option>${LEVELS.map((l,n)=>`<option value="${n}" ${s.score!=null&&s.score!==''&&+s.score===n?'selected':''}>${n}: ${l}</option>`).join('')}</select>${pv!=null&&s.score!==''&&s.score!=null?`<div style="font-size:11px;margin-top:4px;color:${+s.score>pv?'#2e9e5b':+s.score<pv?'#d4262c':'var(--text-faint)'};">${+s.score>pv?'Up':+s.score<pv?'Down':'Same'} from ${pv}</div>`:''}</td>
+      <td><textarea data-gp="${p[0]}" data-f="evidence" oninput="govPSet(this)" style="min-height:64px;" placeholder="What evidence shows this? Documents, minutes, records">${E(s.evidence||'')}</textarea></td>
+      <td><textarea data-gp="${p[0]}" data-f="ofi" oninput="govPSet(this)" style="min-height:64px;" placeholder="Opportunity for Improvement and the intended action">${E(s.ofi||'')}</textarea></td>
+      <td><select data-gp="${p[0]}" data-f="owner" onchange="govPSet(this)"><option value="">Unassigned</option>${memberOptions(s.owner||'')}</select></td></tr>`; }).join('');
+    const hist=STATE.govAssess.filter(a=>a.status==='final');
+    b.innerHTML=`<div class="panel" style="padding:16px 18px;margin-bottom:16px;"><div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;">
+      <div id="gov-radar">${radar(w.scores,w.prev)}</div>
+      <div style="flex:1;min-width:260px;"><div class="field"><label>Assessment name</label><input id="gov-aname" value="${E(w.name)}" oninput="STATE._govWC.name=this.value"></div>
+      <p style="font-size:12.5px;margin:10px 0 4px;">Average maturity: <b id="gov-avg">${avgOf(w.scores).toFixed(1)}</b> out of 4. ${w.prev?'The dashed line is the last signed assessment.':'Sign this assessment to create your baseline.'}</p>
+      <p style="font-size:11.5px;color:var(--text-faint);margin:0 0 10px;">Rate each of the 11 principles from ISO 37000:2021 for how well your organisation applies it, and record the evidence. ISO 37000 is guidance, not a certifiable standard: this assessment is evidence of a deliberate, reviewed approach to governance. Rate honestly, an auditor will test the evidence.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn-primary" onclick="govSaveAssess(false)">Save draft</button>${isAdmin()?'<button class="btn-small" onclick="govSaveAssess(true)">Sign and issue</button>':''}<button class="btn-small" onclick="govOfiTasks()">Create tasks from Opportunities for Improvement</button><button class="btn-small" onclick="govPrintAssess()">Print / PDF</button>${w.fromFinal||w.draft?'<button class="btn-small" onclick="renderGovAgain()">Start a fresh cycle</button>':''}</div></div></div></div>
+      <div class="panel" style="padding:0;overflow:auto;margin-bottom:16px;"><table><tr><th>Principle</th><th>Maturity</th><th>Evidence</th><th>Opportunity for Improvement</th><th>Owner</th></tr>${rows}</table></div>
+      <div class="panel"><div class="panel-head"><h3>Signed assessments</h3></div>${hist.length?`<table><tr><th>Assessment</th><th>Date</th><th>Average</th><th>Signed by</th><th></th></tr>${hist.map(a=>`<tr><td>${E(a.name)}</td><td>${fmtDate((a.finalised_at||a.created_at||'').slice(0,10))}</td><td>${avgOf(a.scores).toFixed(1)} / 4</td><td>${E(a.approved_by_name||'')}</td><td><button class="btn-small" onclick="govPrintAssess('${a.id}')">View / PDF</button></td></tr>`).join('')}</table>`:'<p style="font-size:12.5px;color:var(--text-faint);padding:6px 0;">None signed yet.</p>'}</div>`;
+  }
+  window.renderGovAgain=function(){ STATE._govWC=null; STATE._govWC={id:null,name:'Governance assessment '+new Date().getFullYear(),scores:{},prev:(STATE.govAssess.find(a=>a.status==='final')||{}).scores||null,draft:false}; renderGov(true); };
+  window.govPSet=function(el){ const w=STATE._govWC; const k=el.dataset.gp; w.scores[k]=w.scores[k]||{}; w.scores[k][el.dataset.f]=el.dataset.f==='score'?(el.value===''?'':+el.value):el.value;
+    if(el.dataset.f==='score'){ document.getElementById('gov-radar').innerHTML=radar(w.scores,w.prev); document.getElementById('gov-avg').textContent=avgOf(w.scores).toFixed(1); } };
+  window.govSaveAssess=async function(final){
+    const w=STATE._govWC; if(!w) return; const unrated=PRINCIPLES.filter(p=>((w.scores[p[0]]||{}).score===''||(w.scores[p[0]]||{}).score==null)).length;
+    if(final){ if(unrated){ toast(unrated+' principle(s) are not rated yet.','error'); return; }
+      const low=PRINCIPLES.filter(p=>+w.scores[p[0]].score<=2&&!(w.scores[p[0]].ofi||'').trim()).length; if(low){ toast(low+' principle(s) rated 2 or below have no Opportunity for Improvement recorded.','error'); return; } }
+    let by=null; if(final){ by=prompt('Signed off by (name and role), for example "David Elliott, Managing Director":'); if(!by) return; }
+    const row={organisation_id:STATE.org.id,name:(w.name||'Governance assessment').trim(),scores:w.scores,average:+avgOf(w.scores).toFixed(2),status:final?'final':'draft',updated_by:STATE.user.id};
+    if(final){ row.approved_by_name=by.trim(); row.finalised_at=new Date().toISOString(); }
+    const q=STATE.supabase.from('gov_assessments'); const { error }=w.id?await q.update(row).eq('id',w.id):await q.insert(row);
+    if(error){ toast(tableMissing(error)?'Run qashe-watchman-schema-governance.sql first.':'Could not save: '+error.message,'error'); return; }
+    toast(final?'Assessment signed and issued.':'Draft saved.','success'); STATE._govWC=null; await loadGov(); renderGov(true);
+  };
+  window.govOfiTasks=async function(){
+    const w=STATE._govWC; const items=PRINCIPLES.filter(p=>(w.scores[p[0]]||{}).ofi&&String(w.scores[p[0]].ofi).trim()&&+(w.scores[p[0]].score)<=3);
+    if(!items.length){ toast('No Opportunities for Improvement to turn into tasks yet.','error'); return; } if(!confirm('Create '+items.length+' task(s), one per Opportunity for Improvement?')) return;
+    const due=new Date(); due.setDate(due.getDate()+30); let n=0;
+    for(const p of items){ const s=w.scores[p[0]]; const { error }=await STATE.supabase.from('tasks').insert({organisation_id:STATE.org.id,title:('Governance OFI: '+p[1]+': '+s.ofi).slice(0,120),description:s.ofi+(s.evidence?'\nEvidence: '+s.evidence:''),linked_type:'gov_assessment',linked_id:w.id||null,assignee_id:s.owner||STATE.user.id,priority:+s.score<=1?'high':'medium',due_date:due.toISOString().slice(0,10),created_by:STATE.user.id}); if(!error) n++; }
+    try{ await loadTasks(); }catch(e){} toast(n+' task(s) created.','success');
+  };
+  window.govPrintAssess=function(id){
+    const a=id?STATE.govAssess.find(x=>x.id===id):null; const w=STATE._govWC; const sc=a?a.scores:(w&&w.scores)||{}; const nm=a?a.name:(w&&w.name)||''; const win=window.open('','_blank'); if(!win){ toast('Allow pop-ups to print.','error'); return; }
+    win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${E(nm)}</title><style>body{font-family:Arial,Helvetica,sans-serif;font-size:11px;margin:24px;color:#111}h1{font-size:20px;margin:0}table{border-collapse:collapse;width:100%;margin-top:14px}th,td{border:1px solid #bbb;padding:5px 6px;vertical-align:top;text-align:left}th{background:#0b1f3a;color:#fff}.sig{margin-top:40px;display:flex;gap:60px}.sig div{border-top:1px solid #111;padding-top:4px;width:240px}</style></head><body><h1>${E(nm)}</h1><p>${E(STATE.org.name)}: governance maturity against the 11 principles of ISO 37000:2021. Average ${avgOf(sc).toFixed(1)} of 4.${a?' Signed by '+E(a.approved_by_name||'')+' on '+fmtDate((a.finalised_at||a.created_at||'').slice(0,10))+'.':' Working draft.'}</p>
+    <table><tr><th>Principle</th><th>Maturity</th><th>Evidence</th><th>Opportunity for Improvement</th><th>Owner</th></tr>${PRINCIPLES.map((p,i)=>{ const s=sc[p[0]]||{}; return `<tr><td><b>${i+1}. ${p[1]}</b></td><td>${s.score===''||s.score==null?'-':s.score+': '+LEVELS[+s.score]}</td><td>${E(s.evidence||'')}</td><td>${E(s.ofi||'')}</td><td>${s.owner?E(memberName(s.owner)):''}</td></tr>`; }).join('')}</table>
+    <div class="sig"><div>Chair of the governing body: name, signature, date</div><div>Managing Director: name, signature, date</div></div><script>setTimeout(function(){window.print()},400)<\/script></body></html>`); win.document.close();
+  };
+
+  /* ---------- generic registers ---------- */
+  function renderRegister(kind){
+    const K=KINDS[kind]; const rows=STATE.govRecords.filter(r=>r.kind===kind); const b=document.getElementById('gov-body'); const today=new Date().toISOString().slice(0,10);
+    const extra=kind==='gift'?`<button class="btn-small" onclick="govGiftThreshold()">Approval threshold: R ${giftThreshold()}</button>`:'';
+    b.innerHTML=`<div class="toolbar"><div class="filters"><select id="gov-fs" onchange="govRegTable('${kind}')"><option value="">All statuses</option>${K.statuses.map(s=>`<option value="${s[0]}">${s[1]}</option>`).join('')}</select></div>${extra}<button class="btn-small" onclick="govExport('${kind}')">Export Excel</button><button class="btn-primary btn-add" onclick="govEdit('${kind}','')">Add ${K.noun}</button></div>
+    <div id="gov-edit-slot"></div><div class="panel" style="padding:0;overflow:hidden;"><div id="gov-reg-table"></div></div>`; govRegTable(kind);
+    if(kind==='coi'&&!rows.some(r=>(r.date1||'').startsWith(String(new Date().getFullYear())))) b.insertAdjacentHTML('afterbegin','<div class="panel" style="padding:12px 16px;margin-bottom:12px;border-left:4px solid #f07a1a;font-size:12.5px;">No conflict of interest declarations recorded for this year. Ask every director, manager and anyone in a buying or selling role to declare, including a nil return ("no interests to declare").</div>');
+  }
+  window.govRegTable=function(kind){
+    const K=KINDS[kind]; const w=document.getElementById('gov-reg-table'); if(!w) return; const fs=(document.getElementById('gov-fs')||{}).value; const today=new Date().toISOString().slice(0,10);
+    const rows=STATE.govRecords.filter(r=>r.kind===kind&&(!fs||r.status===fs));
+    w.innerHTML=rows.length?`<table><tr><th>${K.titleL}</th>${K.heads.map(h=>`<th>${h}</th>`).join('')}<th>Status</th></tr>${rows.map(r=>{ const over=K.d2&&r.date2&&r.date2<today&&!['completed','closed','revoked','expired','lapsed','dormant','declined','returned'].includes(r.status); const flag=kind==='gift'&&r.status==='pending'&&(+r.data.value||0)>=giftThreshold()?' <span style="background:#fdeceb;color:#8a1b17;border-radius:10px;padding:1px 8px;font-size:10.5px;font-weight:700;">Above threshold</span>':''; return `<tr class="clickable" onclick="govEdit('${kind}','${r.id}')"><td class="strong">${E(r.title)}${flag}${over?' <span style="background:#d4262c;color:#fff;border-radius:10px;padding:1px 8px;font-size:10.5px;font-weight:700;">Overdue</span>':''}</td>${K.cols(r).map(c=>`<td>${E(c)}</td>`).join('')}<td>${stLabel(kind,r.status)}</td></tr>`; }).join('')}</table>`:'<div class="empty-state"><p>Nothing recorded yet.</p></div>';
+  };
+  window.govGiftThreshold=function(){ const v=prompt('Gifts and hospitality at or above this value (in Rand) need written approval:',giftThreshold()); if(v==null) return; const n=+v; if(!(n>=0)){ toast('Enter a number.','error'); return; } try{ localStorage.setItem('wm_gift_thr_'+STATE.org.id,String(n)); }catch(e){} toast('Threshold set. It is saved in this browser: record the agreed value in your anti-bribery policy.','success'); renderRegister('gift'); };
+  window.govEdit=function(kind,id){
+    const K=KINDS[kind]; const r=STATE.govRecords.find(x=>x.id===id)||{data:{},status:K.statuses[0][0],date1:new Date().toISOString().slice(0,10)};
+    const f=K.fields.map(([k,l,t,o])=>{ const v=r.data[k]; if(t==='area') return `<div class="field span3"><label>${l}</label><textarea id="gr-${k}">${E(v||'')}</textarea></div>`;
+      if(t==='select') return `<div class="field"><label>${l}</label><select id="gr-${k}">${o.map(x=>`<option ${x===v?'selected':''}>${x}</option>`).join('')}</select></div>`;
+      return `<div class="field ${t==='number'?'':'span2'}"><label>${l}</label><input id="gr-${k}" type="${t==='number'?'number':'text'}" value="${E(v==null?'':v)}" placeholder="${E(o||'')}"></div>`; }).join('');
+    document.getElementById('gov-edit-slot').innerHTML=`<div class="detail-panel" style="margin-bottom:16px;" id="gov-edit-panel"><div class="detail-head"><div><h3>${id?'Edit':'Add'} ${K.noun}</h3></div><button class="close-btn" onclick="document.getElementById('gov-edit-slot').innerHTML=''"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="form-grid"><div class="field span3"><label>${K.titleL}</label><input id="gr-title" value="${E(r.title||'')}"></div>${f}
+    <div class="field"><label>${K.ownerL}</label><select id="gr-owner"><option value="">Unassigned</option>${memberOptions(r.owner_id)}</select></div>
+    <div class="field"><label>${K.d1}</label><input type="date" id="gr-d1" value="${r.date1||''}"></div>${K.d2?`<div class="field"><label>${K.d2}</label><input type="date" id="gr-d2" value="${r.date2||''}"></div>`:''}
+    <div class="field"><label>Status</label><select id="gr-st">${K.statuses.map(s=>`<option value="${s[0]}" ${s[0]===r.status?'selected':''}>${s[1]}</option>`).join('')}</select></div></div>
+    <div id="gov-links" style="margin:6px 0 12px;"></div>
+    <div class="form-actions">${id&&(kind==='resolution'||kind==='delegation'||kind==='coi'||kind==='stakeholder')?`<button class="btn-small" onclick="govTask('${id}')">Create a task from this</button>`:''}${id&&isAdmin()?`<button class="btn-small" style="margin-right:auto" onclick="govDelete('${id}','${kind}')">Delete</button>`:''}<button class="btn-cancel" onclick="document.getElementById('gov-edit-slot').innerHTML=''">Cancel</button><button class="btn-primary" onclick="govSave('${kind}','${id}')">Save</button></div></div>`;
+    if(id){ const tk=(STATE.tasks||[]).filter(t=>t.linked_type==='gov_record'&&t.linked_id===id); document.getElementById('gov-links').innerHTML=tk.length?'<div style="font-size:10px;color:var(--text-faint);text-transform:uppercase;margin-bottom:6px;">Linked tasks</div>'+tk.map(t=>`<span class="linked-task-chip" style="cursor:pointer;margin-right:6px;" onclick="showModule('tasks')">${E(t.title)} (${t.status==='done'?'done':'due '+fmtDate(t.due_date)})</span>`).join(''):''; }
+    document.getElementById('gov-edit-slot').scrollIntoView({behavior:'smooth',block:'start'});
+  };
+  window.govSave=async function(kind,id){
+    const K=KINDS[kind]; const title=document.getElementById('gr-title').value.trim(); if(!title){ toast('Please complete the first field.','error'); return; }
+    const data={}; K.fields.forEach(([k,l,t])=>{ const v=document.getElementById('gr-'+k).value; data[k]=t==='number'&&v!==''?+v:v.trim?v.trim():v; });
+    const st=document.getElementById('gr-st').value;
+    if(kind==='gift'&&['approved'].includes(st)&&(+data.value||0)>=giftThreshold()&&!String(data.approver||'').trim()){ toast('Gifts at or above R '+giftThreshold()+' need the approver recorded before they can be marked approved.','error'); return; }
+    if(kind==='coi'&&!document.getElementById('gr-d2').value&&st!=='closed'){ /* default next review one year on */ }
+    const row={organisation_id:STATE.org.id,kind,title,data,status:st,owner_id:document.getElementById('gr-owner').value||null,date1:document.getElementById('gr-d1').value||null,date2:K.d2?(document.getElementById('gr-d2').value||null):null};
+    if(kind==='coi'&&row.date1&&!row.date2){ const d=new Date(row.date1); d.setFullYear(d.getFullYear()+1); row.date2=d.toISOString().slice(0,10); }
+    if(!id) row.created_by=STATE.user.id;
+    const q=STATE.supabase.from('gov_records'); const { error }=id?await q.update(row).eq('id',id):await q.insert(row);
+    if(error){ toast(tableMissing(error)?'Run qashe-watchman-schema-governance.sql first.':'Could not save: '+error.message,'error'); return; }
+    toast('Saved.','success'); await loadGov(); renderGov(true);
+  };
+  window.govDelete=async function(id,kind){ if(!confirm('Delete this entry? This cannot be undone.')) return; const { error }=await STATE.supabase.from('gov_records').delete().eq('id',id); if(error){ toast('Could not delete: '+error.message,'error'); return; } await loadGov(); renderGov(true); };
+  window.govTask=async function(id){
+    const r=STATE.govRecords.find(x=>x.id===id); if(!r) return; const d=r.date2||(()=>{ const x=new Date(); x.setDate(x.getDate()+14); return x.toISOString().slice(0,10); })();
+    const { error }=await STATE.supabase.from('tasks').insert({organisation_id:STATE.org.id,title:(KINDS[r.kind].noun[0].toUpperCase()+KINDS[r.kind].noun.slice(1)+': '+r.title).slice(0,120),description:r.data.action||r.data.decision||r.data.mitigation||'',linked_type:'gov_record',linked_id:r.id,assignee_id:r.owner_id||STATE.user.id,priority:'medium',due_date:d,created_by:STATE.user.id});
+    if(error){ toast('Could not create the task: '+error.message,'error'); return; } try{ await loadTasks(); }catch(e){} toast('Task created and linked.','success'); govEdit(r.kind,id);
+  };
+  window.govExport=async function(kind){
+    const K=KINDS[kind]; const rows=STATE.govRecords.filter(r=>r.kind===kind).map(r=>{ const o={}; o[K.titleL]=r.title; K.fields.forEach(([k,l])=>o[l]=r.data[k]==null?'':r.data[k]); o[K.ownerL]=r.owner_id?memberName(r.owner_id):''; o[K.d1]=r.date1||''; if(K.d2) o[K.d2]=r.date2||''; o['Status']=stLabel(kind,r.status); return o; });
+    const XLSX=await ensureXLSX(); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),K.tab.slice(0,30)); XLSX.writeFile(wb,K.tab.replace(/\s+/g,'-')+'.xlsx');
+  };
+
+  /* ---------- due dates feed the Reminders pop-up ---------- */
+  if(typeof DATE_TRACKED_MODULES!=='undefined'){
+    const gk=(kind,label,field,resolved)=>({key:'governance',label,list:()=>(STATE.govRecords||[]).filter(r=>r.kind===kind),dateField:field,isResolved:x=>resolved.includes(x.status),titleField:'title',getPerson:x=>x.owner_id?memberName(x.owner_id):'Unassigned'});
+    DATE_TRACKED_MODULES.push(gk('resolution','Governance: Resolution Actions Due','date2',['completed','lapsed']),gk('delegation','Governance: Delegations Review or Expiry','date2',['expired','revoked']),gk('coi','Governance: Conflict of Interest Reviews','date2',['closed']),gk('stakeholder','Governance: Stakeholder Engagement Due','date2',['dormant']));
+  }
+})();
+
 </script>
 </body>
 </html>
