@@ -2376,7 +2376,18 @@ async function loadOvertimeRequests(){
 // Its five queries are independent, so they run together.
 async function loadContentTemplates(){
   if(STATE.contentTemplates.length) return;
-  const q = (t, col) => STATE.supabase.from(t).select('*').order(col, {ascending:true});
+  /* PostgREST caps a response at 1000 rows; the child tables now exceed that, so page through them */
+  const q = async (t, col) => {
+    let all = [], from = 0;
+    for(;;){
+      const r = await STATE.supabase.from(t).select('*').order(col, {ascending:true}).range(from, from + 999);
+      if(r.error) return { data: all.length ? all : null, error: r.error };
+      all = all.concat(r.data || []);
+      if(!r.data || r.data.length < 1000) break;
+      from += 1000;
+    }
+    return { data: all, error: null };
+  };
   const [tpl, steps, kpis, clItems, polSections] = await Promise.all([
     STATE.supabase.from('content_templates').select('*').eq('is_active', true).order('module_key', {ascending:true}),
     q('content_template_steps','sort_order'), q('content_template_kpis','sort_order'),
@@ -2497,6 +2508,9 @@ const MODULE_META = {
 };
 
 const GATED_MODULES = ['nonconformances','tasks','documents','audits','risks','suppliers','customers','objectives','legal','legal_certs','personnel','orgchart','training','appraisals','assets','bulletins','all_documents','five_s','processes','management_review','administration','raga','hr','asset_watchman','site_files','process_flowcharts','checklists','policies'];
+
+// Modules retired as stand-alone modules: their content now comes from the Template Library, so they get no switch, access tick or Module Info entry.
+const RETIRED_MODULES = ['policies','checklists','processes'];
 
 function personTitleFor(personId){
   const primary = primaryCompetenceFor(personId);
@@ -3644,7 +3658,7 @@ const RENDERERS = {
       </div>
 
       <div id="dw-pane-2" style="display:none;">
-        <p style="font-size:12.5px; color:var(--text-dim); margin-bottom:10px;">Pick a ready-made policy or procedure to start from, and/or upload an existing document so the AI assistant can match your current wording and structure. Both are optional.</p>
+        <p style="font-size:12.5px; color:var(--text-dim); margin-bottom:10px;"><b>Search the Template Library first.</b> Pick a generic policy, procedure, form or register and it is adapted to your company's scope and needs. If nothing fits, continue without one and the AI assistant will generate a new document for you. You can also upload an existing document so it matches your current wording and structure. All of this is optional.</p>
         <div class="form-grid">
           <div class="field span2"><label>Search templates</label><input id="dw-tpl-search" placeholder="e.g. health and safety, quality, environmental…" oninput="dwRenderTemplates()"></div>
           <div class="field"><label>Kind</label><select id="dw-tpl-type" onchange="dwRenderTemplates()"><option value="">All document templates</option><option value="policy">Policies</option><option value="procedure">Procedures</option><option value="manual">Manuals</option><option value="form">Forms</option><option value="register">Registers</option><option value="other_document">Other documents</option></select></div>
@@ -7316,7 +7330,9 @@ window.dwNext = function(){
 };
 // Policies & procedures are no longer a module of their own: they are a template source for documents.
 const DW_DOC_KINDS = {policy:'Policies', procedure:'Procedures', manual:'Manuals', form:'Forms', register:'Registers', other_document:'Other documents'};
-function dwTemplateOptions(){ return (STATE.contentTemplates||[]).filter(t => Object.prototype.hasOwnProperty.call(DW_DOC_KINDS, t.type)); }
+// Forms and registers are stored as type 'procedure' with a "Form: " / "Register: " title prefix; letters of appointment belong to the Appointments Register.
+function dwKind(t){ const ti = t.title || ''; if(/^Form:/i.test(ti)) return 'form'; if(/^Register:/i.test(ti)) return 'register'; if(/^Letter of Appointment/i.test(ti)) return 'letter'; return t.type; }
+function dwTemplateOptions(){ return (STATE.contentTemplates||[]).filter(t => Object.prototype.hasOwnProperty.call(DW_DOC_KINDS, t.type) && dwKind(t) !== 'letter'); }
 async function dwLoadTemplates(){
   const list = document.getElementById('dw-template-list'); if(!list) return;
   if(!STATE.contentTemplates.length){
@@ -7330,17 +7346,30 @@ window.dwRenderTemplates = function(){
   const q = (document.getElementById('dw-tpl-search').value||'').toLowerCase();
   const kind = document.getElementById('dw-tpl-type').value;
   const sel = STATE._dw && STATE._dw.templateId;
-  const rows = dwTemplateOptions().filter(t => (!kind || t.type===kind) &&
-    (!q || (t.title||'').toLowerCase().includes(q) || (t.description||'').toLowerCase().includes(q) || (t.standard_refs||[]).join(' ').toLowerCase().includes(q)));
-  if(!rows.length){ list.innerHTML = '<p style="font-size:12.5px; color:var(--text-faint);">No templates match. You can still continue without one.</p>'; return; }
-  list.innerHTML = rows.map(t => {
+  const words = q.split(/[^a-z0-9]+/).filter(w => w.length > 1);
+  const titleWords = ((document.getElementById('df-title')||{}).value||'').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 3);
+  const hay = t => ((t.title||'') + ' ' + (t.description||'') + ' ' + (t.standard_refs||[]).join(' ')).toLowerCase();
+  const score = (t, ws) => ws.reduce((n, w) => n + (hay(t).includes(w) ? 1 : 0), 0);
+  let rows = dwTemplateOptions().filter(t => !kind || dwKind(t) === kind);
+  let note = '';
+  if(words.length){
+    rows = rows.map(t => ({ t, sc: score(t, words) })).filter(x => x.sc > 0).sort((a, b) => b.sc - a.sc || (a.t.title < b.t.title ? -1 : 1)).map(x => x.t);
+    note = `${rows.length} template${rows.length === 1 ? '' : 's'} match${rows.length === 1 ? 'es' : ''} your search.`;
+  } else if(titleWords.length){
+    const ranked = rows.map(t => ({ t, sc: score(t, titleWords) })).sort((a, b) => b.sc - a.sc || (a.t.title < b.t.title ? -1 : 1));
+    if(ranked.length && ranked[0].sc > 0) note = 'Templates that look closest to your document title are listed first.';
+    rows = ranked.map(x => x.t);
+  }
+  const fallback = `<div style="border:1px dashed var(--border);border-radius:8px;padding:10px 12px;margin-top:8px;font-size:12.5px;color:var(--text-dim)"><b>Nothing that fits?</b> Continue without a template: the AI assistant will generate a new document from your title and purpose. <a href="#" onclick="dwNext();return false">Continue without a template</a></div>`;
+  if(!rows.length){ list.innerHTML = '<p style="font-size:12.5px; color:var(--text-faint);">No generic template matches.</p>' + fallback; return; }
+  list.innerHTML = (note ? `<p style="font-size:12px;color:var(--text-faint);margin:0 0 6px">${note}</p>` : '') + rows.map(t => {
     const n = (STATE.contentTemplatePolicySections||[]).filter(x=>x.template_id===t.id).length;
     return `<div class="dw-tpl ${sel===t.id?'sel':''}" onclick="dwPickTemplate('${t.id}')">
-      <div style="font-weight:600; font-size:13px;">${escapeHtml(t.title)} <span class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase;">${escapeHtml(t.type)}</span></div>
+      <div style="font-weight:600; font-size:13px;">${escapeHtml(t.title)} <span class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase;">${escapeHtml(dwKind(t))}</span></div>
       <div style="font-size:12px; color:var(--text-dim);">${escapeHtml(t.description||'')}</div>
       <div style="font-size:11px; color:var(--text-faint); margin-top:2px;">${n} section${n===1?'':'s'}${(t.standard_refs&&t.standard_refs.length) ? ' · '+escapeHtml(t.standard_refs.join(', ')) : ''}</div>
     </div>`;
-  }).join('');
+  }).join('') + fallback;
 };
 window.dwPickTemplate = function(id){
   STATE._dw.templateId = (STATE._dw.templateId === id) ? null : id; // click again to deselect
@@ -7412,7 +7441,7 @@ window.toggleFormIdsPanel = toggleFormIdsPanel;
 function renderFormIdsList(){
   const wrap = document.getElementById('form-ids-list');
   if(!wrap) return;
-  wrap.innerHTML = GATED_MODULES.map(key => {
+  wrap.innerHTML = GATED_MODULES.filter(k => !RETIRED_MODULES.includes(k) && MODULE_META[k]).map(key => {
     const existing = STATE.formIdentifications.find(f=>f.module_key===key);
     return `
     <div class="evidence-row">
@@ -20574,10 +20603,9 @@ window.printMR = async function(id){
 
 /* ============ Administration — one control centre ============ */
 
-const ADMIN_INVITE_MODULES = GATED_MODULES.filter(m => m !== 'administration')
-  .map(key => ({ key, label: MODULE_META[key] ? MODULE_META[key].title : key }));
+const ADMIN_INVITE_MODULES = [];  // kept for compatibility; adminInviteModules() builds the live list so modules added later (Welding, Business Health) appear too
 // Only the modules this client actually has — a tick for a module that is switched off would do nothing.
-function adminInviteModules(){ return ADMIN_INVITE_MODULES.filter(m => orgHasModule(m.key)); }
+function adminInviteModules(){ return GATED_MODULES.filter(m => m !== 'administration' && !RETIRED_MODULES.includes(m) && MODULE_META[m] && orgHasModule(m)).map(key => ({ key, label: MODULE_META[key].title })); }
 
 window.switchAdminSubtab = function(tab){
   STATE._adminSubtab = tab;
@@ -20634,8 +20662,6 @@ const ADMIN_CONSOLE_TOGGLES = [
   { field:'asset_watchman_enabled', label:'Asset Watchman', note:'Asset condition & performance monitoring: bespoke per client.' },
   { field:'site_files_enabled', label:'Site SHERQ Files', note:'Contractor site safety files per client site: legal docs, team competency, appointments, HIRA, registers, incidents. Run the site-files migration first.' },
   { field:'process_flowcharts_enabled', label:'Process Flowcharts', note:'Applied from the Template Library.' },
-  { field:'checklists_enabled', label:'Checklists', note:'Applied from the Template Library.' },
-  { field:'policies_enabled', label:'Policies & Procedures', note:'Applied from the Template Library.' },
   { field:'legal_certs_enabled', label:'Legal Documents & Certificates', note:'Repository of registration, tax, B-BBEE, membership and accreditation certificates, with expiry reminders. Non-admins also need the module ticked when invited.' },
   { field:'administration_enabled', label:'Administration', note:'Turning this off hides Administration for the client: Group QaSHE CG (platform staff) keeps access regardless, so this screen is never locked out.' },
 ];
@@ -21026,7 +21052,7 @@ window.saveAdminOrgProfile = async function(){
 function renderAdminModuleInfo(){
   const wrap = document.getElementById('admin-subtab-content');
   if(!wrap) return;
-  const infoModules = GATED_MODULES.filter(m => m !== 'all_documents' && m !== 'administration');
+  const infoModules = GATED_MODULES.filter(m => m !== 'all_documents' && m !== 'administration' && !RETIRED_MODULES.includes(m) && MODULE_META[m]);
   wrap.innerHTML = `
     <div class="detail-card">
       <div class="panel-head"><h3>Module Info</h3></div>
@@ -27269,7 +27295,7 @@ window.submitProblemReport = async function(){
 };
 
 // ---- Rendering: turns the assistant's reply into clean, infographic-style cards (no stars, hashes or hyphen bullets) ----
-const WC_SUGGESTIONS = ['How do I raise a nonconformance?', 'How do I add a supplier and assess it?', 'What does ISO 9001 clause 8.4 require?', 'How do internal audits work in Watchman?', 'How do I bulk upload documents?'];
+const WC_SUGGESTIONS = ['How do I raise a nonconformance?', 'How do I appoint a first aider or health and safety representative?', 'How do I find a template and adapt it for my company?', 'Which appointments does the Construction Regulations 2014 require?', 'How do I add a supplier and assess it?', 'What does ISO 9001 clause 8.4 require?', 'How does Business Health Validation work?', 'How do I bulk upload documents?'];
 function wcInline(t){
   let x = escapeHtml(t);
   x = x.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/__([^_]+)__/g, '<b>$1</b>');
@@ -27369,7 +27395,7 @@ window.sendWatchmanChat = async function(){
 
   // A short formatting hint rides along with the latest question (the visible history stays clean).
   const hint = '\n\n(Reply style: short clear sentences, numbered steps for procedures, short headings on their own line, begin tips with "Tip:". No markdown symbols such as asterisks or hashes, and no hyphens used as separators or bullets.)';
-  const outgoing = watchmanChatHistory.map((m, i) => i === watchmanChatHistory.length - 1 && m.role === 'user' ? { ...m, content: m.content + hint } : m);
+  const outgoing = watchmanChatHistory.map((m, i) => i === watchmanChatHistory.length - 1 && m.role === 'user' ? { ...m, content: m.content + hint + (window.wcBrief ? window.wcBrief() : '') } : m);
 
   const { data, error } = await STATE.supabase.functions.invoke('watchman-chat', {
     body: { messages: outgoing },
@@ -33743,7 +33769,7 @@ window.brandFromLogo = function(){
 
   const OA_CATS = [
     ['ohs','Occupational Health and Safety'], ['env','Environmental'], ['infosec','Information Security and POPIA'],
-    ['quality','Quality and Governance'], ['welding','Welding'], ['other','Other']
+    ['quality','Quality and Governance'], ['welding','Welding'], ['site','Construction and Site Work (Construction Regulations 2014)'], ['other','Other']
   ];
   const OA_TYPES = [
     { key:'s16_2', cat:'ohs', label:'Section 16(2) Assignee', legal:'Occupational Health and Safety Act 85 of 1993, Section 16(2)', comp:null, rec:1,
@@ -33780,6 +33806,72 @@ window.brandFromLogo = function(){
       duties:'Coordinate all welding activities and personnel in accordance with ISO 14731: contract and technical review, welding procedures and qualifications, welder approval, consumables, equipment, inspection, non-conformance and records. Hold the authority to stop non-conforming welding work.' },
     { key:'welding_inspector', cat:'welding', label:'Welding Inspector', legal:'ISO 3834-2 (inspection and testing personnel); ISO 17637', comp:'welding_inspector',
       duties:'Carry out inspection and testing of welds before, during and after welding in accordance with the applicable specification, and record and report results and non-conformances.' },
+    { key:'client_agent', cat:'site', label:'Client\'s Agent (Construction)', legal:'Construction Regulations 2014, r5(7) (client\'s agent appointed to manage health and safety where a construction work permit is required)', comp:'supervision',
+      duties:'Act as the client\'s agent for health and safety on this construction project: confirm that the baseline risk assessment, health and safety specification and construction work permit requirements are in place; evaluate the principal contractor\'s health and safety plan; monitor compliance; and report to the client. The agent must be registered with the statutory body approved by the Chief Inspector.' },
+    { key:'principal_contractor', cat:'site', label:'Principal Contractor (appointed by the Client)', legal:'Construction Regulations 2014, r5 (duties of client) and r7 (duties of principal contractor and contractor)', comp:null,
+      duties:'Accept the appointment as principal contractor for the construction work described in the scope: prepare and implement the health and safety plan based on the client\'s specification; appoint the construction manager, supervisors and other competent persons in writing; manage subcontractors; and keep the health and safety file.' },
+    { key:'s37_mandatary', cat:'site', label:'Section 37(2) Mandatary Agreement', legal:'Occupational Health and Safety Act 85 of 1993, Section 37(2) (agreement between mandatary and mandator)', comp:null,
+      duties:'Confirm, as mandatary, that you undertake to comply with the OHS Act and its regulations in respect of the work, that you have the means and competence to do so, and that the mandator remains informed of progress and incidents. The agreement does not remove the mandator\'s duties where the mandator is liable.' },
+    { key:'construction_manager', cat:'site', label:'Construction Manager', legal:'Construction Regulations 2014, r8(1) (full-time competent person appointed in writing by the principal contractor)', comp:'supervision',
+      duties:'Manage all construction work on site on a full-time basis, including compliance with the OHS Act, the Construction Regulations 2014, the client\'s health and safety specification and the approved health and safety plan; appoint and control construction supervisors; and stop work that is unsafe.' },
+    { key:'alt_construction_manager', cat:'site', label:'Alternate Construction Manager', legal:'Construction Regulations 2014, r8 (alternate competent person to act when the construction manager is absent)', comp:'supervision',
+      duties:'Act as construction manager with full responsibility and authority whenever the appointed Construction Manager is absent from site, and hand over formally on return.' },
+    { key:'asst_construction_manager', cat:'site', label:'Assistant Construction Manager', legal:'Construction Regulations 2014, r8 (assistant construction managers, depending on the size of the project)', comp:'supervision',
+      duties:'Assist the Construction Manager in managing construction work and health and safety on the portion of the site or the work package assigned to you.' },
+    { key:'construction_hso', cat:'site', label:'Construction Health and Safety Officer', legal:'Construction Regulations 2014, r8(5) (appointed according to the size of the project and the degree of risk; registered with the statutory body approved by the Chief Inspector)', comp:'sheq_officer',
+      duties:'Advise the Construction Manager on health and safety; monitor compliance with the health and safety plan; conduct inspections, audits and incident investigations; facilitate inductions and toolbox talks; and keep the health and safety file up to date.' },
+    { key:'construction_supervisor', cat:'site', label:'Construction Supervisor', legal:'Construction Regulations 2014, r8(7) (one or more supervisors appointed in writing, depending on the size of the project)', comp:'supervision',
+      duties:'Supervise the construction activities assigned to you in accordance with the health and safety plan, method statements and risk assessments; ensure persons under your control are inducted, competent and equipped; conduct daily inspections and toolbox talks; stop unsafe work; and report incidents immediately.' },
+    { key:'fall_protection_planner', cat:'site', label:'Fall Protection Planner', legal:'Construction Regulations 2014, r10(1)(a); General Safety Regulations, 2003', comp:'fall_protection_planning',
+      duties:'Develop, implement and maintain the fall protection plan, including rescue procedures; ensure persons working at heights are competent and medically fit; and review the plan when conditions or methods change.' },
+    { key:'temporary_works_designer', cat:'site', label:'Temporary Works Designer', legal:'Construction Regulations 2014, r12 (temporary works designed by a competent person appointed in writing)', comp:null,
+      duties:'Design the temporary works for the project, issue drawings and design information to the contractor, and confirm by inspection that the temporary works have been built as designed before they are loaded.' },
+    { key:'temporary_works_inspector', cat:'site', label:'Temporary Works Supervisor and Inspector', legal:'Construction Regulations 2014, r12 (competent person to supervise erection, inspect and approve temporary works)', comp:null,
+      duties:'Supervise the erection, use and dismantling of temporary works; inspect them at the prescribed intervals and after any event that may affect their stability; and record the inspections.' },
+    { key:'excavation_supervisor', cat:'site', label:'Excavation Supervisor', legal:'Construction Regulations 2014, r13(1)(a) (excavation work carried out under the supervision of a competent person appointed in writing)', comp:'excavation',
+      duties:'Supervise all excavation work, including location of services, shoring and barricading, safe access and egress, daily inspections and inspections after rain or other events that affect stability.' },
+    { key:'demolition_supervisor', cat:'site', label:'Demolition Supervisor', legal:'Construction Regulations 2014, r14 (demolition work)', comp:'supervision',
+      duties:'Supervise the demolition work in accordance with the demolition method statement and risk assessment, protect persons and adjoining structures, and stop work when conditions change.' },
+    { key:'scaffold_supervisor', cat:'site', label:'Scaffold Competent Person (Supervisor and Inspector)', legal:'Construction Regulations 2014, r16(1) (competent person appointed in writing to ensure scaffolding work complies); SANS 10085', comp:'scaffolding',
+      duties:'Ensure all scaffolding work is erected, altered, used and dismantled safely; inspect scaffolds before first use, at the prescribed intervals and after adverse weather; tag and record each inspection in the scaffold register.' },
+    { key:'suspended_platform_cp', cat:'site', label:'Suspended Platform Competent Person', legal:'Construction Regulations 2014, r17 (suspended platforms)', comp:null,
+      duties:'Ensure suspended platforms are erected, inspected and operated safely, that operators are trained, and that safety lines, anchorages and rescue arrangements are in place.' },
+    { key:'rope_access_supervisor', cat:'site', label:'Rope Access Supervisor', legal:'Construction Regulations 2014, r18 (rope access work)', comp:null,
+      duties:'Supervise rope access work, including the rope access plan, equipment inspection, anchor points, rescue arrangements and the competence of rope access technicians.' },
+    { key:'material_hoist_cp', cat:'site', label:'Material Hoist Competent Person', legal:'Construction Regulations 2014, r19 (material hoists); Driven Machinery Regulations, 2015', comp:null,
+      duties:'Ensure material hoists are erected, examined, maintained and operated safely, and that the hoist register is kept.' },
+    { key:'lifting_operator', cat:'site', label:'Lifting Machinery Operator (Crane and Hoist)', legal:'Construction Regulations 2014, r22 (cranes); Driven Machinery Regulations, 2015, r18', comp:'lifting_operator',
+      duties:'Operate lifting machinery only within its rated capacity and in accordance with the lifting plan; conduct and record pre-use checks; and stop operations when conditions are unsafe.' },
+    { key:'lifting_inspector', cat:'site', label:'Lifting Machinery and Tackle Inspector', legal:'Driven Machinery Regulations, 2015, r18; Construction Regulations 2014, r22', comp:'lifting_inspection',
+      duties:'Inspect lifting machinery and lifting tackle before use and at the prescribed intervals; maintain the lifting tackle register; and remove defective equipment from service.' },
+    { key:'rigger_signaller', cat:'site', label:'Rigger and Signaller', legal:'Construction Regulations 2014, r22 (cranes); Driven Machinery Regulations, 2015', comp:null,
+      duties:'Rig loads correctly, give clear signals to the operator, keep persons clear of the load and swing area, and use only inspected lifting tackle.' },
+    { key:'mobile_plant', cat:'site', label:'Construction Vehicle and Mobile Plant Operator', legal:'Construction Regulations 2014, r23 (construction vehicles and mobile plant)', comp:'mobile_plant',
+      duties:'Operate the vehicle or mobile plant only as trained and authorised; conduct and record pre-use inspections; and comply with the site traffic management plan.' },
+    { key:'eaf_operator', cat:'site', label:'Explosive Actuated Fastening Device Operator', legal:'Construction Regulations 2014, r21 (explosive actuated fastening devices)', comp:null,
+      duties:'Use explosive actuated fastening devices only as trained, in accordance with the manufacturer\'s instructions, and keep the devices locked away when not in use.' },
+    { key:'electrical_cp', cat:'site', label:'Electrical Competent Person (Construction Site)', legal:'Construction Regulations 2014, r24 (electrical installations and machinery on construction sites); Electrical Installation Regulations, 2009; SANS 10142', comp:'electrical',
+      duties:'Ensure temporary electrical installations and machinery on site are installed, inspected, tested and maintained by competent persons, with earth leakage protection and isolation procedures in place.' },
+    { key:'electrician', cat:'site', label:'Electrician and Registered Person', legal:'Electrical Installation Regulations, 2009 (registered person); SANS 10142', comp:'electrical',
+      duties:'Perform electrical installation work, isolation and lock-out in accordance with SANS 10142 and the site isolation procedures, and issue certificates of compliance where required.' },
+    { key:'tools_inspector', cat:'site', label:'Tools and Portable Electrical Equipment Inspector', legal:'Electrical Machinery Regulations, 2011; Driven Machinery Regulations, 2015', comp:'electrical',
+      duties:'Inspect hand tools and portable electrical equipment before use and at the prescribed intervals; tag and record inspections; and remove defective equipment from service.' },
+    { key:'flammable_cp', cat:'site', label:'Flammable Liquids Competent Person', legal:'Construction Regulations 2014, r25 (use and temporary storage of flammable liquids)', comp:null,
+      duties:'Ensure flammable liquids are stored, handled and used safely on site, with approved containers, ventilation, ignition control and fire fighting equipment.' },
+    { key:'water_environment_cp', cat:'site', label:'Water Environments Competent Person', legal:'Construction Regulations 2014, r26 (water environments)', comp:null,
+      duties:'Ensure work over or near water is planned with drowning prevention, rescue arrangements, buoyancy aids and suitably trained persons.' },
+    { key:'stacking_supervisor', cat:'site', label:'Stacking and Storage Supervisor', legal:'Construction Regulations 2014, r28 (stacking and storage on construction sites)', comp:null,
+      duties:'Supervise the safe stacking and storage of materials and equipment on site, including stable stacks, safe heights, access and housekeeping.' },
+    { key:'fire_precautions_cp', cat:'site', label:'Site Fire Precautions Competent Person', legal:'Construction Regulations 2014, r29 (fire precautions on construction sites)', comp:'firefighting',
+      duties:'Implement fire precautions on site, including fire fighting equipment, hot work control, escape routes and emergency drills.' },
+    { key:'hcs_controller', cat:'site', label:'Hazardous Chemical Agents Controller', legal:'Regulations for Hazardous Chemical Agents, 2021', comp:'hcs_handling',
+      duties:'Control the storage, handling, use and disposal of hazardous chemical agents; ensure current safety data sheets are available; and maintain the hazardous chemical agents register and exposure monitoring.' },
+    { key:'confined_space', cat:'site', label:'Confined Space Supervisor', legal:'General Safety Regulations, 2003, r5 (confined spaces)', comp:'confined_space',
+      duties:'Supervise all confined space entries, including atmospheric testing, isolation, permits, standby persons and rescue arrangements.' },
+    { key:'ladder_inspector', cat:'site', label:'Ladder Inspector', legal:'General Safety Regulations, 2003 (ladders)', comp:'ladder_inspection',
+      duties:'Inspect ladders before use and at the prescribed intervals, remove defective ladders from service, and maintain the ladder register.' },
+    { key:'hot_work', cat:'site', label:'Hot Work Supervisor and Fire Watch', legal:'General Safety Regulations, 2003 (welding, cutting and hot work); Construction Regulations 2014, r29', comp:'hot_work',
+      duties:'Supervise hot work under permit, ensure fire precautions and a fire watch are in place before, during and after the work.' },
     { key:'custom', cat:'other', label:'Other appointment', legal:'', comp:null, duties:'' },
   ];
   const OA_BY_KEY = Object.fromEntries(OA_TYPES.map(t => [t.key, t]));
@@ -33832,7 +33924,12 @@ window.brandFromLogo = function(){
     }catch(e){}
     return STATE._oaTemplates;
   }
-  const templateFor = def => (STATE._oaTemplates || []).find(t => (t.title || '').toLowerCase().includes((def.label || '').toLowerCase().split(' (')[0]));
+  const templateFor = def => {
+    const lc = x => (x || '').toLowerCase().trim(), L = lc(def.label), base = L.split(' (')[0], T = STATE._oaTemplates || [];
+    const core = t => lc(t.title).replace(/^letter of appointment\s*[:\-\u2013]?\s*/, '');
+    /* exact label first, then exact base, and only then a loose match, so "Construction Manager" never picks up "Alternate Construction Manager" */
+    return T.find(t => core(t) === L) || T.find(t => core(t).split(' (')[0] === base) || T.find(t => lc(t.title).includes(base));
+  };
 
   /* ---------------- lifecycle ---------------- */
   function apState(a){
@@ -35190,7 +35287,252 @@ window.brandFromLogo = function(){
     flow('Internal Audit Process', ['ISO 19011'], 'From programme to closed findings.', [['start','Annual audit programme'],['process','Plan and brief the audit'],['process','Audit and gather evidence'],['process','Report findings'],['decision','Nonconformities?','Yes','No'],['process','Raise corrective actions'],['end','Verify closure and report']]),
   ];
 
-  const catalogue = () => [...letters(), ...POLICIES, ...PROCEDURES, ...FORMS, ...REGISTERS, ...CHECKLISTS, ...FLOWS];
+  /* ---------------- b43: wider generic catalogue (all start from helpers above) ---------------- */
+  const frm = (title, refs, desc, fields) => form(title, refs, desc + ' ' + SIG, [
+    ['Details', fields.map(f => '• ' + f + ': ____________________').join('\n')],
+    ['Declaration and signatures', 'Completed by {{name}} for {{organisation}}. Signature and date: ____________________. Reviewed by: ____________________ Date: __________.']
+  ]);
+  const P = (title, refs, desc, st) => pol(title, refs, desc, st);
+  const PR = (title, refs, desc, steps, rec) => proc(title, refs, desc, steps, rec);
+
+  const POLICIES_B = [
+    P('Health and Safety Policy for Construction Work', ['Construction Regulations 2014','OHS Act 85 of 1993 s8'], 'To state the commitment to safe construction work on every site.', ['manage construction work under a written health and safety plan on every site','appoint competent persons in writing as the Construction Regulations 2014 require','assess risks before work starts and whenever conditions change','consult employees and contractors and stop work that is unsafe']),
+    P('Contractor and Subcontractor Management Policy', ['OHS Act s37','Construction Regulations 2014 r7'], 'To set how contractors are selected, appointed, inducted and monitored.', ['appoint only contractors with proven health and safety competence and valid compliance documents','sign a Section 37(2) agreement before work starts','induct and monitor contractors on site','review contractor performance and keep records']),
+    P('Alcohol and Drug Policy', ['OHS Act s8','Labour Relations Act Schedule 8'], 'To keep the workplace free of impairment by alcohol and drugs.', ['prohibit working under the influence of alcohol or drugs','test fairly, with consent and with respect for dignity','offer support and counselling where appropriate','apply the disciplinary code consistently']),
+    P('Smoking and Vaping Policy', ['Tobacco Products Control Act 83 of 1993'], 'To protect people from tobacco smoke and vapour.', ['allow smoking and vaping only in signed, designated areas','keep all indoor areas free of smoke and vapour','dispose of cigarette ends safely','apply the policy to all employees, contractors and visitors']),
+    P('Workplace Violence, Harassment and Bullying Policy', ['Employment Equity Act 55 of 1998','Code of Good Practice on Harassment 2022'], 'To prevent harassment, bullying and violence and to deal with them fairly.', ['not tolerate harassment, bullying, discrimination or violence','provide a safe and confidential way to report','investigate every complaint promptly and fairly','protect complainants from victimisation']),
+    P('Employee Wellness and Mental Health Policy', ['ISO 45003','OHS Act s8'], 'To support the physical and psychological wellbeing of employees.', ['manage psychosocial risks such as workload, stress and fatigue','promote access to counselling and support','respect confidentiality','train managers to recognise and respond to distress']),
+    P('Housekeeping Policy', ['Environmental Regulations for Workplaces','ISO 45001 cl 8.1'], 'To keep the workplace clean, tidy and free of hazards.', ['keep walkways, exits and work areas clear','store materials safely and dispose of waste promptly','clean up spills immediately','inspect housekeeping regularly']),
+    P('Personal Protective Equipment Policy', ['OHS Act s8(2)(f)','General Safety Regulations'], 'To set when and how PPE is provided, used and maintained.', ['provide PPE free of charge where hazards cannot be eliminated','issue PPE suited to the hazard, fitted and in good condition','train people to use and care for PPE','replace damaged PPE immediately']),
+    P('Working at Heights Policy', ['Construction Regulations 2014 r10','SANS 1397'], 'To prevent falls of persons and objects.', ['plan every task at height under a fall protection plan','use only trained, medically fit persons','inspect fall protection equipment before use','provide rescue arrangements before work starts']),
+    P('Contractor Safety Policy for Lifting Operations', ['Driven Machinery Regulations 2015','Construction Regulations 2014 r22'], 'To control lifting operations safely.', ['plan every lift and use competent operators and riggers','inspect and certify lifting machinery and tackle','never exceed rated capacity','keep persons clear of suspended loads']),
+    P('Waste Management Policy', ['NEM:WA 59 of 2008','ISO 14001 cl 8.1'], 'To manage waste in line with the waste hierarchy.', ['avoid, reduce, reuse and recycle before disposal','segregate waste at source','use licensed waste carriers and disposal sites','keep waste manifests and safe disposal certificates']),
+    P('Energy and Water Policy', ['ISO 14001','ISO 50001'], 'To use energy and water efficiently.', ['measure and monitor consumption','set reduction targets','buy efficient equipment','involve employees in saving energy and water']),
+    P('Climate Change and Carbon Policy', ['Climate Change Act 22 of 2024','ISO 14064'], 'To manage greenhouse gas emissions and climate risk.', ['measure emissions where required','set reduction targets','assess climate risks and opportunities','report as the law requires']),
+    P('Sustainable Procurement Policy', ['ISO 20400','ISO 14001 cl 8.1'], 'To buy goods and services responsibly.', ['consider health, safety, environmental and ethical performance when buying','prefer local and empowered suppliers where suitable','require supplier compliance documents','review suppliers regularly']),
+    P('Customer Service and Complaints Policy', ['ISO 9001 cl 9.1.2','Consumer Protection Act 68 of 2008'], 'To deal with customers fairly and to resolve complaints.', ['listen to customers and meet agreed requirements','acknowledge complaints within a stated time','resolve them fairly and learn from them','measure customer satisfaction']),
+    P('Records Retention and Disposal Policy', ['ISO 9001 cl 7.5','POPIA s14','Companies Act 71 of 2008 s24'], 'To keep records for the right period and dispose of them safely.', ['keep records for the retention periods in the schedule','protect records from loss and misuse','destroy records securely when the period ends','suspend destruction when a legal hold applies']),
+    P('Data Backup and Recovery Policy', ['ISO/IEC 27001 Annex A 8.13'], 'To make sure data can be restored after loss.', ['back up critical data on a defined schedule','store backups securely and off-site','test restores regularly','record backup failures and fix them']),
+    P('Password and Authentication Policy', ['ISO/IEC 27001 Annex A 5.17'], 'To protect accounts with strong authentication.', ['use unique, strong passwords or passphrases','use multi-factor authentication for important systems','never share credentials','change passwords after any suspected compromise']),
+    P('Mobile Device and Remote Working Policy', ['ISO/IEC 27001 Annex A 6.7, 8.1'], 'To protect information on mobile devices and when working remotely.', ['register and secure all devices that hold company data','encrypt devices and use screen locks','use secure networks and VPN','report lost or stolen devices immediately']),
+    P('Social Media Policy', ['POPIA','ISO/IEC 27001'], 'To protect the organisation and its people when using social media.', ['not disclose confidential or personal information','make clear when views are personal','not post offensive or defamatory content','follow the code of conduct online']),
+    P('Whistleblowing and Protected Disclosures Policy', ['Protected Disclosures Act 26 of 2000','ISO 37002'], 'To allow safe reporting of wrongdoing.', ['provide confidential reporting channels','investigate every report fairly','protect whistleblowers from retaliation','report outcomes to the governing body']),
+    P('Conflict of Interest and Gifts Policy', ['ISO 37001','PRECCA 12 of 2004'], 'To manage conflicts of interest and gifts and hospitality.', ['declare conflicts of interest in writing','not accept or give gifts above the set value','record all gifts and hospitality','refer doubtful cases to the compliance officer']),
+    P('Equal Opportunity and Employment Equity Policy', ['Employment Equity Act 55 of 1998'], 'To promote fair treatment and equal opportunity.', ['not discriminate unfairly','remove barriers to employment and advancement','set and monitor equity targets','report as the law requires']),
+    P('Training and Development Policy', ['ISO 9001 cl 7.2','Skills Development Act 97 of 1998'], 'To make sure people are competent for their work.', ['identify training needs against job requirements','plan and deliver training','evaluate its effectiveness','keep training records']),
+    P('Security and Access Control Policy (Physical)', ['ISO/IEC 27001 Annex A 7.1 to 7.4'], 'To control physical access to premises and sites.', ['control and record entry of visitors and contractors','protect secure areas with access controls','issue and recover access cards and keys','review access rights regularly']),
+    P('Vehicle and Driver Safety Policy', ['National Road Traffic Act 93 of 1996','ISO 39001'], 'To keep drivers and vehicles safe.', ['allow only licensed, authorised drivers','inspect vehicles before use','prohibit phone use and fatigue driving','report all incidents and traffic fines']),
+    P('Asset Management Policy', ['ISO 55001'], 'To manage assets across their life.', ['keep an asset register','maintain assets to plan','assess asset risk and condition','dispose of assets safely']),
+    P('Maintenance Policy', ['ISO 55001','Driven Machinery Regulations'], 'To keep equipment safe and reliable.', ['plan preventive maintenance','use competent persons','record all maintenance','control critical spares']),
+    P('Quality Policy for Welding Fabrication', ['ISO 3834-2'], 'To control the quality of welded fabrication.', ['weld to qualified procedures','use qualified welders and inspectors','trace materials and consumables','record and review nonconformances']),
+    P('Management of Change Policy', ['ISO 45001 cl 8.1.3','ISO 9001 cl 6.3'], 'To assess and control changes before they are made.', ['identify and assess changes in advance','approve changes by authorised persons','communicate and train','review the effects of the change after implementation']),
+  ];
+
+  const PROCEDURES_B = [
+    PR('Construction Health and Safety Plan Development Procedure', ['Construction Regulations 2014 r7(1)'], 'To prepare, approve and maintain the site health and safety plan.', ['Obtain the client\'s health and safety specification.','Prepare the plan covering the specification\'s requirements and the site risks.','Submit the plan to the client for approval before work starts.','Implement the plan and keep it on site.','Review the plan when work or conditions change and after incidents.'], 'Approved plan, approval correspondence, review records.'),
+    PR('Baseline Risk Assessment Procedure', ['Construction Regulations 2014 r5(1)(b), r9'], 'To assess risk before construction work is planned.', ['Describe the site, work and surroundings.','Identify hazards and persons at risk.','Rate risks and decide controls.','Record the assessment and give it to designers and contractors.','Review it when the design or conditions change.'], 'Baseline risk assessment, review records.'),
+    PR('Method Statement Procedure', ['Construction Regulations 2014 r9, r7'], 'To plan high-risk tasks in a safe sequence.', ['Describe the task, sequence and equipment.','Identify hazards and controls from the risk assessment.','Name the competent persons and their duties.','Approve the method statement before work starts.','Brief all affected persons and keep a signed record.'], 'Approved method statement, briefing register.'),
+    PR('Permit to Work Procedure', ['OHS Act s8','Construction Regulations 2014'], 'To control high-risk work through written permits.', ['Request the permit from the area owner.','Check hazards, isolations and controls on site together.','Issue the permit for a defined time and scope.','Monitor the work and stop it if conditions change.','Close the permit and restore the area.'], 'Permits and closure records.'),
+    PR('Lock-out and Isolation Procedure', ['Electrical Machinery Regulations 2011','Driven Machinery Regulations 2015'], 'To make sure energy is isolated before work starts.', ['Identify all energy sources.','Switch off and isolate each source.','Apply personal locks and tags.','Test to prove the equipment is dead.','Remove locks only by the persons who applied them.'], 'Isolation permits and lock registers.'),
+    PR('Work at Height Procedure', ['Construction Regulations 2014 r10'], 'To prevent falls from height.', ['Prepare the fall protection plan.','Select collective protection before personal protection.','Check training and medical fitness of workers.','Inspect equipment and anchor points.','Provide rescue arrangements and supervise the work.'], 'Fall protection plan, inspection records, training records.'),
+    PR('Excavation Work Procedure', ['Construction Regulations 2014 r13'], 'To make excavation work safe.', ['Locate underground services.','Appoint the competent excavation supervisor in writing.','Shore, slope or bench the sides.','Barricade, provide safe access and keep spoil back.','Inspect daily and after rain.'], 'Excavation permits and inspection records.'),
+    PR('Scaffold Erection and Inspection Procedure', ['Construction Regulations 2014 r16','SANS 10085'], 'To erect and use scaffolding safely.', ['Appoint the competent person in writing.','Design and erect to the standard.','Inspect before first use, weekly and after events.','Tag the scaffold as safe or unsafe.','Dismantle in sequence under supervision.'], 'Scaffold register and inspection tags.'),
+    PR('Confined Space Entry Procedure', ['General Safety Regulations r5'], 'To control entry into confined spaces.', ['Identify and sign the confined space.','Isolate and ventilate.','Test the atmosphere before and during entry.','Issue the entry permit with a standby person and rescue plan.','Close the permit when all persons are out.'], 'Entry permits, gas test records.'),
+    PR('Hot Work Procedure', ['General Safety Regulations','Construction Regulations 2014 r29'], 'To control welding, cutting and grinding fire risks.', ['Clear combustibles or protect them.','Issue the hot work permit.','Provide extinguishers and a fire watch.','Monitor for 60 minutes after the work.','Close the permit.'], 'Hot work permits.'),
+    PR('Lifting Operations Procedure', ['Driven Machinery Regulations 2015','Construction Regulations 2014 r22'], 'To plan and carry out lifts safely.', ['Prepare the lift plan with load weight and radius.','Check the machine, tackle and ground.','Use a trained rigger and signaller.','Keep persons clear of the load.','Record the lift and report defects.'], 'Lift plans, inspection certificates.'),
+    PR('Mobile Plant and Traffic Management Procedure', ['Construction Regulations 2014 r23'], 'To separate people from vehicles and control plant.', ['Prepare the traffic management plan.','Authorise operators and check licences.','Inspect plant before use.','Separate pedestrians and vehicles.','Use banksmen where visibility is limited.'], 'Traffic plan, plant inspection records.'),
+    PR('Electrical Safety on Site Procedure', ['Construction Regulations 2014 r24','SANS 10142'], 'To keep temporary electrical installations safe.', ['Use a registered person for installations.','Fit earth leakage protection.','Inspect distribution boards and leads weekly.','Tag tested portable equipment.','Isolate before maintenance.'], 'Inspection and test records.'),
+    PR('Stacking and Storage Procedure', ['Construction Regulations 2014 r28'], 'To store materials safely.', ['Choose stable, level storage areas.','Limit stack height and secure stacks.','Keep access routes clear.','Store hazardous items separately.','Inspect stacks regularly.'], 'Inspection records.'),
+    PR('Hazardous Chemical Agents Procedure', ['Regulations for Hazardous Chemical Agents 2021'], 'To control exposure to hazardous chemicals.', ['Keep a register and current safety data sheets.','Assess exposure risk.','Control by substitution, ventilation and PPE.','Label and store correctly.','Monitor exposure and health where required.'], 'Register, SDSs, exposure records.'),
+    PR('First Aid Procedure', ['General Safety Regulations r3'], 'To make sure first aid is available and recorded.', ['Appoint and train first aiders.','Keep first aid boxes stocked.','Treat and record every case.','Call emergency services when needed.','Report injuries to the supervisor.'], 'First aid register, box checks.'),
+    PR('Medical Surveillance Procedure', ['OHS Act s8','Hazardous Biological Agents, Noise and Lead Regulations'], 'To protect health through surveillance and fitness checks.', ['Identify roles that need medical surveillance.','Arrange tests with an occupational health practitioner.','Record certificates of fitness.','Act on restrictions.','Keep records confidential.'], 'Fitness certificates, surveillance schedule.'),
+    PR('Occupational Hygiene Monitoring Procedure', ['Regulations for Hazardous Chemical Agents 2021','Noise-induced Hearing Loss Regulations 2003'], 'To measure exposure to noise, dust, fumes and chemicals.', ['Plan the monitoring programme.','Use competent persons and calibrated instruments.','Compare results with limits.','Take action on results above action levels.','Keep and review records.'], 'Monitoring reports and action plans.'),
+    PR('Reporting of Incidents to the Department of Employment and Labour Procedure', ['OHS Act s24','General Administrative Regulations r8, r9'], 'To report and investigate reportable incidents.', ['Notify the Provincial Director of reportable incidents immediately.','Complete the required forms.','Preserve the scene.','Investigate and record findings.','Send the investigation report.'], 'Notification forms and investigation records.'),
+    PR('Environmental Aspects and Impacts Identification Procedure', ['ISO 14001 cl 6.1.2'], 'To identify aspects, assess impacts and set controls.', ['List activities and aspects.','Rate significance.','Set controls for significant aspects.','Link to objectives and legal requirements.','Review at least annually.'], 'Aspects and impacts register.'),
+    PR('Spill Response Procedure', ['NEMA s30','ISO 14001 cl 8.2'], 'To contain and clean up spills.', ['Stop the source if safe.','Contain with spill kits.','Report to the supervisor.','Clean up and dispose of waste correctly.','Investigate and report as required.'], 'Spill report and waste records.'),
+    PR('Waste Management Procedure', ['NEM:WA 59 of 2008'], 'To segregate, store and dispose of waste.', ['Segregate at source.','Label and store waste safely.','Use licensed carriers.','Keep manifests and certificates.','Review waste volumes.'], 'Waste records.'),
+    PR('Customer Complaint Handling Procedure', ['ISO 9001 cl 9.1.2'], 'To resolve customer complaints.', ['Log the complaint.','Acknowledge it.','Investigate the cause.','Resolve and inform the customer.','Review trends.'], 'Complaints register.'),
+    PR('Customer Satisfaction Measurement Procedure', ['ISO 9001 cl 9.1.2'], 'To measure how satisfied customers are.', ['Choose measures such as surveys and feedback.','Collect data on a schedule.','Analyse results.','Agree improvement actions.','Report to management review.'], 'Survey results and actions.'),
+    PR('Contract Review Procedure', ['ISO 9001 cl 8.2.3'], 'To confirm requirements before accepting work.', ['Receive the enquiry or order.','Review requirements, capacity and risks.','Resolve differences.','Accept and record.','Communicate changes.'], 'Contract review records.'),
+    PR('Purchasing and Supplier Approval Procedure', ['ISO 9001 cl 8.4'], 'To buy only from approved suppliers.', ['Define purchasing requirements.','Evaluate and approve suppliers.','Issue purchase orders.','Verify deliveries.','Review supplier performance.'], 'Approved supplier list and evaluations.'),
+    PR('Receiving and Inspection of Goods Procedure', ['ISO 9001 cl 8.6'], 'To verify incoming goods.', ['Check deliveries against the order.','Inspect to the requirement.','Accept, reject or quarantine.','Record the result.','Inform the supplier of defects.'], 'Receiving records.'),
+    PR('Control of Nonconforming Outputs Procedure', ['ISO 9001 cl 8.7'], 'To prevent nonconforming product being used.', ['Identify and tag the item.','Segregate it.','Decide to correct, concede, scrap or return.','Verify any correction.','Record the decision.'], 'Nonconformance records.'),
+    PR('Calibration Control Procedure', ['ISO 9001 cl 7.1.5'], 'To keep measuring equipment accurate.', ['Register equipment needing calibration.','Calibrate to traceable standards.','Label with the next due date.','Withdraw out-of-tolerance equipment.','Assess past results if found out of tolerance.'], 'Calibration register and certificates.'),
+    PR('Preventive Maintenance Procedure', ['ISO 55001'], 'To plan and record maintenance.', ['Set maintenance schedules.','Issue job cards.','Carry out the work.','Record findings and repairs.','Review failures.'], 'Maintenance plan and job cards.'),
+    PR('Management Review Procedure', ['ISO 9001 cl 9.3','ISO 45001 cl 9.3'], 'To review the system with top management.', ['Schedule the review.','Prepare required inputs.','Hold the meeting.','Record decisions and actions.','Track actions to closure.'], 'Management review minutes.'),
+    PR('Objectives and Targets Procedure', ['ISO 9001 cl 6.2'], 'To set and track measurable objectives.', ['Set objectives from policy and risks.','Assign owners and due dates.','Measure progress.','Report at review.','Close or reset.'], 'Objectives register.'),
+    PR('Risk and Opportunity Management Procedure', ['ISO 31000','ISO 9001 cl 6.1'], 'To identify and treat risks and opportunities.', ['Establish the context.','Identify and analyse risks.','Evaluate and treat.','Monitor and review.','Communicate.'], 'Risk register.'),
+    PR('Internal Communication and Consultation Procedure', ['ISO 45001 cl 7.4, 5.4'], 'To communicate and consult on SHERQ matters.', ['Plan what, when and to whom.','Use toolbox talks, notices and meetings.','Consult workers on changes and risks.','Record the outcomes.','Review effectiveness.'], 'Meeting and talk records.'),
+    PR('Recruitment and Onboarding Procedure', ['Basic Conditions of Employment Act 75 of 1997'], 'To recruit fairly and onboard competently.', ['Approve the vacancy.','Advertise and shortlist fairly.','Interview and verify credentials.','Issue the contract.','Induct and train.'], 'Recruitment file.'),
+    PR('Disciplinary Procedure', ['Labour Relations Act 66 of 1995 Schedule 8'], 'To apply discipline fairly.', ['Investigate the allegation.','Notify the employee in writing.','Hold a hearing.','Decide and record the outcome.','Allow an appeal.'], 'Disciplinary records.'),
+    PR('Grievance Procedure', ['Labour Relations Act Schedule 8'], 'To resolve employee grievances.', ['Lodge the grievance.','Meet and listen.','Investigate.','Respond in writing.','Escalate if unresolved.'], 'Grievance records.'),
+    PR('Information Asset Classification and Handling Procedure', ['ISO/IEC 27001 Annex A 5.12, 5.13'], 'To classify and label information.', ['Identify assets and owners.','Assign a classification.','Label and handle according to class.','Review classifications.','Dispose securely.'], 'Information asset register.'),
+    PR('User Access Management Procedure', ['ISO/IEC 27001 Annex A 5.15, 5.18'], 'To grant, review and remove access.', ['Request access with manager approval.','Grant least privilege.','Review quarterly.','Remove access on exit or role change.','Record the changes.'], 'Access requests and reviews.'),
+    PR('Vulnerability and Patch Management Procedure', ['ISO/IEC 27001 Annex A 8.8'], 'To find and fix technical vulnerabilities.', ['Scan systems regularly.','Rate vulnerabilities by risk.','Apply patches in time.','Verify the fix.','Record exceptions.'], 'Scan and patch records.'),
+    PR('Business Continuity and Disaster Recovery Procedure', ['ISO 22301','ISO/IEC 27001 Annex A 5.29, 5.30'], 'To keep critical activities running through disruption.', ['Identify critical activities and impacts.','Set recovery time objectives.','Prepare recovery plans.','Test the plans.','Review after every test or event.'], 'Plans and test reports.'),
+    PR('Records Retention and Disposal Procedure', ['POPIA s14'], 'To keep and dispose of records correctly.', ['Classify records.','Apply retention periods.','Store securely.','Approve destruction.','Record destruction.'], 'Disposal register.'),
+    PR('Legal Appointments Procedure', ['OHS Act s16(2)','Construction Regulations 2014 r8'], 'To appoint, accept, renew and revoke legal appointees.', ['Identify the appointments required.','Check competence of the person.','Issue the letter of appointment.','Obtain signed acceptance.','Renew before expiry and revoke when no longer needed.'], 'Letters of appointment and appointments register.'),
+  ];
+
+  const FORMS_B = [
+    frm('Health and Safety Plan Cover and Approval', ['Construction Regulations 2014 r7(1)'], 'Cover sheet recording approval of the construction health and safety plan.', ['Project and site','Client','Principal contractor','Plan revision','Approved by client','Date of approval']),
+    frm('Method Statement', ['Construction Regulations 2014 r9'], 'Method statement for a task.', ['Task and location','Sequence of work','Hazards and controls','Equipment and plant','Competent persons','Emergency arrangements']),
+    frm('Daily Site Inspection Record', ['Construction Regulations 2014 r8(7)'], 'Daily record of the supervisor\'s inspection.', ['Date and site','Area inspected','Findings','Actions and responsible person','Supervisor']),
+    frm('Permit to Work (General)', ['OHS Act'], 'General permit for high-risk work.', ['Permit number','Location and task','Hazards','Isolations','Precautions','Valid from and to','Issued by','Accepted by','Closed by']),
+    frm('Permit to Work (Work at Height)', ['Construction Regulations 2014 r10'], 'Permit for work at height.', ['Location and task','Anchor points','Equipment inspected','Rescue plan','Workers and training','Issued by and accepted by']),
+    frm('Permit to Work (Excavation)', ['Construction Regulations 2014 r13'], 'Permit for excavation work.', ['Location and depth','Services located','Shoring or battering','Barricades','Competent person','Issued and closed by']),
+    frm('Permit to Work (Confined Space Entry)', ['General Safety Regulations r5'], 'Permit for confined space entry.', ['Space and task','Atmosphere test results','Isolations','Standby person','Rescue plan','Entrants','Issued and closed by']),
+    frm('Permit to Work (Electrical Isolation)', ['Electrical Machinery Regulations'], 'Permit for electrical isolation.', ['Equipment and circuit','Isolation points','Lock and tag numbers','Proved dead by','Issued and cleared by']),
+    frm('Lifting Plan', ['Driven Machinery Regulations 2015','Construction Regulations 2014 r22'], 'Plan for a lift.', ['Load description and weight','Crane and capacity','Radius and boom','Tackle used','Ground conditions','Rigger and signaller','Operator','Approved by']),
+    frm('Scaffold Inspection Record', ['Construction Regulations 2014 r16'], 'Scaffold inspection record.', ['Scaffold location and number','Date and inspector','Base, ties and bracing','Platforms and guardrails','Result: safe or unsafe','Actions']),
+    frm('Excavation Inspection Record', ['Construction Regulations 2014 r13'], 'Daily excavation inspection.', ['Location','Date and inspector','Sides and shoring','Water and spoil','Access and barricades','Result and actions']),
+    frm('Fall Protection Plan', ['Construction Regulations 2014 r10'], 'Fall protection plan.', ['Site and work','Fall hazards','Collective and personal measures','Anchor points','Rescue plan','Competent person']),
+    frm('Safe Work Procedure Acknowledgement', ['ISO 45001 cl 7.3'], 'Worker acknowledgement of a safe work procedure.', ['Procedure','Date','Worker name','Training given by']),
+    frm('Job Safety Analysis', ['ISO 45001 cl 6.1'], 'Task-based hazard analysis.', ['Task','Steps','Hazards per step','Controls','Responsible person']),
+    frm('Risk Assessment Form', ['OHS Act s8','Construction Regulations 2014 r9'], 'Hazard identification and risk assessment form.', ['Activity','Hazard','Who may be harmed','Likelihood and severity','Controls','Residual risk','Review date']),
+    frm('Near Miss Report', ['ISO 45001 cl 10.2'], 'Report of a near miss.', ['Date and place','What happened','Potential outcome','Immediate action','Reported by']),
+    frm('Incident Investigation Report (Annexure 1)', ['General Administrative Regulations r9'], 'Incident investigation report.', ['Date and place','Persons involved','What happened','Root causes','Corrective actions','Investigator']),
+    frm('Section 24 Notification of Incident', ['OHS Act s24'], 'Notification to the Department of Employment and Labour.', ['Employer and site','Date and nature','Persons injured','Immediate cause','Notified to and date']),
+    frm('Medical Certificate of Fitness Record', ['Construction Regulations 2014 r10'], 'Record of medical fitness.', ['Employee','Role','Examination date','Result','Restrictions','Expiry']),
+    frm('Induction Record (Employee)', ['ISO 45001 cl 7.3'], 'New employee induction.', ['Employee','Date','Topics covered','Trainer','Employee signature']),
+    frm('Visitor Safety Declaration', ['OHS Act s8'], 'Declaration by visitors.', ['Visitor name and company','Host','Date and time in and out','Safety rules read','Signature']),
+    frm('PPE Issue Record', ['General Safety Regulations'], 'Record of PPE issued.', ['Employee','PPE item','Date issued','Condition','Signature']),
+    frm('Tool Box Talk Attendance', ['ISO 45001 cl 7.4'], 'Attendance at a safety talk.', ['Topic','Date','Presenter','Attendees and signatures']),
+    frm('Safe Work Observation Record', ['ISO 45001 cl 9.1'], 'Observation of work behaviour.', ['Date and area','Task observed','Safe behaviours','Unsafe behaviours','Feedback given']),
+    frm('Corrective Action Request', ['ISO 9001 cl 10.2'], 'Request for corrective action.', ['Nonconformance','Root cause','Action','Owner','Due date','Verification']),
+    frm('Management of Change Request', ['ISO 45001 cl 8.1.3'], 'Change request.', ['Change','Reason','Risk assessment','Approvals','Training needed','Review date']),
+    frm('Contractor Pre-Qualification Questionnaire', ['OHS Act s37'], 'Pre-qualification of contractors.', ['Company details','COIDA letter','Safety policy','Incident rate','Competent persons','References']),
+    frm('Section 37(2) Agreement', ['OHS Act s37(2)'], 'Mandatary agreement.', ['Mandator','Mandatary','Work','Duties accepted','Signatures']),
+    frm('Supplier Evaluation Form', ['ISO 9001 cl 8.4'], 'Supplier evaluation.', ['Supplier','Product','Quality','Delivery','Price','Safety','Approved or not']),
+    frm('Customer Complaint Form', ['ISO 9001 cl 9.1.2'], 'Complaint form.', ['Customer','Date','Complaint','Action taken','Resolved date']),
+    frm('Customer Satisfaction Survey', ['ISO 9001 cl 9.1.2'], 'Customer survey.', ['Customer','Date','Quality rating','Delivery rating','Service rating','Comments']),
+    frm('Internal Audit Report', ['ISO 19011','ISO 9001 cl 9.2'], 'Audit report.', ['Audit scope and criteria','Auditor','Findings','Opportunities for improvement','Conclusion']),
+    frm('Management Review Minutes', ['ISO 9001 cl 9.3'], 'Minutes of management review.', ['Date and attendees','Inputs reviewed','Decisions','Actions and owners']),
+    frm('Meeting Minutes', ['ISO 9001 cl 7.4'], 'General minutes.', ['Meeting and date','Attendees','Items','Decisions','Actions']),
+    frm('Training Needs Analysis', ['ISO 9001 cl 7.2'], 'Training needs.', ['Employee','Role','Required competence','Gap','Training planned']),
+    frm('Training Attendance Register', ['ISO 9001 cl 7.2'], 'Training record.', ['Course','Date','Trainer','Attendees','Assessment result']),
+    frm('Performance Appraisal Form', ['Labour Relations Act'], 'Appraisal.', ['Employee','Period','Objectives','Rating','Development plan','Signatures']),
+    frm('Leave Application', ['Basic Conditions of Employment Act 75 of 1997'], 'Leave application.', ['Employee','Leave type','From and to','Approved by']),
+    frm('Employee Exit Checklist and Clearance', ['ISO/IEC 27001 Annex A 6.5'], 'Exit clearance.', ['Employee','Last day','Assets returned','Access removed','Handover done']),
+    frm('Written Warning', ['Labour Relations Act Schedule 8'], 'Written warning.', ['Employee','Date','Offence','Previous warnings','Warning period','Signatures']),
+    frm('Grievance Form', ['Labour Relations Act Schedule 8'], 'Grievance form.', ['Employee','Date','Grievance','Remedy sought','Response']),
+    frm('Data Subject Access Request Form', ['POPIA s23','PAIA'], 'Data subject request.', ['Requester and proof of identity','Information requested','Date','Response date']),
+    frm('Personal Information Breach Report', ['POPIA s22'], 'Breach report.', ['Date discovered','Information affected','Persons affected','Containment','Notified to Regulator and subjects']),
+    frm('Change Request (IT)', ['ISO/IEC 27001 Annex A 8.32'], 'IT change request.', ['System','Change','Risk','Rollback plan','Approver','Test result']),
+    frm('Equipment Pre-Use Inspection', ['Driven Machinery Regulations 2015'], 'Pre-use inspection.', ['Equipment','Date','Operator','Items checked','Defects','Fit for use']),
+    frm('Vehicle Pre-Trip Inspection', ['National Road Traffic Act'], 'Vehicle inspection.', ['Vehicle','Driver','Date','Brakes, lights, tyres','Defects','Fit for use']),
+    frm('Maintenance Job Card', ['ISO 55001'], 'Job card.', ['Asset','Work requested','Work done','Parts','Technician','Sign-off']),
+    frm('Calibration Certificate Record', ['ISO 9001 cl 7.1.5'], 'Calibration record.', ['Equipment','Date','Standard used','Result','Next due']),
+    frm('Emergency Drill Report', ['Environmental Regulations for Workplaces r9'], 'Drill report.', ['Date','Scenario','Time to evacuate','Issues','Actions']),
+    frm('Waste Manifest', ['NEM:WA 59 of 2008'], 'Waste manifest.', ['Waste type and quantity','Generator','Carrier','Disposal site','Receipt signature']),
+    frm('Spill Incident Report', ['NEMA s30'], 'Spill report.', ['Date and place','Substance and volume','Containment','Notifications','Cleanup']),
+    frm('Welding Job Traveller', ['ISO 3834-2'], 'Welding job traveller.', ['Job and drawing','WPS','Welders','Materials and consumables','Inspection hold points','Release']),
+    frm('Welder Approval Record', ['ISO 9606-1'], 'Welder approval.', ['Welder','Process','Range of approval','Test date','Expiry','Examiner']),
+    frm('Non-Destructive Testing Report', ['ISO 17635'], 'NDT report.', ['Item','Method','Result','Acceptance criteria','Inspector']),
+    frm('Letter of Introduction to Client (Site Compliance Pack)', ['OHS Act s37'], 'Cover for the compliance pack.', ['Client','Project','Documents attached','Contact']),
+    frm('Termination of Appointment', ['OHS Act'], 'Revoking a legal appointment.', ['Appointee','Appointment','Reason','Effective date','Signatures']),
+    frm('Handover Record', ['ISO 9001'], 'Handover of duties or a site.', ['From and to','Items handed over','Date','Signatures']),
+  ];
+
+  const REGISTERS_B = [
+    reg('Documents (Master Documents Register)', ['ISO 9001 cl 7.5'], 'All controlled documents.', ['Number','Title','Revision','Owner','Issue date','Review date','Status'], 'Monthly'),
+    reg('Records Retention Schedule', ['POPIA s14','Companies Act'], 'Retention periods for records.', ['Record type','Owner','Retention period','Storage','Disposal method'], 'Annually'),
+    reg('Risks and Opportunities', ['ISO 31000','ISO 9001 cl 6.1'], 'Risks and opportunities.', ['Risk','Cause and effect','Rating','Controls','Owner','Review date'], 'Quarterly'),
+    reg('Objectives and Targets', ['ISO 9001 cl 6.2'], 'Objectives.', ['Objective','Target','Owner','Due date','Progress'], 'Quarterly'),
+    reg('Interested Parties and Their Requirements', ['ISO 9001 cl 4.2'], 'Interested parties.', ['Party','Needs and expectations','Relevant requirement','Monitoring'], 'Annually'),
+    reg('Contractors and Subcontractors', ['OHS Act s37'], 'Approved contractors.', ['Contractor','Work','Section 37(2) agreement','COIDA expiry','Insurance expiry','Rating'], 'Quarterly'),
+    reg('Suppliers (Approved Supplier List)', ['ISO 9001 cl 8.4'], 'Approved suppliers.', ['Supplier','Product','Approval date','Rating','Review date'], 'Annually'),
+    reg('Customers and Customer Requirements', ['ISO 9001 cl 8.2'], 'Customer list.', ['Customer','Contact','Requirements','Satisfaction'], 'Annually'),
+    reg('Complaints', ['ISO 9001 cl 9.1.2'], 'Complaints log.', ['Number','Customer','Complaint','Action','Closed date'], 'Monthly'),
+    reg('Corrective Actions', ['ISO 9001 cl 10.2'], 'Corrective actions.', ['Number','Finding','Root cause','Action','Owner','Due date','Verified'], 'Monthly'),
+    reg('Audit Programme and Findings', ['ISO 19011'], 'Audit plan and findings.', ['Audit','Date','Auditor','Findings','Actions'], 'Quarterly'),
+    reg('Management Review Actions', ['ISO 9001 cl 9.3'], 'Review actions.', ['Meeting date','Action','Owner','Due date','Status'], 'Quarterly'),
+    reg('Training Records', ['ISO 9001 cl 7.2'], 'Training given.', ['Employee','Course','Date','Provider','Expiry'], 'Monthly'),
+    reg('Personnel Competence and Certificates', ['ISO 45001 cl 7.2'], 'Competence and certificates.', ['Employee','Certificate','Issue date','Expiry date'], 'Monthly'),
+    reg('Medical Fitness', ['OHS Act s8'], 'Medical fitness.', ['Employee','Role','Certificate date','Expiry','Restrictions'], 'Monthly'),
+    reg('Personal Protective Equipment Issue', ['General Safety Regulations'], 'PPE issued.', ['Employee','Item','Date','Replacement due'], 'Monthly'),
+    reg('Incidents and Accidents', ['General Administrative Regulations r9'], 'Incident log.', ['Number','Date','Type','Injury','Root cause','Actions'], 'Monthly'),
+    reg('Near Misses and Hazard Reports', ['ISO 45001 cl 10.2'], 'Near misses.', ['Number','Date','Description','Action','Closed'], 'Monthly'),
+    reg('First Aid Treatments', ['General Safety Regulations r3'], 'First aid treatments.', ['Date','Person','Injury','Treatment','First aider'], 'Monthly'),
+    reg('Emergency Equipment and Fire Extinguishers', ['SANS 1475','Environmental Regulations for Workplaces'], 'Fire equipment.', ['Item','Location','Last service','Next service','Condition'], 'Monthly'),
+    reg('Machinery and Lifting Equipment', ['Driven Machinery Regulations 2015'], 'Machinery and lifting.', ['Item','Serial number','Certificate','Next inspection','Status'], 'Monthly'),
+    reg('Lifting Tackle', ['Driven Machinery Regulations 2015'], 'Lifting tackle.', ['Item','ID','Safe working load','Inspected','Next inspection'], 'Monthly'),
+    reg('Pressure Equipment', ['Pressure Equipment Regulations 2009'], 'Pressure equipment.', ['Item','Design pressure','Inspection date','Next due'], 'Quarterly'),
+    reg('Scaffolds', ['Construction Regulations 2014 r16'], 'Scaffolds on site.', ['Scaffold','Location','Erected','Inspections','Status'], 'Weekly'),
+    reg('Ladders', ['General Safety Regulations'], 'Ladders.', ['Ladder','Location','Inspected','Condition'], 'Monthly'),
+    reg('Portable Electrical Tools', ['Electrical Machinery Regulations 2011'], 'Tools and leads.', ['Tool','ID','Tested','Next test','Condition'], 'Monthly'),
+    reg('Hazardous Chemical Agents', ['Regulations for Hazardous Chemical Agents 2021'], 'Chemicals on site.', ['Substance','Location','Quantity','SDS date','Controls'], 'Quarterly'),
+    reg('Waste and Disposal', ['NEM:WA 59 of 2008'], 'Waste streams.', ['Waste','Quantity','Carrier','Disposal site','Certificate'], 'Monthly'),
+    reg('Environmental Monitoring', ['ISO 14001 cl 9.1'], 'Environmental measurements.', ['Aspect','Parameter','Result','Limit','Date'], 'Monthly'),
+    reg('Permits to Work', ['OHS Act'], 'Permits issued.', ['Permit','Type','Date','Issued by','Closed'], 'Weekly'),
+    reg('Inductions', ['ISO 45001 cl 7.3'], 'Inductions given.', ['Person','Company','Date','Inducted by'], 'Weekly'),
+    reg('Toolbox Talks', ['ISO 45001 cl 7.4'], 'Talks held.', ['Date','Topic','Presenter','Attendance'], 'Weekly'),
+    reg('Subcontractor Documents and Expiries', ['OHS Act s37'], 'Compliance documents.', ['Contractor','Document','Expiry'], 'Monthly'),
+    reg('Meetings', ['ISO 45001 cl 5.4'], 'Meetings held.', ['Meeting','Date','Minutes','Actions'], 'Monthly'),
+    reg('Information Security Incidents', ['ISO/IEC 27001 Annex A 5.24'], 'Security incidents.', ['Number','Date','Type','Impact','Action','Closed'], 'Monthly'),
+    reg('Access Rights Review', ['ISO/IEC 27001 Annex A 5.18'], 'Access reviews.', ['System','User','Rights','Reviewed','Outcome'], 'Quarterly'),
+    reg('Processing of Personal Information (POPIA)', ['POPIA s17'], 'Processing activities.', ['Activity','Purpose','Data subjects','Retention','Security'], 'Annually'),
+    reg('Data Subject Requests', ['POPIA s23'], 'Requests.', ['Number','Date','Request','Response date'], 'Monthly'),
+    reg('Legal Documents and Certificates', ['Companies Act'], 'Company legal documents.', ['Document','Number','Issue date','Expiry'], 'Monthly'),
+    reg('Insurance Policies', ['Companies Act'], 'Insurance.', ['Policy','Insurer','Cover','Expiry'], 'Annually'),
+    reg('Vehicles and Drivers', ['National Road Traffic Act'], 'Vehicles and drivers.', ['Vehicle','Driver','Licence expiry','Service due'], 'Monthly'),
+    reg('Fixed Assets and Equipment', ['ISO 55001'], 'Asset register.', ['Asset','Location','Owner','Condition','Next service'], 'Quarterly'),
+    reg('Maintenance Schedule', ['ISO 55001'], 'Planned maintenance.', ['Asset','Task','Frequency','Next due'], 'Monthly'),
+    reg('Welding Consumables', ['ISO 3834-2'], 'Consumables.', ['Type','Batch','Certificate','Storage','Issued'], 'Monthly'),
+    reg('Welding Equipment', ['ISO 3834-2'], 'Welding equipment.', ['Equipment','Calibration','Maintenance','Status'], 'Quarterly'),
+    reg('Non-Destructive Testing Records', ['ISO 17635'], 'NDT.', ['Job','Method','Result','Date'], 'Monthly'),
+    reg('Management of Change', ['ISO 45001 cl 8.1.3'], 'Changes.', ['Change','Date','Risk','Approval','Review'], 'Quarterly'),
+    reg('Gifts and Hospitality', ['ISO 37001'], 'Gifts register.', ['Date','Person','Item','Value','Approved'], 'Quarterly'),
+    reg('Conflicts of Interest', ['ISO 37001'], 'Conflicts.', ['Person','Interest','Date declared','Management'], 'Annually'),
+  ];
+
+  const CHECKLISTS_B = [
+    chk('Construction Site Weekly Safety Inspection', ['Construction Regulations 2014 r8(7)'], 'Weekly site inspection.', ['Health and safety plan on site and current','Competent persons appointed in writing','Site fenced and access controlled','Induction records up to date','First aid box stocked and first aider present','Fire extinguishers in place and in date','Housekeeping acceptable','Walkways and access clear','Excavations barricaded and inspected','Scaffolds tagged and inspected','Ladders in good condition','Fall protection in place','Electrical leads and boards safe','Plant and vehicles inspected','Hazardous substances stored correctly','PPE worn']),
+    chk('Construction Work Permit and Notification Checklist', ['Construction Regulations 2014 r3, r4'], 'Permit and notification requirements.', ['Work needs a permit or notification','Permit application submitted','Permit received','Notification of construction work submitted','Notification displayed on site','Client appointed principal contractor in writing','Health and safety specification received']),
+    chk('Principal Contractor Appointment Checklist', ['Construction Regulations 2014 r5, r7'], 'Principal contractor appointment.', ['Health and safety specification issued','Baseline risk assessment done','Principal contractor competent and resourced','Health and safety plan submitted and approved','Construction manager appointed in writing','Health and safety officer appointed','Subcontractor agreements in place']),
+    chk('Scaffold Inspection Checklist', ['Construction Regulations 2014 r16'], 'Scaffold inspection.', ['Competent person inspected','Base plates and sole boards sound','Standards plumb','Ledgers and transoms secure','Bracing and ties in place','Platforms fully boarded','Guardrails and toeboards fitted','Safe access provided','Tag shows safe']),
+    chk('Excavation Daily Checklist', ['Construction Regulations 2014 r13'], 'Excavation checks.', ['Services located','Sides supported or battered','Spoil kept back','Barricades and signs','Safe access and egress','Water controlled','No unauthorised persons']),
+    chk('Working at Height Checklist', ['Construction Regulations 2014 r10'], 'Height work checks.', ['Fall protection plan available','Workers trained and medically fit','Anchor points rated','Harnesses and lanyards inspected','Rescue arrangements ready','Edges protected','Falling object protection']),
+    chk('Lifting Operation Checklist', ['Driven Machinery Regulations 2015'], 'Lifting checks.', ['Lift plan approved','Machine certificate valid','Tackle inspected and tagged','Ground suitable','Operator and rigger competent','Exclusion zone set','Load weight known']),
+    chk('Mobile Plant Pre-Use Checklist', ['Construction Regulations 2014 r23'], 'Plant checks.', ['Operator authorised','Brakes work','Lights and horn work','Tyres and tracks sound','Seat belt works','Fluids leak-free','Alarms work','Fire extinguisher present']),
+    chk('Portable Electrical Equipment Checklist', ['Electrical Machinery Regulations 2011'], 'Electrical checks.', ['Plug and lead undamaged','Earth connection sound','Test tag in date','Casing undamaged','Switch works','Residual current device tested']),
+    chk('Temporary Electrical Installation Checklist', ['Construction Regulations 2014 r24'], 'Site electrics.', ['Installed by registered person','Distribution boards locked','Earth leakage fitted and tested','Leads protected from damage','Isolation labelled','Certificate of compliance available']),
+    chk('Hot Work Permit Checklist', ['Construction Regulations 2014 r29'], 'Hot work checks.', ['Combustibles cleared','Extinguisher at hand','Fire watch appointed','Permit signed','Area checked after work']),
+    chk('Confined Space Entry Checklist', ['General Safety Regulations r5'], 'Confined space checks.', ['Space identified','Atmosphere tested','Isolated','Ventilated','Standby person in place','Rescue equipment ready','Permit signed']),
+    chk('First Aider and First Aid Provision Checklist', ['General Safety Regulations r3'], 'First aid provision.', ['First aiders trained and valid','Ratio met','Boxes stocked','Contents in date','Treatment recorded']),
+    chk('Emergency Preparedness Checklist', ['Environmental Regulations for Workplaces r9'], 'Emergency readiness.', ['Plan current','Exits clear and signed','Assembly points marked','Alarms tested','Drills held','Emergency numbers displayed']),
+    chk('Office Ergonomics and Workstation Checklist', ['Ergonomics Regulations 2019'], 'Workstation checks.', ['Chair adjustable','Screen at eye level','Keyboard and mouse placement','Lighting adequate','Breaks encouraged']),
+    chk('Housekeeping Checklist', ['ISO 45001 cl 8.1'], 'Housekeeping.', ['Floors clean and dry','Waste in bins','Materials stored','Aisles clear','Tools put away']),
+    chk('Hazardous Chemicals Storage Checklist', ['Regulations for Hazardous Chemical Agents 2021'], 'Chemical storage.', ['Labels legible','Safety data sheets available','Incompatibles separated','Spill kit present','Ventilation adequate','Bunding sound']),
+    chk('Environmental Compliance Inspection Checklist', ['ISO 14001 cl 9.1'], 'Environmental inspection.', ['Waste segregated','Spill kits stocked','No leaks','Hazardous waste stored correctly','Licences current','Complaints reviewed']),
+    chk('Contractor Compliance Pack Checklist', ['OHS Act s37'], 'Contractor documents.', ['COIDA letter valid','Insurance valid','Section 37(2) agreement signed','Appointments in writing','Risk assessments','Method statements','Inductions done']),
+    chk('Legal Appointments Checklist', ['OHS Act s16(2)','Construction Regulations 2014 r8'], 'Legal appointments.', ['Section 16(2) appointments made','Safety representatives elected','First aiders appointed','Fire marshals appointed','Incident investigators appointed','Construction roles appointed in writing','Letters signed and accepted','Competence evidence on file']),
+    chk('Internal Audit Checklist (ISO 9001, 14001, 45001)', ['ISO 19011'], 'Integrated audit.', ['Policy current and communicated','Objectives set and tracked','Risks assessed','Legal requirements evaluated','Competence records','Documents controlled','Operations controlled','Incidents investigated','Management review held']),
+    chk('Management Review Preparation Checklist', ['ISO 9001 cl 9.3'], 'Review inputs.', ['Previous actions status','Audit results','Customer feedback','Objectives performance','Incidents and nonconformances','Resources','Risks and opportunities']),
+    chk('Supplier Evaluation Checklist', ['ISO 9001 cl 8.4'], 'Supplier checks.', ['Registered and tax compliant','Quality capability','Delivery performance','Safety record','References checked']),
+    chk('New Employee Onboarding Checklist', ['ISO 45001 cl 7.3'], 'Onboarding.', ['Contract signed','Induction done','PPE issued','Access granted','Training planned','Policies acknowledged']),
+    chk('Employee Exit Checklist', ['ISO/IEC 27001 Annex A 6.5'], 'Exit.', ['Assets returned','Access removed','Exit interview','Handover done','Final pay processed']),
+  ];
+
+  const FLOWS_B = [
+    flow('Contractor Onboarding Process', ['OHS Act s37'], 'From contractor request to site access.', [['start','Contractor needed'],['process','Collect compliance documents'],['decision','Documents valid?','Yes','No: request again'],['process','Sign Section 37(2) agreement'],['process','Induct on site'],['end','Access granted']]),
+    flow('Permit to Work Process', ['OHS Act'], 'From request to closure.', [['start','Permit requested'],['process','Joint site check'],['decision','Safe to proceed?','Yes','No: fix hazards'],['document','Issue permit'],['process','Work and monitor'],['process','Close permit'],['end','Area restored']]),
+    flow('Construction Project Start-up Process', ['Construction Regulations 2014'], 'From award to start of work on site.', [['start','Contract awarded'],['process','Receive health and safety specification'],['process','Prepare health and safety plan'],['decision','Client approves?','Yes','No: revise plan'],['process','Appoint competent persons in writing'],['process','Notify and obtain permit if required'],['end','Start work']]),
+    flow('Risk Assessment Process', ['ISO 45001 cl 6.1'], 'Hazard identification to review.', [['start','Task or change identified'],['process','Identify hazards'],['process','Rate risk'],['process','Set controls'],['decision','Risk acceptable?','Yes','No: add controls'],['document','Record and communicate'],['end','Review']]),
+    flow('Training Process', ['ISO 9001 cl 7.2'], 'Training from need to evaluation.', [['start','Need identified'],['process','Plan training'],['process','Deliver'],['decision','Competent?','Yes','No: retrain'],['document','Record'],['end','Review effectiveness']]),
+    flow('Recruitment and Onboarding Process', ['BCEA'], 'Hiring and onboarding.', [['start','Vacancy approved'],['process','Advertise and shortlist'],['process','Interview and verify'],['decision','Offer accepted?','Yes','No: next candidate'],['process','Contract and induction'],['end','Start work']]),
+    flow('Customer Complaint Process', ['ISO 9001 cl 9.1.2'], 'Complaint to closure.', [['start','Complaint received'],['process','Log and acknowledge'],['process','Investigate'],['process','Resolve'],['decision','Customer satisfied?','Yes','No: escalate'],['end','Close and review trends']]),
+    flow('Purchasing Process', ['ISO 9001 cl 8.4'], 'Need to payment.', [['start','Need identified'],['process','Select approved supplier'],['document','Issue purchase order'],['process','Receive and inspect'],['decision','Accepted?','Yes','No: return'],['end','Pay supplier']]),
+    flow('Maintenance Process', ['ISO 55001'], 'Planned and breakdown maintenance.', [['start','Maintenance due or fault reported'],['document','Raise job card'],['process','Isolate and repair'],['process','Test'],['decision','Fit for use?','Yes','No: repair again'],['end','Record and return to service']]),
+    flow('Information Security Incident Response Process', ['ISO/IEC 27001 Annex A 5.24'], 'Incident response.', [['start','Incident detected'],['process','Report and log'],['process','Contain'],['process','Investigate and eradicate'],['process','Recover'],['end','Lessons learned']]),
+    flow('Legal Compliance Evaluation Process', ['ISO 45001 cl 9.1.2'], 'Evaluate legal compliance.', [['start','Legal register reviewed'],['process','Assess compliance'],['decision','Compliant?','Yes','No: raise action'],['document','Record'],['end','Report at management review']]),
+    flow('Management Review Process', ['ISO 9001 cl 9.3'], 'Management review.', [['start','Schedule review'],['process','Prepare inputs'],['process','Hold meeting'],['document','Record decisions'],['end','Track actions']]),
+    flow('Emergency Response Process', ['Environmental Regulations for Workplaces r9'], 'Emergency response.', [['start','Emergency raised'],['process','Raise alarm'],['process','Evacuate to assembly point'],['process','Account for persons'],['process','Call emergency services'],['end','Debrief and record']]),
+    flow('Employee Disciplinary Process', ['LRA Schedule 8'], 'Discipline.', [['start','Alleged offence'],['process','Investigate'],['process','Notify employee'],['process','Hearing'],['decision','Guilty?','Yes','No: close'],['document','Sanction recorded'],['end','Appeal if requested']]),
+    flow('Welding Fabrication Job Process', ['ISO 3834-2'], 'Welding job.', [['start','Order received'],['process','Contract review'],['process','Select WPS and welders'],['process','Weld and inspect'],['decision','Welds acceptable?','Yes','No: repair'],['document','Release with records'],['end','Deliver']]),
+  ];
+
+  const catalogue = () => [...letters(), ...POLICIES, ...POLICIES_B, ...PROCEDURES, ...PROCEDURES_B, ...FORMS, ...FORMS_B, ...REGISTERS, ...REGISTERS_B, ...CHECKLISTS, ...CHECKLISTS_B, ...FLOWS, ...FLOWS_B];
   const KIND_LABEL = { letter:'Letters of Appointment', policy:'Policies', procedure:'Procedures', form:'Forms', register:'Registers', checklist:'Checklists', flowchart:'Process Flowcharts' };
   const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
   const tokensOf = c => c.match || norm(c.title.replace(/^(form|register):\s*/i, '')).split(' ').filter(w => !['and','of','the','a','for','to'].includes(w));
@@ -35198,10 +35540,16 @@ window.brandFromLogo = function(){
   function existingFor(c){
     const prefix = c.kind === 'form' ? 'form' : c.kind === 'register' ? 'register' : null;
     const toks = tokensOf(c);
+    if(c.kind === 'letter'){
+      const strip = x => norm(x).replace(/^letter of appointment\s*/, '');
+      const want = strip(c.title);
+      return (STATE.contentTemplates || []).find(t => t.type === typeOf(c) && strip(t.title) === want);
+    }
     return (STATE.contentTemplates || []).find(t => {
       if(t.type !== typeOf(c)) return false;
       const n = norm(t.title);
-      if(prefix && !n.startsWith(prefix) && !toks.every(w => n.includes(w))) return false;
+      if(prefix){ if(!n.startsWith(prefix)) return false; }
+      else if(n.startsWith('form ') || n.startsWith('register ')) return false;
       return toks.every(w => n.includes(w));
     });
   }
@@ -35222,33 +35570,99 @@ window.brandFromLogo = function(){
   window.tlAudit = audit;
 
   /* ---------------- seeding ---------------- */
-  async function seedOne(c){
-    const parent = { title: c.title, description: c.desc, type: typeOf(c), module_key: c.kind === 'letter' ? 'orgchart' : null, standard_refs: c.refs || [], is_active: true, version: 1 };
-    if(c.kind === 'checklist') parent.checklist_scoring_method = 'pass_fail';
-    const p = await STATE.supabase.from('content_templates').insert(parent).select().single();
-    if(p.error) return p.error.message;
-    const id = p.data.id;
+  const _learn = { mk:{}, type:{} };
+  function existingKeys(t){
+    const m = {}; (STATE.contentTemplates || []).forEach(x => { if(x.module_key && (!t || x.type === t)) m[x.module_key] = (m[x.module_key] || 0) + 1; });
+    return Object.keys(m).sort((a, b) => m[b] - m[a]);
+  }
+  function typeCandidates(c){
+    const t = typeOf(c); const alt = { procedure:['procedure','policy'], policy:['policy','procedure'], checklist:['checklist'], process_flowchart:['process_flowchart'] };
+    return alt[t] || [t];
+  }
+  function mkCandidates(c){
+    const t = typeOf(c); const out = [];
+    if(_learn.mk[c.kind] !== undefined) out.push(_learn.mk[c.kind]);
+    out.push(c.kind === 'letter' ? 'orgchart' : null, null);
+    existingKeys(t).slice(0, 2).forEach(k => out.push(k));
+    out.push('documents', 'general');
+    return out.filter((v, i) => out.indexOf(v) === i);
+  }
+  /* Insert child rows, learning from the database's own error messages: fill a NOT NULL column the app did not know about,
+     or drop a column that does not exist, then retry (up to 6 times). */
+  const _colFix = { extras:{}, drop:{} };
+  const guessDefault = col => /^(is_|has_|requires_|allow)/.test(col) ? false : /(weight|score|points|order|seq|count|number|level)$/.test(col) ? 1 : /(date|_at)$/.test(col) ? new Date().toISOString() : '';
+  async function childInsert(c, id){
+    const T = STATE.supabase;
+    let table, rows;
+    if(c.kind === 'checklist'){ table = 'content_template_checklist_items'; rows = c.items.map((t, i) => ({ template_id:id, sort_order:(i + 1) * 10, item_text:t })); }
+    else if(c.kind === 'flowchart'){ table = 'content_template_steps'; rows = c.steps.map((s, i) => ({ template_id:id, sort_order:(i + 1) * 10, step_type:s[0], step_text:s[1], decision_yes_label: s[0] === 'decision' ? (s[2] || 'Yes') : null, decision_no_label: s[0] === 'decision' ? (s[3] || 'No') : null })); }
+    else { table = 'content_template_policy_sections'; rows = c.sections.map((s, i) => ({ template_id:id, sort_order:(i + 1) * 10, heading:s[0], body_text:s[1] })); }
+    const extras = _colFix.extras[table] = _colFix.extras[table] || {}, drop = _colFix.drop[table] = _colFix.drop[table] || {};
     let res;
-    if(c.kind === 'checklist') res = await STATE.supabase.from('content_template_checklist_items').insert(c.items.map((t, i) => ({ template_id:id, sort_order:(i + 1) * 10, item_text:t })));
-    else if(c.kind === 'flowchart') res = await STATE.supabase.from('content_template_steps').insert(c.steps.map((s, i) => ({ template_id:id, sort_order:(i + 1) * 10, step_type:s[0], step_text:s[1], decision_yes_label: s[0] === 'decision' ? (s[2] || 'Yes') : null, decision_no_label: s[0] === 'decision' ? (s[3] || 'No') : null })));
-    else res = await STATE.supabase.from('content_template_policy_sections').insert(c.sections.map((s, i) => ({ template_id:id, sort_order:(i + 1) * 10, heading:s[0], body_text:s[1] })));
-    if(res.error){ await STATE.supabase.from('content_templates').delete().eq('id', id); return res.error.message; }
-    return null;
+    for(let attempt = 0; attempt < 6; attempt++){
+      const payload = rows.map(r => { const o = { ...r, ...extras }; Object.keys(drop).forEach(k => delete o[k]); return o; });
+      res = await T.from(table).insert(payload);
+      if(!res.error) return res;
+      const m = String(res.error.message || '');
+      let mm;
+      if((mm = m.match(/null value in column "([a-z0-9_]+)"/i)) && !(mm[1] in extras)){ extras[mm[1]] = guessDefault(mm[1]); continue; }
+      if((mm = m.match(/column "([a-z0-9_]+)" of relation/i)) && !drop[mm[1]]){ drop[mm[1]] = true; continue; }
+      if((mm = m.match(/Could not find the '([a-z0-9_]+)' column/i)) && !drop[mm[1]]){ drop[mm[1]] = true; continue; }
+      break;
+    }
+    return res;
+  }
+  /* returns null on success, otherwise a full diagnostic string (every attempt) */
+  async function seedOne(c){
+    const tried = [];
+    for(const ty of typeCandidates(c)){
+      for(const mk of mkCandidates(c)){
+        const parent = { title: c.title, description: c.desc, type: ty, module_key: mk, standard_refs: c.refs || [], is_active: true, version: 1 };
+        if(c.kind === 'checklist') parent.checklist_scoring_method = 'pass_fail';
+        const p = await STATE.supabase.from('content_templates').insert(parent).select().single();
+        if(p.error){ tried.push(`parent[type=${ty}, module_key=${mk}]: ${p.error.message}${p.error.details ? ' (' + p.error.details + ')' : ''}${p.error.hint ? ' hint: ' + p.error.hint : ''}`); continue; }
+        const id = p.data.id;
+        const res = await childInsert(c, id);
+        if(res.error){
+          tried.push(`children[type=${ty}, module_key=${mk}]: ${res.error.message}${res.error.details ? ' (' + res.error.details + ')' : ''}`);
+          await STATE.supabase.from('content_templates').delete().eq('id', id);
+          /* a child failure will repeat for every parent variant, so stop here */
+          return tried.join(' | ');
+        }
+        _learn.mk[c.kind] = mk; return null;
+      }
+    }
+    return tried.join(' | ');
+  }
+  function showFailures(ok, failures){
+    const text = failures.join('\n\n');
+    const m = document.getElementById('tl-fail-modal'); if(m) m.remove();
+    document.body.insertAdjacentHTML('beforeend', `<div id="tl-fail-modal" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px">
+      <div style="background:var(--bg-card,#fff);max-width:760px;width:100%;max-height:86vh;overflow:auto;border-radius:12px;padding:20px;font-family:Arial,sans-serif">
+        <h3 style="margin:0 0 6px">Template seeding report</h3>
+        <p style="font-size:13px;margin:0 0 10px"><b>${ok}</b> added, <b>${failures.length}</b> could not be added. Every attempt is listed below. Copy the text and send it to support so the cause can be corrected.</p>
+        <textarea id="tl-fail-text" readonly style="width:100%;height:300px;font:12px/1.4 monospace;padding:8px">${escapeHtml(text)}</textarea>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+          <button class="btn-small" onclick="const t=document.getElementById('tl-fail-text');t.select();document.execCommand('copy');toast('Copied.','success')">Copy</button>
+          <button class="btn-small primary" onclick="document.getElementById('tl-fail-modal').remove()">Close</button></div></div></div>`);
   }
   window.tlAddMissing = async function(kind){
     if(!isStaff()){ toast('Only platform staff can change the Template Library.', 'error'); return; }
+    STATE.contentTemplates = []; try{ await loadContentTemplates(); }catch(e){}
     const a = audit(); const todo = a.cat.filter(x => !x.have && (!kind || x.c.kind === kind)).map(x => x.c);
     if(!todo.length){ toast('Nothing missing.', 'success'); return; }
     if(!confirm(`Add ${todo.length} template${todo.length === 1 ? '' : 's'} to the master library? Existing templates are not changed.`)) return;
     showLoader('Adding templates…');
-    const failures = []; let ok = 0;
-    for(const c of todo){ const err = await seedOne(c); if(err) failures.push(c.title + ': ' + err); else ok++; if(failures.length >= 3 && ok === 0) break; }
+    const failures = []; let ok = 0, n = 0;
+    for(const c of todo){
+      n++; try{ document.querySelector('#loader-text, .loader-text') && (document.querySelector('#loader-text, .loader-text').textContent = `Adding templates… ${n} of ${todo.length}`); }catch(e){}
+      let err; try{ err = await seedOne(c); }catch(e){ err = 'exception: ' + (e && e.message || e); }
+      if(err) failures.push(`${c.title} [${c.kind}]\n${err}`); else ok++;
+    }
     hideLoader();
     STATE.contentTemplates = []; await loadContentTemplates(); renderTemplateLibrary();
-    if(failures.length){
-      toast(`Added ${ok}. ${failures.length} failed: ${failures[0]}`, 'error');
-      console.warn('Template seeding failures', failures);
-    } else toast(`Added ${ok} template${ok === 1 ? '' : 's'}.`, 'success');
+    if(failures.length){ console.warn('Template seeding failures', failures); showFailures(ok, failures); }
+    else toast(`Added ${ok} template${ok === 1 ? '' : 's'}.`, 'success');
   };
 
   /* ---------------- panel ---------------- */
@@ -35305,6 +35719,115 @@ window.brandFromLogo = function(){
       await reloadOrgAfterAdminConsoleChange();
     };
   }
+})();
+
+
+
+/* ============================================================================
+   b43: ADMIN CONSOLE AND ADMINISTRATION UPGRADE, WATCHMAN HELPER AWARENESS
+   - Checklists and Policies and Procedures are retired modules: no switch, no access tick, no Module Info entry.
+     Their content comes from the Template Library, so Audits keep working for every client.
+   - Admin Console is grouped, shows the new disciplines, and has a database readiness check for the SQL files.
+   - Welding and Business Health now appear on the invite and edit-access screens.
+   - The Watchman Helper receives a short, current brief about the new features and about which modules this client has.
+   ============================================================================ */
+(function(){
+  const esc = s => escapeHtml(s == null ? '' : String(s));
+
+  /* names */
+  if(MODULE_META.orgchart) MODULE_META.orgchart.title = 'Organisation Charts and Appointments';
+
+  /* Audits still use checklists for every client: the retired switch no longer gates loading them */
+  { const _l = loadOrgChecklists;
+    loadOrgChecklists = window.loadOrgChecklists = async function(){
+      if(STATE.org) STATE.org.checklists_enabled = true;
+      return _l.apply(this, arguments);
+    };
+  }
+
+  /* ---------------- Admin Console ---------------- */
+  const GROUPS = [
+    ['Documents and records', ['document_control_enabled', 'all_documents_enabled', 'legal_certs_enabled']],
+    ['People and sites', ['hr_enabled', 'site_files_enabled']],
+    ['Operations', ['process_flowcharts_enabled', 'asset_watchman_enabled']],
+    ['Disciplines: switch on only where they apply to the client', ['welding_enabled', 'infosec_enabled']],
+    ['Platform', ['administration_enabled']],
+  ];
+  const INCLUDED = [
+    ['Organisation Charts and Appointments', 'Charts, the Appointments Register with signed letters of appointment, personnel information pages and validity checks. Access by module tick.'],
+    ['Business Health Validation', 'One live health view across governance, quality, safety, environment, information security, POPIA, welding and people. Access by module tick.'],
+    ['Template Library (search first)', 'Generic policies, procedures, forms, registers, checklists, flowcharts and letters of appointment. Clients adapt a template, or fall back to generating a new document.'],
+  ];
+  const TABLES = [
+    ['org_appointments', 'qashe-watchman-schema-appointments.sql', 'Appointments Register, personnel documents and qualifications'],
+    ['welding_settings', 'qashe-watchman-schema-welding.sql', 'Welding Management (8 tables)'],
+    ['business_health_validations', 'qashe-watchman-schema-business-health.sql', 'Business Health Validation'],
+    ['org_disciplines', 'qashe-watchman-schema-disciplines.sql', 'Information Security switch'],
+    ['content_templates', '(Template Library tables)', 'Template Library'],
+  ];
+  window.adminDbCheck = async function(){
+    const box = document.getElementById('adm-dbcheck'); if(!box) return;
+    box.innerHTML = '<p style="font-size:12px;color:var(--text-faint)">Checking…</p>';
+    const rows = [];
+    for(const [t, file, what] of TABLES){
+      let ok = true, msg = '';
+      try{
+        const r = await STATE.supabase.from(t).select('*').limit(1);
+        if(r.error){ ok = false; msg = r.error.message || ''; }
+      }catch(e){ ok = false; msg = String(e && e.message || e); }
+      rows.push(`<tr><td class="strong">${esc(what)}</td><td style="font-size:12px">${esc(t)}</td><td>${ok ? '<span class="date-badge green"><span class="dd"></span>Installed</span>' : '<span class="date-badge red"><span class="dd"></span>Not installed</span>'}</td><td style="font-size:11.5px;color:var(--text-faint)">${ok ? '' : 'Run ' + esc(file) + (msg ? ' (' + esc(msg.slice(0, 90)) + ')' : '')}</td></tr>`);
+    }
+    box.innerHTML = `<table><tr><th>Feature</th><th>Table</th><th>Status</th><th>Action</th></tr>${rows.join('')}</table>`;
+  };
+
+  { const _r = renderAdminConsole;
+    renderAdminConsole = window.renderAdminConsole = function(){
+      _r.apply(this, arguments);
+      const wrap = document.getElementById('admin-subtab-content'); if(!wrap) return;
+      const org = STATE.org;
+      const toggles = ADMIN_CONSOLE_TOGGLES.filter(t => !['checklists_enabled', 'policies_enabled'].includes(t.field));
+      const used = new Set();
+      const row = t => `<tr><td class="strong">${esc(t.label)}</td><td style="font-size:12px;color:var(--text-faint)">${esc(t.note)}</td><td style="text-align:right"><button class="btn-small ${org[t.field] ? 'primary' : ''}" onclick="toggleOrgModule('${t.field}', ${!org[t.field]})">${org[t.field] ? 'On: click to turn off' : 'Off, click to turn on'}</button></td></tr>`;
+      let html = '';
+      GROUPS.forEach(([g, fields]) => {
+        const items = fields.map(f => toggles.find(t => t.field === f)).filter(Boolean);
+        items.forEach(t => used.add(t.field));
+        if(items.length) html += `<tr><th colspan="3" style="background:var(--bg-sunk,#f4f4f4);text-transform:none;letter-spacing:0">${esc(g)}</th></tr>` + items.map(row).join('');
+      });
+      const rest = toggles.filter(t => !used.has(t.field));
+      if(rest.length) html += `<tr><th colspan="3" style="background:var(--bg-sunk,#f4f4f4);text-transform:none;letter-spacing:0">Other</th></tr>` + rest.map(row).join('');
+      const on = toggles.filter(t => org[t.field]).length;
+      const card = Array.from(wrap.querySelectorAll('.detail-card')).find(c => /Other Modules/.test(c.textContent));
+      const newCard = `<div class="detail-card"><div class="panel-head"><h3>Modules and disciplines</h3><span style="font-size:12px;color:var(--text-faint)">${on} of ${toggles.length} switched on</span></div>
+          <table><tr><th>Module</th><th>Note</th><th style="text-align:right">Status</th></tr>${html}</table></div>
+        <div class="detail-card"><div class="panel-head"><h3>Included for every client</h3></div>
+          <table>${INCLUDED.map(([a, b]) => `<tr><td class="strong">${esc(a)}</td><td style="font-size:12px;color:var(--text-faint)">${esc(b)}</td></tr>`).join('')}</table>
+          <p style="font-size:12px;color:var(--text-faint);margin-top:10px">Checklists and Policies and Procedures are retired as modules: their content now comes from the Template Library, and checklists remain available inside Audits, so they have no switch. Non-admin users see these modules only when ticked under Team and Access.</p>
+          <div style="margin-top:8px"><button class="btn-small" onclick="switchAdminSubtab('templatelibrary')">Open the Template Library</button></div></div>
+        <div class="detail-card"><div class="panel-head"><h3>Database readiness</h3><button class="btn-small" onclick="adminDbCheck()">Run check</button></div>
+          <p style="font-size:12px;color:var(--text-faint);margin-bottom:8px">Confirms that the SQL files for the newer features have been run on this database.</p><div id="adm-dbcheck"></div></div>`;
+      if(card) card.outerHTML = newCard; else wrap.insertAdjacentHTML('beforeend', newCard);
+    };
+  }
+
+  /* ---------------- Watchman Helper: current brief ---------------- */
+  function moduleState(){
+    const o = STATE.org || {};
+    const yn = (v, d) => (v === undefined ? d : !!v) ? 'on' : 'off';
+    return `This client's switches: Document Management ${yn(o.document_control_enabled, true)}, Welding Management ${yn(o.welding_enabled, false)}, Information Security ${yn(o.infosec_enabled, true)}, Site SHERQ Files ${yn(o.site_files_enabled, false)}, HR ${yn(o.hr_enabled, false)}.`;
+  }
+  window.wcBrief = function(){
+    return '\n\n(Current product facts you may rely on. ' +
+    'ORGANISATION CHARTS AND APPOINTMENTS: the chart is generated from job titles and reporting lines. The Appointments Register holds legal letters of appointment for volunteers, elected or designated staff: Section 16(2) assignee, health and safety representative and committee member, first aider, fire marshal, incident investigator, risk assessor, environmental coordinator, information security officer (ISMO), POPIA information officer and deputy, quality, audit and compliance officers, and the Responsible Welding Coordinator. ' +
+    'Construction Regulations 2014 site work appointments are included: client agent, principal contractor, Section 37(2) mandatary agreement, construction manager, alternate and assistant construction managers, construction health and safety officer r8(5), construction supervisor r8(7), fall protection planner r10, temporary works r12, excavation supervisor r13, demolition r14, scaffold competent person r16, suspended platforms r17, rope access r18, material hoists r19, explosive actuated devices r21, cranes r22, mobile plant r23, electrical r24, flammable liquids r25, water environments r26, stacking r28, fire precautions r29, plus hazardous chemical agents, confined space, ladders and hot work. ' +
+    'To appoint: open the Appointments Register, choose the person, basis (designated, volunteered or elected), appointment type and scope, check the legal reference and duties, then issue the letter. The appointee signs electronically (drawn signature, typed name and a SHA-256 hash). Expiry and renewal feed the Reminders pop-up. Personnel information pages hold qualifications and documents; confidential documents are restricted to managers and admins. ' +
+    'WELDING MANAGEMENT (ISO 3834, part selectable per organisation): welding procedures, welder qualifications, equipment, consumables, jobs, inspections and a readiness check. Only where switched on. ' +
+    'BUSINESS HEALTH VALIDATION: a live health score across governance, quality, health and safety, environment, information security, POPIA, welding and people, with a saved validation record. ' +
+    'INFORMATION SECURITY is a per client discipline; when off, the Statement of Applicability, Information Asset Register, Threat Intelligence and the ISMO appointment are hidden. ' +
+    'TEMPLATE LIBRARY: search the library first for a generic policy, procedure, form, register, checklist, flowchart or letter, adapt it to the organisation, and only if none fits generate a new document. Checklists and Policies and Procedures are no longer separate modules. ' +
+    'ADMIN CONSOLE (Group QaSHE CG staff only) switches modules and disciplines per client; clients manage departments, people and access in Administration. ' +
+    moduleState() + ' Do not suggest features the client has switched off; say who can switch them on.)';
+  };
 })();
 
 </script>
