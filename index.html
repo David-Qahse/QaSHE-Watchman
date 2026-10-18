@@ -1533,7 +1533,7 @@
 /* ============ CONSTANTS ============ */
 const DISCIPLINES = ["safety","health","environment","risk","quality","governance"];
 const SOURCES = ["internal_audit","external_audit","customer_complaint","inspection","management_review","incident"];
-const AUDIT_TYPES = ["internal","external","customer","surveillance","certification"];
+const AUDIT_TYPES = ["internal","external","customer","surveillance","certification","information_security","legal_compliance","supplier","process","follow_up"];
 const AUDIT_STATUSES = ["planned","in_progress","completed","report_issued"];
 const FINDING_TYPES = ["major_nc","minor_nc","observation","positive"];
 const ENTRY_TYPES = ["risk","opportunity"];
@@ -31630,7 +31630,8 @@ window.brandFromLogo = function(){
   const logoEl=document.querySelector('#view-landing .watch img');
   const LOGO=logoEl?logoEl.src:'';
   const css=document.createElement('style'); css.textContent=`
-  .ga-radar-logo{position:absolute!important;left:15%;top:15%;width:70%!important;height:70%!important;border-radius:50%;object-fit:contain;opacity:.14;pointer-events:none;z-index:0}
+  .ga-radar-logo{position:absolute!important;left:9%;top:9%;width:82%!important;height:82%!important;border-radius:50%;object-fit:contain;background:#f1eeea;opacity:.92;box-shadow:0 0 0 3px rgba(255,255,255,.18),0 0 34px rgba(255,255,255,.22);pointer-events:none;z-index:0}
+  .ga-radar svg text{paint-order:stroke;stroke:#14171d!important;stroke-width:3.2px!important;stroke-linejoin:round;fill:#fff!important;font-weight:700}
   .ga-radar svg{z-index:1}
   .ga-radar.big{width:min(400px,80vw)!important}
   /* landing */
@@ -32018,6 +32019,11 @@ window.brandFromLogo = function(){
     let rows=[]; let g=0;
     ids.forEach(tid=>{ const t=(STATE.auditChecklistTemplates||[]).find(x=>x.id===tid); const its=(STATE.auditChecklistItems||[]).filter(i=>i.template_id===tid&&i.is_active);
       its.forEach(i=>rows.push({organisation_id:STATE.org.id,audit_id:auditId,item_text:i.item_text,sort_order:g*10000+(i.sort_order||0),source_checklist:t?colon(t.title):null})); g++; });
+    // the legal register itself becomes a checklist for legal compliance audits
+    if((audit.disciplines||[]).includes('Legal compliance')||(audit.standards||[]).includes('Legal and regulatory requirements')){
+      try{ if(!(STATE.legalRegister||[]).length) await loadLegalRegister(); }catch(e){}
+      (STATE.legalRegister||[]).filter(l=>l.title&&l.status!=='retired'&&l.status!=='not_applicable').forEach((l,k)=>rows.push({organisation_id:STATE.org.id,audit_id:auditId,item_text:'Compliance with: '+(l.ref_code?l.ref_code+': ':'')+l.title+'. Is the requirement met and the evidence current?',sort_order:g*10000+k,source_checklist:'Legal register'}));
+    }
     if(rows.length){
       let { error:rErr }=await STATE.supabase.from('audit_checklist_item_responses').insert(rows);
       if(rErr && /source_checklist|schema cache|column/i.test(rErr.message||'')){ ({ error:rErr }=await STATE.supabase.from('audit_checklist_item_responses').insert(rows.map(r=>{const c=Object.assign({},r); delete c.source_checklist; return c;}))); }
@@ -32723,7 +32729,7 @@ window.brandFromLogo = function(){
   const tableMissing=e=>e&&/does not exist|relation|schema cache|Could not find/i.test(e.message||'');
   const isAdmin=()=>STATE.myRole==='admin'||(STATE.profile&&STATE.profile.is_platform_staff);
   STATE.govRecords=STATE.govRecords||[]; STATE.govAssess=STATE.govAssess||[];
-  const PRINCIPLES=[
+  const ISO_P=[
     ['purpose','Purpose','The reason the organisation exists is clear, agreed by the governing body and used to guide decisions.'],
     ['value','Value generation','The organisation creates lasting value for itself and its stakeholders, and can show how.'],
     ['strategy','Strategy','Strategy is set deliberately, ties back to purpose and is reviewed as conditions change.'],
@@ -32735,6 +32741,21 @@ window.brandFromLogo = function(){
     ['risk','Risk governance','Risk appetite is set and risk is overseen as part of governance, not left to operations.'],
     ['society','Social responsibility','The organisation understands and manages its effect on society and the environment.'],
     ['viability','Viability and performance over time','The organisation stays viable and performs today and over the long term.']];
+  const POPIA_P=[
+    ['pc1','1. Accountability','The responsible party makes sure every condition is met, an Information Officer is appointed and registered with the Regulator, and responsibilities are clear.'],
+    ['pc2','2. Processing limitation','Personal information is processed lawfully, minimally and with a recorded justification such as consent, contract or legal obligation.'],
+    ['pc3','3. Purpose specification','Information is collected for a specific, explicit purpose, kept no longer than needed, and destroyed or de-identified when the purpose ends.'],
+    ['pc4','4. Further processing limitation','New uses of personal information are compatible with the purpose it was collected for, or have a fresh justification.'],
+    ['pc5','5. Information quality','Personal information is complete, accurate, not misleading and kept up to date.'],
+    ['pc6','6. Openness','Processing is documented, the PAIA manual exists, and people are told what is collected, why and who receives it.'],
+    ['pc7','7. Security safeguards','Appropriate technical and organisational measures protect the information, operators are bound by written agreements, and breaches are notified.'],
+    ['pc8','8. Data subject participation','People can see, correct and ask for deletion of their information, and requests are handled within set times.']];
+  let PRINCIPLES=ISO_P;
+  const FW={iso37000:{label:'ISO 37000 principles',noun:'Principle',name:'Governance assessment',note:'Rate each of the 11 principles from ISO 37000:2021 for how well your organisation applies it, and record the evidence. ISO 37000 is guidance, not a certifiable standard: this assessment is evidence of a deliberate, reviewed approach to governance. Rate honestly, an auditor will test the evidence.',doc:'governance maturity against the 11 principles of ISO 37000:2021'},
+    popia:{label:'POPIA readiness',noun:'Condition',name:'POPIA readiness assessment',note:'Rate each of the eight conditions for lawful processing under the Protection of Personal Information Act for how well your organisation meets it, and record the evidence. This is an internal readiness assessment, not legal advice: confirm any gap with your Information Officer or legal adviser.',doc:'readiness against the eight conditions for lawful processing under POPIA'}};
+  const govFw=()=>STATE._govMode==='privacy'?'popia':'iso37000';
+  const setFw=()=>{ PRINCIPLES=govFw()==='popia'?POPIA_P:ISO_P; };
+  const asmts=()=>(STATE.govAssess||[]).filter(a=>(a.framework||'iso37000')===govFw());
   const LEVELS=['Not in place','Ad hoc','Defined','Managed and measured','Optimised'];
   const lvlColour=n=>['#d4262c','#f07a1a','#e0a100','#2e9e5b','#1b7a43'][n]||'#9aa3ad';
 
@@ -32756,6 +32777,21 @@ window.brandFromLogo = function(){
       d1:'Date',d2:null,titleL:'Description of gift or hospitality',ownerL:'Person involved',
       fields:[['dir','Given or received','select',['Received','Given']],['party','Counterparty','text'],['value','Estimated value (R)','number'],['reason','Business reason','area'],['approver','Approved by','text']],
       cols:r=>[r.owner_id?memberName(r.owner_id):'Unassigned',(r.data.dir||'')+(r.data.party?' : '+r.data.party:''),r.data.value!=null&&r.data.value!==''?'R '+r.data.value:'-'],heads:['Person','Direction and counterparty','Value'],ex:['Direction','Counterparty','Value','Reason','Approver']},
+    ropa:{tab:'Processing activities',noun:'processing activity',statuses:[['active','Active'],['under_review','Under review'],['ceased','Ceased']],d1:'Recorded on',d2:'Next review',titleL:'Processing activity',ownerL:'Responsible person',
+      fields:[['purpose','Purpose of the processing','area'],['subjects','Whose information (customers, employees, suppliers)','text'],['pi','Categories of personal information','text'],['special','Special personal information or children\'s information?','select',['No','Yes']],['basis','Lawful justification','select',['Consent','Contract with the person','Legal obligation','Protects a legitimate interest of the person','Public law duty','Legitimate interest of the organisation or a third party']],['recipients','Who receives it','text'],['crossb','Transfers outside South Africa (country and safeguard), or None','text'],['retention','Retention period','text'],['security','Security measures','area']],
+      cols:r=>[r.owner_id?memberName(r.owner_id):'Unassigned',r.data.basis||'',r.data.special||''],heads:['Responsible','Lawful justification','Special information'],ex:[]},
+    dsar:{tab:'Data subject requests',noun:'request',statuses:[['received','Received'],['in_progress','In progress'],['completed','Completed'],['refused','Refused with reasons']],d1:'Received',d2:'Response due',titleL:'Requester and request',ownerL:'Handled by',
+      fields:[['type','Type of request','select',['Access to information','Correction','Deletion or destruction','Objection to processing','Other']],['via','Received through','text'],['verified','Identity verified','select',['Pending','Yes','No']],['outcome','Outcome and reasons','area']],
+      cols:r=>[r.data.type||'',r.owner_id?memberName(r.owner_id):'Unassigned',r.date2?fmtDate(r.date2):'-'],heads:['Type','Handled by','Response due'],ex:[]},
+    operator:{tab:'Operators and agreements',noun:'operator',statuses:[['active','Agreement in place'],['to_agree','Agreement needed'],['terminated','Terminated']],d1:'Agreement signed',d2:'Next review',titleL:'Operator or processor',ownerL:'Relationship owner',
+      fields:[['service','Service provided','text'],['pi','Personal information they process','text'],['country','Country where processed','text'],['assessed','Security assessed','select',['No','Yes']],['notes','Notes','area']],
+      cols:r=>[r.data.service||'',r.data.country||'',r.date1?fmtDate(r.date1):'-'],heads:['Service','Country','Agreement signed'],ex:[]},
+    retention:{tab:'Retention schedule',noun:'retention rule',statuses:[['active','Active'],['under_review','Under review']],d1:'Effective from',d2:'Next review',titleL:'Record type',ownerL:'Record owner',
+      fields:[['period','Retention period','text','For example: 7 years from the end of the financial year'],['basis','Legal or business basis','text'],['where','Where the records are kept','text'],['method','Disposal method (shred, secure delete, certificate)','text'],['notes','Notes','area']],
+      cols:r=>[r.data.period||'',r.data.basis||'',r.owner_id?memberName(r.owner_id):'Unassigned'],heads:['Retention period','Basis','Record owner'],ex:[]},
+    disposal:{tab:'Disposal log',noun:'disposal',statuses:[['scheduled','Scheduled'],['completed','Completed']],d1:'Date',d2:null,titleL:'Records disposed of',ownerL:'Authorised by',
+      fields:[['covers','Retention rule or period that has been reached','text'],['method','Method used','text'],['cert','Certificate or evidence reference','text'],['witness','Witnessed by','text']],
+      cols:r=>[r.owner_id?memberName(r.owner_id):'Unassigned',r.data.method||'',r.data.cert||''],heads:['Authorised by','Method','Evidence'],ex:[]},
     stakeholder:{tab:'Stakeholders',noun:'stakeholder',statuses:[['active','Active'],['dormant','Dormant']],
       d1:'Last engaged',d2:'Next engagement',titleL:'Stakeholder',ownerL:'Relationship owner',
       fields:[['cat','Category','select',['Customers','Owners and shareholders','Employees','Suppliers and partners','Regulators and government','Community','Lenders and insurers','Other']],['needs','Needs and expectations','area'],['method','Engagement method and frequency','text']],
@@ -32773,28 +32809,44 @@ window.brandFromLogo = function(){
   window.loadGovData=loadGov;
   const _lnc3=loadNCs; window.loadNCs=loadNCs=async function(){ const r=await _lnc3.apply(this,arguments); if(STATE.org&&STATE._govFor!==STATE.org.id){ STATE._govFor=STATE.org.id; loadGov().catch(()=>{}); } return r; };
 
-  /* ---------- navigation ---------- */
-  const anchor=document.querySelector('.nav-item[data-mod="threat_intel"]')||document.querySelector('.nav-item[data-mod="soa"]');
-  if(anchor&&!document.querySelector('.nav-item[data-mod="governance"]')) anchor.insertAdjacentHTML('afterend','<div class="nav-item" data-mod="governance" onclick="showModule(\'governance\')"><svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V10M10 21V10M14 21V10M19 21V10M2 10l10-6 10 6z"/></svg> Governance and Ethics</div>');
-  MODULE_META.governance={title:'Governance and Ethics',sub:()=>'ISO 37000 principles assessment, resolutions, delegations of authority, conflicts of interest, gifts and hospitality and stakeholders: evidence for ISO 37000 and your anti-bribery controls.'};
-  RENDERERS.governance=()=>'<div id="gov-root"></div>';
-  const _sm5=showModule; showModule=function(mod){ const r=_sm5.apply(this,arguments); if(mod==='governance') renderGov(); return r; }; window.showModule=showModule;
+  /* ---------- navigation: three pages share one engine ---------- */
+  const NAV={governance:['Governance and Ethics','<path d="M3 21h18M5 21V10M10 21V10M14 21V10M19 21V10M2 10l10-6 10 6z"/>'],privacy:['Privacy (POPIA)','<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/>'],retention:['Records Retention','<path d="M4 4h16v5H4zM6 9v11h12V9M10 13h4"/>']};
+  const META={governance:'ISO 37000 principles assessment, resolutions, delegations of authority, conflicts of interest, gifts and hospitality and stakeholders: evidence for ISO 37000 and your anti-bribery controls.',privacy:'POPIA readiness against the eight conditions, your processing activities, data subject requests and operator agreements. Breach notifications are tracked inside Nonconformances.',retention:'How long each type of record is kept, why, and proof that records past their period were disposed of properly.'};
+  const TABS={governance:['principles','resolution','delegation','coi','gift','stakeholder'],privacy:['principles','ropa','dsar','operator'],retention:['retention','disposal']};
+  let prevNav=document.querySelector('.nav-item[data-mod="threat_intel"]')||document.querySelector('.nav-item[data-mod="soa"]');
+  Object.keys(NAV).forEach(m=>{ if(prevNav&&!document.querySelector('.nav-item[data-mod="'+m+'"]')){ prevNav.insertAdjacentHTML('afterend',`<div class="nav-item" data-mod="${m}" onclick="showModule('${m}')"><svg viewBox="0 0 24 24">${NAV[m][1]}</svg> ${NAV[m][0]}</div>`); }
+    prevNav=document.querySelector('.nav-item[data-mod="'+m+'"]')||prevNav; MODULE_META[m]={title:NAV[m][0],sub:()=>META[m]}; RENDERERS[m]=()=>'<div id="gov-root"></div>'; });
+  const _sm5=showModule; showModule=function(mod){ const r=_sm5.apply(this,arguments); if(NAV[mod]){ if(STATE._govMode!==mod){ STATE._govMode=mod; STATE._govTab=TABS[mod][0]; STATE._govWC=null; } renderGov(); } return r; }; window.showModule=showModule;
   if(typeof STATE._govTab!=='string'||!STATE._govTab) STATE._govTab='principles';
   window.govTab=function(t){ STATE._govTab=t; renderGov(true); };
 
   /* ---------- page shell ---------- */
   async function renderGov(noReload){
-    const root=document.getElementById('gov-root'); if(!root) return;
+    const root=document.getElementById('gov-root'); if(!root) return; const mode=NAV[STATE._govMode]?STATE._govMode:'governance'; STATE._govMode=mode; setFw();
+    if(!TABS[mode].includes(STATE._govTab)) STATE._govTab=TABS[mode][0];
     if(!noReload){ root.innerHTML='<p style="padding:24px;color:var(--text-faint);">Loading…</p>'; await loadGov(); }
     const today=new Date().toISOString().slice(0,10), yr=new Date().getFullYear(); const R=k=>STATE.govRecords.filter(r=>r.kind===k);
-    const overDel=R('delegation').filter(r=>r.status==='active'&&r.date2&&r.date2<today).length;
-    const coiThisYear=R('coi').filter(r=>(r.date1||'').startsWith(String(yr))).length;
-    const openRes=R('resolution').filter(r=>['open','in_progress'].includes(r.status)).length; const overRes=R('resolution').filter(r=>['open','in_progress'].includes(r.status)&&r.date2&&r.date2<today).length;
-    const gp=R('gift').filter(r=>r.status==='pending').length; const last=STATE.govAssess.find(a=>a.status==='final'); const avg=last?avgOf(last.scores):null;
+    const last=asmts().find(a=>a.status==='final'); const avg=last?avgOf(last.scores):null;
     const t=(n,l,c)=>`<div class="panel" style="padding:14px 16px;border-top:4px solid ${c};"><div style="font-size:28px;font-weight:800;line-height:1;">${n}</div><div style="font-size:11.5px;color:var(--text-faint);margin-top:6px;">${l}</div></div>`;
-    root.innerHTML=`${STATE._govMissing?'<div class="panel" style="padding:14px 18px;border-left:4px solid #f07a1a;margin-bottom:14px;font-size:13px;">Run <b>qashe-watchman-schema-governance.sql</b> in the Supabase SQL editor, then refresh.</div>':''}
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px;">${t(avg==null?'-':avg.toFixed(1)+' / 4','governance maturity (last signed assessment)',avg==null?'#9aa3ad':lvlColour(Math.round(avg)))}${t(openRes,'open resolutions',overRes?'#d4262c':'#0b1f3a')}${t(overDel,'delegations past review or expiry',overDel?'#d4262c':'#2e9e5b')}${t(coiThisYear,'conflict declarations this year','#0b1f3a')}${t(gp,'gifts awaiting approval',gp?'#f07a1a':'#2e9e5b')}</div>
-    <div class="toolbar"><div class="filters" style="flex-wrap:wrap;">${[['principles','ISO 37000 principles']].concat(kindsOrder.map(k=>[k,KINDS[k].tab])).map(x=>`<button class="btn-small ${STATE._govTab===x[0]?'primary':''}" onclick="govTab('${x[0]}')">${x[1]}</button>`).join('')}</div></div>
+    const mat=(l)=>t(avg==null?'-':avg.toFixed(1)+' / 4',l,avg==null?'#9aa3ad':lvlColour(Math.round(avg)));
+    let tiles='';
+    if(mode==='governance'){
+      const overDel=R('delegation').filter(r=>r.status==='active'&&r.date2&&r.date2<today).length, coiY=R('coi').filter(r=>(r.date1||'').startsWith(String(yr))).length;
+      const openRes=R('resolution').filter(r=>['open','in_progress'].includes(r.status)).length, overRes=R('resolution').filter(r=>['open','in_progress'].includes(r.status)&&r.date2&&r.date2<today).length, gp=R('gift').filter(r=>r.status==='pending').length;
+      tiles=mat('governance maturity (last signed assessment)')+t(openRes,'open resolutions',overRes?'#d4262c':'#0b1f3a')+t(overDel,'delegations past review or expiry',overDel?'#d4262c':'#2e9e5b')+t(coiY,'conflict declarations this year','#0b1f3a')+t(gp,'gifts awaiting approval',gp?'#f07a1a':'#2e9e5b');
+    } else if(mode==='privacy'){
+      const openD=R('dsar').filter(r=>['received','in_progress'].includes(r.status)), overD=openD.filter(r=>r.date2&&r.date2<today).length;
+      const noAgr=R('operator').filter(r=>r.status==='to_agree').length, rev=R('ropa').filter(r=>r.status!=='ceased'&&r.date2&&r.date2<today).length;
+      const pop=(STATE.secIncidents||[]).filter(s=>s.personal_info_involved&&(!s.regulator_notified_at||!s.subjects_notified_at)).length;
+      tiles=mat('POPIA readiness (last signed assessment)')+t(R('ropa').filter(r=>r.status!=='ceased').length,'processing activities recorded','#0b1f3a')+t(openD.length,'open data subject requests',overD?'#d4262c':'#0b1f3a')+t(noAgr,'operators needing an agreement',noAgr?'#f07a1a':'#2e9e5b')+t(rev,'processing records past review',rev?'#f07a1a':'#2e9e5b')+t(pop,'breach notifications outstanding',pop?'#d4262c':'#2e9e5b');
+    } else {
+      const rules=R('retention'), noOwn=rules.filter(r=>!r.owner_id).length, over=rules.filter(r=>r.date2&&r.date2<today).length, dY=R('disposal').filter(r=>(r.date1||'').startsWith(String(yr))&&r.status==='completed').length;
+      tiles=t(rules.length,'retention rules','#0b1f3a')+t(noOwn,'rules without an owner',noOwn?'#f07a1a':'#2e9e5b')+t(over,'rules past review',over?'#d4262c':'#2e9e5b')+t(dY,'disposals logged this year','#0b1f3a');
+    }
+    const tabName=k=>k==='principles'?FW[govFw()].label:KINDS[k].tab;
+    root.innerHTML=`${STATE._govMissing?'<div class="panel" style="padding:14px 18px;border-left:4px solid #f07a1a;margin-bottom:14px;font-size:13px;">Run <b>qashe-watchman-schema-governance.sql</b> and <b>qashe-watchman-schema-enterprise.sql</b> in the Supabase SQL editor, then refresh.</div>':''}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px;">${tiles}</div>
+    <div class="toolbar"><div class="filters" style="flex-wrap:wrap;">${TABS[mode].map(k=>`<button class="btn-small ${STATE._govTab===k?'primary':''}" onclick="govTab('${k}')">${tabName(k)}</button>`).join('')}</div></div>
     <div id="gov-body"></div>`;
     if(STATE._govTab==='principles') renderPrinciples(); else renderRegister(STATE._govTab);
   }
@@ -32809,29 +32861,29 @@ window.brandFromLogo = function(){
     return `<svg viewBox="0 0 300 300" style="stroke:none;width:300px;height:300px;max-width:100%;">${rings}${prev?`<polygon points="${poly(prev)}" fill="#9aa3ad" fill-opacity=".18" stroke="#9aa3ad" stroke-width="1.5" stroke-dasharray="4 3"/>`:''}<polygon points="${poly(scores)}" fill="#d4262c" fill-opacity=".22" stroke="#d4262c" stroke-width="2"/>${labels}</svg>`;
   }
   function workingCopy(){
-    const latest=STATE.govAssess[0]; const lastFinal=STATE.govAssess.find(a=>a.status==='final');
+    const latest=asmts()[0]; const lastFinal=asmts().find(a=>a.status==='final');
     if(latest&&latest.status==='draft') return {id:latest.id,name:latest.name||'',scores:JSON.parse(JSON.stringify(latest.scores||{})),prev:lastFinal&&lastFinal.id!==latest.id?lastFinal.scores:null,draft:true};
-    return {id:null,name:'Governance assessment '+new Date().getFullYear(),scores:lastFinal?JSON.parse(JSON.stringify(lastFinal.scores||{})):{},prev:lastFinal?lastFinal.scores:null,draft:false,fromFinal:!!lastFinal};
+    return {id:null,name:FW[govFw()].name+' '+new Date().getFullYear(),scores:lastFinal?JSON.parse(JSON.stringify(lastFinal.scores||{})):{},prev:lastFinal?lastFinal.scores:null,draft:false,fromFinal:!!lastFinal};
   }
   function renderPrinciples(){
     const w=STATE._govWC=(STATE._govWC&&STATE._govWC.scores)?STATE._govWC:workingCopy(); const b=document.getElementById('gov-body');
     const rows=PRINCIPLES.map((p,i)=>{ const s=w.scores[p[0]]||{}; const pv=w.prev&&w.prev[p[0]]?+w.prev[p[0]].score:null;
-      return `<tr><td style="min-width:230px;"><b>${i+1}. ${p[1]}</b><div style="font-size:11.5px;color:var(--text-faint);margin-top:2px;">${p[2]}</div></td>
+      return `<tr><td style="min-width:230px;"><b>${/^\d/.test(p[1])?p[1]:(i+1)+'. '+p[1]}</b><div style="font-size:11.5px;color:var(--text-faint);margin-top:2px;">${p[2]}</div></td>
       <td><select data-gp="${p[0]}" data-f="score" onchange="govPSet(this)"><option value="">Rate</option>${LEVELS.map((l,n)=>`<option value="${n}" ${s.score!=null&&s.score!==''&&+s.score===n?'selected':''}>${n}: ${l}</option>`).join('')}</select>${pv!=null&&s.score!==''&&s.score!=null?`<div style="font-size:11px;margin-top:4px;color:${+s.score>pv?'#2e9e5b':+s.score<pv?'#d4262c':'var(--text-faint)'};">${+s.score>pv?'Up':+s.score<pv?'Down':'Same'} from ${pv}</div>`:''}</td>
       <td><textarea data-gp="${p[0]}" data-f="evidence" oninput="govPSet(this)" style="min-height:64px;" placeholder="What evidence shows this? Documents, minutes, records">${E(s.evidence||'')}</textarea></td>
       <td><textarea data-gp="${p[0]}" data-f="ofi" oninput="govPSet(this)" style="min-height:64px;" placeholder="Opportunity for Improvement and the intended action">${E(s.ofi||'')}</textarea></td>
       <td><select data-gp="${p[0]}" data-f="owner" onchange="govPSet(this)"><option value="">Unassigned</option>${memberOptions(s.owner||'')}</select></td></tr>`; }).join('');
-    const hist=STATE.govAssess.filter(a=>a.status==='final');
+    const hist=asmts().filter(a=>a.status==='final');
     b.innerHTML=`<div class="panel" style="padding:16px 18px;margin-bottom:16px;"><div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;">
       <div id="gov-radar">${radar(w.scores,w.prev)}</div>
       <div style="flex:1;min-width:260px;"><div class="field"><label>Assessment name</label><input id="gov-aname" value="${E(w.name)}" oninput="STATE._govWC.name=this.value"></div>
       <p style="font-size:12.5px;margin:10px 0 4px;">Average maturity: <b id="gov-avg">${avgOf(w.scores).toFixed(1)}</b> out of 4. ${w.prev?'The dashed line is the last signed assessment.':'Sign this assessment to create your baseline.'}</p>
-      <p style="font-size:11.5px;color:var(--text-faint);margin:0 0 10px;">Rate each of the 11 principles from ISO 37000:2021 for how well your organisation applies it, and record the evidence. ISO 37000 is guidance, not a certifiable standard: this assessment is evidence of a deliberate, reviewed approach to governance. Rate honestly, an auditor will test the evidence.</p>
+      <p style="font-size:11.5px;color:var(--text-faint);margin:0 0 10px;">${FW[govFw()].note}</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn-primary" onclick="govSaveAssess(false)">Save draft</button>${isAdmin()?'<button class="btn-small" onclick="govSaveAssess(true)">Sign and issue</button>':''}<button class="btn-small" onclick="govOfiTasks()">Create tasks from Opportunities for Improvement</button><button class="btn-small" onclick="govPrintAssess()">Print / PDF</button>${w.fromFinal||w.draft?'<button class="btn-small" onclick="renderGovAgain()">Start a fresh cycle</button>':''}</div></div></div></div>
-      <div class="panel" style="padding:0;overflow:auto;margin-bottom:16px;"><table><tr><th>Principle</th><th>Maturity</th><th>Evidence</th><th>Opportunity for Improvement</th><th>Owner</th></tr>${rows}</table></div>
+      <div class="panel" style="padding:0;overflow:auto;margin-bottom:16px;"><table><tr><th>${FW[govFw()].noun}</th><th>Maturity</th><th>Evidence</th><th>Opportunity for Improvement</th><th>Owner</th></tr>${rows}</table></div>
       <div class="panel"><div class="panel-head"><h3>Signed assessments</h3></div>${hist.length?`<table><tr><th>Assessment</th><th>Date</th><th>Average</th><th>Signed by</th><th></th></tr>${hist.map(a=>`<tr><td>${E(a.name)}</td><td>${fmtDate((a.finalised_at||a.created_at||'').slice(0,10))}</td><td>${avgOf(a.scores).toFixed(1)} / 4</td><td>${E(a.approved_by_name||'')}</td><td><button class="btn-small" onclick="govPrintAssess('${a.id}')">View / PDF</button></td></tr>`).join('')}</table>`:'<p style="font-size:12.5px;color:var(--text-faint);padding:6px 0;">None signed yet.</p>'}</div>`;
   }
-  window.renderGovAgain=function(){ STATE._govWC=null; STATE._govWC={id:null,name:'Governance assessment '+new Date().getFullYear(),scores:{},prev:(STATE.govAssess.find(a=>a.status==='final')||{}).scores||null,draft:false}; renderGov(true); };
+  window.renderGovAgain=function(){ STATE._govWC=null; STATE._govWC={id:null,name:FW[govFw()].name+' '+new Date().getFullYear(),scores:{},prev:(asmts().find(a=>a.status==='final')||{}).scores||null,draft:false}; renderGov(true); };
   window.govPSet=function(el){ const w=STATE._govWC; const k=el.dataset.gp; w.scores[k]=w.scores[k]||{}; w.scores[k][el.dataset.f]=el.dataset.f==='score'?(el.value===''?'':+el.value):el.value;
     if(el.dataset.f==='score'){ document.getElementById('gov-radar').innerHTML=radar(w.scores,w.prev); document.getElementById('gov-avg').textContent=avgOf(w.scores).toFixed(1); } };
   window.govSaveAssess=async function(final){
@@ -32839,10 +32891,12 @@ window.brandFromLogo = function(){
     if(final){ if(unrated){ toast(unrated+' principle(s) are not rated yet.','error'); return; }
       const low=PRINCIPLES.filter(p=>+w.scores[p[0]].score<=2&&!(w.scores[p[0]].ofi||'').trim()).length; if(low){ toast(low+' principle(s) rated 2 or below have no Opportunity for Improvement recorded.','error'); return; } }
     let by=null; if(final){ by=prompt('Signed off by (name and role), for example "David Elliott, Managing Director":'); if(!by) return; }
-    const row={organisation_id:STATE.org.id,name:(w.name||'Governance assessment').trim(),scores:w.scores,average:+avgOf(w.scores).toFixed(2),status:final?'final':'draft',updated_by:STATE.user.id};
+    const row={organisation_id:STATE.org.id,framework:govFw(),name:(w.name||FW[govFw()].name).trim(),scores:w.scores,average:+avgOf(w.scores).toFixed(2),status:final?'final':'draft',updated_by:STATE.user.id};
     if(final){ row.approved_by_name=by.trim(); row.finalised_at=new Date().toISOString(); }
-    const q=STATE.supabase.from('gov_assessments'); const { error }=w.id?await q.update(row).eq('id',w.id):await q.insert(row);
-    if(error){ toast(tableMissing(error)?'Run qashe-watchman-schema-governance.sql first.':'Could not save: '+error.message,'error'); return; }
+    const run=async r=>{ const q=STATE.supabase.from('gov_assessments'); return w.id?await q.update(r).eq('id',w.id):await q.insert(r); };
+    let { error }=await run(row);
+    if(error&&/framework|schema cache|column/i.test(error.message||'')&&govFw()==='iso37000'){ const r2=Object.assign({},row); delete r2.framework; ({ error }=await run(r2)); }
+    if(error){ toast(/framework|column/i.test(error.message||'')?'Run qashe-watchman-schema-enterprise.sql first.':tableMissing(error)?'Run qashe-watchman-schema-governance.sql first.':'Could not save: '+error.message,'error'); return; }
     toast(final?'Assessment signed and issued.':'Draft saved.','success'); STATE._govWC=null; await loadGov(); renderGov(true);
   };
   window.govOfiTasks=async function(){
@@ -32854,15 +32908,15 @@ window.brandFromLogo = function(){
   };
   window.govPrintAssess=function(id){
     const a=id?STATE.govAssess.find(x=>x.id===id):null; const w=STATE._govWC; const sc=a?a.scores:(w&&w.scores)||{}; const nm=a?a.name:(w&&w.name)||''; const win=window.open('','_blank'); if(!win){ toast('Allow pop-ups to print.','error'); return; }
-    win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${E(nm)}</title><style>body{font-family:Arial,Helvetica,sans-serif;font-size:11px;margin:24px;color:#111}h1{font-size:20px;margin:0}table{border-collapse:collapse;width:100%;margin-top:14px}th,td{border:1px solid #bbb;padding:5px 6px;vertical-align:top;text-align:left}th{background:#0b1f3a;color:#fff}.sig{margin-top:40px;display:flex;gap:60px}.sig div{border-top:1px solid #111;padding-top:4px;width:240px}</style></head><body><h1>${E(nm)}</h1><p>${E(STATE.org.name)}: governance maturity against the 11 principles of ISO 37000:2021. Average ${avgOf(sc).toFixed(1)} of 4.${a?' Signed by '+E(a.approved_by_name||'')+' on '+fmtDate((a.finalised_at||a.created_at||'').slice(0,10))+'.':' Working draft.'}</p>
-    <table><tr><th>Principle</th><th>Maturity</th><th>Evidence</th><th>Opportunity for Improvement</th><th>Owner</th></tr>${PRINCIPLES.map((p,i)=>{ const s=sc[p[0]]||{}; return `<tr><td><b>${i+1}. ${p[1]}</b></td><td>${s.score===''||s.score==null?'-':s.score+': '+LEVELS[+s.score]}</td><td>${E(s.evidence||'')}</td><td>${E(s.ofi||'')}</td><td>${s.owner?E(memberName(s.owner)):''}</td></tr>`; }).join('')}</table>
+    win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${E(nm)}</title><style>body{font-family:Arial,Helvetica,sans-serif;font-size:11px;margin:24px;color:#111}h1{font-size:20px;margin:0}table{border-collapse:collapse;width:100%;margin-top:14px}th,td{border:1px solid #bbb;padding:5px 6px;vertical-align:top;text-align:left}th{background:#0b1f3a;color:#fff}.sig{margin-top:40px;display:flex;gap:60px}.sig div{border-top:1px solid #111;padding-top:4px;width:240px}</style></head><body><h1>${E(nm)}</h1><p>${E(STATE.org.name)}: ${FW[govFw()].doc}. Average ${avgOf(sc).toFixed(1)} of 4.${a?' Signed by '+E(a.approved_by_name||'')+' on '+fmtDate((a.finalised_at||a.created_at||'').slice(0,10))+'.':' Working draft.'}</p>
+    <table><tr><th>${FW[govFw()].noun}</th><th>Maturity</th><th>Evidence</th><th>Opportunity for Improvement</th><th>Owner</th></tr>${PRINCIPLES.map((p,i)=>{ const s=sc[p[0]]||{}; return `<tr><td><b>${/^\d/.test(p[1])?p[1]:(i+1)+'. '+p[1]}</b></td><td>${s.score===''||s.score==null?'-':s.score+': '+LEVELS[+s.score]}</td><td>${E(s.evidence||'')}</td><td>${E(s.ofi||'')}</td><td>${s.owner?E(memberName(s.owner)):''}</td></tr>`; }).join('')}</table>
     <div class="sig"><div>Chair of the governing body: name, signature, date</div><div>Managing Director: name, signature, date</div></div><script>setTimeout(function(){window.print()},400)<\/script></body></html>`); win.document.close();
   };
 
   /* ---------- generic registers ---------- */
   function renderRegister(kind){
     const K=KINDS[kind]; const rows=STATE.govRecords.filter(r=>r.kind===kind); const b=document.getElementById('gov-body'); const today=new Date().toISOString().slice(0,10);
-    const extra=kind==='gift'?`<button class="btn-small" onclick="govGiftThreshold()">Approval threshold: R ${giftThreshold()}</button>`:'';
+    const extra=kind==='gift'?`<button class="btn-small" onclick="govGiftThreshold()">Approval threshold: R ${giftThreshold()}</button>`:(kind==='retention'?`<button class="btn-small" onclick="govRetentionStarters()">Add suggested starting points</button>`:'');
     b.innerHTML=`<div class="toolbar"><div class="filters"><select id="gov-fs" onchange="govRegTable('${kind}')"><option value="">All statuses</option>${K.statuses.map(s=>`<option value="${s[0]}">${s[1]}</option>`).join('')}</select></div>${extra}<button class="btn-small" onclick="govExport('${kind}')">Export Excel</button><button class="btn-primary btn-add" onclick="govEdit('${kind}','')">Add ${K.noun}</button></div>
     <div id="gov-edit-slot"></div><div class="panel" style="padding:0;overflow:hidden;"><div id="gov-reg-table"></div></div>`; govRegTable(kind);
     if(kind==='coi'&&!rows.some(r=>(r.date1||'').startsWith(String(new Date().getFullYear())))) b.insertAdjacentHTML('afterbegin','<div class="panel" style="padding:12px 16px;margin-bottom:12px;border-left:4px solid #f07a1a;font-size:12.5px;">No conflict of interest declarations recorded for this year. Ask every director, manager and anyone in a buying or selling role to declare, including a nil return ("no interests to declare").</div>');
@@ -32870,7 +32924,13 @@ window.brandFromLogo = function(){
   window.govRegTable=function(kind){
     const K=KINDS[kind]; const w=document.getElementById('gov-reg-table'); if(!w) return; const fs=(document.getElementById('gov-fs')||{}).value; const today=new Date().toISOString().slice(0,10);
     const rows=STATE.govRecords.filter(r=>r.kind===kind&&(!fs||r.status===fs));
-    w.innerHTML=rows.length?`<table><tr><th>${K.titleL}</th>${K.heads.map(h=>`<th>${h}</th>`).join('')}<th>Status</th></tr>${rows.map(r=>{ const over=K.d2&&r.date2&&r.date2<today&&!['completed','closed','revoked','expired','lapsed','dormant','declined','returned'].includes(r.status); const flag=kind==='gift'&&r.status==='pending'&&(+r.data.value||0)>=giftThreshold()?' <span style="background:#fdeceb;color:#8a1b17;border-radius:10px;padding:1px 8px;font-size:10.5px;font-weight:700;">Above threshold</span>':''; return `<tr class="clickable" onclick="govEdit('${kind}','${r.id}')"><td class="strong">${E(r.title)}${flag}${over?' <span style="background:#d4262c;color:#fff;border-radius:10px;padding:1px 8px;font-size:10.5px;font-weight:700;">Overdue</span>':''}</td>${K.cols(r).map(c=>`<td>${E(c)}</td>`).join('')}<td>${stLabel(kind,r.status)}</td></tr>`; }).join('')}</table>`:'<div class="empty-state"><p>Nothing recorded yet.</p></div>';
+    w.innerHTML=rows.length?`<table><tr><th>${K.titleL}</th>${K.heads.map(h=>`<th>${h}</th>`).join('')}<th>Status</th></tr>${rows.map(r=>{ const over=K.d2&&r.date2&&r.date2<today&&!['completed','closed','revoked','expired','lapsed','dormant','declined','returned','refused','terminated','ceased'].includes(r.status); const flag=kind==='gift'&&r.status==='pending'&&(+r.data.value||0)>=giftThreshold()?' <span style="background:#fdeceb;color:#8a1b17;border-radius:10px;padding:1px 8px;font-size:10.5px;font-weight:700;">Above threshold</span>':''; return `<tr class="clickable" onclick="govEdit('${kind}','${r.id}')"><td class="strong">${E(r.title)}${flag}${over?' <span style="background:#d4262c;color:#fff;border-radius:10px;padding:1px 8px;font-size:10.5px;font-weight:700;">Overdue</span>':''}</td>${K.cols(r).map(c=>`<td>${E(c)}</td>`).join('')}<td>${stLabel(kind,r.status)}</td></tr>`; }).join('')}</table>`:'<div class="empty-state"><p>Nothing recorded yet.</p></div>';
+  };
+  window.govRetentionStarters=async function(){
+    if(!confirm('Add three common starting rules for you to confirm: company records, tax records and employee records? They are marked "Under review" and must be confirmed with your legal adviser, because periods can differ by sector.')) return;
+    const mk=(title,period,basis)=>({organisation_id:STATE.org.id,kind:'retention',title,status:'under_review',owner_id:null,date1:new Date().toISOString().slice(0,10),date2:null,created_by:STATE.user.id,data:{period,basis,where:'',method:'',notes:'Suggested starting point: confirm with your legal adviser.'}});
+    const { error }=await STATE.supabase.from('gov_records').insert([mk('Company records and accounting records','7 years','Companies Act 71 of 2008'),mk('Tax and customs records','5 years from submission of the return','Tax Administration Act 28 of 2011'),mk('Employee and payroll records','3 years from the last entry','Basic Conditions of Employment Act 75 of 1997')]);
+    if(error){ toast(/check|kind/i.test(error.message||'')?'Run qashe-watchman-schema-enterprise.sql first.':'Could not add: '+error.message,'error'); return; } await loadGov(); renderGov(true); toast('Three rules added. Please confirm them.','success');
   };
   window.govGiftThreshold=function(){ const v=prompt('Gifts and hospitality at or above this value (in Rand) need written approval:',giftThreshold()); if(v==null) return; const n=+v; if(!(n>=0)){ toast('Enter a number.','error'); return; } try{ localStorage.setItem('wm_gift_thr_'+STATE.org.id,String(n)); }catch(e){} toast('Threshold set. It is saved in this browser: record the agreed value in your anti-bribery policy.','success'); renderRegister('gift'); };
   window.govEdit=function(kind,id){
@@ -32896,6 +32956,7 @@ window.brandFromLogo = function(){
     if(kind==='coi'&&!document.getElementById('gr-d2').value&&st!=='closed'){ /* default next review one year on */ }
     const row={organisation_id:STATE.org.id,kind,title,data,status:st,owner_id:document.getElementById('gr-owner').value||null,date1:document.getElementById('gr-d1').value||null,date2:K.d2?(document.getElementById('gr-d2').value||null):null};
     if(kind==='coi'&&row.date1&&!row.date2){ const d=new Date(row.date1); d.setFullYear(d.getFullYear()+1); row.date2=d.toISOString().slice(0,10); }
+    if(kind==='dsar'&&row.date1&&!row.date2){ const d=new Date(row.date1); d.setDate(d.getDate()+30); row.date2=d.toISOString().slice(0,10); }
     if(!id) row.created_by=STATE.user.id;
     const q=STATE.supabase.from('gov_records'); const { error }=id?await q.update(row).eq('id',id):await q.insert(row);
     if(error){ toast(tableMissing(error)?'Run qashe-watchman-schema-governance.sql first.':'Could not save: '+error.message,'error'); return; }
@@ -32915,8 +32976,553 @@ window.brandFromLogo = function(){
   /* ---------- due dates feed the Reminders pop-up ---------- */
   if(typeof DATE_TRACKED_MODULES!=='undefined'){
     const gk=(kind,label,field,resolved)=>({key:'governance',label,list:()=>(STATE.govRecords||[]).filter(r=>r.kind===kind),dateField:field,isResolved:x=>resolved.includes(x.status),titleField:'title',getPerson:x=>x.owner_id?memberName(x.owner_id):'Unassigned'});
+    const gk2=(kind,label,key,resolved)=>({key,label,list:()=>(STATE.govRecords||[]).filter(r=>r.kind===kind),dateField:'date2',isResolved:x=>resolved.includes(x.status),titleField:'title',getPerson:x=>x.owner_id?memberName(x.owner_id):'Unassigned'});
+    DATE_TRACKED_MODULES.push(gk2('dsar','Privacy: Data Subject Request Due','privacy',['completed','refused']),gk2('ropa','Privacy: Processing Record Review','privacy',['ceased']),gk2('operator','Privacy: Operator Agreement Review','privacy',['terminated']),gk2('retention','Records Retention: Rule Review','retention',[]));
     DATE_TRACKED_MODULES.push(gk('resolution','Governance: Resolution Actions Due','date2',['completed','lapsed']),gk('delegation','Governance: Delegations Review or Expiry','date2',['expired','revoked']),gk('coi','Governance: Conflict of Interest Reviews','date2',['closed']),gk('stakeholder','Governance: Stakeholder Engagement Due','date2',['dormant']));
   }
+})();
+
+
+/* ===== b33: audit follow-ups: auditor competence and independence, clause coverage ===== */
+(function(){
+  const E=s=>escapeHtml(String(s==null?'':s));
+  const tableMissing=e=>e&&/does not exist|relation|schema cache|Could not find|violates check/i.test(e.message||'');
+  const isAdmin=()=>STATE.myRole==='admin'||(STATE.profile&&STATE.profile.is_platform_staff);
+  const aud=()=>(STATE.govRecords||[]).filter(r=>r.kind==='auditor');
+  const ST=[['competent','Competent'],['provisional','Provisional: under supervision'],['lapsed','Lapsed']];
+  const yearAgo=()=>{ const d=new Date(); d.setFullYear(d.getFullYear()-1); return d.toISOString().slice(0,10); };
+
+  /* ---------- Auditors tab inside Audits ---------- */
+  const _ra=RENDERERS.audits;
+  RENDERERS.audits=function(){ let h=_ra(); return h.replace(/(<button class="btn-small[^"]*" onclick="switchAuditSubtab\('programme'\)">Audit Programme<\/button>)/,`$1\n        <button class="btn-small ${STATE._auditSubtab==='auditors'?'primary':''}" onclick="switchAuditSubtab('auditors')">Auditors</button>`); };
+  const _rc2=renderAuditSubtabContent; renderAuditSubtabContent=function(tab){ if(tab==='auditors') return renderAuditors(); return _rc2.apply(this,arguments); };
+  async function renderAuditors(){
+    const w=document.getElementById('audit-subtab-content'); if(!w) return;
+    try{ if(typeof loadGovData==='function') await loadGovData(); }catch(e){}
+    const rows=aud(); const today=new Date().toISOString().slice(0,10); const ya=yearAgo();
+    const memberIds=new Set(rows.map(r=>r.owner_id)); const missing=(STATE.members||[]).filter(m=>!memberIds.has(m.user_id));
+    w.innerHTML=`<div class="detail-card"><div class="panel-head"><h3>Auditor competence and independence</h3><button class="btn-primary btn-add" onclick="audEdit('')">Add auditor record</button></div>
+      <p class="wm-hint" style="margin-bottom:10px;">Clause 9.2 requires objective and impartial auditors. Keep one record per auditor showing qualifications, what they are competent to audit, their last training and a dated independence declaration. Planning an audit with an auditor who has no current record triggers a warning.</p>
+      <div id="aud-edit-slot"></div>
+      ${rows.length?`<table><tr><th>Auditor</th><th>Competent to audit</th><th>Competence status</th><th>Independence declared</th><th>Next competence review</th></tr>${rows.map(r=>{ const indep=r.date1; const stale=!indep||indep<ya; const due=r.date2&&r.date2<today; return `<tr class="clickable" onclick="audEdit('${r.id}')"><td class="strong">${r.owner_id?E(memberName(r.owner_id)):E(r.title)}</td><td>${E(r.data.competent_in||'')}</td><td>${(ST.find(s=>s[0]===r.status)||[0,r.status])[1]}</td><td>${indep?fmtDate(indep):'-'}${stale?' <span style="background:#fdeceb;color:#8a1b17;border-radius:10px;padding:1px 8px;font-size:10.5px;font-weight:700;">'+(indep?'Over 12 months':'None')+'</span>':''}</td><td>${r.date2?fmtDate(r.date2):'-'}${due?' <span style="background:#d4262c;color:#fff;border-radius:10px;padding:1px 8px;font-size:10.5px;font-weight:700;">Overdue</span>':''}</td></tr>`; }).join('')}</table>`:'<div class="empty-state"><p>No auditor records yet.</p></div>'}
+      ${missing.length?`<p class="wm-hint" style="margin-top:10px;">Team members with no record: ${missing.map(m=>E((m.profiles&&m.profiles.name)||'Unknown')).join(', ')}.</p>`:''}</div>`;
+  }
+  window.audEdit=function(id){
+    const r=aud().find(x=>x.id===id)||{data:{},status:'competent',date1:new Date().toISOString().slice(0,10)}; const d=r.data||{};
+    document.getElementById('aud-edit-slot').innerHTML=`<div class="detail-panel" style="margin-bottom:14px;"><div class="detail-head"><div><h3>${id?'Edit':'Add'} auditor record</h3></div><button class="close-btn" onclick="document.getElementById('aud-edit-slot').innerHTML=''"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+      <div class="form-grid"><div class="field"><label>Auditor</label><select id="aud-who"><option value="">Select</option>${memberOptions(r.owner_id)}</select></div>
+      <div class="field"><label>Competence status</label><select id="aud-st">${ST.map(s=>`<option value="${s[0]}" ${s[0]===r.status?'selected':''}>${s[1]}</option>`).join('')}</select></div>
+      <div class="field"><label>Years of audit experience</label><input id="aud-exp" type="number" value="${E(d.experience==null?'':d.experience)}"></div>
+      <div class="field span3"><label>Qualifications and training (for example lead auditor course, certificate numbers)</label><textarea id="aud-qual">${E(d.qualifications||'')}</textarea></div>
+      <div class="field span3"><label>Competent to audit (standards and disciplines)</label><input id="aud-comp" value="${E(d.competent_in||'')}" placeholder="ISO 9001, ISO 45001, ISO/IEC 27001, legal compliance"></div>
+      <div class="field"><label>Last audit witnessed or reviewed</label><input type="date" id="aud-wit" value="${d.witnessed||''}"></div>
+      <div class="field"><label>Independence and impartiality declared on</label><input type="date" id="aud-d1" value="${r.date1||''}"></div>
+      <div class="field"><label>Next competence review</label><input type="date" id="aud-d2" value="${r.date2||''}"></div>
+      <div class="field span3"><label>Areas this auditor must not audit (own work, own department, conflicts)</label><input id="aud-excl" value="${E(d.exclusions||'')}"></div></div>
+      <div class="form-actions">${id&&isAdmin()?`<button class="btn-small" style="margin-right:auto" onclick="audDelete('${id}')">Delete</button>`:''}<button class="btn-cancel" onclick="document.getElementById('aud-edit-slot').innerHTML=''">Cancel</button><button class="btn-primary" onclick="audSave('${id}')">Save record</button></div></div>`;
+  };
+  window.audSave=async function(id){
+    const who=document.getElementById('aud-who').value; if(!who){ toast('Choose the auditor.','error'); return; }
+    const d2=document.getElementById('aud-d2').value; const d1=document.getElementById('aud-d1').value;
+    const row={organisation_id:STATE.org.id,kind:'auditor',title:memberName(who),status:document.getElementById('aud-st').value,owner_id:who,date1:d1||null,date2:d2||null,data:{experience:document.getElementById('aud-exp').value===''?null:+document.getElementById('aud-exp').value,qualifications:document.getElementById('aud-qual').value.trim(),competent_in:document.getElementById('aud-comp').value.trim(),witnessed:document.getElementById('aud-wit').value||'',exclusions:document.getElementById('aud-excl').value.trim()}};
+    if(!id) row.created_by=STATE.user.id; const q=STATE.supabase.from('gov_records'); const { error }=id?await q.update(row).eq('id',id):await q.insert(row);
+    if(error){ toast(tableMissing(error)?'Run qashe-watchman-schema-audit-followups.sql first.':'Could not save: '+error.message,'error'); return; }
+    toast('Auditor record saved.','success'); await loadGovData(); renderAuditors();
+  };
+  window.audDelete=async function(id){ if(!confirm('Delete this auditor record?')) return; const { error }=await STATE.supabase.from('gov_records').delete().eq('id',id); if(error){ toast('Could not delete: '+error.message,'error'); return; } await loadGovData(); renderAuditors(); };
+
+  /* ---------- warn when planning an audit with an auditor lacking a current record ---------- */
+  const _sap=window.submitAuditPlan;
+  window.submitAuditPlan=submitAuditPlan=async function(){
+    try{
+      const type=(document.getElementById('af-type')||{}).value; const ext=['external','certification','surveillance'].includes(type); const who=!ext&&(document.getElementById('af-auditor')||{}).value;
+      if(who){ if(typeof loadGovData==='function'&&!(STATE.govRecords||[]).length) await loadGovData();
+        const rec=aud().find(r=>r.owner_id===who); const name=memberName(who); let msg='';
+        if(!rec) msg=name+' has no auditor competence record.'; else if(rec.status!=='competent') msg=name+' is recorded as "'+((ST.find(s=>s[0]===rec.status)||[0,rec.status])[1])+'".'; else if(!rec.date1||rec.date1<yearAgo()) msg=name+'\'s independence declaration is missing or over 12 months old.'; else if(rec.date2&&rec.date2<new Date().toISOString().slice(0,10)) msg=name+'\'s competence review is overdue.';
+        if(msg&&!confirm(msg+' Clause 9.2 expects objective, impartial and competent auditors.\n\nPlan the audit anyway?')) return; }
+    }catch(e){}
+    return _sap.apply(this,arguments);
+  };
+
+  /* ---------- clause coverage under the Audit Programme ---------- */
+  const HLS=[['4','Context of the organization'],['5','Leadership'],['6','Planning'],['7','Support'],['8','Operation'],['9','Performance evaluation'],['10','Improvement']];
+  const ANNEX=[['A.5','Organizational controls'],['A.6','People controls'],['A.7','Physical controls'],['A.8','Technological controls']];
+  const CLAUSE_STDS=['ISO 9001:2015','ISO 14001:2015','ISO 45001:2018','ISO/IEC 27001:2022','ISO 37001:2016'];
+  const _rap=window.renderAuditProgramme;
+  window.renderAuditProgramme=function(yr){
+    _rap.apply(this,arguments); const w=document.getElementById('audit-subtab-content'); if(!w||document.getElementById('clause-cov')) return;
+    const sel=STATE._covStd&&CLAUSE_STDS.includes(STATE._covStd)?STATE._covStd:CLAUSE_STDS.find(s=>(STATE.audits||[]).some(a=>(a.standards||[]).includes(s)))||CLAUSE_STDS[3];
+    w.insertAdjacentHTML('beforeend',`<div class="detail-card" id="clause-cov"><div class="panel-head"><h3>Clause coverage</h3><select onchange="STATE._covStd=this.value;clauseCoverage()">${CLAUSE_STDS.map(s=>`<option ${s===sel?'selected':''}>${s}</option>`).join('')}</select></div><div id="clause-cov-body"><p class="wm-hint">Loading…</p></div></div>`);
+    clauseCoverage();
+  };
+  window.clauseCoverage=async function(){
+    const body=document.getElementById('clause-cov-body'); if(!body) return; const std=STATE._covStd&&CLAUSE_STDS.includes(STATE._covStd)?STATE._covStd:(document.querySelector('#clause-cov select')||{}).value;
+    const audits=(STATE.audits||[]).filter(a=>(a.standards||[]).includes(std)||a.standard===std); const ids=audits.map(a=>a.id);
+    if(!ids.length){ body.innerHTML='<p class="wm-hint">No audit has used '+E(std)+' yet.</p>'; return; }
+    let finds=[],resp=[]; try{ const f=await STATE.supabase.from('audit_findings').select('audit_id,clause_reference,finding_type').in('audit_id',ids); finds=f.data||[]; const r=await STATE.supabase.from('audit_checklist_item_responses').select('audit_id,item_text,result').in('audit_id',ids); resp=r.data||[]; }catch(e){}
+    const rows=/27001/.test(std)?HLS.concat(ANNEX):HLS; const cnt={}; rows.forEach(r=>cnt[r[0]]={items:0,finds:0,audits:new Set()});
+    const hit=(txt,a)=>{ const t=String(txt||''); let k=null; let m;
+      if((m=t.match(/(?:^|[^\d.])(A\.\d+)(?:\.\d+)?/i))) k=m[1].toUpperCase().replace('A.','A.'); else if((m=t.match(/Clause\s+(\d+)/i))) k=m[1]; else if((m=t.match(/^\s*(\d+)(?:\.\d+)*\b/))) k=m[1];
+      if(!k||!cnt[k]) return null; return k; };
+    resp.filter(r=>r.result).forEach(r=>{ const k=hit(r.item_text); if(k){ cnt[k].items++; cnt[k].audits.add(r.audit_id); } });
+    finds.forEach(f=>{ const t=f.clause_reference||''; const other=CLAUSE_STDS.find(s=>s!==std&&t.includes(s)); if(other) return; const k=hit(t); if(k){ cnt[k].finds++; cnt[k].audits.add(f.audit_id); } });
+    const covered=rows.filter(r=>cnt[r[0]].items+cnt[r[0]].finds>0).length;
+    body.innerHTML=`<p class="wm-hint" style="margin-bottom:8px;">${covered} of ${rows.length} clause groups have audit evidence. Evidence counts checklist items answered and findings whose clause reference starts with the clause number (for example 9.2 or A.8.7). Use a checklist that numbers its items, such as the ISMS Internal Audit Checklist in the Templates Repository, and quote the clause on every finding.</p>
+      <table><tr><th>Clause</th><th>Audits</th><th>Checklist items answered</th><th>Findings</th><th>Status</th></tr>${rows.map(r=>{ const c=cnt[r[0]]; const ok=c.items+c.finds>0; return `<tr><td class="strong">${r[0].startsWith('A.')?r[0]:'Clause '+r[0]}: ${r[1]}</td><td>${c.audits.size}</td><td>${c.items}</td><td>${c.finds}</td><td>${ok?'<span class="prog-b done">Evidence</span>':'<span class="prog-b over">No evidence</span>'}</td></tr>`; }).join('')}</table>`;
+  };
+})();
+
+
+/* ===== b34: enterprise hardening: change log viewer, group view across organisations, authenticator-app MFA ===== */
+(function(){
+  const E=s=>escapeHtml(String(s==null?'':s));
+  const tableMissing=e=>e&&/does not exist|relation|schema cache|Could not find/i.test(e.message||'');
+  const isAdmin=()=>STATE.myRole==='admin'||(STATE.profile&&STATE.profile.is_platform_staff);
+  const ICON={log:'<path d="M12 8v5l3 2"/><circle cx="12" cy="12" r="9"/>',group:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',lock:'<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/><path d="M12 15v2"/>'};
+
+  /* ---------- navigation ---------- */
+  const anchor=document.querySelector('.nav-item[data-mod="retention"]')||document.querySelector('.nav-item[data-mod="governance"]');
+  const NAV=[['change_log','Change Log',ICON.log,'Every create, change and delete on key records, who did it and when. Append-only. Administrators only.'],['group_view','Group View',ICON.group,'One row per organisation you administer: the numbers that matter side by side.'],['account_security','Account Security',ICON.lock,'Protect your sign-in with an authenticator app.']];
+  let prev=anchor;
+  NAV.forEach(n=>{ if(prev&&!document.querySelector('.nav-item[data-mod="'+n[0]+'"]')) prev.insertAdjacentHTML('afterend',`<div class="nav-item" data-mod="${n[0]}" onclick="showModule('${n[0]}')"><svg viewBox="0 0 24 24">${n[2]}</svg> ${n[1]}</div>`);
+    prev=document.querySelector('.nav-item[data-mod="'+n[0]+'"]')||prev; MODULE_META[n[0]]={title:n[1],sub:()=>n[3]}; RENDERERS[n[0]]=()=>'<div id="ent-root"></div>'; });
+  const syncNav=()=>{ const cl=document.querySelector('.nav-item[data-mod="change_log"]'); if(cl) cl.style.display=isAdmin()?'':'none';
+    const gv=document.querySelector('.nav-item[data-mod="group_view"]'); if(gv) gv.style.display=((STATE.memberships||[]).filter(m=>['admin','manager'].includes(m.role)).length>=2||(STATE.profile&&STATE.profile.is_platform_staff&&(STATE.memberships||[]).length>=2))?'':'none'; };
+  const _sm6=showModule; showModule=function(mod){ syncNav(); const r=_sm6.apply(this,arguments);
+    if(mod==='change_log') renderLog(); if(mod==='group_view') renderGroup(); if(mod==='account_security') renderSecurity(); return r; };
+  window.showModule=showModule; syncNav();
+
+  /* ---------- change log ---------- */
+  STATE._logF=STATE._logF&&typeof STATE._logF==='object'&&!Array.isArray(STATE._logF)?STATE._logF:{table:'',op:'',from:'',q:''};
+  async function renderLog(){
+    const root=document.getElementById('ent-root'); if(!root) return;
+    if(!isAdmin()){ root.innerHTML='<div class="empty-state"><p>The change log is for administrators.</p></div>'; return; }
+    const f=STATE._logF;
+    root.innerHTML=`<div class="toolbar"><div class="filters" style="flex-wrap:wrap;"><input id="lg-q" placeholder="Search record or field" value="${E(f.q)}" style="min-width:200px;" onchange="logSet('q',this.value)"><select onchange="logSet('table',this.value)"><option value="">All records</option>${['documents','nonconformances','risk_register','audits','audit_findings','soa_controls','soa_versions','security_incidents','gov_records','gov_assessments','information_assets','threat_intel_items','legal_register','suppliers','personnel','organisation_members','assets','management_reviews','organisations'].map(t=>`<option ${f.table===t?'selected':''}>${t}</option>`).join('')}</select><select onchange="logSet('op',this.value)"><option value="">All actions</option>${['INSERT','UPDATE','DELETE'].map(t=>`<option ${f.op===t?'selected':''}>${t}</option>`).join('')}</select><input type="date" value="${f.from}" onchange="logSet('from',this.value)" title="From"></div><button class="btn-small" onclick="logExport()">Export Excel</button></div>
+      <div id="lg-note"></div><div class="panel" style="padding:0;overflow:auto;"><div id="lg-table"><p style="padding:18px;color:var(--text-faint);">Loading…</p></div></div>
+      <p style="font-size:11.5px;color:var(--text-faint);margin-top:10px;">Entries are written by the database itself and cannot be edited or deleted from the app. The newest 500 matching entries are shown: use the filters to go further back. Changes made by the platform operator through the database console are logged without a user name.</p>`;
+    let q=STATE.supabase.from('audit_log').select('*').eq('organisation_id',STATE.org.id).order('created_at',{ascending:false}).limit(500);
+    if(f.table) q=q.eq('table_name',f.table); if(f.op) q=q.eq('operation',f.op); if(f.from) q=q.gte('created_at',f.from);
+    const { data, error }=await q; const w=document.getElementById('lg-table'); if(!w) return;
+    if(error){ w.innerHTML=`<p style="padding:18px;font-size:13px;">${tableMissing(error)?'Run <b>qashe-watchman-schema-enterprise.sql</b> in the Supabase SQL editor to switch the change log on.':'Could not load: '+E(error.message)}</p>`; return; }
+    STATE._logRows=data||[]; renderLogRows();
+  }
+  function renderLogRows(){
+    const w=document.getElementById('lg-table'); if(!w) return; const q=(STATE._logF.q||'').toLowerCase();
+    const rows=(STATE._logRows||[]).filter(r=>!q||JSON.stringify(r.changes||r.snapshot||{}).toLowerCase().includes(q)||String(r.record_id).includes(q)||String(r.table_name).includes(q));
+    const who=r=>r.changed_by?(STATE.memberMap&&STATE.memberMap[r.changed_by])||String(r.changed_by).slice(0,8):'System or console';
+    w.innerHTML=rows.length?`<table><tr><th>When</th><th>Who</th><th>Action</th><th>Record</th><th>What changed</th></tr>${rows.map(r=>{ const ch=r.changes||{}; const keys=Object.keys(ch); const body=r.operation==='UPDATE'?keys.slice(0,4).map(k=>`<b>${E(k)}</b>: ${E(shorten(ch[k].old))} → ${E(shorten(ch[k].new))}`).join('<br>')+(keys.length>4?`<br><i>and ${keys.length-4} more</i>`:''):(r.operation==='DELETE'?'<i>Record deleted</i>':'<i>Record created</i>'); return `<tr><td style="white-space:nowrap">${new Date(r.created_at).toLocaleString()}</td><td>${E(who(r))}</td><td>${r.operation}</td><td><span class="mono-cell">${E(r.table_name)}</span><div style="font-size:10.5px;color:var(--text-faint)">${E(String(r.record_id||'').slice(0,8))}</div></td><td style="font-size:12px;">${body}</td></tr>`; }).join('')}</table>`:'<div class="empty-state"><p>No entries match.</p></div>';
+  }
+  const shorten=v=>{ const t=v==null?'(empty)':typeof v==='object'?JSON.stringify(v):String(v); return t.length>60?t.slice(0,57)+'…':t; };
+  window.logSet=function(k,v){ STATE._logF[k]=v; if(k==='q') renderLogRows(); else renderLog(); };
+  window.logExport=async function(){
+    const rows=(STATE._logRows||[]).map(r=>({'When':r.created_at,'Who':r.changed_by?((STATE.memberMap&&STATE.memberMap[r.changed_by])||r.changed_by):'System or console','Action':r.operation,'Table':r.table_name,'Record':r.record_id,'Changes':JSON.stringify(r.changes||r.snapshot||{})}));
+    const XLSX=await ensureXLSX(); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Change log'); XLSX.writeFile(wb,'Change-Log.xlsx');
+  };
+
+  /* ---------- group view ---------- */
+  async function renderGroup(){
+    const root=document.getElementById('ent-root'); if(!root) return; root.innerHTML='<p style="padding:24px;color:var(--text-faint);">Collecting figures from each organisation…</p>';
+    const orgs=(STATE.memberships||[]).filter(m=>['admin','manager'].includes(m.role)||(STATE.profile&&STATE.profile.is_platform_staff)).slice(0,25);
+    const today=new Date().toISOString().slice(0,10); const sb=STATE.supabase;
+    const cnt=async(table,fn)=>{ try{ let q=sb.from(table).select('id',{count:'exact',head:true}); q=fn(q); const r=await q; return r.error?null:(r.count==null?0:r.count); }catch(e){ return null; } };
+    const rows=await Promise.all(orgs.map(async m=>{ const id=m.organisation_id;
+      const [nc,tk,doc,rk,legal]=await Promise.all([
+        cnt('nonconformances',q=>q.eq('organisation_id',id).neq('status','closed')),
+        cnt('tasks',q=>q.eq('organisation_id',id).neq('status','done').lt('due_date',today)),
+        cnt('documents',q=>q.eq('organisation_id',id).lt('next_review_date',today).not('status','in','(withdrawn,superseded)')),
+        cnt('risk_register',q=>q.eq('organisation_id',id).neq('status','closed').gte('inherent_score',15)),
+        cnt('legal_register',q=>q.eq('organisation_id',id).lt('next_review_due_date',today))]);
+      let soa=null,thr=null,pop=null,gov=null;
+      try{ const s=await sb.from('soa_controls').select('applicable,status').eq('organisation_id',id); if(!s.error){ const a=(s.data||[]).filter(x=>x.applicable!==false); soa=(s.data||[]).length?Math.round(a.filter(x=>['implemented','effective'].includes(x.status)).length/Math.max(a.length,1)*100):null; } }catch(e){}
+      try{ const t=await sb.from('threat_intel_items').select('likelihood,impact,status').eq('organisation_id',id); if(!t.error) thr=(t.data||[]).filter(x=>!['closed','accepted'].includes(x.status)&&(x.likelihood||0)*(x.impact||0)>=15).length; }catch(e){}
+      try{ const p=await sb.from('security_incidents').select('personal_info_involved,regulator_notified_at,subjects_notified_at').eq('organisation_id',id); if(!p.error) pop=(p.data||[]).filter(x=>x.personal_info_involved&&(!x.regulator_notified_at||!x.subjects_notified_at)).length; }catch(e){}
+      try{ const g=await sb.from('gov_assessments').select('average,framework,status,created_at').eq('organisation_id',id).eq('status','final').order('created_at',{ascending:false}); if(!g.error){ const f=(g.data||[]).find(x=>(x.framework||'iso37000')==='iso37000'); gov=f?+f.average:null; } }catch(e){}
+      return {id,name:m.organisations.name,role:m.role,nc,tk,doc,rk,legal,soa,thr,pop,gov}; }));
+    STATE._groupRows=rows;
+    const c=(v,bad)=>v==null?'<span style="color:var(--text-faint)">-</span>':`<b style="color:${bad&&v>0?'#d4262c':'inherit'}">${v}</b>`;
+    root.innerHTML=`<div class="toolbar"><div class="filters"></div><button class="btn-small" onclick="groupExport()">Export Excel</button></div>
+      <div class="panel" style="padding:0;overflow:auto;"><table><tr><th>Organisation</th><th>Open nonconformances</th><th>Overdue tasks</th><th>Documents past review</th><th>High risks open</th><th>Legal reviews overdue</th><th>Controls implemented</th><th>High threats</th><th>POPIA notices due</th><th>Governance maturity</th><th></th></tr>
+      ${rows.map(r=>`<tr><td class="strong">${E(r.name)}<div style="font-size:10.5px;color:var(--text-faint)">${E(r.role)}</div></td><td>${c(r.nc)}</td><td>${c(r.tk,1)}</td><td>${c(r.doc,1)}</td><td>${c(r.rk,1)}</td><td>${c(r.legal,1)}</td><td>${r.soa==null?'-':r.soa+'%'}</td><td>${c(r.thr,1)}</td><td>${c(r.pop,1)}</td><td>${r.gov==null?'-':r.gov.toFixed(1)+' / 4'}</td><td><button class="btn-small" onclick="selectOrg('${r.id}')">Open</button></td></tr>`).join('')}</table></div>
+      <p style="font-size:11.5px;color:var(--text-faint);margin-top:10px;">Figures are read live from each organisation you administer or manage. A dash means that organisation has not switched the module on or the figure is not available. Red figures need attention.</p>`;
+  }
+  window.groupExport=async function(){ const rows=(STATE._groupRows||[]).map(r=>({'Organisation':r.name,'Open nonconformances':r.nc,'Overdue tasks':r.tk,'Documents past review':r.doc,'High risks open':r.rk,'Legal reviews overdue':r.legal,'Controls implemented %':r.soa,'High threats':r.thr,'POPIA notices due':r.pop,'Governance maturity':r.gov})); const XLSX=await ensureXLSX(); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Group view'); XLSX.writeFile(wb,'Group-View.xlsx'); };
+
+  /* ---------- authenticator-app MFA (Supabase TOTP) ---------- */
+  const mfa=()=>STATE.supabase&&STATE.supabase.auth&&STATE.supabase.auth.mfa;
+  async function renderSecurity(){
+    const root=document.getElementById('ent-root'); if(!root) return;
+    if(!mfa()){ root.innerHTML='<div class="empty-state"><p>Multi-factor sign-in is not available in this session.</p></div>'; return; }
+    root.innerHTML='<p style="padding:24px;color:var(--text-faint);">Loading…</p>';
+    const { data, error }=await mfa().listFactors(); const fs=(data&&data.totp)||[]; const verified=fs.filter(f=>f.status==='verified');
+    root.innerHTML=`<div class="panel" style="padding:18px 20px;max-width:640px;"><div class="panel-head"><h3>Authenticator app</h3></div>
+      ${error?`<p style="font-size:13px;color:#d4262c;">Could not check your sign-in protection: ${E(error.message)}</p>`:''}
+      ${verified.length?`<p style="font-size:13px;margin-bottom:10px;"><b style="color:#2e9e5b;">On.</b> You are asked for a 6-digit code from your authenticator app each time you sign in.</p>${verified.map(f=>`<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><span>${E(f.friendly_name||'Authenticator app')} (added ${fmtDate((f.created_at||'').slice(0,10))})</span><button class="btn-small" onclick="mfaRemove('${f.id}')">Remove</button></div>`).join('')}`
+      :`<p style="font-size:13px;margin-bottom:10px;"><b style="color:#d4262c;">Off.</b> Your account is protected by your password only. Add an authenticator app such as Microsoft Authenticator, Google Authenticator or Authy.</p><button class="btn-primary" onclick="mfaStart()">Set up authenticator app</button>`}
+      <div id="mfa-setup"></div>
+      <p style="font-size:11.5px;color:var(--text-faint);margin-top:14px;">If you lose your phone, ask a platform administrator to remove the factor from your account so you can sign in and set it up again. Keep a note of this before turning it on.</p></div>`;
+  }
+  window.mfaStart=async function(){
+    const { data, error }=await mfa().enroll({factorType:'totp',friendlyName:'Authenticator app '+new Date().toISOString().slice(0,10)});
+    if(error){ toast('Could not start set-up: '+error.message,'error'); return; }
+    STATE._mfaFactor=data.id; const t=data.totp||{};
+    document.getElementById('mfa-setup').innerHTML=`<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);"><p style="font-size:13px;margin-bottom:8px;"><b>1.</b> Scan this code with your authenticator app.</p><img alt="QR code to scan with your authenticator app" src="${E(t.qr_code||'')}" style="width:180px;height:180px;background:#fff;border:1px solid var(--border);padding:6px;"><p style="font-size:12px;color:var(--text-faint);margin:8px 0;">Cannot scan? Enter this key by hand: <b style="font-family:monospace;">${E(t.secret||'')}</b></p><p style="font-size:13px;margin-bottom:8px;"><b>2.</b> Type the 6-digit code it shows.</p><div style="display:flex;gap:8px;"><input id="mfa-code" inputmode="numeric" maxlength="6" placeholder="123456" style="width:140px;"><button class="btn-primary" onclick="mfaVerify()">Turn on</button></div></div>`;
+  };
+  window.mfaVerify=async function(){
+    const code=(document.getElementById('mfa-code').value||'').replace(/\s/g,''); if(code.length!==6){ toast('Enter the 6-digit code.','error'); return; }
+    const ch=await mfa().challenge({factorId:STATE._mfaFactor}); if(ch.error){ toast('Could not verify: '+ch.error.message,'error'); return; }
+    const v=await mfa().verify({factorId:STATE._mfaFactor,challengeId:ch.data.id,code}); if(v.error){ toast('That code did not work: '+v.error.message,'error'); return; }
+    toast('Authenticator app turned on.','success'); renderSecurity();
+  };
+  window.mfaRemove=async function(id){ if(!confirm('Remove the authenticator app? Your account will be protected by your password only.')) return; const { error }=await mfa().unenroll({factorId:id}); if(error){ toast('Could not remove: '+error.message,'error'); return; } toast('Removed.','success'); renderSecurity(); };
+
+  // challenge at sign-in for anyone who has turned it on
+  async function mfaGate(){
+    try{ if(!mfa()) return true; const a=await mfa().getAuthenticatorAssuranceLevel(); if(!a.data||a.data.nextLevel!=='aal2'||a.data.currentLevel==='aal2') return true;
+      const { data }=await mfa().listFactors(); const f=((data&&data.totp)||[]).find(x=>x.status==='verified'); if(!f) return true;
+      return await new Promise(resolve=>{
+        const ov=document.createElement('div'); ov.id='mfa-overlay'; ov.style.cssText='position:fixed;inset:0;z-index:99999;background:#0b1f3a;display:flex;align-items:center;justify-content:center;padding:20px;font-family:Arial,Helvetica,sans-serif;';
+        ov.innerHTML=`<div style="background:#fff;border-radius:14px;padding:28px;max-width:380px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.4);"><h3 style="margin:0 0 6px;font-size:20px;">Enter your code</h3><p style="font-size:13px;color:#5b6672;margin:0 0 16px;">Open your authenticator app and type the 6-digit code for QaSHE Watchman.</p><input id="mfa-in" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="123456" style="width:100%;font-size:22px;letter-spacing:6px;text-align:center;padding:10px;border:1px solid #ccd3db;border-radius:8px;box-sizing:border-box;"><div id="mfa-err" style="color:#d4262c;font-size:12.5px;min-height:18px;margin:8px 0;"></div><button id="mfa-go" style="width:100%;background:#d4262c;color:#fff;border:0;border-radius:8px;padding:12px;font-weight:700;font-size:14px;cursor:pointer;">Verify and continue</button><button id="mfa-out" style="width:100%;background:none;border:0;color:#5b6672;margin-top:10px;font-size:12.5px;cursor:pointer;">Sign out</button></div>`;
+        document.body.appendChild(ov); const inp=ov.querySelector('#mfa-in'); inp.focus();
+        const go=async()=>{ const code=inp.value.replace(/\s/g,''); if(code.length!==6){ ov.querySelector('#mfa-err').textContent='Enter the 6-digit code.'; return; }
+          const ch=await mfa().challenge({factorId:f.id}); if(ch.error){ ov.querySelector('#mfa-err').textContent=ch.error.message; return; }
+          const v=await mfa().verify({factorId:f.id,challengeId:ch.data.id,code}); if(v.error){ ov.querySelector('#mfa-err').textContent='That code did not work. Try the next one.'; inp.value=''; inp.focus(); return; }
+          ov.remove(); resolve(true); };
+        ov.querySelector('#mfa-go').onclick=go; inp.addEventListener('keydown',e=>{ if(e.key==='Enter') go(); });
+        ov.querySelector('#mfa-out').onclick=async()=>{ try{ await STATE.supabase.auth.signOut(); }catch(e){} ov.remove(); location.reload(); resolve(false); };
+      });
+    }catch(e){ return true; }
+  }
+  window.mfaGate=mfaGate;
+  const _asi=afterSignIn; window.afterSignIn=afterSignIn=async function(user){ const ok=await mfaGate(); if(!ok) return; return _asi.apply(this,arguments); };
+})();
+
+
+/* ===== b35: Watchman Helper, guided mode (step-by-step guidance through each process) ===== */
+(function(){
+  const $=id=>document.getElementById(id);
+  const val=id=>{const e=$(id);return e?String(e.value||'').trim():'';};
+  const firstName=()=>{ const n=(STATE.profile&&STATE.profile.name)||''; return (n.trim().split(/\s+/)[0])||'there'; };
+  const uid=()=>(STATE.user&&STATE.user.id)||'x';
+  const muteKey=()=>'wm_guide_off_'+uid();
+  const isMuted=()=>{ try{ return localStorage.getItem(muteKey())==='1'; }catch(e){ return false; } };
+  const setMuted=v=>{ try{ if(v) localStorage.setItem(muteKey(),'1'); else localStorage.removeItem(muteKey()); }catch(e){} };
+  const enabled=()=>!!(STATE.popupSettings&&STATE.popupSettings.guide_enabled===true);
+  const openCls=id=>()=>{const e=$(id);return !!e&&e.classList.contains('open');};
+  const openDisp=id=>()=>{const e=$(id);return !!e&&e.style.display==='block';};
+
+  /* ---- guide definitions: steps point at real fields; "need" blocks Next until the person has filled the field ---- */
+  const GUIDES={
+    nc:{ name:'raising a nonconformance', isOpen:openCls('nc-form'), submit:'submitNC',
+      steps:[
+        {sel:'#f-title-select', title:'Pick a category', text:'Choose the category that best describes the problem. If nothing fits, choose Other and type a short title.', need:()=>{const s=val('f-title-select');return s&&(s!=='__other__'||val('f-title-other'));}, needMsg:'Please choose a category (or specify one under Other) before we carry on.'},
+        {sel:'#f-desc', title:'Describe what happened', text:'Say what was found, where, when, who was involved, and against which requirement. An auditor should be able to understand it without asking you.', need:()=>val('f-desc').length>10, needMsg:'Add a few words describing what occurred.'},
+        {sel:'#f-immediate-action', title:'Immediate action', text:'Record what was done right away to contain the problem, before any investigation. If nothing yet, say so.'},
+        {sel:'#f-contact-details', title:'Who was involved', text:'Names, roles and contact numbers of the people or organisations involved. This helps the investigation later.'},
+        {sel:'#f-severity', title:'Severity', text:'Minor is a one-off with no real consequence. Major is a system failure or a repeat. Critical is a serious risk to people, legal compliance or the customer.'},
+        {sel:'#f-owner', title:'Owner', text:'The person who will drive this to closure. They will be reminded as the due date approaches.'},
+        {sel:'#f-target', title:'Target close date', text:'Set a realistic date. Critical items are normally closed in days, not weeks.', need:()=>val('f-target'), needMsg:'A target close date is required.'},
+        {sel:'#f-supplier', title:'Supplier or process (optional)', text:'If a supplier caused this, select them: it feeds their performance score. Link the process too, so it shows in the process review.'},
+        {sel:'#nc-form .btn-primary', title:'Raise it', text:'When you are happy, press Raise nonconformance. I will tell you what happens next.'}],
+      done:{title:'Nonconformance raised', text:'It now has a reference number in the register and your owner has been notified. Here is the path to closure:',
+        list:['Open it from the register and record the root cause (use the 5 Whys).','Add corrective actions and assign each as a task with a due date.','Attach evidence of the correction.','Once actions are complete, verification is done by someone independent, then the NC is closed.','Where the same issue keeps recurring, add it to a BMS Upgrade.']}},
+    task:{ name:'adding a task', isOpen:openCls('task-form'), submit:'submitTask',
+      steps:[
+        {sel:'#tf-title', title:'Task title', text:'State the action in a few words, starting with a verb: for example, Replace the damaged fire extinguisher.', need:()=>val('tf-title'), needMsg:'The task needs a title.'},
+        {sel:'#tf-desc', title:'Detail', text:'Add context and the evidence that will show the task is done.'},
+        {sel:'#tf-linked', title:'Link it', text:'If this task comes from a nonconformance, objective or alert, link it here so the trail stays complete for audit.'},
+        {sel:'#tf-assignee', title:'Assignee', text:'Who is responsible for doing it?'},
+        {sel:'#tf-priority', title:'Priority', text:'High means it blocks compliance or safety. Use Medium for normal work.'},
+        {sel:'#tf-due', title:'Due date', text:'The assignee will be reminded before this date and flagged if it passes.', need:()=>val('tf-due'), needMsg:'Please set a due date.'},
+        {sel:'#task-form .btn-primary', title:'Add the task', text:'Press Add task to save it.'}],
+      done:{title:'Task added', text:'The assignee can see it in their task list and will get reminders.', list:['Track it on the Tasks page and on the linked record.','When it is complete, mark it done and attach evidence.']}},
+    risk:{ name:'logging a risk or opportunity', isOpen:openCls('risk-form'), submit:'submitRisk',
+      steps:[
+        {sel:'#rf-title', title:'Short, specific title', text:'Name the risk or opportunity the way you would say it in a meeting.', need:()=>val('rf-title'), needMsg:'Please give it a title.'},
+        {sel:'#rf-type', title:'Risk or opportunity', text:'ISO 9001, 14001 and 45001 require both. Choose the one that applies.'},
+        {sel:'#rf-desc', title:'Describe it', text:'What it is and why it matters to the organisation.'},
+        {sel:'#rf-causes', title:'Causes', text:'What could trigger it? Be concrete: this is where controls are found.'},
+        {sel:'#rf-consequences', title:'Consequences', text:'What happens if it occurs: people, legal, customer, financial.'},
+        {sel:'#rf-likelihood', title:'Rate it', text:'Score likelihood and impact honestly. The matrix places it and sets the priority.'},
+        {sel:'#rf-owner', title:'Owner and review date', text:'Give it an owner and a next review date so it does not go stale.'},
+        {sel:'#risk-form .btn-primary', title:'Save', text:'Press the save button to log it.'}],
+      done:{title:'Logged in the register', text:'Next:', list:['Open it and add controls and a treatment plan.','Create tasks for each treatment action.','Review the rating after the controls are in place (residual risk).']}},
+    doc:{ name:'creating a document', isOpen:openCls('doc-form'), submit:'submitDocument',
+      steps:[
+        {sel:'#df-title', title:'Name the document', text:'Use the name people will search for: for example, Welding Procedure Specification.', need:()=>val('df-title'), needMsg:'Give the document a name first.'},
+        {sel:'#df-purpose', title:'Purpose and scope', text:'What is it for, which requirement does it meet, and who does it apply to? The AI assistant uses this to draft.', need:()=>val('df-purpose').length>5, needMsg:'A sentence on the purpose helps a lot.'},
+        {sel:'#df-department', title:'Department and type', text:'These decide the document number that will be issued automatically.'},
+        {sel:'#df-owner', title:'Owner and review date', text:'The owner keeps it current. Set the next review date so it appears in reminders.'},
+        {sel:'#dw-pane-1 .btn-primary', title:'Next', text:'Press Next to choose a starting point.', next:()=>{ if(typeof dwNext==='function'&&val('df-title')) try{dwNext();}catch(e){} }},
+        {sel:'#dw-template-list', title:'Starting point', text:'Pick a ready-made policy or procedure, or upload an existing document for the AI assistant to learn from. You can also skip this.', pane:2},
+        {sel:'#dw-pane-2 .btn-primary', title:'Continue', text:'Press Next to reach the final step.', pane:2, next:()=>{ if(typeof dwNext==='function') try{dwNext();}catch(e){} }},
+        {sel:'#dw-pane-3 .dw-choice', title:'Create it', text:'Create with the AI assistant for a first draft, use the template as it is, or start blank. You then edit, choose reviewers and approver, and submit.', pane:3}],
+      done:{title:'Document created', text:'You are now in the editor. From here:', list:['Edit the draft and check it reflects how you really work.','Choose the reviewers and the approver.','Submit it for review. It is issued once approved and shows in the Master Documents Register.','Staff are asked to read and acknowledge it after issue.']}},
+    fives:{ name:'raising a 5S inspection', isOpen:openCls('fives-form'), submit:'submitFiveSInspection',
+      steps:[
+        {sel:'#fs-area', title:'Area', text:'Which area are you inspecting: for example, Warehouse floor or Office block A?', need:()=>val('fs-area'), needMsg:'Please say which area.'},
+        {sel:'#fs-inspector', title:'Inspector', text:'Anyone with access can inspect. Default is you.'},
+        {sel:'#fs-scheduled', title:'Date', text:'Today, or a future date if you are scheduling it.', need:()=>val('fs-scheduled'), needMsg:'Choose a date.'},
+        {sel:'#fives-form .btn-primary', title:'Raise it', text:'Press Raise inspection. The checklist is attached automatically and opens next.'}],
+      done:{title:'Inspection raised', text:'The checklist is open. To complete it:', list:['Walk the area and score each item: Sort, Set in order, Shine, Standardise, Sustain.','Add a note and a photo for anything that fails.','Failed items can become tasks so they are fixed and tracked.','Submit the inspection to see the area score and trend.']}},
+    raga:{ name:'raising an alert', isOpen:openDisp('raga-form'), submit:'createRagaAlert',
+      steps:[
+        {sel:'#raga-alert-type', title:'Alert type', text:'Red is a serious incident or failure. Orange is a warning sign or near miss. Green recognises good work or a good catch.'},
+        {sel:'#raga-title-select', title:'Category', text:'Pick the category, or Other to type your own.'},
+        {sel:'#raga-description', title:'Describe it', text:'For Red and Orange: what happened and where. For Green: what was done well.', need:()=>val('raga-description').length>5, needMsg:'Add a short description.'},
+        {sel:'#raga-owner', title:'Owner and target date', text:'Red and Orange alerts need an owner and a target close date. For Green, choose who is being recognised.'},
+        {sel:'#raga-form .btn-small.primary', title:'Raise the alert', text:'Press Raise alert.'}],
+      done:{title:'Alert raised', text:'Next:', list:['Red and Orange: investigate, record the root cause, and close with a signature.','Create tasks for the corrective actions.','Green: the recognition is recorded against the person.']}},
+    audit:{ name:'scheduling an audit', isOpen:openDisp('schedule-audit-form'), submit:'submitAuditPlan',
+      steps:[
+        {sel:'#af-title', title:'Audit title', text:'Describe it so it is clear in the programme: for example, Q3 internal quality audit, welding line.', need:()=>val('af-title'), needMsg:'The audit needs a title.'},
+        {sel:'#af-scope', title:'Scope', text:'What the audit covers.'},
+        {sel:'#af-criteria', title:'Criteria', text:'The standard or requirements it is measured against: for example, ISO 9001:2015 clauses 8.4 and 8.5.'},
+        {sel:'#af-type', title:'Audit type', text:'Internal, supplier, certification, information security, legal compliance and more. The type decides the checklist options.'},
+        {sel:'#af-auditor', title:'Lead auditor', text:'Choose someone independent of the area audited. I will warn you if their competence or independence record is missing.'},
+        {sel:'#af-planned', title:'Scheduled date', text:'When it will take place.', need:()=>val('af-planned'), needMsg:'A scheduled date is required.'},
+        {sel:'#af-checklist', title:'Checklist', text:'Choose a checklist from the repository so findings are tied to clauses.'},
+        {sel:'#schedule-audit-form .btn-primary', title:'Submit the plan', text:'Press the submit button to add it to the Audit Programme.'}],
+      done:{title:'Audit scheduled', text:'It is on the programme. Next:', list:['Start the audit on the day to load the checklist.','Record findings against clauses; nonconformances can be raised from them.','Issue the report, then follow up the corrective actions.']}},
+    legal:{ name:'adding a legal requirement', isOpen:openCls('legal-form'), submit:'submitLegal',
+      steps:[
+        {sel:'#lf-title', title:'Legal document title', text:'For example, Occupational Health and Safety Act 85 of 1993.', need:()=>val('lf-title'), needMsg:'Enter the title.'},
+        {sel:'#lf-description', title:'What it requires', text:'Summarise what applies to your operations.'},
+        {sel:'#lf-owner', title:'Owner', text:'Who keeps this requirement under review?'},
+        {sel:'#lf-next-review', title:'Next review date', text:'Legal requirements change, so the review date drives your reminders.'},
+        {sel:'#legal-form .btn-primary', title:'Save', text:'Press save to add it to the register.'}],
+      done:{title:'Added to the legal register', text:'Next:', list:['Open it and add the specific requirements as checklist items.','Record evidence of compliance.','It will be pulled into legal compliance audits.']}}
+  };
+
+  const S={ key:null, i:-1, greeted:false, wasOpen:{}, submitting:false, dismissed:{}, doneShown:false };
+
+  function css(){
+    if($('wg-style')) return;
+    const st=document.createElement('style'); st.id='wg-style';
+    st.textContent=`
+    #wg-bubble{position:fixed;right:24px;bottom:96px;width:340px;max-width:calc(100vw - 32px);z-index:420;font-family:Arial,Helvetica,sans-serif;display:none}
+    #wg-bubble.on{display:block;animation:wgin .25s ease-out}
+    @keyframes wgin{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+    #wg-bubble .wg-card{background:#fff;border-radius:18px 18px 4px 18px;box-shadow:0 14px 40px rgba(0,0,0,.28);border:2px solid #b21616;overflow:hidden}
+    #wg-bubble .wg-head{display:flex;align-items:center;gap:10px;background:#b21616;color:#fff;padding:10px 14px}
+    #wg-bubble .wg-av{width:34px;height:34px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;flex:none}
+    #wg-bubble .wg-hd{font-size:13px;font-weight:700;line-height:1.2}
+    #wg-bubble .wg-hd small{display:block;font-weight:400;opacity:.85;font-size:11px}
+    #wg-bubble .wg-x{margin-left:auto;background:none;border:0;color:#fff;font-size:20px;cursor:pointer;line-height:1}
+    #wg-bubble .wg-body{padding:14px 16px 6px;font-size:13.5px;line-height:1.5;color:#222}
+    #wg-bubble .wg-body b.t{display:block;font-size:14px;margin-bottom:4px}
+    #wg-bubble .wg-body ul{margin:8px 0 2px 18px;padding:0}
+    #wg-bubble .wg-body li{margin:3px 0}
+    #wg-bubble .wg-warn{background:#fff3e0;border-left:4px solid #e8730c;padding:7px 10px;margin:8px 0 0;font-size:12.5px;border-radius:4px}
+    #wg-bubble .wg-prog{height:5px;background:#eee;margin:6px 16px 0;border-radius:3px;overflow:hidden}
+    #wg-bubble .wg-prog i{display:block;height:100%;background:#2e9e4f;transition:width .25s}
+    #wg-bubble .wg-foot{display:flex;gap:8px;align-items:center;padding:10px 16px 12px;flex-wrap:wrap}
+    #wg-bubble .wg-foot button{font-family:inherit;font-size:12.5px;font-weight:700;border-radius:999px;padding:7px 14px;cursor:pointer;border:1.5px solid #b21616;background:#fff;color:#b21616}
+    #wg-bubble .wg-foot button.p{background:#b21616;color:#fff}
+    #wg-bubble .wg-foot a{margin-left:auto;font-size:11px;color:#777;cursor:pointer;text-decoration:underline}
+    #wg-bubble .wg-cnt{font-size:11px;color:#777;margin-left:auto}
+    .wg-hl{outline:3px solid #e8730c!important;outline-offset:3px;border-radius:6px;animation:wgpulse 1.4s infinite;position:relative;z-index:5}
+    @keyframes wgpulse{0%,100%{outline-color:#e8730c}50%{outline-color:#b21616}}
+    #wg-relaunch{position:fixed;right:24px;bottom:96px;z-index:410;display:none;background:#b21616;color:#fff;border:0;border-radius:999px;padding:9px 16px;font:700 12.5px Arial,Helvetica,sans-serif;cursor:pointer;box-shadow:0 8px 20px rgba(0,0,0,.28)}
+    #wg-relaunch.on{display:block}
+    @media print{#wg-bubble,#wg-relaunch{display:none!important}}`;
+    document.head.appendChild(st);
+  }
+  const ROBOT='<svg viewBox="0 0 24 24" style="width:22px;height:22px;stroke:none"><path d="M6 18a1 1 0 001 1h1v3a1.5 1.5 0 003 0v-3h2v3a1.5 1.5 0 003 0v-3h1a1 1 0 001-1V8H6v10zM3.5 8A1.5 1.5 0 002 9.5v6a1.5 1.5 0 003 0v-6A1.5 1.5 0 003.5 8zm17 0A1.5 1.5 0 0019 9.5v6a1.5 1.5 0 003 0v-6A1.5 1.5 0 0020.5 8zM15.5 2.2l1.2-1.2a.5.5 0 10-.7-.7L14.7 1.6a5 5 0 00-5.4 0L8 .3a.5.5 0 10-.7.7l1.2 1.2A5 5 0 006 7h12a5 5 0 00-2.5-4.8zM10 5H9V4h1v1zm5 0h-1V4h1v1z" fill="#b21616"/></svg>';
+  function ensure(){
+    css();
+    if(!$('wg-bubble')){
+      const d=document.createElement('div'); d.id='wg-bubble'; document.body.appendChild(d);
+      const r=document.createElement('button'); r.id='wg-relaunch'; r.textContent='Guide me through this'; r.onclick=()=>{ if(isMuted()) setMuted(false); const k=currentOpenKey(); if(k){ start(k,true); } else pageHelp(); }; document.body.appendChild(r);
+    }
+  }
+  function clearHl(){ document.querySelectorAll('.wg-hl').forEach(e=>e.classList.remove('wg-hl')); }
+  function esc(s){ return (typeof escapeHtml==='function')?escapeHtml(String(s)):String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+  function shell(inner,foot,prog,cnt){
+    return `<div class="wg-card"><div class="wg-head"><span class="wg-av">${ROBOT}</span><div class="wg-hd">QaSHE Watchman Helper<small>Guiding you step by step</small></div><button class="wg-x" title="Close" onclick="wgStop()">&times;</button></div>
+    <div class="wg-body">${inner}</div>${prog!=null?`<div class="wg-prog"><i style="width:${prog}%"></i></div>`:''}<div class="wg-foot">${foot}${cnt?`<span class="wg-cnt">${cnt}</span>`:''}</div></div>`;
+  }
+  function show(html){ ensure(); const b=$('wg-bubble'); b.innerHTML=html; b.classList.add('on'); const r=$('wg-relaunch'); if(r) r.classList.remove('on'); }
+  function hide(){ const b=$('wg-bubble'); if(b){ b.classList.remove('on'); b.innerHTML=''; } clearHl(); }
+
+  function greet(key){
+    const g=GUIDES[key];
+    show(shell(`<b class="t">Hello ${esc(firstName())}</b>Let me guide you through ${g.generic?'this form: '+esc(g.name):esc(g.name)}. It takes about a minute, and I will point out each field as we go.`,
+      `<button class="p" onclick="wgNext()">Let's go</button><button onclick="wgStop(true)">Not now</button><a onclick="wgMute()">Don't guide me again</a>`));
+  }
+  function start(key,skipGreet){
+    S.key=key; S.i=-1; S.doneShown=false; delete S.dismissed[key];
+    if(skipGreet){ S.i=0; render(); } else greet(key);
+  }
+  function stepPane(st){ if(st.pane&&typeof dwShowStep==='function'){ try{ if((STATE._dw&&STATE._dw.step)!==st.pane) dwShowStep(st.pane); }catch(e){} } }
+  function render(warn){
+    const g=GUIDES[S.key]; if(!g) return;
+    const st=g.steps[S.i]; if(!st) return;
+    stepPane(st);
+    clearHl();
+    const el=st.el||document.querySelector(st.sel);
+    if(el){ el.classList.add('wg-hl'); try{ el.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){} if(/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)){ try{ el.focus({preventScroll:true}); }catch(e){} } }
+    const last=S.i===g.steps.length-1;
+    show(shell(`<b class="t">${esc(st.title)}</b>${esc(st.text)}${warn?`<div class="wg-warn">${esc(warn)}</div>`:''}`,
+      `${S.i>0?'<button onclick="wgBack()">Back</button>':''}${last?'':'<button class="p" onclick="wgNext()">Next</button>'}${last?'<button class="p" onclick="wgStop()">Got it</button>':''}`,
+      Math.round(((S.i+1)/g.steps.length)*100), `Step ${S.i+1} of ${g.steps.length}`));
+  }
+  window.wgNext=function(){
+    const g=GUIDES[S.key]; if(!g) return;
+    if(S.i>=0){ const st=g.steps[S.i]; let ok=true; try{ ok=!st.need||!!st.need(); }catch(e){} if(!ok){ render(st.needMsg||'Please complete this field first.'); return; } try{ if(st.next) st.next(); }catch(e){} }
+    if(S.i<g.steps.length-1){ S.i++; render(); }
+  };
+  window.wgBack=function(){ if(S.i>0){ S.i--; render(); } };
+  window.wgStop=function(dismiss){ if(S.key&&dismiss) S.dismissed[S.key]=true; const k=S.key; S.key=null; S.i=-1; hide(); updateChip(k); };
+  window.wgMute=function(){ setMuted(true); window.wgStop(true); if(typeof toast==='function') toast('Guides switched off for you. Press Guide me through this on any form to bring them back.','success'); };
+  window.wgUnmute=function(){ setMuted(false); if(typeof toast==='function') toast('Guides switched on.','success'); };
+
+  function currentOpenKey(){ for(const k in GUIDES){ try{ if(GUIDES[k].isOpen()) return k; }catch(e){} } return null; }
+  function updateChip(){
+    ensure(); const r=$('wg-relaunch'); if(!r) return;
+    const k=currentOpenKey();
+    const canPage=!k&&!!pageAddBtn();
+    r.textContent=k?'Guide me through this':'Help with this page';
+    r.classList.toggle('on', !!(enabled()&&(k||canPage)&&!S.key&&!S.doneShown&&!($('wg-bubble')&&$('wg-bubble').classList.contains('on'))));
+  }
+  function finish(key){
+    const g=GUIDES[key]; if(!g||!g.done) return;
+    S.key=null; S.doneShown=true; clearHl();
+    const d=g.done;
+    show(shell(`<b class="t">${esc(d.title)}, ${esc(firstName())}</b>${esc(d.text)}<ul>${(d.list||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`,
+      `<button class="p" onclick="wgStop()">Thanks</button>`));
+    setTimeout(()=>{ if(S.doneShown&&!S.key){ S.doneShown=false; hide(); } },45000);
+  }
+
+
+  /* ---- generic guides: any other form in the app is guided automatically from its own fields ---- */
+  const SKIP_ID=/^(nc-types-panel|kpis-panel|positions-panel|aw-reading-types-panel|questionnaire-panel|bulkdoc-upload-panel|alldocs-smart-upload-panel|manage-assessment-items|legal-ai-form|compliment-form)/;
+  const CURATED_ID=/^(nc-form|task-form|risk-form|doc-form|fives-form|raga-form|schedule-audit-form|legal-form)$/;
+  const vis=e=>!!e&&document.contains(e)&&e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden';
+  function heading(c){ const h=c.querySelector('h3,.detail-head h3,b'); return h?h.textContent.replace(/\s+/g,' ').trim():''; }
+  function findGeneric(){
+    const list=document.querySelectorAll('.form-panel, #sf-modal, [id$="-edit-slot"] .detail-panel');
+    for(const c of list){
+      if(c.id&&(CURATED_ID.test(c.id)||SKIP_ID.test(c.id))) continue;
+      if(!vis(c)) continue;
+      if(!c.querySelector('.btn-primary, .btn-small.primary')) continue;
+      if(c.querySelectorAll('input:not([type=hidden]):not([type=file]), select, textarea').length<2) continue;
+      const h=heading(c); if(/^edit\b/i.test(h)) continue;
+      return c;
+    }
+    return null;
+  }
+  function plain(t){ return String(t||'').replace(/\s+/g,' ').replace(/\*/g,'').trim(); }
+  function buildGeneric(c){
+    const h=heading(c)||'this form';
+    const fields=[...c.querySelectorAll('.field')].filter(f=>vis(f)&&f.querySelector('input:not([type=hidden]),select,textarea'));
+    const steps=[];
+    fields.slice(0,12).forEach(f=>{
+      const lab=f.querySelector('label'); if(!lab) return;
+      const inp=f.querySelector('input:not([type=hidden]),select,textarea');
+      const raw=lab.textContent; const name=plain(raw).replace(/\s*\(optional\)\s*/i,'').trim();
+      const optional=/optional/i.test(raw); const req=/\*|required/i.test(raw);
+      let how;
+      if(inp.tagName==='SELECT') how='Choose the option that applies.';
+      else if(inp.type==='date') how='Pick the date.';
+      else if(inp.type==='number') how='Enter the number.';
+      else if(inp.type==='checkbox'||inp.type==='radio') how='Tick it if it applies.';
+      else how=inp.placeholder?('For example: '+plain(inp.placeholder).replace(/^e\.g\.\s*/i,'')):'Type your answer.';
+      steps.push({el:f, title:name||'Field', text:(optional?'Optional. ':'')+how+(req?' This one is required.':''), need:req?(()=>{ const v=inp.type==='checkbox'?inp.checked:String(inp.value||'').trim(); return !!v; }):null, needMsg:'Please complete this field before we carry on.'});
+    });
+    if(fields.length>12) steps.push({el:c, title:'The remaining fields', text:'Complete the rest of the form, then check it over before saving.'});
+    const btn=c.querySelector('.btn-primary, .btn-small.primary');
+    if(btn) steps.push({el:btn, title:'Save it', text:'When you are happy, press "'+plain(btn.textContent)+'".'});
+    return { name:h.charAt(0).toLowerCase()+h.slice(1), isOpen:()=>vis(c), generic:true, steps,
+      done:{title:'Saved', text:'Your entry has been recorded. To get the most from it:', list:['Find it in the register on this page and open it to add detail and evidence.','Link related tasks, risks or documents so the trail is complete for audit.']} };
+  }
+  document.addEventListener('click',e=>{ if(e.target&&e.target.closest&&e.target.closest('.btn-primary, .btn-small.primary')) S.clickedAt=Date.now(); },true);
+  function pageAddBtn(){ return [...document.querySelectorAll('#view-dashboard .btn-add')].find(vis)||null; }
+  function pageHelp(){
+    const title=($('mod-title')&&$('mod-title').textContent)||'this page', sub=($('mod-sub')&&$('mod-sub').textContent)||'';
+    const btn=pageAddBtn();
+    window.__wgPageBtn=btn;
+    show(shell(`<b class="t">${esc(title)}</b>${esc(sub.replace(/^MOD-\d+\s*·\s*/,''))}${btn?`<div style="margin-top:8px">Would you like me to walk you through adding a new record, ${esc(firstName())}?</div>`:''}`,
+      `${btn?'<button class="p" onclick="wgPageGo()">Yes, guide me</button>':''}<button onclick="wgStop()">Close</button>`));
+  }
+  window.wgPageGo=function(){ const b=window.__wgPageBtn; hide(); if(b&&document.contains(b)) b.click(); };
+
+  /* ---- detect forms opening and closing, whichever way they were opened ---- */
+  function tick(){
+    try{
+      if(!STATE.user||!STATE.org) { if(S.key) window.wgStop(); return; }
+      const on=enabled()&&!isMuted();
+      const gc=findGeneric();
+      if(gc){ const gk='g:'+(gc.id||heading(gc)); if(!GUIDES[gk]){ const gg=buildGeneric(gc); gg.el=gc; GUIDES[gk]=gg; } }
+      for(const k in GUIDES){
+        let open=false; try{ open=!!GUIDES[k].isOpen(); }catch(e){}
+        const was=!!S.wasOpen[k]; S.wasOpen[k]=open;
+        if(open&&!was){ S.doneShown=false; delete S.dismissed[k]; if(on&&!S.key) start(k); }
+        if(!open&&was){
+          const gen=GUIDES[k]&&GUIDES[k].generic;
+          if(gen&&(Date.now()-(S.clickedAt||0))<8000&&(S.key===k||(on&&!S.dismissed[k]))&&GUIDES[k].done){ finish(k); }
+          else if(S.key===k&&!S.submitting){ S.key=null; hide(); }
+        }
+        if(!open&&GUIDES[k]&&GUIDES[k].generic&&!was){ delete GUIDES[k]; delete S.wasOpen[k]; }
+        else if(!open&&GUIDES[k]&&GUIDES[k].generic){ delete GUIDES[k]; delete S.wasOpen[k]; }
+      }
+      if(!on&&S.key){ window.wgStop(); }
+      updateChip();
+    }catch(e){}
+  }
+  setInterval(tick,600);
+
+  /* ---- wrap submit functions: after a successful submit, show what happens next ---- */
+  Object.keys(GUIDES).forEach(k=>{
+    const fn=GUIDES[k].submit; if(typeof window[fn]!=='function') return;
+    const orig=window[fn];
+    window[fn]=function(){
+      const guided=(S.key===k)||(enabled()&&!isMuted()&&GUIDES[k].isOpen());
+      S.submitting=true;
+      const done=()=>{ S.submitting=false; if(guided&&!GUIDES[k].isOpen()){ S.wasOpen[k]=false; finish(k); } };
+      let r; try{ r=orig.apply(this,arguments); }catch(e){ S.submitting=false; throw e; }
+      if(r&&typeof r.then==='function') return r.then(v=>{ done(); return v; },e=>{ S.submitting=false; throw e; });
+      done(); return r;
+    };
+  });
+  /* the 5S and document submit functions are also referenced by name in onclick attributes; those resolve to window at click time */
+
+  /* ---- Admin switch ---- */
+  const _lps=loadPopupSettings;
+  loadPopupSettings=async function(){
+    await _lps.apply(this,arguments);
+    STATE.popupSettings=STATE.popupSettings||{}; STATE.popupSettings.guide_enabled=false;
+    try{ const r=await STATE.supabase.from('org_popup_settings').select('guide_enabled').eq('organisation_id',STATE.org.id).maybeSingle(); if(r&&!r.error&&r.data) STATE.popupSettings.guide_enabled=r.data.guide_enabled===true; }catch(e){}
+  };
+  window.loadPopupSettings=loadPopupSettings;
+  const _sps=window.savePopupSettings;
+  window.savePopupSettings=async function(){
+    const keep=STATE.popupSettings&&STATE.popupSettings.guide_enabled;
+    await _sps.apply(this,arguments);
+    if(STATE.popupSettings) STATE.popupSettings.guide_enabled=keep===true;
+  };
+  window.wgSetEnabled=async function(on){
+    if(!popupIsAdmin()) return;
+    const { error } = await STATE.supabase.from('org_popup_settings').upsert({ organisation_id:STATE.org.id, guide_enabled:!!on, updated_at:new Date().toISOString(), updated_by:STATE.user.id });
+    if(error){ toast('Could not save: '+error.message+' (has the guide SQL file been run?)','error'); const s=$('wg-admin-sel'); if(s) s.value=enabled()?'1':'0'; return; }
+    STATE.popupSettings=STATE.popupSettings||{}; STATE.popupSettings.guide_enabled=!!on;
+    if(!on&&S.key) window.wgStop();
+    toast(on?'Watchman Helper guided mode is ON for your organisation.':'Watchman Helper guided mode is OFF.','success');
+  };
+  function adminPanel(){
+    if(typeof popupIsAdmin!=='function'||!popupIsAdmin()) return '';
+    return `<div class="panel" style="padding:14px 18px;margin-bottom:14px;border-left:5px solid #b21616;">
+      <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;">
+        <div style="font-size:12.5px;font-weight:700;min-width:190px;">Watchman Helper: guided mode<br><span style="font-weight:400;color:var(--text-faint);font-size:11px;">Admin only</span></div>
+        <div class="field" style="min-width:260px;margin:0;"><select id="wg-admin-sel" onchange="wgSetEnabled(this.value==='1')">
+          <option value="0" ${enabled()?'':'selected'}>Off</option><option value="1" ${enabled()?'selected':''}>On: pop up and guide users step by step</option></select></div>
+        <div style="font-size:11.5px;color:var(--text-faint);flex:1;min-width:240px;">When on, the Helper greets the user by name and walks them through each process (nonconformances, documents, 5S inspections, tasks, risks, alerts, audits, legal items) and explains what happens next. Each person can also switch guides off for themselves.</div>
+      </div></div>`;
+  }
+  const _ra=RENDERERS.administration;
+  if(typeof _ra==='function') RENDERERS.administration=function(){ return adminPanel()+_ra.apply(this,arguments); };
+
+  window.WG={GUIDES,state:S,tick,start,finish};
 })();
 
 </script>
