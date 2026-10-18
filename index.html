@@ -33962,6 +33962,7 @@ window.brandFromLogo = function(){
     const staff = STATE.personnel.filter(p => p.status === 'active').length;
     OA_TYPES.forEach(t => {
       if(!t.rec) return;
+      if(t.key === 'ismo' && STATE.org && STATE.org.infosec_enabled === false) return;
       if(t.rec === 2 && staff < 2) return;
       if(t.rec === 3 && !(STATE.org && (STATE.org.welding_enabled || STATE.org.welding_required))) return;
       out.push(t.key);
@@ -34073,7 +34074,7 @@ window.brandFromLogo = function(){
       <div class="form-grid">
         <div class="field span2"><label>Person</label><select id="oa-person" ${locked ? 'disabled' : ''}>${STATE.personnel.filter(p => p.status === 'active').map(p => `<option value="${p.id}" ${(a ? a.personnel_id : personId) === p.id ? 'selected' : ''}>${esc(p.full_name)}${p.company_number ? ' (' + esc(p.company_number) + ')' : ''}</option>`).join('')}</select></div>
         <div class="field"><label>Basis</label><select id="oa-basis">${Object.keys(OA_BASIS).map(k => `<option value="${k}" ${(a ? a.basis : 'designated') === k ? 'selected' : ''}>${{designated:'Designated',volunteer:'Volunteer',elected:'Elected'}[k]}</option>`).join('')}</select></div>
-        <div class="field span2"><label>Appointment</label><select id="oa-type" onchange="oaTypeChanged()">${OA_CATS.map(([ck, cl]) => `<optgroup label="${cl}">${OA_TYPES.filter(t => t.cat === ck).map(t => `<option value="${t.key}" ${t0 === t.key ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}</optgroup>`).join('')}</select></div>
+        <div class="field span2"><label>Appointment</label><select id="oa-type" onchange="oaTypeChanged()">${OA_CATS.map(([ck, cl]) => `<optgroup label="${cl}">${OA_TYPES.filter(t => t.cat === ck && !(t.key === 'ismo' && STATE.org && STATE.org.infosec_enabled === false && !(a && a.appointment_type === 'ismo'))).map(t => `<option value="${t.key}" ${t0 === t.key ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}</optgroup>`).join('')}</select></div>
         <div class="field"><label>Scope: site, department or branch</label><input id="oa-scope" value="${esc(a ? a.scope : '')}" placeholder="e.g. Whole organisation"></div>
         <div class="field span3" id="oa-title-wrap" style="display:${t0 === 'custom' ? '' : 'none'}"><label>Appointment title</label><input id="oa-title" value="${esc(a ? a.title : '')}"></div>
         <div class="field span3"><label>Legal reference</label><input id="oa-legal" value="${esc(a ? a.legal_reference : OA_BY_KEY[t0].legal)}"></div>
@@ -34875,6 +34876,7 @@ window.brandFromLogo = function(){
           arr(STATE.legalRegister).length ? byRatio('Legal register items compliant', arr(STATE.legalRegister).filter(l => l.current_status === 'compliant').length, arr(STATE.legalRegister).length, 0.9, 0.7, 'All legal requirements, including environmental.', 'legal') : C('Legal register in use', 'fail', 'No legal requirements recorded.', 'legal'),
         ]; } },
     { k:'infosec', label:'Information Security', mod:'soa', checks:() => {
+        if(STATE.org && STATE.org.infosec_enabled === false) return [C('Information Security', 'na', 'Switched off for this organisation.', 'soa')];
         const soa = arr(STATE.soa), ctrls = arr(window.SOA_CONTROLS);
         const applicable = ctrls.filter(c => (soa.find(r => r.control_ref === c.ref) || {}).applicable !== false);
         const impl = applicable.filter(c => ['implemented','effective'].includes((soa.find(r => r.control_ref === c.ref) || {}).status));
@@ -35269,6 +35271,40 @@ window.brandFromLogo = function(){
     };
   }
   window.tlCatalogue = catalogue;
+})();
+
+
+/* ============================================================================
+   b42: INFORMATION SECURITY AS A SWITCHABLE DISCIPLINE
+   Off hides the Statement of Applicability, Information Asset Register and Threat Intelligence,
+   the ISMO appointment and the Information Security area of Business Health.
+   Default is ON (no row), so existing clients keep everything. Needs qashe-watchman-schema-disciplines.sql.
+   ============================================================================ */
+(function(){
+  const MODS = ['soa','info_assets','threat_intel'];
+  const on = () => !(STATE.org && STATE.org.infosec_enabled === false);
+  async function loadDisc(){
+    if(!STATE.org) return;
+    try{
+      const { data, error } = await STATE.supabase.from('org_disciplines').select('*').eq('organisation_id', STATE.org.id).eq('discipline', 'infosec').maybeSingle();
+      STATE.org.infosec_enabled = (error || !data) ? true : data.enabled !== false;
+    }catch(e){ STATE.org.infosec_enabled = true; }
+    nav();
+  }
+  function nav(){ MODS.forEach(m => { const el = document.querySelector('.nav-item[data-mod="' + m + '"]'); if(el && !on()) el.style.display = 'none'; else if(el && on()) el.style.display = ''; }); }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ await _lc.apply(this, arguments); await loadDisc(); }; }
+  { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){ if(MODS.includes(mod) && !on()) return false; return _c.apply(this, arguments); }; }
+  { const _a = applyModuleAccessToNav; applyModuleAccessToNav = window.applyModuleAccessToNav = function(){ const r = _a.apply(this, arguments); nav(); return r; }; }
+  ADMIN_CONSOLE_TOGGLES.push({ field:'infosec_enabled', label:'Information Security (ISO/IEC 27001)', note:'Statement of Applicability, Information Asset Register, Threat Intelligence, the ISMO appointment and the Information Security area of Business Health. On by default: turn off for clients where it does not apply. Run the disciplines SQL first.' });
+  { const _t = toggleOrgModule;
+    toggleOrgModule = window.toggleOrgModule = async function(field, value){
+      if(field !== 'infosec_enabled') return _t.apply(this, arguments);
+      const { error } = await STATE.supabase.from('org_disciplines').upsert({ organisation_id: STATE.org.id, discipline:'infosec', enabled: value, updated_at: new Date().toISOString() }, { onConflict:'organisation_id,discipline' });
+      if(error){ toast('Could not update: ' + error.message + ' (has the disciplines SQL been run?)', 'error'); return; }
+      toast('Saved: reloading to apply…', 'success');
+      await reloadOrgAfterAdminConsoleChange();
+    };
+  }
 })();
 
 </script>
