@@ -33511,7 +33511,7 @@ window.brandFromLogo = function(){
   };
   function adminPanel(){
     if(typeof popupIsAdmin!=='function'||!popupIsAdmin()) return '';
-    return `<div class="panel" style="padding:14px 18px;margin-bottom:14px;border-left:5px solid #b21616;">
+    return `<div class="panel" style="padding:14px 18px;margin-bottom:14px;">
       <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;">
         <div style="font-size:12.5px;font-weight:700;min-width:190px;">Watchman Helper: guided mode<br><span style="font-weight:400;color:var(--text-faint);font-size:11px;">Admin only</span></div>
         <div class="field" style="min-width:260px;margin:0;"><select id="wg-admin-sel" onchange="wgSetEnabled(this.value==='1')">
@@ -33523,6 +33523,200 @@ window.brandFromLogo = function(){
   if(typeof _ra==='function') RENDERERS.administration=function(){ return adminPanel()+_ra.apply(this,arguments); };
 
   window.WG={GUIDES,state:S,tick,start,finish};
+})();
+
+
+/* ===== b36: skins, "Watchman" (the original bold look) and "Plain" (calm, neutral, flat). Appearance only: no function is changed. ===== */
+(function(){
+  const LAST='wm_skin_last';
+  const get=k=>{ try{ return localStorage.getItem(k); }catch(e){ return null; } };
+  const put=k=>v=>{ try{ localStorage.setItem(k,v); }catch(e){} };
+  const del=k=>{ try{ localStorage.removeItem(k); }catch(e){} };
+
+  const css=`
+  body.skin-plain{--red:#2F4B66;--red-dark:#1F3347;--red-tint:#EDF1F5;--bg:#F5F6F7;--panel:#FFFFFF;--border:#DADFE4;--border-soft:#E6E9EC;--charcoal:#4B5563;--charcoal-dark:#2B3340;--grey-tint:#F1F3F5;--radius:6px;--text:#1F2933;--text-dim:#52606D;--text-faint:#7B8794;--amber:#9A6A12;--amber-tint:#FBF4E4;--green:#2F6F4A;--green-tint:#EAF3EE;--blue:#3A5F86;--blue-tint:#ECF1F6;--purple:#5E4B7A;--purple-tint:#F1EEF5}
+  /* surfaces: flat, thin borders, no shadows or lift */
+  body.skin-plain .panel,body.skin-plain .kpi-card,body.skin-plain .detail-card,body.skin-plain .detail-panel,body.skin-plain .form-panel,body.skin-plain .wd-panel,body.skin-plain .wd-card,body.skin-plain .mrx-tile,body.skin-plain .rf-tile,body.skin-plain .iso-card,body.skin-plain .reminder-modal,body.skin-plain .report-problem-modal,body.skin-plain .avatar-menu{border-radius:6px!important;box-shadow:none!important}
+  body.skin-plain .reminder-modal,body.skin-plain .report-problem-modal,body.skin-plain .avatar-menu{box-shadow:0 6px 24px rgba(31,41,51,.14)!important}
+  body.skin-plain .wd-card{background:#fff!important}
+  body.skin-plain .wd-card:hover,body.skin-plain .wd-card:focus-visible,body.skin-plain .ovx-tile:hover{transform:none!important;box-shadow:none!important}
+  body.skin-plain .mrx-tile{border:1px solid var(--border)}
+  /* chrome */
+  body.skin-plain .sidebar{background:#FAFBFC}
+  body.skin-plain .nav-item.active{background:#E8ECF0;color:var(--text);border-left-color:var(--red)}
+  body.skin-plain .topbar{background:#fff;backdrop-filter:none}
+  body.skin-plain .topbar-left h2{font-weight:600}
+  body.skin-plain .avatar{background:#4B5563}
+  /* headers: flat panels with dark text instead of dark gradients */
+  body.skin-plain .ovx-hero,body.skin-plain .adx-hero,body.skin-plain .ad-hero,body.skin-plain .pgx,body.skin-plain .mrx-ehero,body.skin-plain .rm-hero{background:#fff!important;color:var(--text)!important;border:1px solid var(--border);border-radius:6px!important;box-shadow:none}
+  body.skin-plain .rm-hero{border:0;border-bottom:1px solid var(--border);border-radius:0!important}
+  body.skin-plain .ovx-hero:after{display:none}
+  body.skin-plain :is(.ovx-hero,.adx-hero,.ad-hero,.pgx,.mrx-ehero,.rm-hero) :is(h1,h2,h3,h4,p,.ovx-sub,.rm-sub,.ovx-eye){color:var(--text)!important;opacity:1!important;font-weight:600}
+  body.skin-plain :is(.ovx-hero,.adx-hero,.ad-hero,.pgx,.mrx-ehero,.rm-hero) :is(p,.ovx-sub,.rm-sub,.ovx-eye){color:var(--text-dim)!important;font-weight:400}
+  body.skin-plain .ovx-eye{font-weight:700}
+  body.skin-plain .adx-badge{background:#EDF1F5;border-color:var(--border);color:var(--text-dim)}
+  body.skin-plain .pgx input{border:1px solid var(--border)}
+  body.skin-plain .ovx-ring>div{background:#fff!important}
+  body.skin-plain .ovx-ring b,body.skin-plain .ovx-ring span{color:var(--text)!important}
+  body.skin-plain .ovx-ring{background-blend-mode:normal}
+  /* number tiles: white cards, the figure carries the status colour */
+  body.skin-plain .ovx-tile,body.skin-plain .rm-tile,body.skin-plain .ro-tile,body.skin-plain .mr2-tile{background:#fff!important;color:var(--text)!important;border:1px solid var(--border);border-radius:6px!important;box-shadow:none}
+  body.skin-plain .ovx-tile span,body.skin-plain .mr2-tile span,body.skin-plain .rm-tile .l,body.skin-plain .ro-tile .l{color:var(--text-dim)!important;font-weight:700}
+  body.skin-plain .ovx-tile.g b,body.skin-plain .mr2-tile.g b{color:#2F6F4A}
+  body.skin-plain .ovx-tile.r b,body.skin-plain .mr2-tile.r b,body.skin-plain .rm-tile.red .n{color:#A6302A}
+  body.skin-plain .ovx-tile.o b,body.skin-plain .mr2-tile.o b,body.skin-plain .rm-tile.orange .n{color:#A8630C}
+  body.skin-plain .ovx-tile.k b{color:var(--text)}
+  /* buttons */
+  body.skin-plain .btn-primary,body.skin-plain .btn-small,body.skin-plain .btn-cancel,body.skin-plain .btn-ghost,body.skin-plain .adx-tabs .btn-small,body.skin-plain .gate-btn,body.skin-plain .btn-add{border-radius:6px!important;box-shadow:none!important}
+  body.skin-plain .btn-primary,body.skin-plain .btn-small.primary,body.skin-plain .gate-btn,body.skin-plain .adx-tabs .btn-small.primary{background:var(--red)!important;border-color:var(--red)!important;color:#fff!important}
+  body.skin-plain .btn-primary:hover,body.skin-plain .gate-btn:hover{background:var(--red-dark)!important}
+  body.skin-plain .wm-chg-btn,body.skin-plain .wm-bug-btn{background:#fff!important;color:var(--text)!important;border:1px solid var(--border)!important;box-shadow:none!important;border-radius:6px!important}
+  body.skin-plain .wm-chg-btn:hover,body.skin-plain .wm-bug-btn:hover{background:#F1F3F5!important}
+  body.skin-plain .wm-chg-btn svg{stroke:var(--text)!important}
+  body.skin-plain .wm-chg-btn .ico,body.skin-plain .wm-bug-btn .ico,body.skin-plain .wm-bug-btn .wm-pill-head{background:#EDF1F5!important}
+  body.skin-plain .watchman-chat-fab{background:var(--red)!important;box-shadow:0 2px 8px rgba(31,41,51,.25)!important;border-radius:8px!important}
+  body.skin-plain .watchman-chat-panel{border-radius:8px!important;box-shadow:0 8px 28px rgba(31,41,51,.2)!important}
+  body.skin-plain .watchman-chat-header{background:var(--charcoal-dark)}
+  body.skin-plain .wm-bug-btn .wm-pill-head{background:#4B5563!important}
+  body.skin-plain .ro-act{background:#fff!important;color:var(--text)!important;border:1px solid var(--border)!important;border-radius:6px!important}
+  body.skin-plain .ro-act.red{background:var(--red)!important;color:#fff!important;border-color:var(--red)!important}
+  body.skin-plain .ro-act.ghost{background:#F1F3F5!important}
+  body.skin-plain .ro-bub,body.skin-plain .ro-chip{filter:saturate(.7);border-radius:6px}
+  /* status chips: same colours, quieter */
+  body.skin-plain .pill,body.skin-plain .date-badge,body.skin-plain .sev-badge,body.skin-plain .wd-pill,body.skin-plain .ovx-chip{filter:saturate(.72)}
+  /* Watchman Helper bubble */
+  body.skin-plain #wg-bubble .wg-card{border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 28px rgba(31,41,51,.2)}
+  body.skin-plain #wg-bubble .wg-head{background:var(--charcoal-dark)}
+  body.skin-plain #wg-bubble .wg-foot button{border-color:var(--red);color:var(--red)}
+  body.skin-plain #wg-bubble .wg-foot button.p{background:var(--red);color:#fff}
+  body.skin-plain #wg-relaunch{background:var(--red);box-shadow:0 2px 8px rgba(31,41,51,.25);border-radius:8px}
+  body.skin-plain .wg-hl{outline-color:#2F4B66!important;animation:none}
+  body.skin-plain .wd-dial-card{background:#2B3340!important;border-color:#2B3340!important}
+  body.skin-plain #mod-back-btn{border-radius:6px!important;box-shadow:none!important}
+  body.skin-plain .brand-name span{color:var(--red)!important}
+  body.skin-plain .hero{display:flex!important;justify-content:center;text-align:center}
+  body.skin-plain .hero-left{max-width:760px;margin:0 auto}
+  body.skin-plain .hero-ctas{justify-content:center}
+  body.skin-plain .ad-stat{background:#F1F3F5!important;color:var(--text-dim)!important;border:1px solid var(--border);border-radius:6px!important}
+  body.skin-plain .pgx-tools button,body.skin-plain .pgx button{background:#fff!important;color:var(--text)!important;border:1px solid var(--border)!important;border-radius:6px!important}
+  body.skin-plain .pgx-card button,body.skin-plain .ad-find button,body.skin-plain .ad-crumbs .here,body.skin-plain .rm-bul-btn,body.skin-plain .rm-bul-type{background:var(--red)!important;color:#fff!important;border-radius:6px!important}
+  body.skin-plain .ad-find{box-shadow:none!important;border:1px solid var(--border);border-radius:6px!important}
+  body.skin-plain .ad-find svg{stroke:var(--red)!important}
+  body.skin-plain .ad-back{background:#fff!important;color:var(--text)!important;border:1px solid var(--border)!important;border-radius:6px!important}
+  body.skin-plain .mrx-ebar,body.skin-plain .ro-meter{background:#E3E7EB!important}
+  body.skin-plain .rm-bul-title{color:var(--text)!important}
+  body.skin-plain .rm-bul-date{background:#EDF1F5!important;color:var(--text-dim)!important;border-radius:6px!important}
+  /* sign in and access pages: light, centred, no radar */
+  body.skin-plain .gate{background:#F5F6F7!important}
+  body.skin-plain .gate.active{grid-template-columns:1fr!important}
+  body.skin-plain .ga-top{background:#fff!important;border-bottom:1px solid var(--border)!important}
+  body.skin-plain .ga-top *{color:var(--text)!important}
+  body.skin-plain .ga-top small{color:var(--text-dim)!important}
+  body.skin-plain .ga-nav a{color:var(--text-dim)!important}
+  body.skin-plain .ga-nav a.cta{background:var(--red)!important;color:#fff!important;border-radius:6px!important}
+  body.skin-plain .ga-mid{display:none!important}
+  body.skin-plain .gate-main{grid-column:1!important;justify-content:center!important;padding:48px 16px!important}
+  body.skin-plain .gate-main .gate-card{border:1px solid var(--border)!important;border-radius:8px!important;box-shadow:none!important}
+  body.skin-plain .gate-watch,body.skin-plain .gate-watch-ring,body.skin-plain .gate-icon-strip{display:none!important}
+  body.skin-plain .gate-wordmark .hl{color:var(--red)}
+  body.skin-plain .ga-foot{background:#fff!important;border-top:1px solid var(--border)!important;color:var(--text-dim)!important}
+  body.skin-plain .ga-foot a{color:var(--text)!important}
+  /* landing page */
+  body.skin-plain #view-landing{background:#F5F6F7}
+  body.skin-plain .land-nav{background:#fff!important;border-bottom:1px solid var(--border)!important}
+  body.skin-plain .land-nav *{color:var(--text)!important}
+  body.skin-plain .land-nav .btn-primary{color:#fff!important}
+  body.skin-plain .hero{background:#fff!important;border-bottom:1px solid var(--border)}
+  body.skin-plain .hero:before,body.skin-plain .hero:after{display:none!important}
+  body.skin-plain .hero h1,body.skin-plain .hero h1 .hl{color:var(--text)!important;font-weight:700}
+  body.skin-plain .hero .lead,body.skin-plain .hero-eyebrow{color:var(--text-dim)!important}
+  body.skin-plain .hero .btn-ghost{color:var(--text)!important;border-color:var(--border)!important}
+  body.skin-plain .watch-wrap{display:none!important}
+  body.skin-plain .land-footer{background:#fff!important;color:var(--text-dim)!important;border-top:1px solid var(--border)}
+  body.skin-plain .section-label{color:var(--text-dim)}
+  `;
+  const st=document.createElement('style'); st.id='skin-plain-css'; st.textContent=css; document.head.appendChild(st);
+
+  function apply(name){
+    document.body.classList.toggle('skin-plain', name==='plain');
+    document.documentElement.setAttribute('data-skin', name);
+    put(LAST)(name);
+    const a=document.getElementById('skin-toggle-link'); if(a) a.lastChild.textContent=' '+(name==='plain'?'Switch to the Watchman look':'Switch to the Plain look');
+  }
+  function uKey(){ return 'wm_skin_u_'+((STATE.user&&STATE.user.id)||'x'); }
+  function effective(){
+    const u=STATE.user&&get(uKey()); if(u==='plain'||u==='watchman') return u;
+    return (STATE.popupSettings&&STATE.popupSettings.skin==='plain')?'plain':'watchman';
+  }
+  window.currentSkin=()=>document.body.classList.contains('skin-plain')?'plain':'watchman';
+  window.setSkin=function(name,remember){
+    name=(name==='plain')?'plain':'watchman'; apply(name);
+    if(remember&&STATE.user) put(uKey())(name);
+  };
+  window.toggleSkin=function(ev){ if(ev&&ev.stopPropagation) ev.stopPropagation(); setSkin(currentSkin()==='plain'?'watchman':'plain', true); const m=document.getElementById('avatar-menu'); if(m) m.classList.remove('open'); };
+
+  /* early: remember the last skin on this browser, or accept ?skin=plain in the link */
+  try{ const q=new URLSearchParams(location.search).get('skin'); if(q==='plain'||q==='watchman'){ put(LAST)(q); } }catch(e){}
+  apply(get(LAST)==='plain'?'plain':'watchman');
+
+  /* header menu entry */
+  (function(){ const m=document.getElementById('avatar-menu'); if(!m||document.getElementById('skin-toggle-link')) return;
+    m.insertAdjacentHTML('afterbegin','<a id="skin-toggle-link" onclick="toggleSkin(event)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M12 3a9 9 0 010 18z" style="fill:currentColor"/></svg><span> Switch to the Plain look</span></a>');
+    apply(currentSkin()); })();
+
+  /* organisation default (Administration) */
+  const _lps=loadPopupSettings;
+  loadPopupSettings=async function(){
+    await _lps.apply(this,arguments);
+    STATE.popupSettings=STATE.popupSettings||{}; STATE.popupSettings.skin='watchman';
+    try{ const r=await STATE.supabase.from('org_popup_settings').select('skin').eq('organisation_id',STATE.org.id).maybeSingle(); if(r&&!r.error&&r.data&&r.data.skin==='plain') STATE.popupSettings.skin='plain'; }catch(e){}
+    apply(effective());
+  };
+  window.loadPopupSettings=loadPopupSettings;
+  window.skinSetDefault=async function(name){
+    if(typeof popupIsAdmin!=='function'||!popupIsAdmin()) return;
+    name=(name==='plain')?'plain':'watchman';
+    const { error } = await STATE.supabase.from('org_popup_settings').upsert({ organisation_id:STATE.org.id, skin:name, updated_at:new Date().toISOString(), updated_by:STATE.user.id });
+    if(error){ toast('Could not save the skin: '+error.message+' (has the skin SQL file been run?)','error'); const s=document.getElementById('skin-admin-sel'); if(s) s.value=(STATE.popupSettings&&STATE.popupSettings.skin)||'watchman'; return; }
+    STATE.popupSettings=STATE.popupSettings||{}; STATE.popupSettings.skin=name;
+    del(uKey()); apply(name);
+    toast((name==='plain'?'Plain':'Watchman')+' look is now the default for your organisation.','success');
+  };
+  function skinPanel(){
+    if(typeof popupIsAdmin!=='function'||!popupIsAdmin()) return '';
+    const cur=(STATE.popupSettings&&STATE.popupSettings.skin==='plain')?'plain':'watchman';
+    return `<div class="panel" style="padding:14px 18px;margin-bottom:14px;">
+      <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;">
+        <div style="font-size:12.5px;font-weight:700;min-width:190px;">Look and feel<br><span style="font-weight:400;color:var(--text-faint);font-size:11px;">Admin only</span></div>
+        <div class="field" style="min-width:260px;margin:0;"><select id="skin-admin-sel" onchange="skinSetDefault(this.value)">
+          <option value="watchman" ${cur==='watchman'?'selected':''}>Watchman: the bold original</option><option value="plain" ${cur==='plain'?'selected':''}>Plain: calm, neutral and flat</option></select></div>
+        <div style="font-size:11.5px;color:var(--text-faint);flex:1;min-width:240px;">The default for everyone in your organisation. Each person can still switch for themselves from the menu beside their initials. Every feature is identical in both looks.</div>
+      </div></div>`;
+  }
+  const _ra=RENDERERS.administration;
+  if(typeof _ra==='function') RENDERERS.administration=function(){ return skinPanel()+_ra.apply(this,arguments); };
+  window.SKIN={apply,effective};
+})();
+
+
+/* ===== b37: every pop-up and panel close button is a clear, labelled "Close" button ===== */
+(function(){
+  const st=document.createElement('style'); st.id='close-btn-css';
+  st.textContent=`
+  .close-btn:not([title^="Back"]),.rm-close,.wg-x{width:auto!important;height:auto!important;min-width:0!important;min-height:34px;padding:7px 15px 7px 11px!important;border-radius:999px!important;border:0!important;background:var(--red,#B21616)!important;color:#fff!important;display:inline-flex!important;align-items:center;justify-content:center;gap:6px;font-family:Arial,Helvetica,sans-serif!important;font-size:13px!important;font-weight:700!important;line-height:1;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.25)!important;white-space:nowrap}
+  .close-btn:not([title^="Back"]):hover,.rm-close:hover,.wg-x:hover{background:var(--red-dark,#7E0F0F)!important}
+  .close-btn:not([title^="Back"]) svg,.rm-close svg{width:14px!important;height:14px!important;stroke:#fff!important;stroke-width:3!important;fill:none!important;flex:none}
+  .close-btn:not([title^="Back"])::after,.rm-close::after,.wg-x::after{content:"Close";font-size:13px;font-weight:700;color:#fff}
+  .wg-x{font-size:0!important}
+  .rm-close{top:14px!important;right:14px!important}
+  /* on dark or coloured headers use a white button so it never disappears */
+  #wg-bubble .wg-x,.watchman-chat-header .close-btn{background:#fff!important;color:#1E1C1B!important}
+  #wg-bubble .wg-x::after,.watchman-chat-header .close-btn::after{color:#1E1C1B}
+  .watchman-chat-header .close-btn svg{stroke:#1E1C1B!important}
+  .detail-head .close-btn,.sf-modal-head .close-btn{margin-left:auto}
+  @media print{.close-btn,.rm-close,.wg-x{display:none!important}}
+  `;
+  document.head.appendChild(st);
 })();
 
 </script>
