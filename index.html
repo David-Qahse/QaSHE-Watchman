@@ -33719,6 +33719,1558 @@ window.brandFromLogo = function(){
   document.head.appendChild(st);
 })();
 
+
+/* ============================================================================
+   b38: ORGANISATION CHARTS AND APPOINTMENTS
+   Needs qashe-watchman-schema-appointments.sql (degrades quietly without it).
+   Pages: Master Organisation Chart, Appointments Organisation Chart,
+   Appointments Register, Competency and Certificate Validity, Departments, Branches.
+   Also extends the staff personal information page (appointments, structured
+   qualifications and experience, personal documents) and feeds Site SHERQ Files
+   readiness and the Reminders pop-up.
+   ============================================================================ */
+(function(){
+  STATE.orgAppts = []; STATE.persDocs = []; STATE.persQuals = []; STATE._oaTemplates = null;
+  STATE._oaMissing = false;
+
+  // extra competency tags (shared with Site SHERQ Files readiness)
+  [['info_security','Information Security (ISO/IEC 27001)'],['popia','POPIA / Information Officer'],['welding_coordinator','Welding Coordination (ISO 14731 / ISO 3834)'],
+   ['welder','Welder qualification (ISO 9606)'],['welding_inspector','Welding Inspection (ISO 17637 / IWI)'],['ndt','Non-destructive testing (ISO 9712)'],
+   ['internal_audit','Internal Auditor (ISO 19011)']].forEach(t => {
+    if(!SF_COMPETENCIES.some(c => c[0] === t[0])){ SF_COMPETENCIES.splice(SF_COMPETENCIES.length - 1, 0, t); }
+    SF_COMPETENCY_LABELS[t[0]] = t[1];
+  });
+
+  const OA_CATS = [
+    ['ohs','Occupational Health and Safety'], ['env','Environmental'], ['infosec','Information Security and POPIA'],
+    ['quality','Quality and Governance'], ['welding','Welding'], ['other','Other']
+  ];
+  const OA_TYPES = [
+    { key:'s16_2', cat:'ohs', label:'Section 16(2) Assignee', legal:'Occupational Health and Safety Act 85 of 1993, Section 16(2)', comp:null, rec:1,
+      duties:'Assist the Chief Executive Officer in ensuring that the duties of the employer under the OHS Act are properly discharged within your area of responsibility, including a safe working environment, hazard identification and risk control, information, instruction, training and supervision, and the reporting of incidents.' },
+    { key:'she_rep', cat:'ohs', label:'Health and Safety Representative', legal:'Occupational Health and Safety Act 85 of 1993, Section 17 and General Administrative Regulations', comp:'she_rep', rec:2,
+      duties:'Represent employees on health and safety matters; conduct workplace inspections; identify potential hazards and dangerous incidents; take part in incident investigations; attend health and safety committee meetings; and report to the employer and employees.' },
+    { key:'hs_committee', cat:'ohs', label:'Health and Safety Committee Member', legal:'Occupational Health and Safety Act 85 of 1993, Section 19', comp:null,
+      duties:'Participate in the health and safety committee; make recommendations to the employer on health and safety; discuss incidents and investigation findings; and review the effectiveness of health and safety measures.' },
+    { key:'safety_officer', cat:'ohs', label:'SHE Officer', legal:'Occupational Health and Safety Act 85 of 1993, Section 8; Construction Regulations 2014, r8(5) (where applicable)', comp:'sheq_officer',
+      duties:'Advise management on safety, health and environmental matters; monitor compliance with legislation and the management system; conduct inspections and audits; and facilitate inductions, toolbox talks and incident investigations.' },
+    { key:'first_aider', cat:'ohs', label:'First Aider', legal:'General Safety Regulations, r3', comp:'first_aid', rec:2,
+      duties:'Render first aid to injured or ill persons; maintain the first aid box and its contents; record all first aid treatment; and assist in emergency response.' },
+    { key:'fire_marshal', cat:'ohs', label:'Fire Marshal and Emergency Coordinator', legal:'Environmental Regulations for Workplaces, r9; Construction Regulations 2014, r29 (where applicable)', comp:'firefighting', rec:2,
+      duties:'Coordinate emergency response and evacuation; ensure fire equipment is available, serviced and accessible; account for all persons at the assembly point; and liaise with emergency services.' },
+    { key:'incident_investigator', cat:'ohs', label:'Incident Investigator', legal:'General Administrative Regulations, r9', comp:'incident_investigation', rec:2,
+      duties:'Investigate incidents, accidents and near misses; determine root causes; recommend corrective and preventive actions; and record findings on the incident register.' },
+    { key:'risk_assessor', cat:'ohs', label:'Risk Assessor', legal:'Occupational Health and Safety Act 85 of 1993, Section 8(2)(d); Construction Regulations 2014, r9 (where applicable)', comp:'risk_assessment',
+      duties:'Conduct and review baseline and task-based hazard identification and risk assessments before work starts and whenever conditions change, and communicate the findings to affected persons.' },
+    { key:'env_coordinator', cat:'env', label:'Environmental Coordinator', legal:'National Environmental Management Act 107 of 1998, Section 28 (duty of care); ISO 14001, clause 5.3', comp:'environmental', rec:1,
+      duties:'Coordinate the environmental management system; maintain the aspects and impacts register and legal register; monitor environmental performance and compliance; and report incidents, spills and non-compliances.' },
+    { key:'ismo', cat:'infosec', label:'Information Security Management Officer (ISMO)', legal:'ISO/IEC 27001, clause 5.3 (organisational roles, responsibilities and authorities); Protection of Personal Information Act 4 of 2013, Section 19', comp:'info_security', rec:1,
+      duties:'Establish, implement and maintain the information security management system; maintain the risk treatment plan and Statement of Applicability; coordinate security awareness; manage information security incidents; and report on performance to top management.' },
+    { key:'info_officer', cat:'infosec', label:'Information Officer (POPIA)', legal:'Protection of Personal Information Act 4 of 2013, Sections 55 and 56; Promotion of Access to Information Act 2 of 2000, Section 51', comp:'popia', rec:1,
+      duties:'Encourage and ensure compliance with the conditions for lawful processing of personal information; deal with requests made under POPIA and PAIA; work with the Information Regulator on investigations; maintain the PAIA manual; and register as Information Officer with the Information Regulator before taking up the duties.' },
+    { key:'deputy_io', cat:'infosec', label:'Deputy Information Officer (POPIA)', legal:'Protection of Personal Information Act 4 of 2013, Section 56; Regulations relating to the Protection of Personal Information, 2018, r4', comp:'popia',
+      duties:'Assist the Information Officer in the performance of the duties and responsibilities set out in Section 55 of POPIA, and act on the Information Officer\'s behalf when delegated.' },
+    { key:'qms_rep', cat:'quality', label:'Quality Management Representative', legal:'ISO 9001, clause 5.3 (organisational roles, responsibilities and authorities)', comp:'quality',
+      duties:'Ensure the quality management system conforms to ISO 9001; report on its performance and opportunities for improvement to top management; and promote customer focus throughout the organisation.' },
+    { key:'internal_auditor', cat:'quality', label:'Internal Auditor', legal:'ISO 9001, clause 9.2; ISO 14001, clause 9.2; ISO 45001, clause 9.2; ISO/IEC 27001, clause 9.2; ISO 19011', comp:'internal_audit',
+      duties:'Plan, conduct and report internal audits objectively and impartially; follow up corrective actions; and maintain auditor competence in line with ISO 19011.' },
+    { key:'compliance_officer', cat:'quality', label:'Compliance and Anti-Bribery Officer', legal:'ISO 37001, clause 5.3.2; ISO 37301, clause 5.3.2; Prevention and Combating of Corrupt Activities Act 12 of 2004', comp:null,
+      duties:'Oversee the design and implementation of the compliance and anti-bribery programme; provide advice and guidance; ensure conformity with the standard; and report to the governing body and top management.' },
+    { key:'rwc', cat:'welding', label:'Responsible Welding Coordinator (RWC)', legal:'ISO 3834-2 (welding coordination personnel); ISO 14731 (welding coordination, tasks and responsibilities)', comp:'welding_coordinator', rec:3,
+      duties:'Coordinate all welding activities and personnel in accordance with ISO 14731: contract and technical review, welding procedures and qualifications, welder approval, consumables, equipment, inspection, non-conformance and records. Hold the authority to stop non-conforming welding work.' },
+    { key:'welding_inspector', cat:'welding', label:'Welding Inspector', legal:'ISO 3834-2 (inspection and testing personnel); ISO 17637', comp:'welding_inspector',
+      duties:'Carry out inspection and testing of welds before, during and after welding in accordance with the applicable specification, and record and report results and non-conformances.' },
+    { key:'custom', cat:'other', label:'Other appointment', legal:'', comp:null, duties:'' },
+  ];
+  const OA_BY_KEY = Object.fromEntries(OA_TYPES.map(t => [t.key, t]));
+  const OA_BASIS = { designated:'designated by the employer', volunteer:'volunteered for the appointment', elected:'been elected to the appointment' };
+  const OA_STATUS_LABEL = { draft:'Draft', issued:'Issued: awaiting acceptance', accepted:'Accepted and in force', revoked:'Revoked' };
+
+  const PD_TYPES = [
+    ['cv','CV and experience summary',false,null], ['id_copy','ID or passport copy',true,null], ['qualification','Qualification certificate',false,null],
+    ['training_cert','Training certificate',false,'competency'], ['competency','Certificate of competency',false,'competency'],
+    ['medical','Medical certificate of fitness',true,null], ['driver_licence','Driver\'s licence or PrDP',false,null],
+    ['contract','Contract of employment',true,null], ['nda','Confidentiality and non-disclosure agreement',true,null],
+    ['criminal_check','Criminal background check (proof)',true,null], ['reference_check','Reference check',true,null],
+    ['popia_consent','POPIA consent or notice acknowledgement',true,null], ['welder_cert','Welder qualification (ISO 9606)',false,'competency'],
+    ['other','Other',false,null]
+  ];
+  const PD_BY_KEY = Object.fromEntries(PD_TYPES.map(t => [t[0], t]));
+  // The personal-file core: ISO/IEC 27001 (Annex A, people controls), employment and POPIA hygiene.
+  const PD_CORE = ['id_copy','cv','contract','nda','criminal_check'];
+
+  const esc = s => escapeHtml(s == null ? '' : String(s));
+  const role = () => STATE.myRole;
+  const isStaff = () => !!(STATE.profile && STATE.profile.is_platform_staff);
+  const canEdit = () => ['admin','manager','contributor'].includes(role()) || isStaff();
+  const canConf = () => ['admin','manager'].includes(role()) || isStaff();
+  const addDaysISO = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0,10); };
+  const daysTo = iso => Math.floor((new Date(iso + 'T00:00:00') - new Date(todayISO() + 'T00:00:00')) / 86400000);
+
+  /* ---------------- data ---------------- */
+  async function loadOA(){
+    const org = STATE.org && STATE.org.id; if(!org) return;
+    const q = t => STATE.supabase.from(t).select('*').eq('organisation_id', org);
+    try{
+      const [a, d, ql] = await Promise.all([q('org_appointments').order('created_at', {ascending:false}), q('personnel_documents').order('created_at', {ascending:false}), q('personnel_qualifications').order('date_from', {ascending:false})]);
+      if(a.error && /does not exist|relation|schema cache/i.test(a.error.message||'')){ STATE._oaMissing = true; STATE.orgAppts = []; STATE.persDocs = []; STATE.persQuals = []; return; }
+      STATE._oaMissing = false;
+      STATE.orgAppts = a.data || []; STATE.persDocs = d.data || []; STATE.persQuals = ql.data || [];
+    }catch(e){ STATE._oaMissing = true; }
+  }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ await _lc.apply(this, arguments); await loadOA(); }; }
+
+  async function loadOATemplates(){
+    if(STATE._oaTemplates) return STATE._oaTemplates;
+    STATE._oaTemplates = [];
+    try{
+      const { data, error } = await STATE.supabase.from('content_templates').select('id,title').ilike('title', 'Letter of Appointment%');
+      if(error || !data || !data.length) return STATE._oaTemplates;
+      const ids = data.map(t => t.id);
+      const { data: secs } = await STATE.supabase.from('content_template_policy_sections').select('*').in('template_id', ids).order('sort_order', {ascending:true});
+      STATE._oaTemplates = data.map(t => ({ ...t, sections: (secs || []).filter(s => s.template_id === t.id) }));
+    }catch(e){}
+    return STATE._oaTemplates;
+  }
+  const templateFor = def => (STATE._oaTemplates || []).find(t => (t.title || '').toLowerCase().includes((def.label || '').toLowerCase().split(' (')[0]));
+
+  /* ---------------- lifecycle ---------------- */
+  function apState(a){
+    if(a.status === 'revoked') return { k:'revoked', text:'Revoked', cls:'red' };
+    if(a.end_date){
+      const d = daysTo(a.end_date);
+      if(d < 0) return { k:'expired', text:'Expired ' + Math.abs(d) + 'd ago', cls:'red' };
+      if(d <= (a.renewal_notice_days || 60)) return { k:'renew', text:'Renewal due: ' + d + 'd left', cls:'yellow' };
+    }
+    if(a.status === 'draft') return { k:'draft', text:'Draft: not issued', cls:'blue' };
+    if(a.status === 'issued') return { k:'issued', text:'Awaiting acceptance', cls:'yellow' };
+    return { k:'valid', text: a.end_date ? 'In force · ' + daysTo(a.end_date) + 'd left' : 'In force', cls:'green' };
+  }
+  const apLive = a => ['issued','accepted'].includes(a.status) && !(a.end_date && daysTo(a.end_date) < 0);
+  const badge = (txt, cls) => `<span class="date-badge ${cls}"><span class="dd"></span>${esc(txt)}</span>`;
+  const apDef = a => OA_BY_KEY[a.appointment_type] || { label: a.title || a.appointment_type, cat:'other' };
+  const apLabel = a => (a.appointment_type === 'custom' ? (a.title || 'Appointment') : apDef(a).label);
+  const apRef = a => 'APT-' + (a.id || '').slice(0, 6).toUpperCase();
+
+  function compStatus(personId, tag){
+    if(!tag) return { k:'na', text:'Not required', cls:'blue' };
+    const docs = (STATE.persDocs || []).filter(d => d.personnel_id === personId && d.competency_tag === tag);
+    const valid = docs.filter(d => !d.expiry_date || daysTo(d.expiry_date) >= 0);
+    if(valid.length){
+      const soonest = valid.filter(d => d.expiry_date).sort((a, b) => a.expiry_date.localeCompare(b.expiry_date))[0];
+      if(soonest && daysTo(soonest.expiry_date) <= 60) return { k:'soon', text:'Valid: expires ' + fmtDate(soonest.expiry_date), cls:'yellow' };
+      return { k:'ok', text:'Validated and valid', cls:'green' };
+    }
+    if(docs.length) return { k:'expired', text:'Certificate expired', cls:'red' };
+    return { k:'none', text:'No evidence on file', cls:'yellow' };
+  }
+
+  /* ---------------- Site SHERQ Files readiness hook ---------------- */
+  { const _h = sfMemberHasCompetency;
+    sfMemberHasCompetency = window.sfMemberHasCompetency = function(m, tag, f){
+      if(_h.apply(this, arguments)) return true;
+      const pid = m && (m.personnel_id || m.person_id);
+      return !!(pid && (STATE.persDocs || []).some(d => d.personnel_id === pid && d.competency_tag === tag && (!d.expiry_date || daysTo(d.expiry_date) >= 0)));
+    };
+  }
+
+  /* ---------------- styles ---------------- */
+  const st = document.createElement('style');
+  st.textContent = `
+  .oc-chips{display:flex; flex-wrap:wrap; gap:3px; justify-content:center; margin-top:6px; max-width:200px}
+  .oc-chip{font:600 9px Arial,Helvetica,sans-serif; padding:2px 7px; border-radius:9px; background:var(--red,#B21616); color:#fff; line-height:1.3}
+  .oc-chip.sub{background:#EFEDEB; color:#4a4745}
+  .oc-chip.warn{background:#B2650F}
+  .oc-chip.bad{background:#6b0f0f}
+  .oa-tiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:14px}
+  .oa-tile{background:var(--panel,#fff); border:1px solid var(--border,#E3E1DF); border-radius:10px; padding:12px 14px}
+  .oa-tile b{display:block; font:700 22px Arial,Helvetica,sans-serif}
+  .oa-tile span{font-size:11px; color:var(--text-faint,#777)}
+  .oa-cat{margin-bottom:16px}
+  .oa-cat h4{font:700 13px Arial,Helvetica,sans-serif; margin:0 0 8px}
+  .oa-types{display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:10px}
+  .oa-type{border:1px solid var(--border,#E3E1DF); border-radius:10px; padding:10px 12px; background:var(--panel,#fff)}
+  .oa-type h5{font:700 12px Arial,Helvetica,sans-serif; margin:0 0 2px}
+  .oa-type .lg{font-size:10.5px; color:var(--text-faint,#777); margin-bottom:6px}
+  .oa-holder{display:flex; justify-content:space-between; gap:8px; align-items:center; padding:4px 0; border-top:1px dashed var(--border,#E3E1DF); font-size:12px; cursor:pointer}
+  .oa-vacant{font-size:11.5px; color:#B21616; font-weight:600; padding:4px 0}
+  .oa-table{width:100%; border-collapse:collapse; font-size:12px}
+  .oa-table th{text-align:left; font:700 10px Arial,Helvetica,sans-serif; text-transform:uppercase; color:var(--text-faint,#777); padding:6px 8px; border-bottom:1px solid var(--border,#E3E1DF)}
+  .oa-table td{padding:7px 8px; border-bottom:1px solid var(--border,#E3E1DF); vertical-align:top}
+  .oa-letter{font:13px/1.55 Arial,Helvetica,sans-serif; color:#1E1C1B; background:#fff; border:1px solid #E3E1DF; padding:22px 26px; max-height:58vh; overflow:auto}
+  .oa-letter .print-section-title{font-weight:700; margin:14px 0 6px; font-size:13px}
+  .oa-sig{border:1px solid #bbb; background:#fff; border-radius:8px; touch-action:none; width:100%; max-width:480px; height:150px; display:block}
+  .oa-sigimg{max-height:60px; max-width:220px}
+  .oa-sec{border:1px solid var(--border,#E3E1DF); border-radius:12px; padding:14px 16px; margin-bottom:16px; background:var(--panel,#fff)}
+  .oa-sec h3{font:600 15px Arial,Helvetica,sans-serif; margin:0 0 8px}
+  .oa-row{display:flex; justify-content:space-between; gap:10px; align-items:flex-start; padding:7px 0; border-top:1px solid var(--border,#E3E1DF); font-size:12.5px}
+  .oa-row:first-of-type{border-top:0}
+  .oa-chk{display:inline-block; font-size:11px; padding:2px 8px; border-radius:9px; margin:0 4px 4px 0}
+  .oa-chk.ok{background:#E3F2EC; color:#1F6B52} .oa-chk.no{background:#FBE9E7; color:#B21616}
+  @media print{.oc-chip{background:#B21616!important; color:#fff!important; -webkit-print-color-adjust:exact; print-color-adjust:exact} .oc-chip.sub{background:#EFEDEB!important; color:#333!important}}
+  `;
+  document.head.appendChild(st);
+
+  /* ---------------- master org chart: chips on nodes ---------------- */
+  function chipsFor(personId){
+    const chips = [];
+    competenceFor(personId).filter(c => !c.is_primary).forEach(c => {
+      const pos = (STATE.positions || []).find(p => p.id === c.position_id);
+      if(pos) chips.push(`<span class="oc-chip sub">${esc(pos.title)}</span>`);
+    });
+    (STATE.orgAppts || []).filter(a => a.personnel_id === personId && a.status !== 'revoked' && a.status !== 'draft').forEach(a => {
+      const s = apState(a);
+      chips.push(`<span class="oc-chip ${s.k === 'expired' ? 'bad' : (s.k === 'renew' || s.k === 'issued') ? 'warn' : ''}" title="${esc(apLabel(a))}">${esc(apLabel(a).replace(/\s*\(.*\)$/, ''))}</span>`);
+    });
+    return chips.length ? `<div class="oc-chips">${chips.join('')}</div>` : '';
+  }
+  { const _n = orgChartNodeHTML;
+    orgChartNodeHTML = window.orgChartNodeHTML = function(person, clickable){
+      const h = _n.apply(this, arguments);
+      if(STATE._ocShowChips === false) return h;
+      const c = chipsFor(person.id);
+      if(!c) return h;
+      const i = h.lastIndexOf('</div>');
+      return h.slice(0, i) + c + h.slice(i);
+    };
+  }
+
+  /* ---------------- tabs ---------------- */
+  const TABS = [['chart','Master Organisation Chart'],['appts_chart','Appointments Organisation Chart'],['register','Appointments Register'],['validity','Competency and Certificate Validity'],['departments','Departments'],['branches','Branches']];
+  RENDERERS.orgchart = () => `
+    <div class="toolbar"><div class="filters">
+      ${TABS.map(([k, l]) => `<button class="btn-small ${(STATE._ocSubtab || 'chart') === k ? 'primary' : ''}" onclick="switchOcSubtab('${k}')">${l}</button>`).join('')}
+    </div></div>
+    <div id="oc-subtab-content"></div>`;
+  MODULE_META.orgchart = { title:'Organisation Charts and Appointments', sub:() => 'Master and appointments organisation charts, legal letters of appointment with electronic signature, the appointments register with renewal notices, and validated competencies' };
+  document.querySelectorAll('.nav-item[data-mod="orgchart"]').forEach(n => { n.innerHTML = n.innerHTML.replace(/Organisation Chart\s*$/, 'Organisation Charts and Appointments'); });
+
+  { const _r = renderOcSubtabContent;
+    renderOcSubtabContent = window.renderOcSubtabContent = function(tab){
+      tab = tab || STATE._ocSubtab || 'chart';
+      if(tab === 'appts_chart') return renderApptsChart();
+      if(tab === 'register') return renderRegister();
+      if(tab === 'validity') return renderValidity();
+      return _r.call(this, tab);
+    };
+  }
+  { const _pc = window.printCompanyOrgChart; /* master chart prints with chips automatically */ }
+
+  /* ---------------- appointments organisation chart ---------------- */
+  function recommended(){
+    const out = [];
+    const staff = STATE.personnel.filter(p => p.status === 'active').length;
+    OA_TYPES.forEach(t => {
+      if(!t.rec) return;
+      if(t.rec === 2 && staff < 2) return;
+      if(t.rec === 3 && !(STATE.org && (STATE.org.welding_enabled || STATE.org.welding_required))) return;
+      out.push(t.key);
+    });
+    return out;
+  }
+  function holdersOf(key){ return (STATE.orgAppts || []).filter(a => a.appointment_type === key && a.status !== 'revoked' && a.status !== 'draft'); }
+  function holderRow(a){
+    const p = personById(a.personnel_id); if(!p) return '';
+    const s = apState(a);
+    return `<div class="oa-holder" onclick="oaView('${a.id}')"><span><b>${esc(p.full_name)}</b><br><span style="color:var(--text-faint);font-size:10.5px">${esc(personTitleFor(p.id) || '')}</span></span>${badge(s.text, s.cls)}</div>`;
+  }
+  function renderApptsChart(){
+    const wrap = document.getElementById('oc-subtab-content'); if(!wrap) return;
+    if(STATE._oaMissing){ wrap.innerHTML = missingNotice(); return; }
+    const mode = STATE._oaChartMode || 'grouped';
+    const rec = new Set(recommended());
+    const live = (STATE.orgAppts || []).filter(a => a.status !== 'revoked' && a.status !== 'draft');
+    let body = '';
+    if(mode === 'tree'){
+      const holderIds = new Set(live.map(a => a.personnel_id));
+      const all = STATE.personnel.filter(p => p.status === 'active');
+      const keep = new Set(holderIds);
+      holderIds.forEach(id => { let cur = personById(id), guard = 0; while(cur && cur.line_manager_id && guard++ < 30){ keep.add(cur.line_manager_id); cur = personById(cur.line_manager_id); } });
+      body = `<div class="detail-card"><div class="panel-head"><h3>Appointments by reporting line</h3></div>
+        <p style="font-size:12px;color:var(--text-faint);margin-bottom:10px">Everyone who holds an appointment, shown with the managers they report through. Each person can hold more than one job title, position and appointment.</p>
+        ${live.length ? orgChartTreeHTML(all.filter(p => keep.has(p.id)), true) : '<p style="font-size:12.5px;color:var(--text-faint)">No appointments issued yet.</p>'}</div>`;
+    } else {
+      body = OA_CATS.map(([ck, cl]) => {
+        const types = OA_TYPES.filter(t => t.cat === ck && (holdersOf(t.key).length || rec.has(t.key) || (ck !== 'other' && false)));
+        const others = ck === 'other' ? (STATE.orgAppts || []).filter(a => a.appointment_type === 'custom' && a.status !== 'revoked' && a.status !== 'draft') : [];
+        if(!types.length && !others.length) return '';
+        return `<div class="oa-cat"><h4>${cl}</h4><div class="oa-types">${types.map(t => {
+          const hs = holdersOf(t.key);
+          return `<div class="oa-type"><h5>${esc(t.label)}</h5><div class="lg">${esc(t.legal)}</div>${hs.length ? hs.map(holderRow).join('') : '<div class="oa-vacant">Vacant: recommended appointment not yet made</div>'}</div>`;
+        }).join('')}${others.length ? `<div class="oa-type"><h5>Other appointments</h5>${others.map(a => `<div class="oa-holder" onclick="oaView('${a.id}')"><span><b>${esc((personById(a.personnel_id) || {}).full_name || '')}</b><br><span style="font-size:10.5px;color:var(--text-faint)">${esc(a.title || '')}</span></span>${badge(apState(a).text, apState(a).cls)}</div>`).join('')}</div>` : ''}</div></div>`;
+      }).join('') || '<div class="empty-state"><p>No appointments issued yet. Use the Appointments Register to make the first one.</p></div>';
+      body = `<div class="detail-card"><div class="panel-head"><h3>Appointments Organisation Chart</h3></div>${body}</div>`;
+    }
+    wrap.innerHTML = `<div class="toolbar" style="margin-bottom:10px"><div class="filters">
+      <button class="btn-small ${mode === 'grouped' ? 'primary' : ''}" onclick="STATE._oaChartMode='grouped';renderApptsChart()">By appointment</button>
+      <button class="btn-small ${mode === 'tree' ? 'primary' : ''}" onclick="STATE._oaChartMode='tree';renderApptsChart()">By reporting line</button>
+      ${canEdit() ? `<button class="btn-small primary" onclick="oaForm()">+ New appointment</button>` : ''}
+      <button class="btn-small" onclick="oaPrintChart()">Print / PDF</button></div></div>` + body;
+  }
+  window.renderApptsChart = renderApptsChart;
+  window.oaPrintChart = function(){
+    const rows = [];
+    (STATE.orgAppts || []).filter(a => a.status !== 'revoked' && a.status !== 'draft').forEach(a => {
+      const p = personById(a.personnel_id) || {};
+      rows.push([esc(apLabel(a)), esc(p.full_name), esc(personTitleFor(p.id) || ''), a.end_date ? fmtDate(a.end_date) : '', esc(apState(a).text)]);
+    });
+    const vac = recommended().filter(k => !holdersOf(k).length).map(k => OA_BY_KEY[k].label);
+    printRecord('Appointments Organisation Chart', STATE.org.name + ': Appointments', [['Date', new Date().toLocaleDateString('en-GB')]],
+      printTable(['Appointment','Appointee','Job title','Valid until','Status'], rows) + (vac.length ? printSectionTitle('Recommended appointments not yet made') + '<p>' + vac.map(esc).join(', ') + '</p>' : ''), null, null);
+  };
+
+  function missingNotice(){
+    return `<div class="detail-card" style="border-color:var(--amber,#B2650F)"><div class="panel-head"><h3>Database update needed</h3></div><p style="font-size:12.5px">Run <b>qashe-watchman-schema-appointments.sql</b> once in the Supabase SQL editor to switch on appointments, personal documents and qualifications.</p></div>`;
+  }
+
+  /* ---------------- appointments register ---------------- */
+  function renderRegister(){
+    const wrap = document.getElementById('oc-subtab-content'); if(!wrap) return;
+    if(STATE._oaMissing){ wrap.innerHTML = missingNotice(); return; }
+    loadOATemplates().then(() => {});
+    const f = STATE._oaFilter || 'all';
+    const all = STATE.orgAppts || [];
+    const cnt = k => all.filter(a => apState(a).k === k).length;
+    const vac = recommended().filter(k => !holdersOf(k).length).length;
+    const list = all.filter(a => f === 'all' ? true : f === 'attention' ? ['renew','expired','issued','draft'].includes(apState(a).k) : apState(a).k === f);
+    wrap.innerHTML = `
+      <div class="oa-tiles">
+        <div class="oa-tile"><b>${cnt('valid')}</b><span>In force</span></div>
+        <div class="oa-tile"><b>${cnt('issued') + cnt('draft')}</b><span>Draft or awaiting acceptance</span></div>
+        <div class="oa-tile"><b style="color:#B2650F">${cnt('renew')}</b><span>Renewal notice period</span></div>
+        <div class="oa-tile"><b style="color:#B21616">${cnt('expired')}</b><span>Expired</span></div>
+        <div class="oa-tile"><b style="color:#B21616">${vac}</b><span>Recommended roles vacant</span></div>
+      </div>
+      <div class="detail-card">
+        <div class="panel-head"><h3>Appointments Register</h3>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <select onchange="STATE._oaFilter=this.value;renderRegister()">
+              ${[['all','All'],['attention','Needs attention'],['valid','In force'],['renew','Renewal due'],['expired','Expired'],['revoked','Revoked']].map(([k, l]) => `<option value="${k}" ${f === k ? 'selected' : ''}>${l}</option>`).join('')}
+            </select>
+            <button class="btn-small" onclick="oaPrintRegister()">Print / PDF</button>
+            ${canEdit() ? `<button class="btn-small primary" onclick="oaForm()">+ New appointment</button>` : ''}
+          </div></div>
+        <p style="font-size:12px;color:var(--text-faint);margin-bottom:10px">Each appointment carries an expiry date and a renewal notice period. The competence behind it (certificate or validated competence) is checked against the personal documents on the staff page. Expiring items also appear in your Reminders.</p>
+        ${list.length ? `<div style="overflow:auto"><table class="oa-table"><thead><tr><th>Ref</th><th>Appointee</th><th>Appointment</th><th>Legal reference</th><th>Valid until</th><th>Renewal notice from</th><th>Status</th><th>Competence</th><th></th></tr></thead><tbody>
+          ${list.map(a => { const p = personById(a.personnel_id) || {}; const s = apState(a); const c = compStatus(a.personnel_id, a.competency_tag || apDef(a).comp);
+            return `<tr><td class="mono-cell">${apRef(a)}</td><td><b>${esc(p.full_name)}</b><br><span style="font-size:10.5px;color:var(--text-faint)">${esc(personTitleFor(p.id) || '')}</span></td><td>${esc(apLabel(a))}<br><span style="font-size:10.5px;color:var(--text-faint)">${esc(OA_STATUS_LABEL[a.status])}</span></td><td style="max-width:220px;font-size:11px">${esc(a.legal_reference)}</td><td>${a.end_date ? fmtDate(a.end_date) : 'No expiry'}</td><td>${a.end_date ? fmtDate(addDaysISO(a.end_date, -(a.renewal_notice_days || 60))) : '—'}</td><td>${badge(s.text, s.cls)}</td><td>${badge(c.text, c.cls)}</td><td><button class="btn-small" onclick="oaView('${a.id}')">View</button></td></tr>`; }).join('')}
+        </tbody></table></div>` : '<div class="empty-state"><p>No appointments in this view.</p></div>'}
+      </div>`;
+  }
+  window.renderRegister = renderRegister;
+  window.oaPrintRegister = function(){
+    const rows = (STATE.orgAppts || []).map(a => { const p = personById(a.personnel_id) || {}; return [apRef(a), esc(p.full_name), esc(apLabel(a)), esc(a.legal_reference), a.end_date ? fmtDate(a.end_date) : '—', esc(apState(a).text), esc(compStatus(a.personnel_id, a.competency_tag || apDef(a).comp).text)]; });
+    printRegister('Appointments Register', ['Ref','Appointee','Appointment','Legal reference','Valid until','Status','Competence'], rows, null);
+  };
+
+  /* ---------------- appointment form ---------------- */
+  window.oaForm = function(personId, apptId){
+    if(!canEdit()){ toast('You do not have permission to make appointments.', 'error'); return; }
+    const a = apptId ? STATE.orgAppts.find(x => x.id === apptId) : null;
+    const t0 = a ? a.appointment_type : 's16_2';
+    const locked = a && a.status !== 'draft';
+    const body = `
+      <div class="form-grid">
+        <div class="field span2"><label>Person</label><select id="oa-person" ${locked ? 'disabled' : ''}>${STATE.personnel.filter(p => p.status === 'active').map(p => `<option value="${p.id}" ${(a ? a.personnel_id : personId) === p.id ? 'selected' : ''}>${esc(p.full_name)}${p.company_number ? ' (' + esc(p.company_number) + ')' : ''}</option>`).join('')}</select></div>
+        <div class="field"><label>Basis</label><select id="oa-basis">${Object.keys(OA_BASIS).map(k => `<option value="${k}" ${(a ? a.basis : 'designated') === k ? 'selected' : ''}>${{designated:'Designated',volunteer:'Volunteer',elected:'Elected'}[k]}</option>`).join('')}</select></div>
+        <div class="field span2"><label>Appointment</label><select id="oa-type" onchange="oaTypeChanged()">${OA_CATS.map(([ck, cl]) => `<optgroup label="${cl}">${OA_TYPES.filter(t => t.cat === ck).map(t => `<option value="${t.key}" ${t0 === t.key ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}</optgroup>`).join('')}</select></div>
+        <div class="field"><label>Scope: site, department or branch</label><input id="oa-scope" value="${esc(a ? a.scope : '')}" placeholder="e.g. Whole organisation"></div>
+        <div class="field span3" id="oa-title-wrap" style="display:${t0 === 'custom' ? '' : 'none'}"><label>Appointment title</label><input id="oa-title" value="${esc(a ? a.title : '')}"></div>
+        <div class="field span3"><label>Legal reference</label><input id="oa-legal" value="${esc(a ? a.legal_reference : OA_BY_KEY[t0].legal)}"></div>
+        <div class="field"><label>Start date</label><input type="date" id="oa-start" value="${a && a.start_date ? a.start_date : todayISO()}"></div>
+        <div class="field"><label>Valid until (expiry)</label><input type="date" id="oa-end" value="${a ? (a.end_date || '') : addDaysISO(todayISO(), 365)}"></div>
+        <div class="field"><label>Renewal notice (days before expiry)</label><input type="number" id="oa-notice" min="0" value="${a ? a.renewal_notice_days : 60}"></div>
+        <div class="field span2"><label>Appointed by: full name</label><input id="oa-by" value="${esc(a ? a.appointed_by_name : (STATE.profile && STATE.profile.name) || '')}"></div>
+        <div class="field"><label>Appointed by: position</label><input id="oa-bypos" value="${esc(a ? a.appointed_by_position : '')}" placeholder="e.g. Chief Executive Officer"></div>
+        <div class="field span3"><label>Duties and responsibilities</label><textarea id="oa-duties" style="min-height:120px">${esc(a ? a.duties : OA_BY_KEY[t0].duties)}</textarea></div>
+        <div class="field span3"><label>Notes (not printed on the letter)</label><input id="oa-notes" value="${esc(a ? a.notes : '')}"></div>
+      </div>`;
+    sfModal(a ? 'Edit appointment ' + apRef(a) : 'New appointment', body,
+      `<button class="btn-cancel" onclick="sfCloseModal()">Cancel</button><button class="btn-small primary" onclick="oaSave('${a ? a.id : ''}')">Save as draft</button>`, true);
+  };
+  window.oaTypeChanged = function(){
+    const k = document.getElementById('oa-type').value, d = OA_BY_KEY[k];
+    document.getElementById('oa-legal').value = d.legal;
+    document.getElementById('oa-duties').value = d.duties;
+    document.getElementById('oa-title-wrap').style.display = k === 'custom' ? '' : 'none';
+  };
+  window.oaSave = async function(id){
+    const g = i => (document.getElementById(i) || {}).value;
+    const type = g('oa-type'), def = OA_BY_KEY[type];
+    const row = { personnel_id: g('oa-person'), appointment_type: type, title: type === 'custom' ? g('oa-title') : null, basis: g('oa-basis'), scope: g('oa-scope') || null,
+      legal_reference: g('oa-legal') || null, duties: g('oa-duties') || null, start_date: g('oa-start') || null, end_date: g('oa-end') || null,
+      renewal_notice_days: parseInt(g('oa-notice'), 10) || 60, competency_tag: def.comp || null, appointed_by_name: g('oa-by') || null,
+      appointed_by_position: g('oa-bypos') || null, notes: g('oa-notes') || null };
+    if(!row.personnel_id){ toast('Choose a person.', 'error'); return; }
+    if(type === 'custom' && !row.title){ toast('Give the appointment a title.', 'error'); return; }
+    if(row.end_date && row.start_date && row.end_date < row.start_date){ toast('The expiry date is before the start date.', 'error'); return; }
+    let res;
+    if(id) res = await STATE.supabase.from('org_appointments').update(row).eq('id', id).select().single();
+    else res = await STATE.supabase.from('org_appointments').insert({ ...row, organisation_id: STATE.org.id, created_by: STATE.user.id, status:'draft' }).select().single();
+    if(res.error){ toast('Could not save: ' + res.error.message, 'error'); return; }
+    await loadOA(); toast('Appointment saved as a draft. Open it to sign and issue.', 'success');
+    refreshViews(); oaView(res.data.id);
+  };
+  function refreshViews(){
+    if(STATE.currentModule === 'orgchart' || document.getElementById('oc-subtab-content')) renderOcSubtabContent();
+    const pid = STATE._oaPersonOpen; if(pid && document.getElementById('oa-person-extra')) renderPersonExtra(pid);
+  }
+
+  /* ---------------- the letter ---------------- */
+  function fill(txt, a, p, def){
+    const m = { name: p.full_name || '', company_number: p.company_number || '', position: personTitleFor(p.id) || '', appointment: apLabel(a), legal_reference: a.legal_reference || def.legal || '',
+      start_date: a.start_date ? fmtDate(a.start_date) : '', end_date: a.end_date ? fmtDate(a.end_date) : 'until revoked', organisation: STATE.org.name, appointed_by: a.appointed_by_name || '',
+      appointed_by_position: a.appointed_by_position || '', scope: a.scope || 'the organisation', duties: a.duties || def.duties || '', notice_days: String(a.renewal_notice_days || 60), basis: OA_BASIS[a.basis || 'designated'] };
+    return String(txt || '').replace(/\{\{\s*(\w+)\s*\}\}/g, (x, k) => (k in m ? m[k] : x));
+  }
+  function letterText(a){
+    const p = personById(a.personnel_id) || {}, def = apDef(a);
+    const tpl = templateFor(def);
+    const hdr = `<p><b>Reference:</b> ${apRef(a)}<br><b>To:</b> ${esc(p.full_name)}${p.company_number ? ' (' + esc(p.company_number) + ')' : ''}${personTitleFor(p.id) ? ', ' + esc(personTitleFor(p.id)) : ''}<br><b>Company:</b> ${esc(STATE.org.name)}</p>
+      <p style="font:700 15px Arial,Helvetica,sans-serif;margin:12px 0">Letter of Appointment: ${esc(apLabel(a))}</p>`;
+    if(tpl && tpl.sections && tpl.sections.length){
+      return hdr + tpl.sections.map(s => `${printSectionTitle(esc(fill(s.heading, a, p, def)))}<div style="white-space:pre-wrap;margin-bottom:8px">${esc(fill(s.body_text, a, p, def))}</div>`).join('');
+    }
+    const comp = a.competency_tag || def.comp;
+    return hdr + `
+      <p>In terms of <b>${esc(a.legal_reference || def.legal || 'the applicable legislation')}</b>, and having ${esc(OA_BASIS[a.basis || 'designated'])}, you are hereby appointed as <b>${esc(apLabel(a))}</b> for <b>${esc(a.scope || 'the organisation')}</b> at <b>${esc(STATE.org.name)}</b>, with effect from <b>${a.start_date ? fmtDate(a.start_date) : ''}</b>${a.end_date ? ' until <b>' + fmtDate(a.end_date) + '</b>' : ' until revoked in writing'}.</p>
+      ${printSectionTitle('Duties and responsibilities')}<div style="white-space:pre-wrap;margin-bottom:8px">${esc(a.duties || def.duties || '')}</div>
+      ${printSectionTitle('Authority and accountability')}<p>You are granted the authority reasonably necessary to carry out these duties. This appointment does not relieve the employer, the Chief Executive Officer or any other person of their own statutory duties, and you remain accountable to the person who appointed you. You must act within the law, the policies and procedures of ${esc(STATE.org.name)} and the limits of your competence, and must raise any concern about your ability to perform the duties without delay.</p>
+      ${comp ? `${printSectionTitle('Competence')}<p>This appointment depends on you holding, and keeping valid, evidence of competence for this role (${esc(SF_COMPETENCY_LABELS[comp] || comp)}). Certificates are kept on your personal information page and checked in the Appointments Register. You must tell your manager immediately if any required competence lapses.</p>` : ''}
+      ${printSectionTitle('Term, renewal and revocation')}<p>${a.end_date ? 'This appointment expires on ' + fmtDate(a.end_date) + ' unless renewed in writing. Notice of renewal will be given ' + (a.renewal_notice_days || 60) + ' days before expiry. ' : ''}It may be revoked in writing at any time, and ends automatically if your employment with ${esc(STATE.org.name)} ends.</p>
+      ${printSectionTitle('Confidentiality')}<p>You must treat all personal, confidential and security-sensitive information that you come across in this role in line with the Protection of Personal Information Act 4 of 2013 and your confidentiality agreement.</p>`;
+  }
+  function sigCell(img, name, at, by){
+    return img ? `<img class="oa-sigimg" src="${img}" alt="Signature"><br><span style="font-size:11px">${esc(name || '')}<br>Signed electronically: ${new Date(at).toLocaleString('en-GB')}${by ? '' : ''}</span>` : '<div style="height:44px"></div>';
+  }
+  function sigBlock(a){
+    const p = personById(a.personnel_id) || {};
+    return `${printSectionTitle('Appointed by')}
+      <table class="print-table"><thead><tr><th>Role</th><th>Name</th><th>Signature</th></tr></thead><tbody>
+        <tr><td>Appointer${a.appointed_by_position ? ': ' + esc(a.appointed_by_position) : ''}</td><td>${esc(a.appointed_by_name || '')}</td><td>${sigCell(a.appointer_signature, a.appointed_by_name, a.appointer_signed_at)}</td></tr></tbody></table>
+      ${printSectionTitle('Acceptance')}<p>I accept this appointment and the duties and responsibilities set out above, and I confirm that I am competent to perform them.</p>
+      <table class="print-table"><thead><tr><th>Role</th><th>Name</th><th>Signature</th></tr></thead><tbody>
+        <tr><td>Appointee</td><td>${esc(a.appointee_typed_name || p.full_name || '')}</td><td>${sigCell(a.appointee_signature, a.appointee_typed_name || p.full_name, a.appointee_signed_at)}</td></tr></tbody></table>
+      ${a.letter_hash ? `<p style="font-size:10px;color:#666;margin-top:10px">Electronic signature record: document integrity hash (SHA-256) ${esc(a.letter_hash)}. Signed in QaSHE Watchman under the Electronic Communications and Transactions Act 25 of 2002. Any change to the letter after issue changes the hash.</p>` : ''}`;
+  }
+  const letterHtml = a => (a.letter_body || letterText(a)) + sigBlock(a);
+
+  window.oaView = async function(id){
+    await loadOATemplates();
+    const a = STATE.orgAppts.find(x => x.id === id); if(!a) return;
+    const p = personById(a.personnel_id) || {}, s = apState(a);
+    const mine = p.linked_profile_id && STATE.user && p.linked_profile_id === STATE.user.id;
+    const foot = [
+      `<button class="btn-cancel" onclick="sfCloseModal()">Close</button>`,
+      `<button class="btn-small" onclick="oaPrint('${id}')">Print / PDF</button>`,
+      a.status === 'draft' && canEdit() ? `<button class="btn-small" onclick="oaForm(null,'${id}')">Edit</button><button class="btn-small primary" onclick="oaSignOpen('${id}','appointer')">Sign and issue</button>` : '',
+      a.status === 'issued' && (canEdit() || mine) ? `<button class="btn-small primary" onclick="oaSignOpen('${id}','appointee')">Sign acceptance${mine ? '' : ' (on behalf of appointee)'}</button>` : '',
+      ['issued','accepted'].includes(a.status) && canEdit() ? `<button class="btn-small" onclick="oaRenew('${id}')">Renew</button><button class="btn-small" style="color:#B21616" onclick="oaRevoke('${id}')">Revoke</button>` : '',
+      a.status === 'draft' && canEdit() && ['admin','manager'].includes(role()) ? `<button class="btn-small" style="color:#B21616" onclick="oaDelete('${id}')">Delete draft</button>` : ''
+    ].join('');
+    sfModal(`${esc(apLabel(a))}: ${esc(p.full_name)} ${badge(s.text, s.cls)}`, `<div class="oa-letter">${letterHtml(a)}</div>`, foot, true);
+  };
+  window.oaPrint = async function(id){
+    const a = STATE.orgAppts.find(x => x.id === id); if(!a) return;
+    const p = personById(a.personnel_id) || {};
+    sfCloseModal();
+    await printRecord('Letter of Appointment', apRef(a), [['Appointee', esc(p.full_name)], ['Appointment', esc(apLabel(a))], ['Valid', `${a.start_date ? fmtDate(a.start_date) : ''} to ${a.end_date ? fmtDate(a.end_date) : 'revoked'}`], ['Status', esc(OA_STATUS_LABEL[a.status])]], letterHtml(a), null, null);
+  };
+
+  /* ---------------- electronic signature ---------------- */
+  async function sha256(t){ const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)); return Array.from(new Uint8Array(d)).map(x => x.toString(16).padStart(2, '0')).join(''); }
+  const plain = h => String(h).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  let sigState = null;
+  window.oaSignOpen = function(id, who){
+    const a = STATE.orgAppts.find(x => x.id === id); if(!a) return;
+    const p = personById(a.personnel_id) || {};
+    const name = who === 'appointer' ? (a.appointed_by_name || (STATE.profile && STATE.profile.name) || '') : (p.full_name || '');
+    sfModal(who === 'appointer' ? 'Sign and issue the letter' : 'Sign acceptance', `
+      <p style="font-size:12.5px;margin-bottom:8px">${who === 'appointer' ? 'By signing you issue this letter of appointment to ' + esc(p.full_name) + '. The wording is locked at this point.' : 'By signing you accept the appointment and confirm you are competent to perform the duties.'}</p>
+      <div class="field"><label>Type your full name</label><input id="oa-sig-name" value="${esc(name)}"></div>
+      <div class="field"><label>Draw your signature below (finger, stylus or mouse)</label><canvas id="oa-sig" class="oa-sig" width="960" height="300"></canvas></div>
+      <label class="sf-inline" style="font-size:12px"><input type="checkbox" id="oa-sig-ok"> I confirm that this is my signature and that I intend it to bind me to this letter.</label>`,
+      `<button class="btn-cancel" onclick="oaView('${id}')">Back</button><button class="btn-small" onclick="oaSigClear()">Clear</button><button class="btn-small primary" onclick="oaSignSave('${id}','${who}')">Sign</button>`);
+    const c = document.getElementById('oa-sig'), ctx = c.getContext('2d');
+    ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = '#111';
+    sigState = { drawing:false, dirty:false, last:null };
+    const pos = e => { const r = c.getBoundingClientRect(); return { x:(e.clientX - r.left) * c.width / r.width, y:(e.clientY - r.top) * c.height / r.height }; };
+    c.addEventListener('pointerdown', e => { c.setPointerCapture(e.pointerId); sigState.drawing = true; sigState.last = pos(e); });
+    c.addEventListener('pointermove', e => { if(!sigState.drawing) return; const q = pos(e); ctx.beginPath(); ctx.moveTo(sigState.last.x, sigState.last.y); ctx.lineTo(q.x, q.y); ctx.stroke(); sigState.last = q; sigState.dirty = true; });
+    ['pointerup','pointercancel'].forEach(ev => c.addEventListener(ev, () => { sigState.drawing = false; }));
+  };
+  window.oaSigClear = function(){ const c = document.getElementById('oa-sig'); if(!c) return; c.getContext('2d').clearRect(0, 0, c.width, c.height); sigState.dirty = false; };
+  window.oaSignSave = async function(id, who){
+    const a = STATE.orgAppts.find(x => x.id === id); if(!a) return;
+    const name = (document.getElementById('oa-sig-name').value || '').trim();
+    if(!name){ toast('Type your full name.', 'error'); return; }
+    if(!sigState || !sigState.dirty){ toast('Please draw your signature.', 'error'); return; }
+    if(!document.getElementById('oa-sig-ok').checked){ toast('Tick the confirmation to sign.', 'error'); return; }
+    const img = document.getElementById('oa-sig').toDataURL('image/png');
+    const now = new Date().toISOString();
+    let res;
+    if(who === 'appointer'){
+      const body = letterText(a);
+      const hash = await sha256(plain(body) + '|' + a.id + '|' + a.personnel_id + '|' + (a.start_date || '') + '|' + (a.end_date || ''));
+      const tpl = templateFor(apDef(a));
+      res = await STATE.supabase.from('org_appointments').update({ letter_body: body, letter_hash: hash, appointed_by_name: name, appointer_signature: img, appointer_signed_at: now, appointer_signed_by: STATE.user.id, status:'issued', template_id: tpl ? tpl.id : null }).eq('id', id).select().single();
+    } else if(canEdit()){
+      res = await STATE.supabase.from('org_appointments').update({ appointee_signature: img, appointee_typed_name: name, appointee_signed_at: now, appointee_signed_by: STATE.user.id, status:'accepted' }).eq('id', id).select().single();
+    } else {
+      const r = await STATE.supabase.rpc('org_appointment_accept', { p_id: id, p_signature: img, p_typed_name: name });
+      res = r.error ? r : { data:{}, error:null };
+    }
+    if(res.error){ toast('Could not sign: ' + res.error.message, 'error'); return; }
+    await loadOA(); toast(who === 'appointer' ? 'Letter signed and issued.' : 'Acceptance signed. The appointment is in force.', 'success');
+    refreshViews(); oaView(id);
+  };
+
+  window.oaRevoke = async function(id){
+    if(!confirm('Revoke this appointment? The signed letter is kept for the record.')) return;
+    const { error } = await STATE.supabase.from('org_appointments').update({ status:'revoked' }).eq('id', id);
+    if(error){ toast('Could not revoke: ' + error.message, 'error'); return; }
+    await loadOA(); refreshViews(); oaView(id);
+  };
+  window.oaDelete = async function(id){
+    if(!confirm('Delete this draft appointment?')) return;
+    const { error } = await STATE.supabase.from('org_appointments').delete().eq('id', id);
+    if(error){ toast('Could not delete: ' + error.message, 'error'); return; }
+    await loadOA(); sfCloseModal(); refreshViews();
+  };
+  window.oaRenew = async function(id){
+    const a = STATE.orgAppts.find(x => x.id === id); if(!a) return;
+    const start = a.end_date && daysTo(a.end_date) >= 0 ? addDaysISO(a.end_date, 1) : todayISO();
+    const { id: _i, created_at, updated_at, letter_body, letter_hash, appointer_signature, appointer_signed_at, appointer_signed_by, appointee_signature, appointee_typed_name, appointee_signed_at, appointee_signed_by, ...keep } = a;
+    const { data, error } = await STATE.supabase.from('org_appointments').insert({ ...keep, status:'draft', start_date:start, end_date: addDaysISO(start, 364), created_by: STATE.user.id }).select().single();
+    if(error){ toast('Could not create the renewal: ' + error.message, 'error'); return; }
+    await loadOA(); toast('Renewal drafted. Check the dates, then sign and issue it.', 'success'); refreshViews(); oaView(data.id);
+  };
+
+  /* ---------------- competency and certificate validity ---------------- */
+  function renderValidity(){
+    const wrap = document.getElementById('oc-subtab-content'); if(!wrap) return;
+    const rows = [];
+    (STATE.competence || []).forEach(c => {
+      const p = personById(c.personnel_id); if(!p || p.status !== 'active') return;
+      const pos = (STATE.positions || []).find(x => x.id === c.position_id);
+      rows.push({ kind:'Position competence', person:p, item:(pos ? pos.title : 'Position') + (c.is_primary ? ' (primary)' : ''), level:(COMPETENCE_LEVEL_LABELS || {})[c.level] || c.level || '', from:c.date_validated, until:c.valid_until, by:c.validated_by_name, cid:c.id });
+    });
+    (STATE.persDocs || []).filter(d => d.expiry_date || d.competency_tag).forEach(d => {
+      const p = personById(d.personnel_id); if(!p || p.status !== 'active') return;
+      rows.push({ kind:'Certificate', person:p, item:(d.title || (PD_BY_KEY[d.doc_type] || [])[1] || 'Document') + (d.competency_tag ? ' · ' + (SF_COMPETENCY_LABELS[d.competency_tag] || d.competency_tag) : ''), level:'', from:d.issue_date, until:d.expiry_date, by:d.issuer, did:d.id });
+    });
+    const f = STATE._oaVFilter || 'all';
+    const stat = r => !r.until ? { k:'none', t:'No expiry set', c:'blue' } : daysTo(r.until) < 0 ? { k:'expired', t:'Expired ' + Math.abs(daysTo(r.until)) + 'd ago', c:'red' } : daysTo(r.until) <= 60 ? { k:'soon', t:'Expires in ' + daysTo(r.until) + 'd', c:'yellow' } : { k:'ok', t:'Valid · ' + daysTo(r.until) + 'd left', c:'green' };
+    const shown = rows.filter(r => f === 'all' || (f === 'attention' ? ['expired','soon'].includes(stat(r).k) : stat(r).k === f)).sort((a, b) => (a.until || '9999').localeCompare(b.until || '9999'));
+    const core = canConf() ? STATE.personnel.filter(p => p.status === 'active').map(p => {
+      const have = k => (STATE.persDocs || []).some(d => d.personnel_id === p.id && d.doc_type === k);
+      return `<tr><td>${esc(p.full_name)}</td>${PD_CORE.map(k => `<td>${have(k) ? '<span class="oa-chk ok">On file</span>' : '<span class="oa-chk no">Missing</span>'}</td>`).join('')}<td>${(STATE.persQuals || []).filter(q => q.personnel_id === p.id).length}</td><td><button class="btn-small" onclick="showModule('personnel');setTimeout(()=>openPersonDetail('${p.id}'),0)">Open</button></td></tr>`;
+    }).join('') : '';
+    wrap.innerHTML = `
+      <div class="detail-card">
+        <div class="panel-head"><h3>Competency and Certificate Validity</h3>
+          <select onchange="STATE._oaVFilter=this.value;renderValidity()">${[['all','All'],['attention','Expired or expiring'],['expired','Expired'],['soon','Expiring within 60 days'],['ok','Valid']].map(([k, l]) => `<option value="${k}" ${f === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+        <p style="font-size:12px;color:var(--text-faint);margin-bottom:10px">Competence is validated, certificates expire, and both need renewing. Set a valid-until date on a validated competence here; certificate expiry comes from the personal documents on each staff page. Items expiring soon appear in your Reminders.</p>
+        ${shown.length ? `<div style="overflow:auto"><table class="oa-table"><thead><tr><th>Person</th><th>Type</th><th>Item</th><th>Validated or issued</th><th>By</th><th>Valid until</th><th>Status</th></tr></thead><tbody>${shown.map(r => { const s = stat(r);
+          return `<tr><td><a href="#" onclick="showModule('personnel');setTimeout(()=>openPersonDetail('${r.person.id}'),0);return false;">${esc(r.person.full_name)}</a></td><td>${r.kind}</td><td>${esc(r.item)}${r.level ? '<br><span style="font-size:10.5px;color:var(--text-faint)">' + esc(r.level) + '</span>' : ''}</td><td>${r.from ? fmtDate(r.from) : '—'}</td><td>${esc(r.by || '')}</td>
+          <td>${r.cid && canEdit() ? `<input type="date" value="${r.until || ''}" onchange="oaSetCompUntil('${r.cid}',this.value)">` : (r.until ? fmtDate(r.until) : '—')}</td><td>${badge(s.t, s.c)}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="empty-state"><p>Nothing in this view yet. Add certificates on staff pages and set valid-until dates on validated competence.</p></div>'}
+      </div>
+      ${canConf() ? `<div class="detail-card"><div class="panel-head"><h3>Personal file completeness</h3></div><p style="font-size:12px;color:var(--text-faint);margin-bottom:8px">Core personal records for ISO/IEC 27001 people controls and employment compliance. Visible to administrators and managers only.</p>
+        <div style="overflow:auto"><table class="oa-table"><thead><tr><th>Person</th>${PD_CORE.map(k => `<th>${esc(PD_BY_KEY[k][1])}</th>`).join('')}<th>Qualifications</th><th></th></tr></thead><tbody>${core}</tbody></table></div></div>` : ''}`;
+  }
+  window.renderValidity = renderValidity;
+  window.oaSetCompUntil = async function(cid, val){
+    const { error } = await STATE.supabase.from('personnel_competence').update({ valid_until: val || null }).eq('id', cid);
+    if(error){ toast('Could not save: ' + error.message + ' (has the appointments SQL been run?)', 'error'); return; }
+    const c = STATE.competence.find(x => x.id === cid); if(c) c.valid_until = val || null;
+    toast('Valid-until date saved.', 'success'); renderValidity();
+  };
+
+  /* ---------------- staff personal information page ---------------- */
+  { const _o = openPersonDetail;
+    openPersonDetail = window.openPersonDetail = async function(id){
+      await _o.apply(this, arguments);
+      STATE._oaPersonOpen = id;
+      const slot = document.getElementById('pers-detail-slot'); if(!slot) return;
+      const anchor = slot.querySelector('#person-training-list');
+      const html = `<div id="oa-person-extra"></div>`;
+      if(anchor) anchor.insertAdjacentHTML('beforebegin', html); else (slot.querySelector('.detail-panel') || slot).insertAdjacentHTML('beforeend', html);
+      renderPersonExtra(id);
+    };
+  }
+  function renderPersonExtra(pid){
+    const el = document.getElementById('oa-person-extra'); if(!el) return;
+    if(STATE._oaMissing){ el.innerHTML = `<div class="oa-sec"><h3>Appointments, qualifications and documents</h3>${'<p style="font-size:12.5px">Run qashe-watchman-schema-appointments.sql once to switch this on.</p>'}</div>`; return; }
+    const p = personById(pid); if(!p) return;
+    const appts = (STATE.orgAppts || []).filter(a => a.personnel_id === pid);
+    const quals = (STATE.persQuals || []).filter(q => q.personnel_id === pid);
+    const docs = (STATE.persDocs || []).filter(d => d.personnel_id === pid);
+    const have = k => docs.some(d => d.doc_type === k);
+    const comps = competenceFor(pid);
+    el.innerHTML = `
+      <div class="oa-sec"><div class="panel-head"><h3>Job titles, positions and appointments</h3>${canEdit() ? `<button class="btn-small primary" onclick="oaForm('${pid}')">+ Appointment</button>` : ''}</div>
+        <p style="font-size:11.5px;color:var(--text-faint);margin-bottom:8px">A person can hold several job titles, positions and appointments. Positions are set below; legal appointments appear here and on the organisation charts.</p>
+        ${comps.length ? comps.map(c => { const pos = (STATE.positions || []).find(x => x.id === c.position_id); return `<span class="oc-chip sub" style="display:inline-block;margin:0 4px 4px 0">${esc(pos ? pos.title : 'Position')}${c.is_primary ? ' (primary)' : ''}</span>`; }).join('') : ''}
+        ${appts.length ? appts.map(a => { const s = apState(a); return `<div class="oa-row"><span><b>${esc(apLabel(a))}</b><br><span style="font-size:11px;color:var(--text-faint)">${esc(a.legal_reference || '')}${a.end_date ? ' · valid until ' + fmtDate(a.end_date) : ''}</span></span><span style="display:flex;gap:6px;align-items:center">${badge(s.text, s.cls)}<button class="btn-small" onclick="oaView('${a.id}')">Letter</button></span></div>`; }).join('') : '<p style="font-size:12.5px;color:var(--text-faint)">No legal appointments yet.</p>'}
+      </div>
+
+      <div class="oa-sec"><div class="panel-head"><h3>Qualifications and experience</h3>${canEdit() ? `<button class="btn-small" onclick="oaQualForm('${pid}')">+ Add</button>` : ''}</div>
+        <div id="oa-qual-form"></div>
+        ${quals.length ? quals.map(q => `<div class="oa-row"><span><b>${esc(q.title)}</b> <span style="font-size:10.5px;color:var(--text-faint)">${esc({qualification:'Qualification',experience:'Experience',membership:'Professional membership'}[q.kind])}</span><br><span style="font-size:11px;color:var(--text-faint)">${esc([q.institution, q.nqf_level ? 'NQF ' + q.nqf_level : '', q.date_from ? fmtDate(q.date_from) : '', q.date_to ? 'to ' + fmtDate(q.date_to) : ''].filter(Boolean).join(' · '))}</span>${q.details ? '<br><span style="font-size:11.5px">' + esc(q.details) + '</span>' : ''}</span>${canEdit() ? `<button class="btn-small" onclick="oaQualDel('${q.id}','${pid}')">Remove</button>` : ''}</div>`).join('') : '<p style="font-size:12.5px;color:var(--text-faint)">None recorded. The free-text box above is still kept.</p>'}
+      </div>
+
+      <div class="oa-sec"><div class="panel-head"><h3>Personal documents</h3></div>
+        <p style="font-size:11.5px;color:var(--text-faint);margin-bottom:8px">CVs, certificates, contracts, confidentiality and non-disclosure agreements (ISO/IEC 27001) and criminal background check proof. Contracts, agreements, checks and ID are confidential: only administrators and managers can see them. Certificates with an expiry date and a competency tag count towards Site SHERQ File readiness and appear in Reminders.</p>
+        ${canConf() ? `<div style="margin-bottom:8px">${PD_CORE.map(k => `<span class="oa-chk ${have(k) ? 'ok' : 'no'}">${esc(PD_BY_KEY[k][1])}: ${have(k) ? 'on file' : 'missing'}</span>`).join('')}</div>` : ''}
+        ${canEdit() ? `<div class="form-grid" style="margin-bottom:8px">
+          <div class="field"><label>Document type</label><select id="oa-d-type" onchange="oaDocTypeChanged()">${PD_TYPES.filter(t => !t[2] || canConf()).map(t => `<option value="${t[0]}">${esc(t[1])}</option>`).join('')}</select></div>
+          <div class="field"><label>Title or description</label><input id="oa-d-title"></div>
+          <div class="field"><label>Issuer or institution</label><input id="oa-d-issuer"></div>
+          <div class="field"><label>Issue date</label><input type="date" id="oa-d-issue"></div>
+          <div class="field"><label>Expiry date (if any)</label><input type="date" id="oa-d-exp"></div>
+          <div class="field"><label>Evidences competency</label><select id="oa-d-comp"><option value="">None</option>${SF_COMPETENCIES.map(c => `<option value="${c[0]}">${esc(c[1])}</option>`).join('')}</select></div>
+          <div class="field span2"><label>File</label><input type="file" id="oa-d-file"></div>
+          <div class="field"><label class="sf-inline"><input type="checkbox" id="oa-d-conf" ${canConf() ? '' : 'disabled'}> Confidential</label></div>
+        </div><button class="btn-small primary" onclick="oaDocUpload('${pid}')">Upload document</button><div style="height:8px"></div>` : ''}
+        ${docs.length ? docs.map(d => `<div class="oa-row"><span><b>${esc(d.title || (PD_BY_KEY[d.doc_type] || [])[1] || d.doc_type)}</b> <span style="font-size:10.5px;color:var(--text-faint)">${esc((PD_BY_KEY[d.doc_type] || [])[1] || '')}${d.confidential ? ' · confidential' : ''}</span><br><span style="font-size:11px;color:var(--text-faint)">${esc([d.issuer, d.issue_date ? 'issued ' + fmtDate(d.issue_date) : '', d.competency_tag ? SF_COMPETENCY_LABELS[d.competency_tag] : ''].filter(Boolean).join(' · '))}</span></span>
+          <span style="display:flex;gap:6px;align-items:center">${d.expiry_date ? sfExpiryBadge(d.expiry_date) : ''}${d.storage_path ? `<button class="btn-small" onclick="downloadFromBucket('documents','${esc(d.storage_path)}')">Open</button>` : ''}${canConf() ? `<button class="btn-small" onclick="oaDocDel('${d.id}','${pid}')">Delete</button>` : ''}</span></div>`).join('') : '<p style="font-size:12.5px;color:var(--text-faint)">No documents uploaded yet.</p>'}
+      </div>`;
+  }
+  window.oaDocTypeChanged = function(){
+    const t = PD_BY_KEY[document.getElementById('oa-d-type').value]; if(!t) return;
+    const cb = document.getElementById('oa-d-conf'); if(cb && !cb.disabled) cb.checked = !!t[2];
+    if(t[3]) { /* certificate types: prompt for competency */ }
+  };
+  window.oaDocUpload = async function(pid){
+    const file = document.getElementById('oa-d-file').files[0];
+    if(!file){ toast('Choose a file to upload.', 'error'); return; }
+    const type = document.getElementById('oa-d-type').value;
+    const t = PD_BY_KEY[type];
+    let f = file; if(f.type && f.type.startsWith('image/')){ try{ const r = await resizeImageFile(f); if(r.ok) f = r.file; }catch(e){} }
+    const path = `${STATE.org.id}/personnel/${pid}/${Date.now()}-${sanitizeFileName(f.name)}`;
+    const up = await STATE.supabase.storage.from('documents').upload(path, f, evidenceUploadOpts(f));
+    if(up.error){ toast('Could not upload the file: ' + up.error.message, 'error'); return; }
+    const g = i => document.getElementById(i).value || null;
+    const conf = canConf() ? document.getElementById('oa-d-conf').checked : false;
+    const { error } = await STATE.supabase.from('personnel_documents').insert({ organisation_id: STATE.org.id, personnel_id: pid, doc_type: type, title: g('oa-d-title') || t[1], issuer: g('oa-d-issuer'),
+      issue_date: g('oa-d-issue'), expiry_date: g('oa-d-exp'), competency_tag: g('oa-d-comp') || null, confidential: conf, storage_path: path, file_name: f.name, file_type: evidenceMime(f), file_size: f.size, uploaded_by: STATE.user.id });
+    if(error){ await STATE.supabase.storage.from('documents').remove([path]); toast('Could not save the record: ' + error.message, 'error'); return; }
+    await loadOA(); toast('Document uploaded.', 'success'); renderPersonExtra(pid);
+  };
+  window.oaDocDel = async function(id, pid){
+    const d = STATE.persDocs.find(x => x.id === id); if(!d || !confirm('Delete this document? This cannot be undone.')) return;
+    if(d.storage_path) await STATE.supabase.storage.from('documents').remove([d.storage_path]);
+    const { error } = await STATE.supabase.from('personnel_documents').delete().eq('id', id);
+    if(error){ toast('Could not delete: ' + error.message, 'error'); return; }
+    await loadOA(); renderPersonExtra(pid);
+  };
+  window.oaQualForm = function(pid){
+    document.getElementById('oa-qual-form').innerHTML = `<div class="form-grid" style="margin-bottom:8px">
+      <div class="field"><label>Kind</label><select id="oa-q-kind"><option value="qualification">Qualification</option><option value="experience">Experience</option><option value="membership">Professional membership</option></select></div>
+      <div class="field span2"><label>Title or role</label><input id="oa-q-title"></div>
+      <div class="field"><label>Institution or employer</label><input id="oa-q-inst"></div>
+      <div class="field"><label>NQF level</label><input id="oa-q-nqf"></div>
+      <div class="field"><label>From</label><input type="date" id="oa-q-from"></div>
+      <div class="field"><label>To</label><input type="date" id="oa-q-to"></div>
+      <div class="field span3"><label>Details</label><input id="oa-q-det"></div></div>
+      <button class="btn-small primary" onclick="oaQualSave('${pid}')">Save</button> <button class="btn-small" onclick="document.getElementById('oa-qual-form').innerHTML=''">Cancel</button>`;
+  };
+  window.oaQualSave = async function(pid){
+    const g = i => document.getElementById(i).value || null;
+    if(!g('oa-q-title')){ toast('Enter a title or role.', 'error'); return; }
+    const { error } = await STATE.supabase.from('personnel_qualifications').insert({ organisation_id: STATE.org.id, personnel_id: pid, kind: g('oa-q-kind'), title: g('oa-q-title'), institution: g('oa-q-inst'), nqf_level: g('oa-q-nqf'), date_from: g('oa-q-from'), date_to: g('oa-q-to'), details: g('oa-q-det') });
+    if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+    await loadOA(); renderPersonExtra(pid);
+  };
+  window.oaQualDel = async function(id, pid){
+    if(!confirm('Remove this entry?')) return;
+    await STATE.supabase.from('personnel_qualifications').delete().eq('id', id);
+    await loadOA(); renderPersonExtra(pid);
+  };
+
+  /* ---------------- Reminders ---------------- */
+  DATE_TRACKED_MODULES.push(
+    { key:'orgchart', label:'Appointments: Expiry and Renewal', list:() => (STATE.orgAppts || []).filter(a => a.end_date && a.status !== 'revoked').map(a => ({ ...a, _t: esc(apLabel(a)) + ' (' + apRef(a) + ')', _who: esc((personById(a.personnel_id) || {}).full_name || '') })), dateField:'end_date', isResolved:a => a.status === 'revoked', titleField:'_t', getPerson:x => x._who },
+    { key:'orgchart', label:'Personal Documents: Certificate Expiry', list:() => (STATE.persDocs || []).filter(d => d.expiry_date).map(d => ({ ...d, _t: esc(d.title || (PD_BY_KEY[d.doc_type] || [])[1] || 'Document'), _who: esc((personById(d.personnel_id) || {}).full_name || '') })), dateField:'expiry_date', isResolved:() => false, titleField:'_t', getPerson:x => x._who },
+    { key:'orgchart', label:'Competence: Validity Renewal', list:() => (STATE.competence || []).filter(c => c.valid_until).map(c => { const pos = (STATE.positions || []).find(x => x.id === c.position_id); return { ...c, _t: esc(pos ? pos.title : 'Position competence'), _who: esc((personById(c.personnel_id) || {}).full_name || '') }; }), dateField:'valid_until', isResolved:() => false, titleField:'_t', getPerson:x => x._who }
+  );
+
+  window.oaConst = { OA_TYPES, PD_TYPES, OA_BY_KEY };
+})();
+
+
+/* ============================================================================
+   b39: WELDING MANAGEMENT (ISO 3834)
+   Needs qashe-watchman-schema-welding.sql. Switched on per client in the Admin Console.
+   Part selection: 2 comprehensive, 3 standard, 4 elementary quality requirements.
+   Parts 1, 5 and 6 are guidance and reference parts: shown on the Guide page.
+   ============================================================================ */
+(function(){
+  STATE.wd = { settings:null, procedures:[], qualifications:[], equipment:[], consumables:[], jobs:[], inspections:[], reviews:[] };
+  STATE._wdMissing = false;
+  const esc = s => escapeHtml(s == null ? '' : String(s));
+  const daysTo = iso => Math.floor((new Date(iso + 'T00:00:00') - new Date(todayISO() + 'T00:00:00')) / 86400000);
+  const isAdminish = () => STATE.myRole === 'admin' || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const canEdit = () => ['admin','manager','contributor'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const canDelete = () => ['admin','manager'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const badge = (t, c) => `<span class="date-badge ${c}"><span class="dd"></span>${esc(t)}</span>`;
+  const dateBadge = (iso, soon) => {
+    if(!iso) return '<span style="color:var(--text-faint)">No date</span>';
+    const d = daysTo(iso); soon = soon || 30;
+    return d < 0 ? badge('Overdue ' + Math.abs(d) + 'd (' + fmtDate(iso) + ')', 'red') : d <= soon ? badge('Due in ' + d + 'd (' + fmtDate(iso) + ')', 'yellow') : badge(fmtDate(iso), 'green');
+  };
+
+  /* ---------------- reference content ---------------- */
+  const PARTS = {
+    '2': { name:'Part 2: Comprehensive quality requirements', use:'Safety-critical or high-consequence fabrication, fatigue-loaded structures, pressure equipment, wide range of materials or significant metallurgical problems, or where a customer, code or regulation calls for the highest level.' },
+    '3': { name:'Part 3: Standard quality requirements', use:'Structural and general fabrication where failure has moderate consequence and the weld is not subject to demanding fatigue or special-material conditions.' },
+    '4': { name:'Part 4: Elementary quality requirements', use:'Simple, low-risk fabrication in common materials where imperfections are not critical to safety or function.' },
+  };
+  // Requirement mapping is a working guide: each organisation must confirm it against its licensed copy of ISO 3834.
+  // lvl: required | applicable (where relevant or specified) | basic (simplified at this level) | none
+  const REQS = [
+    { k:'review', t:'Review of requirements and technical review', d:'Contract and technical requirements are reviewed before work starts: base materials, joint design, quality levels, welding and inspection requirements, capacity and capability.', lvl:{2:'required',3:'required',4:'basic'}, auto:() => { const j = jobs(); if(!j.length) return null; const n = j.filter(x => x.contract_review_date).length; return [n === j.length ? 'met' : n ? 'partial' : 'gap', `${n} of ${j.length} jobs have a recorded contract review.`]; } },
+    { k:'subcon', t:'Subcontracting', d:'Subcontracted welding work is controlled: the subcontractor meets the same requirements and you keep responsibility for the result.', lvl:{2:'required',3:'required',4:'applicable'}, auto:() => { const j = jobs().filter(x => x.subcontracted); return j.length ? ['partial', `${j.length} subcontracted job(s) recorded: confirm subcontractor evaluation.`] : null; } },
+    { k:'welders', t:'Welding personnel', d:'Welders and welding operators hold valid qualification (ISO 9606 or ISO 14732 for operators and setters) with the required confirmations.', lvl:{2:'required',3:'required',4:'required'}, auto:() => { const q = quals(); if(!q.length) return ['gap', 'No welder qualifications recorded.']; const bad = q.filter(x => (x.valid_until && daysTo(x.valid_until) < 0) || (x.next_confirmation && daysTo(x.next_confirmation) < 0)).length; return [bad ? 'partial' : 'met', bad ? `${bad} of ${q.length} qualification(s) expired or confirmation overdue.` : `${q.length} qualification(s) valid and confirmed.`]; } },
+    { k:'inspectors', t:'Inspection and testing personnel', d:'Persons who inspect and test welds are competent, and NDT personnel are qualified (ISO 9712 or equivalent).', lvl:{2:'required',3:'required',4:'basic'}, auto:() => { const a = (STATE.orgAppts || []).filter(x => x.appointment_type === 'welding_inspector' && ['issued','accepted'].includes(x.status)); return a.length ? ['met', `${a.length} Welding Inspector appointment(s) in force.`] : ['gap', 'No Welding Inspector appointment in force (Appointments Register).']; } },
+    { k:'rwc', t:'Welding coordination', d:'A Responsible Welding Coordinator (ISO 14731) with the knowledge and authority for the work is appointed in writing.', lvl:{2:'required',3:'required',4:'applicable'}, auto:() => { const a = (STATE.orgAppts || []).filter(x => x.appointment_type === 'rwc' && ['issued','accepted'].includes(x.status) && !(x.end_date && daysTo(x.end_date) < 0)); return a.length ? ['met', `RWC appointed: ${esc(((STATE.personnel || []).find(p => p.id === a[0].personnel_id) || {}).full_name || '')}.`] : ['gap', 'No Responsible Welding Coordinator appointment in force (Appointments Register).']; } },
+    { k:'equipment', t:'Equipment', d:'Welding and related production equipment is suitable, maintained and controlled, with records of maintenance.', lvl:{2:'required',3:'required',4:'basic'}, auto:() => { const e = equip(); if(!e.length) return ['gap', 'No equipment recorded.']; const bad = e.filter(x => x.status === 'in_service' && x.next_service && daysTo(x.next_service) < 0).length; return [bad ? 'partial' : 'met', bad ? `${bad} item(s) overdue for service.` : `${e.length} item(s) recorded and serviced.`]; } },
+    { k:'planning', t:'Production planning', d:'Welding is planned: sequence, welding procedure specifications, welder allocation, inspection points and any quality plan.', lvl:{2:'required',3:'applicable',4:'none'}, auto:() => { const j = jobs(); if(!j.length) return null; const n = j.filter(x => x.wps_ids).length; return [n === j.length ? 'met' : n ? 'partial' : 'gap', `${n} of ${j.length} jobs have welding procedures assigned.`]; } },
+    { k:'wps', t:'Welding procedures and procedure qualification', d:'Welding procedure specifications are qualified (ISO 15614 or ISO 15613) and approved, and available to welders at the work place.', lvl:{2:'required',3:'required',4:'applicable'}, auto:() => { const p = procs().filter(x => x.status === 'approved'); return p.length ? ['met', `${p.length} approved WPS on record.`] : ['gap', 'No approved WPS recorded.']; } },
+    { k:'consumables', t:'Welding consumables', d:'Consumables meet the specification, carry inspection documents, and are stored, handled and (where needed) baked and held under controlled conditions.', lvl:{2:'required',3:'required',4:'basic'}, auto:() => { const c = cons(); if(!c.length) return ['gap', 'No consumable batches recorded.']; const bad = c.filter(x => !x.cert_type || (x.expiry_date && daysTo(x.expiry_date) < 0)).length; return [bad ? 'partial' : 'met', bad ? `${bad} batch(es) without a certificate type or past expiry.` : `${c.length} batch(es) recorded with certificates.`]; } },
+    { k:'storage', t:'Storage and handling of parent material', d:'Parent materials are stored and handled to prevent damage and contamination, and are identified.', lvl:{2:'required',3:'applicable',4:'none'}, auto:() => null },
+    { k:'pwht', t:'Post-weld heat treatment', d:'Where required, heat treatment is specified, controlled and recorded.', lvl:{2:'applicable',3:'applicable',4:'none'}, auto:() => { const j = jobs().filter(x => x.pwht_required); return j.length ? ['partial', `${j.length} job(s) need PWHT: confirm records are kept.`] : null; } },
+    { k:'inspection', t:'Inspection and testing', d:'Inspection and testing is carried out before, during and after welding as specified and recorded.', lvl:{2:'required',3:'required',4:'basic'}, auto:() => { const i = insp(); if(!i.length) return ['gap', 'No inspections recorded.']; const f = i.filter(x => x.result === 'fail' && !x.nonconformance_id).length; return [f ? 'partial' : 'met', f ? `${f} failed inspection(s) not yet raised as nonconformances.` : `${i.length} inspection(s) recorded.`]; } },
+    { k:'nc', t:'Non-conformance and corrective actions', d:'Non-conforming welds are identified, controlled, repaired or rejected, and the cause is corrected.', lvl:{2:'required',3:'required',4:'required'}, auto:() => { const f = insp().filter(x => x.result === 'fail'); return f.length ? [f.every(x => x.nonconformance_id) ? 'met' : 'partial', `${f.filter(x => x.nonconformance_id).length} of ${f.length} failures linked to a nonconformance.`] : null; } },
+    { k:'calibration', t:'Calibration and validation of measuring equipment', d:'Measuring, inspection and testing equipment is calibrated or validated, with the next due date known.', lvl:{2:'required',3:'required',4:'applicable'}, auto:() => { const e = equip().filter(x => x.calibration_due); if(!e.length) return null; const bad = e.filter(x => daysTo(x.calibration_due) < 0).length; return [bad ? 'partial' : 'met', bad ? `${bad} item(s) overdue for calibration.` : `${e.length} item(s) in calibration.`]; } },
+    { k:'trace', t:'Identification and traceability', d:'Welds, materials and consumables can be traced to the job, welder, procedure and inspection records.', lvl:{2:'required',3:'applicable',4:'none'}, auto:() => { const j = jobs(); if(!j.length) return null; const n = j.filter(x => x.traceability).length; return [n === j.length ? 'met' : n ? 'partial' : 'gap', `${n} of ${j.length} jobs have traceability notes.`]; } },
+    { k:'records', t:'Quality records', d:'Records are kept legible, retrievable and for the required period, and are available to the customer.', lvl:{2:'required',3:'required',4:'basic'}, auto:() => null },
+  ];
+  const LVL_TEXT = { required:'Required', applicable:'Where applicable', basic:'Simplified', none:'Not required' };
+  const jobs = () => STATE.wd.jobs, quals = () => STATE.wd.qualifications, procs = () => STATE.wd.procedures, equip = () => STATE.wd.equipment, cons = () => STATE.wd.consumables, insp = () => STATE.wd.inspections;
+  const part = () => (STATE.wd.settings && STATE.wd.settings.iso_part) || '2';
+  const enabled = () => !!(STATE.wd.settings && STATE.wd.settings.enabled);
+
+  /* ---------------- data ---------------- */
+  const KEYS = { procedures:'welding_procedures', qualifications:'welding_qualifications', equipment:'welding_equipment', consumables:'welding_consumables', jobs:'welding_jobs', inspections:'welding_inspections', reviews:'welding_reviews' };
+  async function loadWelding(){
+    const org = STATE.org && STATE.org.id; if(!org) return;
+    try{
+      const s = await STATE.supabase.from('welding_settings').select('*').eq('organisation_id', org).maybeSingle();
+      if(s.error){ STATE._wdMissing = /does not exist|relation|schema cache/i.test(s.error.message || ''); STATE.org.welding_enabled = false; return; }
+      STATE._wdMissing = false;
+      STATE.wd.settings = s.data || null;
+      STATE.org.welding_enabled = !!(s.data && s.data.enabled);
+      if(STATE.org.welding_enabled){
+        const r = await Promise.all(Object.keys(KEYS).map(k => STATE.supabase.from(KEYS[k]).select('*').eq('organisation_id', org)));
+        Object.keys(KEYS).forEach((k, i) => { STATE.wd[k] = (r[i].data || []); });
+      }
+    }catch(e){ STATE.org.welding_enabled = false; }
+    if(typeof applyModuleAccessToNav === 'function') applyModuleAccessToNav();
+  }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ await _lc.apply(this, arguments); await loadWelding(); }; }
+
+  ORG_MODULE_FLAGS.welding = 'welding_enabled';
+  GATED_MODULES.push('welding');
+  MODULE_META.welding = { title:'Welding Management', sub:() => 'ISO 3834 welding quality management: welding procedures, welder qualification, equipment, consumables, jobs and inspection, with a readiness check against the part you have selected' };
+  RENDERERS.welding = () => '<div id="wd-root"></div>';
+  { const anchor = document.querySelector('.nav-item[data-mod="site_files"]') || document.querySelector('.nav-item[data-mod="assets"]');
+    if(anchor && !document.querySelector('.nav-item[data-mod="welding"]')) anchor.insertAdjacentHTML('afterend', `<div class="nav-item" data-mod="welding" onclick="showModule('welding')" style="display:none"><svg viewBox="0 0 24 24"><path d="M4 20l6-6"/><path d="M14 4l6 6-4 4-6-6z"/><path d="M17 17l3 3M19 13l2 2"/></svg> Welding Management</div>`); }
+  { const _sm = showModule; showModule = window.showModule = function(mod){ const r = _sm.apply(this, arguments); if(mod === 'welding') renderWelding(); return r; }; }
+
+  // Admin Console toggle writes welding_settings, not a column on organisations.
+  ADMIN_CONSOLE_TOGGLES.push({ field:'welding_enabled', label:'Welding Management', note:'ISO 3834 welding quality management: WPS, welder qualification, equipment, consumables, jobs and inspection. Run the welding SQL first.' });
+  { const _t = toggleOrgModule;
+    toggleOrgModule = window.toggleOrgModule = async function(field, value){
+      if(field !== 'welding_enabled') return _t.apply(this, arguments);
+      const row = { organisation_id: STATE.org.id, enabled: value, updated_at: new Date().toISOString() };
+      const { error } = await STATE.supabase.from('welding_settings').upsert(row, { onConflict:'organisation_id' });
+      if(error){ toast('Could not update: ' + error.message + ' (has the welding SQL been run?)', 'error'); return; }
+      toast('Saved: reloading to apply…', 'success');
+      await reloadOrgAfterAdminConsoleChange();
+    };
+  }
+
+  /* ---------------- generic register engine ---------------- */
+  const personOpts = sel => '<option value="">None</option>' + (STATE.personnel || []).filter(p => p.status === 'active').map(p => `<option value="${p.id}" ${sel === p.id ? 'selected' : ''}>${esc(p.full_name)}</option>`).join('');
+  const personName = id => ((STATE.personnel || []).find(p => p.id === id) || {}).full_name || '';
+  const WD_STD = ['ISO 15614-1','ISO 15614-2','ISO 15613','ISO 15609-1','ASME IX','AWS D1.1','SANS 10044','Other'];
+  const CFG = {
+    procedures: { title:'Welding Procedure Specifications (WPS) and Qualification Records (WPQR)', ref:'WPS', fields:[
+        ['wps_no','WPS number','text',1],['wpqr_no','WPQR number','text'],['title','Title','text'],['standard','Qualification standard','select',0,WD_STD],['process','Process (e.g. 111, 135, 141)','text'],['material_group','Material group','text'],
+        ['thickness_range','Thickness range','text'],['joint_type','Joint type','text'],['position','Position','text'],['consumable','Consumable','text'],['pwht','PWHT','text'],
+        ['status','Status','select',0,[['draft','Draft'],['approved','Approved'],['obsolete','Obsolete']]],['approved_by','Approved by','text'],['approved_date','Approved date','date'],['review_date','Next review','date'],['notes','Notes','textarea'],['file','WPS / WPQR file','file']],
+      cols:[['wps_no','WPS'],['wpqr_no','WPQR'],['process','Process'],['material_group','Material'],['thickness_range','Thickness'],['status','Status',r => ({draft:'Draft',approved:'Approved',obsolete:'Obsolete'}[r.status])],['review_date','Review due',r => dateBadge(r.review_date, 60)]] },
+    qualifications: { title:'Welder and Operator Qualifications', ref:'WQ', fields:[
+        ['personnel_id','Person','person'],['person_name','Name (if not on the personnel list)','text'],['welder_stamp','Welder stamp or ID','text'],['role','Role','select',0,[['welder','Welder'],['operator','Welding operator'],['setter','Setter']]],['standard','Standard','select',0,['ISO 9606-1','ISO 9606-2','ISO 14732','ASME IX','AWS D1.1','Other']],
+        ['cert_no','Certificate number','text'],['process','Process','text'],['material_group','Material group','text'],['thickness_range','Thickness range','text'],['position','Position','text'],['test_date','Test date','date'],['valid_until','Valid until','date'],
+        ['last_confirmation','Last confirmation (6-monthly)','date'],['next_confirmation','Next confirmation due','date'],['examiner','Examiner or body','text'],['notes','Notes','textarea'],['file','Certificate file','file']],
+      cols:[['person','Welder',r => esc(r.personnel_id ? personName(r.personnel_id) : r.person_name)],['welder_stamp','Stamp'],['standard','Standard'],['process','Process'],['material_group','Material'],['valid_until','Valid until',r => dateBadge(r.valid_until, 60)],['next_confirmation','Confirmation due',r => dateBadge(r.next_confirmation, 30)]] },
+    equipment: { title:'Welding and Testing Equipment', ref:'EQ', fields:[
+        ['equip_no','Equipment number','text',1],['description','Description','text'],['kind','Type','select',0,['Welding machine','Positioner','Oven (consumables)','Gauge or meter','Heat treatment equipment','Cutting equipment','Other']],['make_model','Make and model','text'],['location','Location','text'],
+        ['asset_id','Linked asset (Assets module)','asset'],['last_service','Last service','date'],['next_service','Next service due','date'],['calibration_due','Calibration due','date'],
+        ['status','Status','select',0,[['in_service','In service'],['out_of_service','Out of service'],['retired','Retired']]],['notes','Notes','textarea']],
+      cols:[['equip_no','No'],['description','Description'],['kind','Type'],['location','Location'],['next_service','Service due',r => dateBadge(r.next_service, 30)],['calibration_due','Calibration due',r => dateBadge(r.calibration_due, 30)],['status','Status',r => ({in_service:'In service',out_of_service:'Out of service',retired:'Retired'}[r.status])]] },
+    consumables: { title:'Welding Consumables and Batch Records', ref:'CN', fields:[
+        ['product','Product','text',1],['classification','Classification (e.g. E7018, ER70S-6)','text'],['batch_no','Batch number','text'],['supplier','Supplier','text'],['received_date','Received','date'],
+        ['cert_type','Inspection document','select',0,['EN 10204 3.1','EN 10204 3.2','EN 10204 2.2','Supplier certificate','None']],['storage_condition','Storage condition','text'],['expiry_date','Expiry','date'],['quantity','Quantity','text'],['notes','Notes','textarea'],['file','Certificate file','file']],
+      cols:[['product','Product'],['classification','Class'],['batch_no','Batch'],['supplier','Supplier'],['cert_type','Certificate'],['expiry_date','Expiry',r => dateBadge(r.expiry_date, 30)]] },
+    jobs: { title:'Welding Jobs and Production Records', ref:'JB', fields:[
+        ['job_no','Job number','text',1],['customer','Customer','text'],['description','Description','text'],['specification','Specification or code','text'],['quality_level','Weld quality level (ISO 5817)','select',0,['B','C','D','Other']],
+        ['wps_ids','WPS numbers used','text'],['rwc_id','Responsible Welding Coordinator','person'],['contract_review_date','Contract review date','date'],['technical_review_date','Technical review date','date'],
+        ['subcontracted','Subcontracted welding','bool'],['pwht_required','PWHT required','bool'],['status','Status','select',0,[['planning','Planning'],['in_progress','In progress'],['inspection','Inspection'],['complete','Complete'],['on_hold','On hold']]],
+        ['start_date','Start','date'],['end_date','End','date'],['traceability','Traceability (heat numbers, weld map, welder per joint)','textarea'],['notes','Notes','textarea']],
+      cols:[['job_no','Job'],['customer','Customer'],['description','Description'],['quality_level','Level'],['wps_ids','WPS'],['contract_review_date','Contract review',r => r.contract_review_date ? fmtDate(r.contract_review_date) : badge('Not recorded','yellow')],['status','Status',r => ({planning:'Planning',in_progress:'In progress',inspection:'Inspection',complete:'Complete',on_hold:'On hold'}[r.status])]] },
+    inspections: { title:'Inspection and Testing Records', ref:'IN', fields:[
+        ['job_id','Job','job'],['kind','Method','select',0,['VT (visual)','MT (magnetic particle)','PT (penetrant)','RT (radiographic)','UT (ultrasonic)','Dimensional','Hydrostatic or pressure test','PWHT record','Other']],['stage','Stage','select',0,[['before','Before welding'],['during','During welding'],['after','After welding']]],
+        ['inspector','Inspector','text'],['inspector_cert','Inspector certificate (ISO 9712 / other)','text'],['inspection_date','Date','date'],['result','Result','select',0,[['pass','Pass'],['fail','Fail'],['na','Not applicable']]],['report_ref','Report reference','text'],['notes','Notes','textarea'],['file','Report file','file']],
+      cols:[['job','Job',r => esc((jobs().find(j => j.id === r.job_id) || {}).job_no || '')],['kind','Method'],['stage','Stage',r => ({before:'Before',during:'During',after:'After'}[r.stage] || '')],['inspector','Inspector'],['inspection_date','Date',r => r.inspection_date ? fmtDate(r.inspection_date) : ''],['result','Result',r => r.result === 'fail' ? badge('Fail', 'red') : r.result === 'pass' ? badge('Pass', 'green') : 'N/A'],['nc','NC',r => r.nonconformance_id ? 'Raised' : (r.result === 'fail' ? '<span style="color:#B21616">Not raised</span>' : '')]] },
+  };
+
+  /* ---------------- shell and tabs ---------------- */
+  const TABS = [['overview','Readiness'],['requirements','Requirements'],['procedures','Procedures (WPS)'],['qualifications','Welders'],['equipment','Equipment'],['consumables','Consumables'],['jobs','Jobs'],['inspections','Inspection'],['guide','Guide'],['settings','Settings']];
+  function renderWelding(){
+    const root = document.getElementById('wd-root'); if(!root) return;
+    if(STATE._wdMissing){ root.innerHTML = `<div class="detail-card" style="border-color:var(--amber,#B2650F)"><div class="panel-head"><h3>Database update needed</h3></div><p style="font-size:12.5px">Run <b>qashe-watchman-schema-welding.sql</b> once in the Supabase SQL editor.</p></div>`; return; }
+    const tab = STATE._wdTab || 'overview';
+    root.innerHTML = `<div class="toolbar"><div class="filters">${TABS.map(([k, l]) => `<button class="btn-small ${tab === k ? 'primary' : ''}" onclick="wdTab('${k}')">${l}</button>`).join('')}</div></div><div id="wd-body"></div>`;
+    const b = document.getElementById('wd-body');
+    if(tab === 'overview') b.innerHTML = overviewHTML();
+    else if(tab === 'requirements') b.innerHTML = requirementsHTML();
+    else if(tab === 'guide') b.innerHTML = guideHTML();
+    else if(tab === 'settings') b.innerHTML = settingsHTML();
+    else b.innerHTML = registerHTML(tab);
+  }
+  window.renderWelding = renderWelding;
+  window.wdTab = t => { STATE._wdTab = t; renderWelding(); };
+
+  /* ---- readiness ---- */
+  function evalReq(r){
+    const lvl = r.lvl[part()];
+    const manual = STATE.wd.reviews.find(x => x.requirement_key === r.k);
+    const a = r.auto ? r.auto() : null;
+    if(lvl === 'none') return { st:'na', note:'Not required at Part ' + part() + '.', src:'level' };
+    if(manual) return { st:manual.status, note:manual.evidence_note || '', src:'review', auto:a };
+    if(a) return { st:a[0], note:a[1], src:'auto' };
+    return { st:'unreviewed', note:'No evidence recorded yet. Review it on the Requirements page.', src:'none' };
+  }
+  const ST_BADGE = { met:['Met','green'], partial:['Partly met','yellow'], gap:['Gap','red'], na:['Not applicable','blue'], unreviewed:['Not yet reviewed','yellow'] };
+  function readiness(){
+    const rows = REQS.map(r => ({ r, e:evalReq(r) }));
+    const app = rows.filter(x => x.e.st !== 'na');
+    const pts = app.reduce((s, x) => s + (x.e.st === 'met' ? 1 : x.e.st === 'partial' ? 0.5 : 0), 0);
+    return { rows, pct: app.length ? Math.round(pts / app.length * 100) : 0, gaps: app.filter(x => ['gap','unreviewed'].includes(x.e.st)).length, total: app.length };
+  }
+  function overviewHTML(){
+    const R = readiness(), s = STATE.wd.settings || {};
+    const exp = [];
+    quals().forEach(q => { if(q.valid_until && daysTo(q.valid_until) <= 60) exp.push(['Welder qualification', q.personnel_id ? personName(q.personnel_id) : q.person_name, q.valid_until]); if(q.next_confirmation && daysTo(q.next_confirmation) <= 30) exp.push(['Welder confirmation', q.personnel_id ? personName(q.personnel_id) : q.person_name, q.next_confirmation]); });
+    equip().forEach(e => { if(e.calibration_due && daysTo(e.calibration_due) <= 30) exp.push(['Calibration', e.equip_no, e.calibration_due]); if(e.next_service && daysTo(e.next_service) <= 30) exp.push(['Service', e.equip_no, e.next_service]); });
+    procs().forEach(p => { if(p.review_date && daysTo(p.review_date) <= 60) exp.push(['WPS review', p.wps_no, p.review_date]); });
+    cons().forEach(c => { if(c.expiry_date && daysTo(c.expiry_date) <= 30) exp.push(['Consumable expiry', c.product + ' ' + (c.batch_no || ''), c.expiry_date]); });
+    if(s.certificate_expiry && daysTo(s.certificate_expiry) <= 90) exp.push(['ISO 3834 certificate', s.certification_body || '', s.certificate_expiry]);
+    exp.sort((a, b) => a[2].localeCompare(b[2]));
+    const col = R.pct >= 80 ? '#1F6B52' : R.pct >= 50 ? '#B2650F' : '#B21616';
+    return `<div class="oa-tiles">
+        <div class="oa-tile"><b style="color:${col}">${R.pct}%</b><span>Readiness against ISO 3834-${part()}</span></div>
+        <div class="oa-tile"><b>${R.gaps}</b><span>Requirements with a gap or not yet reviewed</span></div>
+        <div class="oa-tile"><b>${quals().length}</b><span>Welder qualifications</span></div>
+        <div class="oa-tile"><b>${procs().filter(p => p.status === 'approved').length}</b><span>Approved WPS</span></div>
+        <div class="oa-tile"><b>${jobs().filter(j => j.status !== 'complete').length}</b><span>Open jobs</span></div>
+        <div class="oa-tile"><b style="color:${exp.some(x => daysTo(x[2]) < 0) ? '#B21616' : 'inherit'}">${exp.length}</b><span>Items overdue or due soon</span></div></div>
+      <div class="detail-card"><div class="panel-head"><h3>${esc(PARTS[part()].name)}</h3><div style="display:flex;gap:8px"><button class="btn-small" onclick="wdPrintReadiness()">Print / PDF</button></div></div>
+        <p style="font-size:12.5px;color:var(--text-faint);margin-bottom:10px">${esc(s.scope || 'Set the scope of welding activities on the Settings page.')}</p>
+        <table class="oa-table"><thead><tr><th>Requirement</th><th>This part asks for</th><th>Status</th><th>Evidence</th></tr></thead><tbody>
+        ${R.rows.map(x => `<tr><td><b>${esc(x.r.t)}</b></td><td>${LVL_TEXT[x.r.lvl[part()]]}</td><td>${badge(ST_BADGE[x.e.st][0], ST_BADGE[x.e.st][1])}</td><td style="font-size:11.5px">${esc(x.e.note)}</td></tr>`).join('')}</tbody></table></div>
+      <div class="detail-card"><div class="panel-head"><h3>Due and overdue</h3></div>
+        ${exp.length ? `<table class="oa-table"><thead><tr><th>Item</th><th>Who or what</th><th>Date</th></tr></thead><tbody>${exp.map(x => `<tr><td>${esc(x[0])}</td><td>${esc(x[1])}</td><td>${dateBadge(x[2], 60)}</td></tr>`).join('')}</tbody></table>` : '<p style="font-size:12.5px;color:var(--text-faint)">Nothing overdue or due soon.</p>'}</div>`;
+  }
+  window.wdReadiness = readiness;
+  window.wdPrintReadiness = function(){
+    const R = readiness();
+    printRecord('Welding Readiness Review: ISO 3834-' + part(), STATE.org.name + ': Welding', [['Part', esc(PARTS[part()].name)], ['Readiness', R.pct + '%'], ['Date', new Date().toLocaleDateString('en-GB')]],
+      printTable(['Requirement','This part asks for','Status','Evidence'], R.rows.map(x => [esc(x.r.t), LVL_TEXT[x.r.lvl[part()]], ST_BADGE[x.e.st][0], esc(x.e.note)])) +
+      `<p style="font-size:10px;color:#666;margin-top:10px">The requirement mapping is a working guide. Confirm it against your licensed copy of ISO 3834 before certification.</p>`, null, null);
+  };
+
+  /* ---- requirements review ---- */
+  function requirementsHTML(){
+    return `<div class="detail-card"><div class="panel-head"><h3>Requirements for ISO 3834-${part()}</h3></div>
+      <p style="font-size:12px;color:var(--text-faint);margin-bottom:10px">Each requirement is checked automatically where the module holds evidence. Record your own review to confirm or override it, with a note on where the evidence is kept.</p>
+      ${REQS.map(r => { const e = evalReq(r), man = STATE.wd.reviews.find(x => x.requirement_key === r.k);
+        return `<div class="oa-row" style="flex-wrap:wrap"><span style="flex:1;min-width:260px"><b>${esc(r.t)}</b> <span style="font-size:10.5px;color:var(--text-faint)">${LVL_TEXT[r.lvl[part()]]}</span><br><span style="font-size:11.5px;color:var(--text-faint)">${esc(r.d)}</span><br><span style="font-size:11.5px">${esc(e.note)}</span></span>
+          <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${badge(ST_BADGE[e.st][0], ST_BADGE[e.st][1])}${e.src === 'review' ? '<span style="font-size:10.5px;color:var(--text-faint)">reviewed</span>' : ''}${canEdit() && r.lvl[part()] !== 'none' ? `<button class="btn-small" onclick="wdReview('${r.k}')">${man ? 'Update review' : 'Review'}</button>` : ''}</span></div>`; }).join('')}</div>`;
+  }
+  window.wdReview = function(k){
+    const r = REQS.find(x => x.k === k), man = STATE.wd.reviews.find(x => x.requirement_key === k);
+    sfModal('Review: ' + esc(r.t), `<p style="font-size:12px;color:var(--text-faint);margin-bottom:8px">${esc(r.d)}</p>
+      <div class="form-grid"><div class="field"><label>Status</label><select id="wd-rv-st">${[['met','Met'],['partial','Partly met'],['gap','Gap'],['na','Not applicable']].map(([v, l]) => `<option value="${v}" ${man && man.status === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div class="field span3"><label>Evidence note (where is the evidence kept?)</label><textarea id="wd-rv-note">${esc(man ? man.evidence_note : '')}</textarea></div></div>`,
+      `<button class="btn-cancel" onclick="sfCloseModal()">Cancel</button><button class="btn-small primary" onclick="wdReviewSave('${k}')">Save review</button>`);
+  };
+  window.wdReviewSave = async function(k){
+    const row = { organisation_id: STATE.org.id, requirement_key: k, status: document.getElementById('wd-rv-st').value, evidence_note: document.getElementById('wd-rv-note').value || null, reviewed_by: STATE.user.id, reviewed_date: todayISO() };
+    const { error } = await STATE.supabase.from('welding_reviews').upsert(row, { onConflict:'organisation_id,requirement_key' });
+    if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+    await loadWelding(); sfCloseModal(); renderWelding();
+  };
+
+  /* ---- generic registers ---- */
+  function registerHTML(key){
+    const c = CFG[key], rows = STATE.wd[key];
+    return `<div class="detail-card"><div class="panel-head"><h3>${esc(c.title)}</h3><div style="display:flex;gap:8px"><button class="btn-small" onclick="wdPrintRegister('${key}')">Print / PDF</button>${canEdit() ? `<button class="btn-small primary" onclick="wdForm('${key}')">+ Add</button>` : ''}</div></div>
+      ${rows.length ? `<div style="overflow:auto"><table class="oa-table"><thead><tr>${c.cols.map(x => `<th>${esc(x[1])}</th>`).join('')}<th></th></tr></thead><tbody>${rows.map(r => `<tr>${c.cols.map(x => `<td>${x[2] ? x[2](r) : esc(r[x[0]])}</td>`).join('')}<td style="white-space:nowrap"><button class="btn-small" onclick="wdForm('${key}','${r.id}')">${canEdit() ? 'Open' : 'View'}</button>${r.storage_path ? ` <button class="btn-small" onclick="downloadFromBucket('documents','${esc(r.storage_path)}')">File</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty-state"><p>Nothing recorded yet.</p></div>'}</div>`;
+  }
+  window.wdPrintRegister = function(key){
+    const c = CFG[key];
+    const strip = h => String(h == null ? '' : h).replace(/<[^>]+>/g, '');
+    printRegister(c.title, c.cols.map(x => x[1]), STATE.wd[key].map(r => c.cols.map(x => x[2] ? strip(x[2](r)) : esc(r[x[0]]))), null);
+  };
+  window.wdForm = function(key, id){
+    const c = CFG[key], r = id ? STATE.wd[key].find(x => x.id === id) : {};
+    const ro = !canEdit();
+    const f = c.fields.map(([k, l, t, req, opts]) => {
+      const v = r[k], sp = (t === 'textarea') ? 'span3' : (k === 'title' || k === 'description') ? 'span2' : '';
+      let input;
+      const dis = ro ? 'disabled' : '';
+      if(t === 'select') input = `<select id="wd-f-${k}" ${dis}>${(opts || []).map(o => { const [ov, ol] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(ov)}" ${String(v == null ? (Array.isArray(opts[0]) ? opts[0][0] : '') : v) === String(ov) ? 'selected' : ''}>${esc(ol)}</option>`; }).join('')}</select>`;
+      else if(t === 'textarea') input = `<textarea id="wd-f-${k}" ${dis}>${esc(v)}</textarea>`;
+      else if(t === 'date') input = `<input type="date" id="wd-f-${k}" value="${v || ''}" ${dis}>`;
+      else if(t === 'bool') input = `<select id="wd-f-${k}" ${dis}><option value="false" ${!v ? 'selected' : ''}>No</option><option value="true" ${v ? 'selected' : ''}>Yes</option></select>`;
+      else if(t === 'person') input = `<select id="wd-f-${k}" ${dis}>${personOpts(v)}</select>`;
+      else if(t === 'asset') input = `<select id="wd-f-${k}" ${dis}><option value="">None</option>${(STATE.assets || []).map(a => `<option value="${a.id}" ${v === a.id ? 'selected' : ''}>${esc((a.ref_code || '') + ' ' + (a.name || a.title || ''))}</option>`).join('')}</select>`;
+      else if(t === 'job') input = `<select id="wd-f-${k}" ${dis}><option value="">None</option>${jobs().map(j => `<option value="${j.id}" ${v === j.id ? 'selected' : ''}>${esc(j.job_no + ' ' + (j.description || ''))}</option>`).join('')}</select>`;
+      else if(t === 'file') input = `<input type="file" id="wd-f-file" ${dis}>${r.storage_path ? `<div style="font-size:11px;margin-top:4px">Current file: ${esc(r.file_name || '')}</div>` : ''}`;
+      else input = `<input id="wd-f-${k}" value="${esc(v)}" ${dis}>`;
+      return `<div class="field ${sp}"><label>${esc(l)}${req ? ' *' : ''}</label>${input}</div>`;
+    }).join('');
+    const failNC = key === 'inspections' && r.result === 'fail' && !r.nonconformance_id && canEdit() ? `<button class="btn-small" onclick="wdRaiseNC('${id}')">Raise nonconformance</button>` : '';
+    sfModal((id ? 'Edit' : 'Add') + ': ' + c.title, `<div class="form-grid">${f}</div>`,
+      `<button class="btn-cancel" onclick="sfCloseModal()">Close</button>${failNC}${id && canDelete() ? `<button class="btn-small" style="color:#B21616" onclick="wdDelete('${key}','${id}')">Delete</button>` : ''}${ro ? '' : `<button class="btn-small primary" onclick="wdSave('${key}','${id || ''}')">Save</button>`}`, true);
+  };
+  window.wdSave = async function(key, id){
+    const c = CFG[key], row = {};
+    for(const [k, l, t, req] of c.fields){
+      if(t === 'file') continue;
+      const el = document.getElementById('wd-f-' + k); let v = el ? el.value : null;
+      if(t === 'bool') v = v === 'true'; else if(v === '' || v === undefined) v = null;
+      if(req && !v){ toast(l + ' is required.', 'error'); return; }
+      row[k] = v;
+    }
+    const fileEl = document.getElementById('wd-f-file');
+    if(fileEl && fileEl.files[0]){
+      let f = fileEl.files[0]; if(f.type && f.type.startsWith('image/')){ try{ const r = await resizeImageFile(f); if(r.ok) f = r.file; }catch(e){} }
+      const path = `${STATE.org.id}/welding/${key}/${Date.now()}-${sanitizeFileName(f.name)}`;
+      const up = await STATE.supabase.storage.from('documents').upload(path, f, evidenceUploadOpts(f));
+      if(up.error){ toast('Could not upload the file: ' + up.error.message, 'error'); return; }
+      row.storage_path = path; row.file_name = f.name;
+    }
+    const q = id ? STATE.supabase.from(KEYS[key]).update(row).eq('id', id) : STATE.supabase.from(KEYS[key]).insert({ ...row, organisation_id: STATE.org.id });
+    const { error } = await q;
+    if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+    await loadWelding(); sfCloseModal(); renderWelding(); toast('Saved.', 'success');
+  };
+  window.wdDelete = async function(key, id){
+    if(!confirm('Delete this record? This cannot be undone.')) return;
+    const r = STATE.wd[key].find(x => x.id === id);
+    if(r && r.storage_path) await STATE.supabase.storage.from('documents').remove([r.storage_path]);
+    const { error } = await STATE.supabase.from(KEYS[key]).delete().eq('id', id);
+    if(error){ toast('Could not delete: ' + error.message, 'error'); return; }
+    await loadWelding(); sfCloseModal(); renderWelding();
+  };
+  window.wdRaiseNC = async function(id){
+    const i = insp().find(x => x.id === id); if(!i) return;
+    const job = jobs().find(j => j.id === i.job_id);
+    const d = new Date(); d.setDate(d.getDate() + 14);
+    const { data, error } = await STATE.supabase.from('nonconformances').insert({ organisation_id: STATE.org.id, title: `Weld inspection failure${job ? ': ' + job.job_no : ''}`.slice(0, 120),
+      description: `${i.kind} ${i.stage || ''} inspection failed${i.report_ref ? ' (report ' + i.report_ref + ')' : ''}. ${i.notes || ''}`.trim(), severity:'major', raised_by: STATE.user.id, owner_id: STATE.user.id, target_close_date: d.toISOString().slice(0, 10) }).select().single();
+    if(error){ toast('Could not raise nonconformance: ' + error.message, 'error'); return; }
+    await STATE.supabase.from('welding_inspections').update({ nonconformance_id: data.id }).eq('id', id);
+    if(typeof loadNCs === 'function') await loadNCs();
+    await loadWelding(); sfCloseModal(); renderWelding(); toast('Raised as ' + (data.ref_code || 'a nonconformance') + '.', 'success');
+  };
+
+  /* ---- guide ---- */
+  function guideHTML(){
+    return `<div class="detail-card"><div class="panel-head"><h3>Choosing the part of ISO 3834</h3></div>
+      <p style="font-size:12.5px;margin-bottom:10px">ISO 3834 sets quality requirements for fusion welding of metallic materials. Parts 2, 3 and 4 are the three levels you can be assessed against. Part 1 helps you choose between them, Part 5 lists the standards you must comply with to claim conformity, and Part 6 gives guidance on implementation. Your supplier cannot claim a higher level than the one it is assessed against.</p>
+      <table class="oa-table"><thead><tr><th>Part</th><th>Role</th><th>Typical use</th></tr></thead><tbody>
+        <tr><td><b>1</b></td><td>Guidelines for selecting the level</td><td>Weigh the extent and significance of safety-critical products, product complexity, range of materials, metallurgical problems and sensitivity to imperfections.</td></tr>
+        ${['2','3','4'].map(p => `<tr><td><b>${p}</b></td><td>${esc(PARTS[p].name.split(': ')[1])}</td><td>${esc(PARTS[p].use)}</td></tr>`).join('')}
+        <tr><td><b>5</b></td><td>Documents needed to claim conformity</td><td>The normative standards listed below.</td></tr>
+        <tr><td><b>6</b></td><td>Guidelines for implementing the requirements</td><td>Use the roadmap below.</td></tr></tbody></table>
+      <p style="font-size:11.5px;color:var(--text-faint);margin-top:8px">This module lets you select Part 2, 3 or 4 on the Settings page. Parts 1, 5 and 6 are guidance and reference parts, so they are provided here rather than scored.</p></div>
+      <div class="detail-card"><div class="panel-head"><h3>Standards you will meet (Part 5 reference)</h3></div>
+        <table class="oa-table"><tbody>
+        ${[['ISO 14731','Welding coordination: tasks and responsibilities'],['ISO 9606-1 / -2','Qualification testing of welders (steels, aluminium)'],['ISO 14732','Welding operators and setters'],['ISO 15609-1 and related','Welding procedure specification'],['ISO 15614 / ISO 15613','Welding procedure qualification and pre-production testing'],['ISO 5817 / ISO 10042','Quality levels for imperfections in steel and aluminium welds'],['ISO 17637 / 17638 / 17640 / 17636','Visual, magnetic particle, ultrasonic and radiographic testing'],['ISO 9712','Qualification of NDT personnel'],['ISO 17662','Calibration, verification and validation of welding equipment'],['EN 10204','Inspection documents for metallic products']].map(r => `<tr><td style="width:240px"><b>${esc(r[0])}</b></td><td>${esc(r[1])}</td></tr>`).join('')}</tbody></table></div>
+      <div class="detail-card"><div class="panel-head"><h3>Implementation roadmap (Part 6 approach)</h3></div>
+        <ol style="font-size:12.5px;line-height:1.8;padding-left:20px">
+          <li>Decide the part with Part 1 and record it with the scope on the Settings page.</li>
+          <li>Appoint a Responsible Welding Coordinator and welding inspectors in writing (Appointments Register).</li>
+          <li>Qualify the welding procedures and approve each WPS.</li>
+          <li>Qualify welders and set the six-monthly confirmation routine.</li>
+          <li>List welding, testing and measuring equipment, with service and calibration dates.</li>
+          <li>Control consumables: certificates, storage, baking and issue.</li>
+          <li>Review every contract, plan the job, and keep traceability from material to welder to inspection.</li>
+          <li>Inspect and test as specified, raise nonconformances for failures, and keep the records.</li>
+          <li>Review readiness here, close the gaps, then ask a certification body to assess.</li></ol></div>`;
+  }
+
+  /* ---- settings ---- */
+  function settingsHTML(){
+    const s = STATE.wd.settings || {}, ro = !isAdminish();
+    return `<div class="detail-card"><div class="panel-head"><h3>Welding management settings</h3></div>
+      <p style="font-size:12px;color:var(--text-faint);margin-bottom:10px">Select the part of ISO 3834 that matches your actual welding management requirements. Only an administrator can change it.</p>
+      <div class="form-grid">
+        <div class="field span3"><label>ISO 3834 part</label><select id="wd-s-part" ${ro ? 'disabled' : ''}>${['2','3','4'].map(p => `<option value="${p}" ${part() === p ? 'selected' : ''}>${esc(PARTS[p].name)}</option>`).join('')}</select></div>
+        <div class="field span3"><label>Scope of welding activities</label><textarea id="wd-s-scope" ${ro ? 'disabled' : ''}>${esc(s.scope)}</textarea></div>
+        <div class="field span3"><label>Standards and codes applied (e.g. ISO 5817 level C, ISO 15614-1, SANS 10044)</label><input id="wd-s-std" value="${esc(s.standards)}" ${ro ? 'disabled' : ''}></div>
+        <div class="field span2"><label>Certification body</label><input id="wd-s-cb" value="${esc(s.certification_body)}" ${ro ? 'disabled' : ''}></div>
+        <div class="field"><label>Certificate number</label><input id="wd-s-cn" value="${esc(s.certificate_no)}" ${ro ? 'disabled' : ''}></div>
+        <div class="field"><label>Certificate expiry</label><input type="date" id="wd-s-ce" value="${s.certificate_expiry || ''}" ${ro ? 'disabled' : ''}></div></div>
+      ${ro ? '' : '<button class="btn-small primary" onclick="wdSaveSettings()">Save settings</button>'}</div>`;
+  }
+  window.wdSaveSettings = async function(){
+    const g = i => document.getElementById(i).value || null;
+    const row = { organisation_id: STATE.org.id, enabled: true, iso_part: document.getElementById('wd-s-part').value, scope: g('wd-s-scope'), standards: g('wd-s-std'), certification_body: g('wd-s-cb'), certificate_no: g('wd-s-cn'), certificate_expiry: g('wd-s-ce'), updated_at: new Date().toISOString() };
+    const { error } = await STATE.supabase.from('welding_settings').upsert(row, { onConflict:'organisation_id' });
+    if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+    await loadWelding(); renderWelding(); toast('Settings saved.', 'success');
+  };
+
+  /* ---- reminders ---- */
+  const per = r => esc(r.personnel_id ? personName(r.personnel_id) : (r.person_name || ''));
+  DATE_TRACKED_MODULES.push(
+    { key:'welding', label:'Welding: Welder Qualification Expiry', list:() => quals().filter(q => q.valid_until).map(q => ({ ...q, _t: esc((q.standard || 'Qualification') + ' ' + (q.process || '')), _w: per(q) })), dateField:'valid_until', isResolved:() => false, titleField:'_t', getPerson:x => x._w },
+    { key:'welding', label:'Welding: Welder Confirmation Due', list:() => quals().filter(q => q.next_confirmation).map(q => ({ ...q, _t: 'Six-monthly confirmation', _w: per(q) })), dateField:'next_confirmation', isResolved:() => false, titleField:'_t', getPerson:x => x._w },
+    { key:'welding', label:'Welding: Equipment Calibration', list:() => equip().filter(e => e.calibration_due && e.status === 'in_service').map(e => ({ ...e, _t: esc(e.equip_no + ' ' + (e.description || '')) })), dateField:'calibration_due', isResolved:() => false, titleField:'_t', getPerson:() => '—' },
+    { key:'welding', label:'Welding: Equipment Service', list:() => equip().filter(e => e.next_service && e.status === 'in_service').map(e => ({ ...e, _t: esc(e.equip_no + ' ' + (e.description || '')) })), dateField:'next_service', isResolved:() => false, titleField:'_t', getPerson:() => '—' },
+    { key:'welding', label:'Welding: WPS Review', list:() => procs().filter(p => p.review_date && p.status !== 'obsolete').map(p => ({ ...p, _t: esc(p.wps_no + ' ' + (p.title || '')) })), dateField:'review_date', isResolved:() => false, titleField:'_t', getPerson:x => esc(x.approved_by || '—') },
+    { key:'welding', label:'Welding: Consumable Expiry', list:() => cons().filter(c => c.expiry_date).map(c => ({ ...c, _t: esc(c.product + ' ' + (c.batch_no || '')) })), dateField:'expiry_date', isResolved:() => false, titleField:'_t', getPerson:x => esc(x.supplier || '—') },
+    { key:'welding', label:'Welding: ISO 3834 Certificate Expiry', list:() => (STATE.wd.settings && STATE.wd.settings.certificate_expiry) ? [{ ...STATE.wd.settings, _t: 'ISO 3834 certificate ' + esc(STATE.wd.settings.certificate_no || '') }] : [], dateField:'certificate_expiry', isResolved:() => false, titleField:'_t', getPerson:x => esc(x.certification_body || '—') }
+  );
+  // RWC appointment can now reference the module readiness
+  window.wdConst = { REQS, PARTS };
+})();
+
+
+/* ============================================================================
+   b40: BUSINESS HEALTH VALIDATION
+   One page that scores the organisation across its management-system domains from
+   live data already in Watchman, shows where each gap sits, and lets an administrator
+   record a signed-off snapshot (needs qashe-watchman-schema-business-health.sql for the history).
+   ============================================================================ */
+(function(){
+  STATE.bhHistory = []; STATE._bhMissing = false;
+  const esc = s => escapeHtml(s == null ? '' : String(s));
+  const today = () => todayISO();
+  const arr = x => Array.isArray(x) ? x : [];
+  const ymAgo = n => { const d = new Date(); d.setMonth(d.getMonth() - n); return d.toISOString().slice(0, 10); };
+  const isAdminish = () => ['admin','manager'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const canConf = () => ['admin','manager'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const activePeople = () => arr(STATE.personnel).filter(p => p.status === 'active');
+  const pct = (n, d) => d ? Math.round(n / d * 100) : null;
+  const C = (label, status, detail, mod) => ({ label, status, detail: detail || '', mod: mod || null });
+  const byRatio = (label, n, d, good, ok, detail, mod, emptyStatus) => d ? C(label, (n / d) >= good ? 'pass' : (n / d) >= ok ? 'partial' : 'fail', detail || `${n} of ${d} (${pct(n, d)}%)`, mod) : C(label, emptyStatus || 'nodata', 'Nothing recorded yet.', mod);
+  const zero = (label, n, detail, mod, warnAt) => C(label, n === 0 ? 'pass' : (warnAt != null && n <= warnAt) ? 'partial' : 'fail', detail, mod);
+  const apptCheck = (type, label, mod) => {
+    const a = arr(STATE.orgAppts).filter(x => x.appointment_type === type && ['issued','accepted'].includes(x.status) && !(x.end_date && x.end_date < today()));
+    if(a.some(x => x.status === 'accepted')) return C(label, 'pass', 'Appointed, accepted and in force.', 'orgchart');
+    if(a.length) return C(label, 'partial', 'Letter issued: awaiting acceptance.', 'orgchart');
+    return C(label, 'fail', 'No appointment in force: make one in the Appointments Register.', 'orgchart');
+  };
+  const govAvailable = () => !STATE._govMissing && (STATE.govRecords !== undefined);
+  const gov = k => arr(STATE.govRecords).filter(r => r.kind === k);
+  const lastFinal = fw => arr(STATE.govAssess).filter(a => (a.framework || 'iso37000') === fw && a.status === 'final').sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+  const asmtCheck = (fw, label, mod) => { const a = lastFinal(fw); if(!a) return C(label, 'fail', 'No signed assessment yet.', mod); const old = String(a.created_at).slice(0, 10) < ymAgo(12); return C(label, old ? 'partial' : 'pass', (old ? 'Last signed more than 12 months ago: ' : 'Signed ') + fmtDate(String(a.created_at).slice(0, 10)), mod); };
+  const sfOn = () => typeof sfEnabled === 'function' && sfEnabled();
+  const liveFiles = () => arr(STATE.siteFiles).filter(sfIsLive);
+  const riskCrit = r => r.status !== 'closed' && ((r.residual_score != null && r.residual_score >= 8) || (r.residual_score == null && r.inherent_score >= 8));
+
+  /* ---------------- the domains ---------------- */
+  const DOMAINS = [
+    { k:'governance', label:'Corporate Governance', mod:'governance', checks:() => {
+        if(!govAvailable()) return [C('Governance records', 'na', 'Governance and Ethics is not set up for this organisation.', 'governance')];
+        const reviews = arr(STATE.managementReviews);
+        const lastMr = reviews.map(r => r.meeting_date).filter(Boolean).sort().pop();
+        return [
+          asmtCheck('iso37000', 'Governance maturity assessment signed (ISO 37000)', 'governance'),
+          lastMr ? C('Management review held in the last 12 months', lastMr >= ymAgo(12) ? 'pass' : 'fail', 'Last meeting ' + fmtDate(lastMr), 'management_review') : C('Management review held in the last 12 months', 'fail', 'No management review recorded.', 'management_review'),
+          zero('Delegations of authority past review or expiry', gov('delegation').filter(r => r.status === 'active' && r.date2 && r.date2 < today()).length, 'Check delegations are current.', 'governance'),
+          gov('delegation').length ? C('Delegations of authority recorded', 'pass', gov('delegation').length + ' recorded.', 'governance') : C('Delegations of authority recorded', 'fail', 'None recorded.', 'governance'),
+          zero('Overdue resolution actions', gov('resolution').filter(r => ['open','in_progress'].includes(r.status) && r.date2 && r.date2 < today()).length, '', 'governance'),
+          gov('coi').some(r => String(r.date1 || '').startsWith(String(new Date().getFullYear()))) ? C('Conflict of interest declarations this year', 'pass', '', 'governance') : C('Conflict of interest declarations this year', 'fail', 'No declarations recorded this year.', 'governance'),
+          zero('Gifts and hospitality awaiting approval', gov('gift').filter(r => r.status === 'pending').length, '', 'governance'),
+          apptCheck('compliance_officer', 'Compliance and Anti-Bribery Officer appointed'),
+        ]; } },
+    { k:'excellence', label:'Business Excellence', mod:'objectives', checks:() => {
+        const objs = arr(STATE.objectives), ks = typeof kpiPortfolioStats === 'function' && arr(STATE.orgKpis).some(k => k.is_active) ? kpiPortfolioStats() : null;
+        const surveys = arr(STATE.customerSurveys).filter(s => s.overall_rating != null);
+        const avg = surveys.length ? surveys.reduce((s, x) => s + Number(x.overall_rating || 0), 0) / surveys.length / 5 * 100 : null;
+        const out = [];
+        out.push(objs.length ? byRatio('Objectives achieved or on track', objs.filter(o => ['achieved','draft','active'].includes(o.status)).length, objs.length, 0.8, 0.6, '', 'objectives') : C('Objectives and targets set', 'fail', 'No objectives recorded.', 'objectives'));
+        out.push(ks ? byRatio('Process KPIs on target', ks.green, Math.max(1, ks.green + ks.amber + ks.red + ks.unmeasured), 0.7, 0.4, `${ks.green} on target, ${ks.red} off target, ${ks.unmeasured} not yet measured.`, 'process_flowcharts') : C('Process KPIs on target', 'nodata', 'No process KPIs set up.', 'process_flowcharts'));
+        out.push(arr(STATE.orgFlowcharts).length ? C('Processes documented as flowcharts', 'pass', arr(STATE.orgFlowcharts).length + ' flowchart(s).', 'process_flowcharts') : C('Processes documented as flowcharts', 'partial', 'None applied from the Template Library yet.', 'process_flowcharts'));
+        out.push(avg == null ? C('Customer satisfaction', 'nodata', 'No completed surveys.', 'customers') : C('Customer satisfaction at or above 80%', avg >= 80 ? 'pass' : avg >= 65 ? 'partial' : 'fail', avg.toFixed(0) + '% average rating.', 'customers'));
+        out.push(zero('Open critical risks', arr(STATE.risks).filter(riskCrit).length, 'Risk and Opportunity register.', 'risks', 2));
+        out.push(arr(STATE.risks).length ? byRatio('Risks with a named owner', arr(STATE.risks).filter(r => r.owner_id).length, arr(STATE.risks).length, 0.95, 0.7, '', 'risks') : C('Risk and opportunity register in use', 'fail', 'No risks recorded.', 'risks'));
+        return out; } },
+    { k:'quality', label:'Quality Assurance', mod:'nonconformances', checks:() => {
+        const ncs = arr(STATE.ncs), open = ncs.filter(n => n.status !== 'closed'), overdue = open.filter(n => n.target_close_date && n.target_close_date < today());
+        const audits = arr(STATE.audits), done = audits.filter(a => ['completed','report_issued'].includes(a.status));
+        const docs = arr(STATE.documents).filter(d => !['withdrawn','superseded'].includes(d.status));
+        return [
+          zero('Overdue nonconformances', overdue.length, `${open.length} open, ${overdue.length} overdue.`, 'nonconformances', Math.max(1, Math.floor(open.length * 0.1))),
+          done.length ? C('Internal audits completed', 'pass', done.length + ' completed.', 'audits') : C('Internal audits completed', 'fail', 'No completed audits recorded.', 'audits'),
+          zero('Planned audits past their date', audits.filter(a => a.status === 'planned' && (a.planned_date || a.scheduled_date) && (a.planned_date || a.scheduled_date) < today()).length, '', 'audits'),
+          docs.length ? zero('Controlled documents past review date', docs.filter(d => d.next_review_date && d.next_review_date < today()).length, docs.length + ' controlled documents.', 'documents', 2) : C('Controlled documents in place', 'fail', 'No documents under control.', 'documents'),
+          apptCheck('qms_rep', 'Quality Management Representative appointed'),
+          apptCheck('internal_auditor', 'Internal Auditor appointed'),
+          arr(STATE.assetChecklistTemplates).length || arr(STATE.assets).length ? zero('Assets overdue for maintenance or calibration', arr(STATE.assets).filter(a => a.next_service_date && a.next_service_date < today()).length, '', 'assets', 2) : C('Assets register in use', 'nodata', 'No assets recorded.', 'assets'),
+        ]; } },
+    { k:'hs', label:'Health and Safety', mod:'site_files', checks:() => {
+        const out = [];
+        out.push(apptCheck('s16_2', 'Section 16(2) Assignee appointed'));
+        out.push(apptCheck('first_aider', 'First Aider appointed'));
+        out.push(apptCheck('fire_marshal', 'Fire Marshal and Emergency Coordinator appointed'));
+        out.push(apptCheck('incident_investigator', 'Incident Investigator appointed'));
+        if(activePeople().length >= 20) out.push(apptCheck('she_rep', 'Health and Safety Representative appointed (20 or more employees)'));
+        out.push(apptCheck('risk_assessor', 'Risk Assessor appointed'));
+        const crit = arr(STATE.persDocs).filter(d => d.competency_tag && d.expiry_date);
+        const exp = crit.filter(d => d.expiry_date < today()).length, soon = crit.filter(d => d.expiry_date >= today() && d.expiry_date <= new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10)).length;
+        out.push(crit.length ? C('Competency certificates valid', exp ? 'fail' : soon ? 'partial' : 'pass', `${exp} expired, ${soon} expiring within 30 days, of ${crit.length}.`, 'orgchart') : C('Competency certificates valid', 'nodata', 'No certificates with expiry recorded on staff pages.', 'personnel'));
+        const tr = arr(STATE.training);
+        out.push(zero('Overdue training', tr.filter(t => !['completed','cancelled'].includes(t.status) && t.due_date && t.due_date < today()).length, '', 'training', 3));
+        out.push(zero('Open critical health and safety risks', arr(STATE.risks).filter(r => r.risk_category === 'health_safety' || r.category === 'health_safety').filter(riskCrit).length, '', 'risks'));
+        const f5 = arr(STATE.fiveSInspections).filter(i => ['completed','closed','done'].includes(i.status) && String(i.completed_date || i.scheduled_date || i.created_at || '').slice(0, 10) >= new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10));
+        out.push(f5.length ? C('Housekeeping (5S) inspection in the last 90 days', 'pass', f5.length + ' completed.', 'five_s') : C('Housekeeping (5S) inspection in the last 90 days', arr(STATE.fiveSInspections).length ? 'fail' : 'nodata', 'None completed in the last 90 days.', 'five_s'));
+        if(sfOn()){
+          const files = liveFiles();
+          if(!files.length) out.push(C('Site SHERQ Files', 'nodata', 'No live site files.', 'site_files'));
+          else {
+            const as = files.map(f => ({ f, a: sfAssess(f) }));
+            const blockers = as.filter(x => x.a.blockers.length).length, avg = Math.round(as.reduce((s, x) => s + x.a.pct, 0) / as.length);
+            out.push(C('Live site files with no mobilisation blockers', blockers ? 'fail' : 'pass', `${files.length - blockers} of ${files.length} clear. Average readiness ${avg}%.`, 'site_files'));
+            out.push(byRatio('Average Site SHERQ File readiness', avg, 100, 0.9, 0.6, avg + '%', 'site_files'));
+            const since = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+            const insp = files.filter(f => sfEventsOf(f.id, 'inspection').some(e => e.event_date >= since)).length;
+            out.push(byRatio('Live site files inspected in the last 30 days', insp, files.length, 0.9, 0.5, `${insp} of ${files.length}.`, 'site_files'));
+            const tbt = files.filter(f => sfEventsOf(f.id, 'toolbox_talk').some(e => e.event_date >= since)).length;
+            out.push(byRatio('Live site files with a toolbox talk in the last 30 days', tbt, files.length, 0.9, 0.5, `${tbt} of ${files.length}.`, 'site_files'));
+          }
+          const inc = arr(STATE.sfEvents).filter(e => e.event_type === 'incident');
+          out.push(zero('Reportable site incidents not reported to the Department of Employment and Labour', inc.filter(e => (e.data || {}).reportable && !(e.data || {}).reported_date).length, 'Section 24 OHS Act.', 'site_files'));
+          out.push(zero('Open site incidents', inc.filter(e => e.status !== 'closed').length, '', 'site_files', 2));
+          out.push(zero('Site file documents expired or expiring', sfExpiringDocsList().length, '', 'site_files', 3));
+        }
+        return out; } },
+    { k:'environment', label:'Environment', mod:'risks', checks:() => {
+        const envRisks = arr(STATE.risks).filter(r => (r.risk_category || r.category) === 'environmental_aspects_impacts');
+        const envNcs = arr(STATE.ncs).filter(n => n.status !== 'closed' && /spill|environment|waste|emission|effluent/i.test((n.title || '') + ' ' + ((arr(STATE.ncTypes).find(t => t.id === n.nc_type_id) || {}).name || '')));
+        return [
+          apptCheck('env_coordinator', 'Environmental Coordinator appointed'),
+          envRisks.length ? C('Environmental aspects and impacts recorded', 'pass', envRisks.length + ' recorded.', 'risks') : C('Environmental aspects and impacts recorded', 'fail', 'None recorded in the Risk and Opportunity register.', 'risks'),
+          zero('Open critical environmental risks', envRisks.filter(riskCrit).length, '', 'risks'),
+          zero('Open environmental nonconformances', envNcs.length, '', 'nonconformances', 1),
+          arr(STATE.legalRegister).length ? byRatio('Legal register items compliant', arr(STATE.legalRegister).filter(l => l.current_status === 'compliant').length, arr(STATE.legalRegister).length, 0.9, 0.7, 'All legal requirements, including environmental.', 'legal') : C('Legal register in use', 'fail', 'No legal requirements recorded.', 'legal'),
+        ]; } },
+    { k:'infosec', label:'Information Security', mod:'soa', checks:() => {
+        const soa = arr(STATE.soa), ctrls = arr(window.SOA_CONTROLS);
+        const applicable = ctrls.filter(c => (soa.find(r => r.control_ref === c.ref) || {}).applicable !== false);
+        const impl = applicable.filter(c => ['implemented','effective'].includes((soa.find(r => r.control_ref === c.ref) || {}).status));
+        const people = activePeople(), docs = arr(STATE.persDocs);
+        const out = [
+          apptCheck('ismo', 'Information Security Management Officer (ISMO) appointed'),
+          ctrls.length ? byRatio('Applicable ISO/IEC 27001 controls implemented', impl.length, applicable.length, 0.8, 0.5, `${impl.length} of ${applicable.length} applicable controls.`, 'soa') : C('Statement of Applicability', 'nodata', 'Statement of Applicability not available.', 'soa'),
+          arr(STATE.infoAssets).length ? zero('Information assets without an owner', arr(STATE.infoAssets).filter(a => !a.owner_id).length, arr(STATE.infoAssets).length + ' assets.', 'info_assets', 2) : C('Information asset register in use', 'fail', 'No information assets recorded.', 'info_assets'),
+          zero('Open security incidents', arr(STATE.secIncidents).filter(s => !['closed','resolved'].includes(s.status)).length, '', 'nonconformances', 1),
+          arr(STATE.threats).length ? zero('Open critical threats', arr(STATE.threats).filter(t => t.status !== 'closed' && (t.severity === 'critical' || t.score >= 8)).length, '', 'threat_intel') : C('Threat intelligence in use', 'nodata', 'No threats recorded.', 'threat_intel'),
+        ];
+        if(canConf() && people.length){
+          const have = k => people.filter(p => docs.some(d => d.personnel_id === p.id && d.doc_type === k)).length;
+          out.push(byRatio('Staff with a signed confidentiality and non-disclosure agreement', have('nda'), people.length, 0.95, 0.7, '', 'personnel'));
+          out.push(byRatio('Staff with criminal background check proof on file', have('criminal_check'), people.length, 0.95, 0.5, '', 'personnel'));
+        }
+        return out; } },
+    { k:'popia', label:'POPIA', mod:'privacy', checks:() => {
+        if(!govAvailable()) return [apptCheck('info_officer', 'Information Officer appointed')];
+        const ropa = gov('ropa'), ops = gov('operator'), ds = gov('dsar'), ret = gov('retention');
+        return [
+          apptCheck('info_officer', 'Information Officer appointed'),
+          apptCheck('deputy_io', 'Deputy Information Officer appointed'),
+          asmtCheck('popia', 'POPIA readiness assessment signed', 'privacy'),
+          ropa.length ? zero('Processing activities past review date', ropa.filter(r => r.status === 'active' && r.date2 && r.date2 < today()).length, ropa.length + ' recorded.', 'privacy', 2) : C('Processing activities recorded', 'fail', 'None recorded.', 'privacy'),
+          ops.length ? zero('Operators without a written agreement', ops.filter(r => r.status === 'to_agree').length, ops.length + ' operators.', 'privacy') : C('Operators and agreements recorded', 'nodata', 'None recorded.', 'privacy'),
+          zero('Overdue data subject requests', ds.filter(r => ['received','in_progress'].includes(r.status) && r.date2 && r.date2 < today()).length, '', 'privacy'),
+          zero('Security incidents with POPIA notification outstanding', arr(STATE.secIncidents).filter(s => s.personal_info_involved && (!s.regulator_notified_at || !s.subjects_notified_at)).length, 'Section 22 notification.', 'nonconformances'),
+          ret.length ? C('Retention schedule in place', 'pass', ret.length + ' rules.', 'retention') : C('Retention schedule in place', 'fail', 'No retention rules recorded.', 'retention'),
+        ]; } },
+    { k:'welding', label:'Welding', mod:'welding', checks:() => {
+        if(!(STATE.org && STATE.org.welding_enabled) || typeof wdReadiness !== 'function') return [C('Welding Management', 'na', 'Not switched on for this organisation.', 'welding')];
+        const R = wdReadiness();
+        return R.rows.filter(x => x.e.st !== 'na').map(x => C(x.r.t, x.e.st === 'met' ? 'pass' : x.e.st === 'partial' ? 'partial' : x.e.st === 'gap' ? 'fail' : 'nodata', x.e.note, 'welding'));
+      }, labelFn:() => 'Welding (ISO 3834-' + ((STATE.wd && STATE.wd.settings && STATE.wd.settings.iso_part) || '2') + ')' },
+    { k:'employee', label:'Employee Relations', mod:'personnel', checks:() => {
+        const people = activePeople(), docs = arr(STATE.persDocs);
+        const out = [];
+        if(!people.length) return [C('Personnel', 'nodata', 'No active personnel recorded.', 'personnel')];
+        const issues = orgChartCompletenessIssues();
+        out.push(C('Job titles recorded for every active person', issues.missingTitle.length ? 'fail' : 'pass', issues.missingTitle.length ? issues.missingTitle.length + ' without a job title.' : 'Complete.', 'orgchart'));
+        out.push(C('Organisation chart has a single top and reporting lines', issues.roots.length === 1 ? 'pass' : issues.roots.length === 0 ? 'fail' : 'partial', issues.roots.length + ' people at the top.', 'orgchart'));
+        if(canConf()){
+          const have = k => people.filter(p => docs.some(d => d.personnel_id === p.id && d.doc_type === k)).length;
+          out.push(byRatio('Staff with a contract of employment on file', have('contract'), people.length, 0.95, 0.6, '', 'personnel'));
+          out.push(byRatio('Staff with a CV on file', have('cv'), people.length, 0.9, 0.5, '', 'personnel'));
+          out.push(byRatio('Staff with ID copy on file', have('id_copy'), people.length, 0.95, 0.6, '', 'personnel'));
+        }
+        const since = ymAgo(12), ap = arr(STATE.appraisals).filter(a => String(a.created_at || '').slice(0, 10) >= since);
+        out.push(byRatio('Staff with an appraisal recorded in the last 12 months', new Set(ap.map(a => a.personnel_id)).size, people.length, 0.8, 0.5, '', 'appraisals'));
+        out.push(zero('Expired legal appointments', arr(STATE.orgAppts).filter(a => ['issued','accepted'].includes(a.status) && a.end_date && a.end_date < today()).length, 'Renew them in the Appointments Register.', 'orgchart'));
+        if(STATE.org && STATE.org.hr_enabled){
+          const wk = new Date(Date.now() - 7 * 864e5).toISOString();
+          out.push(zero('Leave applications waiting more than 7 days', arr(STATE.leaveApplications).filter(l => l.status === 'pending' && String(l.created_at || '') < wk).length, '', 'hr'));
+          out.push(zero('Personnel requests open more than 14 days', arr(STATE.personnelRequests).filter(r => r.status === 'open' && String(r.created_at || '') < new Date(Date.now() - 14 * 864e5).toISOString()).length, '', 'hr', 2));
+        }
+        return out; } },
+    { k:'legal', label:'Legal and Regulatory', mod:'legal', checks:() => {
+        const l = arr(STATE.legalRegister), certs = arr(STATE.legalCerts).filter(c => !c.archived);
+        const bad = certs.filter(c => ['expired'].includes(legalCertStatus(c).kind)).length, soon = certs.filter(c => legalCertStatus(c).kind === 'expiring').length;
+        return [
+          l.length ? byRatio('Legal requirements compliant', l.filter(x => x.current_status === 'compliant').length, l.length, 0.9, 0.7, `${l.filter(x => x.current_status === 'non_compliant').length} non-compliant, ${l.filter(x => !x.current_status).length} not yet reviewed.`, 'legal') : C('Legal register in use', 'fail', 'No legal requirements recorded.', 'legal'),
+          zero('Non-compliant legal requirements', l.filter(x => x.current_status === 'non_compliant').length, '', 'legal'),
+          certs.length ? C('Legal documents and certificates valid', bad ? 'fail' : soon ? 'partial' : 'pass', `${bad} expired, ${soon} expiring within 30 days.`, 'legal_certs') : C('Legal documents and certificates held', 'nodata', 'None recorded.', 'legal_certs'),
+        ]; } },
+    { k:'suppliers', label:'Suppliers and Contractors', mod:'suppliers', checks:() => {
+        const s = arr(STATE.suppliers);
+        if(!s.length) return [C('Suppliers', 'nodata', 'No suppliers recorded.', 'suppliers')];
+        const certs = arr(STATE.supplierCerts).filter(c => !c.archived && c.review_status === 'accepted' && c.expiry_date);
+        return [
+          byRatio('Suppliers approved', s.filter(x => x.status === 'approved').length, s.length, 0.7, 0.4, '', 'suppliers'),
+          zero('Suppliers suspended or removed but still active', s.filter(x => ['suspended','removed'].includes(x.status)).length, '', 'suppliers', 1),
+          certs.length ? zero('Supplier certificates expired', certs.filter(c => c.expiry_date < today()).length, certs.length + ' certificates.', 'suppliers', 2) : C('Supplier certificates held', 'nodata', 'None accepted yet.', 'suppliers'),
+          typeof supplierAnnualDue === 'function' ? zero('Annual supplier re-assessments overdue', s.filter(x => { const d = supplierAnnualDue(x); return d && d < today(); }).length, '', 'suppliers', 2) : C('Annual re-assessments', 'nodata', '', 'suppliers'),
+        ]; } },
+  ];
+  const label = d => d.labelFn ? d.labelFn() : d.label;
+
+  /* ---------------- scoring ---------------- */
+  const PTS = { pass:1, partial:0.5, fail:0, nodata:0 };
+  function evaluate(){
+    return DOMAINS.map(d => {
+      let checks; try{ checks = d.checks(); }catch(e){ console.error('business health', d.k, e); checks = [C('This area could not be evaluated', 'nodata', String(e.message || e))]; }
+      const scored = checks.filter(c => c.status !== 'na');
+      const score = scored.length ? Math.round(scored.reduce((s, c) => s + PTS[c.status], 0) / scored.length * 100) : null;
+      return { d, checks, score, gaps: scored.filter(c => c.status === 'fail').length, partial: scored.filter(c => c.status === 'partial').length, nodata: scored.filter(c => c.status === 'nodata').length };
+    });
+  }
+  const band = s => s == null ? { t:'Not applicable', c:'#7B7B7B' } : s >= 85 ? { t:'Healthy', c:'#1F6B52' } : s >= 65 ? { t:'Watch', c:'#B2650F' } : { t:'At risk', c:'#B21616' };
+  const overall = ev => { const s = ev.filter(e => e.score != null); return s.length ? Math.round(s.reduce((a, e) => a + e.score, 0) / s.length) : null; };
+  window.bhEvaluate = evaluate;
+  const ST = { pass:['Met','green'], partial:['Partly met','yellow'], fail:['Gap','red'], nodata:['No data yet','blue'], na:['Not applicable','blue'] };
+  const badge = (t, c) => `<span class="date-badge ${c}"><span class="dd"></span>${esc(t)}</span>`;
+
+  /* ---------------- page ---------------- */
+  MODULE_META.business_health = { title:'Business Health Validation', sub:() => 'One live view of how healthy the business is across governance, excellence, quality, health and safety, environment, information security, POPIA, welding, employee relations, legal and suppliers' };
+  RENDERERS.business_health = () => '<div id="bh-root"></div>';
+  GATED_MODULES.push('business_health');
+  { const a = document.querySelector('.nav-item[data-mod="compliance"]');
+    if(a && !document.querySelector('.nav-item[data-mod="business_health"]')) a.insertAdjacentHTML('afterend', `<div class="nav-item" data-mod="business_health" onclick="showModule('business_health')"><svg viewBox="0 0 24 24"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg> Business Health Validation</div>`); }
+  { const _sm = showModule; showModule = window.showModule = function(mod){ const r = _sm.apply(this, arguments); if(mod === 'business_health'){ renderBH(); loadBH(); } return r; }; }
+
+  async function loadBH(){
+    try{
+      const { data, error } = await STATE.supabase.from('business_health_validations').select('*').eq('organisation_id', STATE.org.id).order('validated_at', { ascending:false }).limit(24);
+      if(error){ STATE._bhMissing = /does not exist|relation|schema cache/i.test(error.message || ''); STATE.bhHistory = []; }
+      else { STATE._bhMissing = false; STATE.bhHistory = data || []; }
+    }catch(e){ STATE.bhHistory = []; }
+    if(document.getElementById('bh-root')) renderBH();
+  }
+
+  function renderBH(){
+    const root = document.getElementById('bh-root'); if(!root) return;
+    const ev = evaluate(), tot = overall(ev), b = band(tot), open = STATE._bhOpen;
+    const gaps = ev.reduce((s, e) => s + e.gaps, 0);
+    root.innerHTML = `
+      <div class="oa-tiles">
+        <div class="oa-tile"><b style="color:${b.c}">${tot == null ? '-' : tot + '%'}</b><span>Overall business health: ${b.t}</span></div>
+        <div class="oa-tile"><b style="color:${gaps ? '#B21616' : '#1F6B52'}">${gaps}</b><span>Gaps across all areas</span></div>
+        <div class="oa-tile"><b>${ev.filter(e => e.score != null).length}</b><span>Areas assessed</span></div>
+        <div class="oa-tile"><b>${STATE.bhHistory.length ? fmtDate(String(STATE.bhHistory[0].validated_at).slice(0, 10)) : '-'}</b><span>Last recorded validation</span></div>
+      </div>
+      <div class="toolbar" style="margin-bottom:12px"><div class="filters">
+        ${isAdminish() ? `<button class="btn-small primary" onclick="bhRecord()">Record validation</button>` : ''}
+        <button class="btn-small" onclick="bhPrint()">Print / PDF</button></div></div>
+      <div class="oa-types" style="margin-bottom:16px">
+        ${ev.map(e => { const bb = band(e.score); return `<div class="oa-type" style="cursor:pointer;border-color:${open === e.d.k ? bb.c : ''}" onclick="bhOpen('${e.d.k}')">
+          <h5>${esc(label(e.d))}</h5>
+          <div style="font:700 26px Arial,Helvetica,sans-serif;color:${bb.c}">${e.score == null ? '-' : e.score + '%'}</div>
+          <div class="sf-bar" style="margin:6px 0"><div style="width:${e.score || 0}%;background:${bb.c}"></div></div>
+          <div class="lg">${bb.t}${e.score != null ? ` · ${e.gaps} gap${e.gaps === 1 ? '' : 's'}, ${e.partial} partly met${e.nodata ? ', ' + e.nodata + ' no data' : ''}` : ''}</div></div>`; }).join('')}
+      </div>
+      ${open ? detailHTML(ev.find(e => e.d.k === open)) : '<p style="font-size:12.5px;color:var(--text-faint)">Select an area to see every check behind its score and where to fix it.</p>'}
+      ${historyHTML()}
+      <p style="font-size:11px;color:var(--text-faint);margin-top:12px">Scores come from the records in Watchman today. A check scores 100% when met, 50% when partly met and 0% when it is a gap or has no data yet, so an area you have not set up shows low until it is evidenced. Areas switched off for this organisation are excluded.</p>`;
+  }
+  function detailHTML(e){
+    if(!e) return '';
+    return `<div class="detail-card"><div class="panel-head"><h3>${esc(label(e.d))}</h3><button class="btn-small" onclick="STATE._bhOpen=null;renderBH()">Close</button></div>
+      <table class="oa-table"><thead><tr><th>Check</th><th>Status</th><th>Evidence</th><th></th></tr></thead><tbody>
+      ${e.checks.map(c => `<tr><td><b>${esc(c.label)}</b></td><td>${badge(ST[c.status][0], ST[c.status][1])}</td><td style="font-size:11.5px">${esc(c.detail)}</td><td>${c.mod && typeof canAccessModule === 'function' && canAccessModule(c.mod) ? `<button class="btn-small" onclick="showModule('${c.mod}')">Open</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+  function historyHTML(){
+    if(STATE._bhMissing) return `<div class="detail-card"><p style="font-size:12.5px">To keep a history of signed-off validations, run <b>qashe-watchman-schema-business-health.sql</b> once in the Supabase SQL editor.</p></div>`;
+    if(!STATE.bhHistory.length) return '';
+    return `<div class="detail-card"><div class="panel-head"><h3>Recorded validations</h3></div><div style="overflow:auto"><table class="oa-table"><thead><tr><th>Date</th><th>By</th><th>Overall</th>${DOMAINS.map(d => `<th>${esc(label(d)).split(' ')[0]}</th>`).join('')}<th>Notes</th></tr></thead><tbody>
+      ${STATE.bhHistory.map(h => `<tr><td>${fmtDate(String(h.validated_at).slice(0, 10))}</td><td>${esc(h.validated_by_name)}</td><td><b>${h.overall_score == null ? '-' : h.overall_score + '%'}</b></td>${DOMAINS.map(d => { const s = (h.scores || {})[d.k]; return `<td style="color:${band(s == null ? null : s).c}">${s == null ? '-' : s + '%'}</td>`; }).join('')}<td style="font-size:11px">${esc(h.notes)}</td></tr>`).join('')}</tbody></table></div></div>`;
+  }
+  window.bhOpen = k => { STATE._bhOpen = STATE._bhOpen === k ? null : k; renderBH(); };
+  window.renderBH = renderBH;
+
+  window.bhRecord = function(){
+    const ev = evaluate(), tot = overall(ev);
+    sfModal('Record business health validation', `<p style="font-size:12.5px;margin-bottom:8px">This saves today's scores (overall ${tot == null ? '-' : tot + '%'}) as a signed-off snapshot for the management review record. Add a note on the actions you are taking.</p>
+      <div class="field"><label>Notes and actions agreed</label><textarea id="bh-note" style="min-height:90px"></textarea></div>`,
+      `<button class="btn-cancel" onclick="sfCloseModal()">Cancel</button><button class="btn-small primary" onclick="bhRecordSave()">Record validation</button>`);
+  };
+  window.bhRecordSave = async function(){
+    const ev = evaluate(), scores = {}; ev.forEach(e => { scores[e.d.k] = e.score; });
+    const row = { organisation_id: STATE.org.id, validated_by: STATE.user.id, validated_by_name: (STATE.profile && STATE.profile.name) || STATE.user.email, overall_score: overall(ev), scores, detail: ev.map(e => ({ k: e.d.k, score: e.score, gaps: e.checks.filter(c => c.status === 'fail').map(c => c.label) })), notes: document.getElementById('bh-note').value || null };
+    const { error } = await STATE.supabase.from('business_health_validations').insert(row);
+    if(error){ toast('Could not record: ' + error.message + ' (has the business health SQL been run?)', 'error'); return; }
+    sfCloseModal(); toast('Validation recorded.', 'success'); loadBH();
+  };
+  window.bhPrint = function(){
+    const ev = evaluate(), tot = overall(ev);
+    const summary = printTable(['Area','Score','Rating','Gaps','Partly met'], ev.map(e => [esc(label(e.d)), e.score == null ? 'n/a' : e.score + '%', band(e.score).t, e.gaps, e.partial]));
+    const detail = ev.filter(e => e.score != null).map(e => printSectionTitle(esc(label(e.d)) + ': ' + e.score + '%') + printTable(['Check','Status','Evidence'], e.checks.filter(c => c.status !== 'na').map(c => [esc(c.label), ST[c.status][0], esc(c.detail)]))).join('');
+    printRecord('Business Health Validation', STATE.org.name + ': Business health', [['Overall', tot == null ? '-' : tot + '%'], ['Rating', band(tot).t], ['Date', new Date().toLocaleDateString('en-GB')]], summary + detail, null, null);
+  };
+})();
+
+
+/* ============================================================================
+   b41: TEMPLATE LIBRARY AUDIT AND EXPANSION
+   Platform-staff panel at the top of Administration, Template Library: compares the live library with a
+   recommended catalogue (letters of appointment with legal references, generic policies, procedures,
+   forms, registers, checklists and process flowcharts), lists the gaps and the quality findings in the
+   existing templates, and adds the missing ones. Nothing is written until the button is pressed.
+   ============================================================================ */
+(function(){
+  const esc = s => escapeHtml(s == null ? '' : String(s));
+  const isStaff = () => !!(STATE.profile && STATE.profile.is_platform_staff);
+
+  /* ---------------- catalogue builders ---------------- */
+  const SIG = 'Review this document with your legal adviser before use. It is a generic starting point and does not replace legal advice.';
+  const pol = (title, refs, desc, statements, extra) => ({ kind:'policy', title, refs, desc, match:null, sections: [
+    ['Purpose', desc],
+    ['Scope', 'This policy applies to all employees, contractors, visitors and other persons who work for or on behalf of {{organisation}}, at all its sites and in all its activities.'],
+    ['Policy statement', 'Top management of {{organisation}} commits to:\n' + statements.map(s => '• ' + s).join('\n')],
+    ...(extra || []),
+    ['Responsibilities', 'Top management provides the resources and leadership needed to meet this policy. Managers and supervisors apply it in their areas. Every person is responsible for following it and for reporting concerns and incidents without delay.'],
+    ['Communication and review', 'This policy is communicated to all persons working for the organisation, made available to interested parties on request, and reviewed at least annually and whenever the organisation, its risks or the law change.'],
+  ]});
+  const proc = (title, refs, desc, steps, records) => ({ kind:'procedure', title, refs, desc, sections: [
+    ['Purpose', desc],
+    ['Scope', 'Applies to the activities of {{organisation}} described in the title of this procedure, wherever they are carried out.'],
+    ['Responsibilities', 'The process owner keeps this procedure current and trains those who use it. Managers make sure it is followed. All persons carry out their steps and keep the records.'],
+    ['Procedure', steps.map((s, i) => (i + 1) + '. ' + s).join('\n')],
+    ['Records', records],
+    ['Review', 'Reviewed at least annually, after any incident or audit finding that exposes a weakness, and when the legal requirements or the process change.'],
+  ]});
+  const form = (title, refs, desc, blocks) => ({ kind:'form', title:'Form: ' + title, refs, desc, sections: blocks });
+  const reg = (title, refs, desc, columns, freq) => ({ kind:'register', title:'Register: ' + title, refs, desc, sections: [
+    ['Purpose', desc], ['Columns to keep', columns.map(c => '• ' + c).join('\n')], ['Review frequency', freq], ['Owner and retention', 'The register owner keeps the register current. Keep records for the period set in the Records Retention schedule.'],
+  ]});
+  const chk = (title, refs, desc, items) => ({ kind:'checklist', title, refs, desc, items });
+  const flow = (title, refs, desc, steps) => ({ kind:'flowchart', title, refs, desc, steps });
+
+  /* ---------------- letters of appointment (legal references) ---------------- */
+  function letters(){
+    const types = (window.oaConst && window.oaConst.OA_TYPES) || [];
+    return types.filter(t => t.key !== 'custom').map(t => ({ kind:'letter', title:'Letter of Appointment: ' + t.label, refs:[t.legal], desc:'Legal letter of appointment for the ' + t.label + ', with the legal reference and duties. Used by the Appointments Register, signed electronically by both parties.', match:['letter','appointment', t.label.toLowerCase().split(' (')[0].replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()], sections:[
+      ['Appointment', 'In terms of {{legal_reference}}, and having {{basis}}, you, {{name}} ({{company_number}}), {{position}}, are hereby appointed as {{appointment}} for {{scope}} at {{organisation}}, with effect from {{start_date}} until {{end_date}}.'],
+      ['Legal basis', 'This appointment is made under: ' + t.legal + '. The appointer will make the relevant provisions available to you on request.'],
+      ['Duties and responsibilities', '{{duties}}'],
+      ['Authority and accountability', 'You are granted the authority reasonably necessary to carry out these duties. This appointment does not relieve the employer, the Chief Executive Officer or any other person of their own statutory duties, and you remain accountable to {{appointed_by}}, {{appointed_by_position}}. You must act within the law, the policies and procedures of {{organisation}} and the limits of your competence, and raise any concern about your ability to perform the duties without delay.'],
+      ['Competence', 'This appointment depends on you holding, and keeping valid, evidence of competence for this role. Certificates are kept on your personal information page and checked in the Appointments Register. You must tell your manager immediately if any required competence lapses.'],
+      ['Term, renewal and revocation', 'This appointment expires on {{end_date}} unless renewed in writing. Notice of renewal will be given {{notice_days}} days before expiry. It may be revoked in writing at any time and ends automatically if your employment with {{organisation}} ends.'],
+      ['Confidentiality', 'You must treat all personal, confidential and security-sensitive information that you come across in this role in line with the Protection of Personal Information Act 4 of 2013 and your confidentiality agreement.'],
+    ]}));
+  }
+
+  /* ---------------- generic policies ---------------- */
+  const POLICIES = [
+    pol('Occupational Health and Safety Policy', ['ISO 45001 cl 5.2','OHS Act 85 of 1993 s7'], 'To state the organisation\'s commitment to a safe and healthy workplace and to the prevention of injury and ill health.', ['provide safe and healthy working conditions for all persons','eliminate hazards and reduce OHS risks using the hierarchy of controls','comply with the OHS Act, its regulations and other requirements','consult and enable the participation of workers and their representatives','continually improve the OHS management system']),
+    pol('Environmental Policy', ['ISO 14001 cl 5.2','NEMA 107 of 1998 s28'], 'To state the organisation\'s commitment to protect the environment and prevent pollution.', ['prevent pollution and use resources efficiently','comply with environmental legislation and other requirements','minimise waste and emissions and manage hazardous substances safely','take reasonable measures to prevent, and remedy, environmental harm','continually improve environmental performance']),
+    pol('Quality Policy', ['ISO 9001 cl 5.2'], 'To state the organisation\'s commitment to meet customer and legal requirements and to improve continually.', ['understand and meet customer, statutory and regulatory requirements','set, measure and review quality objectives','provide the competence, resources and infrastructure needed for conforming products and services','manage risks and opportunities that affect conformity and customer satisfaction','continually improve the quality management system']),
+    pol('Integrated SHERQ Policy', ['ISO 9001','ISO 14001','ISO 45001'], 'To set one statement of commitment for safety, health, environment, risk and quality.', ['prevent injury, ill health, pollution and nonconformity','comply with all legal and other requirements','manage risks and opportunities','consult with and involve workers','set objectives and review performance at management review','continually improve the integrated management system']),
+    pol('Information Security Policy', ['ISO/IEC 27001 cl 5.2','POPIA s19'], 'To protect the confidentiality, integrity and availability of the organisation\'s information.', ['protect information assets in line with their classification','meet legal, regulatory and contractual information security requirements','manage information security risks and treat them','give access on a need-to-know, least-privilege basis','report and respond to information security incidents','continually improve the information security management system']),
+    pol('Acceptable Use Policy', ['ISO/IEC 27001 Annex A 5.10'], 'To set the rules for using the organisation\'s information, devices, email and internet.', ['use company systems for authorised business purposes, with limited reasonable personal use','never share passwords or bypass security controls','not install unlicensed or unapproved software','handle email attachments and links with care and report suspected phishing','accept that use may be monitored in line with the law and this policy']),
+    pol('Access Control Policy', ['ISO/IEC 27001 Annex A 5.15 to 5.18, 8.2'], 'To make sure access to information and systems is authorised, appropriate and reviewed.', ['grant access by role on a least-privilege basis, approved by the information owner','use unique user identities and multi-factor authentication for sensitive systems','review user access at least every six months and remove access on exit or role change','manage privileged access separately and log it']),
+    pol('Clear Desk and Clear Screen Policy', ['ISO/IEC 27001 Annex A 7.7'], 'To reduce the risk of unauthorised access to information left on desks and screens.', ['lock screens when leaving a workstation','clear confidential documents from desks at the end of the day','store sensitive material in locked storage','collect print jobs immediately and dispose of waste securely']),
+    pol('Privacy and POPIA Policy', ['POPIA 4 of 2013','Regulations 2018'], 'To state how the organisation processes personal information lawfully and protects the rights of data subjects.', ['process personal information lawfully, minimally and for a specific purpose','be open with data subjects about what is collected and why','secure personal information and notify the Information Regulator and data subjects of compromises','keep personal information only as long as needed and dispose of it securely','respond to requests for access, correction and deletion within the required time','operate through written agreements with operators who process information for us']),
+    pol('Anti-Bribery and Corruption Policy', ['ISO 37001','PRECCA 12 of 2004'], 'To prohibit bribery and corruption and set the controls that prevent it.', ['prohibit giving, offering, promising, requesting or accepting bribes, directly or through others','apply due diligence to business associates','record and approve gifts and hospitality under the set limits','declare and manage conflicts of interest','protect people who raise concerns in good faith','investigate and discipline breaches']),
+    pol('Code of Conduct and Ethics', ['ISO 37000','King IV'], 'To set the standards of ethical behaviour expected of everyone in the organisation.', ['act with honesty, integrity and respect','avoid and declare conflicts of interest','protect company and client information and assets','treat people fairly and without discrimination or harassment','report breaches through the whistleblowing channel without fear of retaliation']),
+    pol('Welding Quality Policy', ['ISO 3834-2','ISO 14731'], 'To state the commitment to controlled, qualified and traceable welding.', ['weld only to qualified procedures using qualified welders','appoint a Responsible Welding Coordinator with authority to stop non-conforming work','control materials, consumables, equipment and calibration','inspect, test and keep records as specified','meet customer, code and legal requirements for welding']),
+    pol('Disciplinary and Grievance Policy', ['Labour Relations Act 66 of 1995 Schedule 8'], 'To set fair and consistent procedures for discipline and grievances.', ['apply rules consistently and fairly, with notice of the allegation and an opportunity to respond','allow representation by a fellow employee or shop steward','record outcomes and keep them confidential','allow any employee to raise a grievance without prejudice and have it heard promptly']),
+    pol('Emergency Preparedness and Business Continuity Policy', ['ISO 22301','ISO 45001 cl 8.2'], 'To make sure the organisation can respond to emergencies and continue critical activities.', ['identify credible emergencies and keep response plans current','train emergency personnel and test the plans at least annually','protect people first, then the environment, assets and operations','keep critical records and contact lists available off site']),
+  ];
+
+  /* ---------------- generic procedures ---------------- */
+  const PROCEDURES = [
+    proc('Document Control Procedure', ['ISO 9001 cl 7.5','ISO 45001 cl 7.5'], 'To control the creation, approval, issue, revision and withdrawal of documents.', ['Author drafts the document from the approved template and gives it a number.','Reviewer checks content and the approver signs it off.','Controlled copy is issued and recorded in the Master Documents Register.','Changes follow the same steps and raise the revision number.','Obsolete documents are withdrawn from points of use and marked superseded.','Documents are reviewed on the date shown in the register.'], 'Master Documents Register, approved documents, distribution records.'),
+    proc('Control of Records Procedure', ['ISO 9001 cl 7.5.3'], 'To identify, store, protect, retain and dispose of records.', ['Identify the records each process produces.','Store them where they are protected from loss, damage and unauthorised access.','Keep them for the period set in the Records Retention schedule.','Dispose of expired records securely and log the disposal.'], 'Records Retention schedule, disposal log.'),
+    proc('Internal Audit Procedure', ['ISO 19011','ISO 9001 cl 9.2','ISO 45001 cl 9.2'], 'To audit the management system objectively and report results to management.', ['Prepare the annual audit programme from risk and past results.','Appoint competent, impartial auditors and agree scope and criteria.','Prepare a checklist, then audit by interview, observation and record review.','Report findings as conformity, nonconformity or opportunity for improvement.','Raise nonconformances with owners and due dates.','Verify closure and report to management review.'], 'Audit programme, plans, checklists, reports, nonconformance records.'),
+    proc('Nonconformance and Corrective Action Procedure', ['ISO 9001 cl 10.2','ISO 45001 cl 10.2'], 'To control nonconformances and stop them recurring.', ['Anyone who finds a nonconformance reports it immediately.','Contain it and correct the immediate effect.','Find the root cause using the five whys or a cause-and-effect diagram.','Decide and carry out corrective action, with an owner and due date.','Verify the action worked and close the record.','Review trends at management review.'], 'Nonconformance register, root cause analysis, action records.'),
+    proc('Management of Change Procedure', ['ISO 45001 cl 8.1.3','ISO 9001 cl 6.3'], 'To make sure changes to processes, equipment, people and materials are assessed before they are made.', ['Describe the proposed change and the reason.','Assess risks to safety, health, environment, quality, security and legal compliance.','Approve, reject or condition the change.','Plan, communicate and train before implementation.','Review the result and update documents and risk assessments.'], 'Change request, risk assessment, approval and review record.'),
+    proc('Hazard Identification and Risk Assessment Procedure', ['ISO 45001 cl 6.1','OHS Act s8','Construction Regulations 2014 r9'], 'To identify hazards and control risk before work starts.', ['Break the activity into tasks.','Identify hazards for each task, including routine, non-routine and emergency conditions.','Rate risk by likelihood and consequence.','Select controls using the hierarchy of controls and rate the residual risk.','Communicate the assessment to affected persons.','Review after any incident, change or at least annually.'], 'Baseline and task risk assessments, hazard register.'),
+    proc('Incident Reporting and Investigation Procedure', ['OHS Act s24 and Annexure 1','General Administrative Regulations r9'], 'To report, investigate and learn from incidents and near misses.', ['Make the scene safe and give first aid.','Report to the supervisor immediately and record the incident.','Notify the Department of Employment and Labour where section 24 applies.','Investigate: facts, root causes and contributing factors.','Agree corrective and preventive actions.','Share lessons and track actions to closure.'], 'Incident register, investigation report, section 24 notification.'),
+    proc('Emergency Preparedness and Response Procedure', ['ISO 45001 cl 8.2','ISO 14001 cl 8.2'], 'To prepare for and respond to emergencies.', ['Identify credible emergencies for each site.','Set evacuation routes, assembly points and roles.','Appoint and train fire marshals and first aiders.','Test with a drill at least annually and record the result.','Review and improve the plan after every drill or real event.'], 'Emergency plan, drill records, training records.'),
+    proc('Legal Compliance Evaluation Procedure', ['ISO 45001 cl 9.1.2','ISO 14001 cl 9.1.2'], 'To keep the legal register current and evaluate compliance.', ['Identify applicable legislation and other requirements.','Record them in the legal register with the responsible person.','Evaluate compliance at least annually and when the law changes.','Raise nonconformances for gaps.','Report status at management review.'], 'Legal register, evaluation records.'),
+    proc('Supplier and Contractor Evaluation Procedure', ['ISO 9001 cl 8.4','OHS Act s37','Construction Regulations 2014 r5'], 'To select, approve and monitor suppliers and contractors.', ['Collect registration, tax, B-BBEE, COIDA and safety documents.','Evaluate against set criteria.','Approve, approve conditionally or decline.','Monitor performance and certificate expiry.','Re-assess at least annually or after serious nonconformances.'], 'Approved supplier list, assessments, certificates.'),
+    proc('Competence, Training and Awareness Procedure', ['ISO 9001 cl 7.2','ISO 45001 cl 7.2'], 'To make sure people are competent for their work.', ['Define competence requirements for each position.','Assess people against them and record gaps.','Plan and deliver training, and verify its effectiveness.','Keep CVs, qualifications and certificates on the personal file.','Renew certificates and legal appointments before they expire.'], 'Competence matrix, training records, certificates, appointments register.'),
+    proc('Information Security Incident Response Procedure', ['ISO/IEC 27001 Annex A 5.24 to 5.28','POPIA s22'], 'To respond to information security incidents and personal information compromises.', ['Report suspected incidents to the ISMO immediately.','Contain the incident and preserve evidence.','Assess impact, including whether personal information is involved.','Notify the Information Regulator and affected data subjects as soon as reasonably possible where POPIA section 22 applies.','Recover, then find the root cause and fix it.','Record lessons and update risk treatment.'], 'Security incident log, notifications, root cause analysis.'),
+    proc('Data Subject Request Procedure', ['POPIA s23 to s25','PAIA 2 of 2000'], 'To handle requests for access, correction and deletion of personal information.', ['Log the request on the day it is received.','Verify the identity of the requester.','Locate the information and decide what can be released.','Respond in writing within the required time.','Record the outcome and reasons for any refusal.'], 'Data subject request log, correspondence.'),
+    proc('Welding Coordination Procedure', ['ISO 14731','ISO 3834-2'], 'To coordinate welding activities and personnel.', ['Review the contract and technical requirements before work starts.','Select qualified welding procedures and welders.','Plan the job, inspection points and traceability.','Control materials, consumables and equipment.','Inspect and test as specified, and stop non-conforming work.','Complete the job record and hand over the documents.'], 'Contract review, job record, inspection reports.'),
+    proc('Welding Procedure and Welder Qualification Procedure', ['ISO 15614','ISO 15613','ISO 9606-1'], 'To qualify welding procedures and welders and keep the qualifications valid.', ['Draft the preliminary WPS from the requirements.','Weld and test the qualification piece under witness.','Approve the WPS and record the WPQR.','Test welders to ISO 9606 and record the certificate.','Confirm each welder every six months and renew at expiry.'], 'WPS and WPQR register, welder qualification register.'),
+    proc('Control of Welding Consumables Procedure', ['ISO 3834-2','EN 10204'], 'To control the receipt, storage, baking and issue of welding consumables.', ['Check inspection documents on receipt.','Store by classification in controlled conditions.','Bake and hold low-hydrogen electrodes as the supplier directs.','Issue against the job and record batch numbers.','Quarantine and dispose of damaged or expired consumables.'], 'Consumables register, certificates, oven logs.'),
+  ];
+
+  /* ---------------- forms ---------------- */
+  const FORMS = [
+    form('Confidentiality and Non-Disclosure Agreement (Employee)', ['ISO/IEC 27001 Annex A 6.6','POPIA s19'], 'Agreement under which an employee keeps information confidential. ' + SIG, [['Parties', 'Employer: {{organisation}}. Employee: {{name}}, {{company_number}}.'], ['Confidential information', 'All business, client, technical, financial and personal information that is not public, however it is received.'], ['Obligations', 'Keep it confidential, use it only for the employer\'s business, protect it with reasonable care and not copy or remove it without permission.'], ['Exceptions', 'Information that is public without a breach, already known lawfully, or must be disclosed by law, with notice to the employer where allowed.'], ['Duration', 'During employment and for the period after it ends that is stated here: ____ years. Personal information stays protected for as long as the law requires.'], ['Return of information', 'On request or exit, return or securely delete all confidential information.'], ['Signatures', 'Employee: ________ Date: ____   Employer representative: ________ Date: ____']]),
+    form('Consent to Criminal Background Check', ['POPIA s11','ISO/IEC 27001 Annex A 6.1'], 'Consent for a criminal record check required for a role. ' + SIG, [['Person', 'Name, ID number and position applied for.'], ['Purpose', 'To verify that the person has no relevant criminal record, where the role requires it.'], ['What will be checked and by whom', 'Name the provider and the type of check.'], ['Consent', 'I consent to the check and understand how my personal information will be used, kept and who will see the result.'], ['Retention', 'Only proof that the check was done and its outcome is kept, for the period set in the retention schedule.'], ['Signature', 'Signed: ________ Date: ____']]),
+    form('Contract of Employment Particulars', ['BCEA 75 of 1997 s29'], 'Written particulars of employment that must be given on starting. ' + SIG, [['Employer and employee', 'Full names and addresses.'], ['Job', 'Job title or brief description of work.'], ['Start date and place of work', ''], ['Working time', 'Ordinary hours, overtime and rest.'], ['Pay', 'Rate, how it is calculated, payment intervals, deductions.'], ['Leave', 'Annual, sick, family responsibility and other leave.'], ['Notice', 'Period of notice to end the employment.'], ['Other terms', 'Collective agreements, probation, benefits, confidentiality.'], ['Signatures', 'Employee: ________ Employer: ________ Date: ____']]),
+    form('Employee POPIA Notice and Acknowledgement', ['POPIA s18'], 'Notice to employees about what personal information is processed and why.', [['What we collect', 'Identity, contact, banking, qualifications, health and safety, performance and security records.'], ['Why', 'To manage employment, comply with the law, ensure safety and security, and pay and develop you.'], ['Who sees it', 'Authorised managers, HR, payroll, and service providers under written agreement.'], ['Your rights', 'To access, correct or object. Contact: the Information Officer.'], ['Acknowledgement', 'I have read this notice. Signed: ________ Date: ____']]),
+    form('Incident Report', ['OHS Act s24','Annexure 1'], 'Record of an incident, accident or near miss.', [['Details', 'Date, time, exact location, person(s) involved, witnesses.'], ['Classification', 'Near miss, first aid, medical treatment, lost time, fatality, damage, environmental, security.'], ['What happened', ''], ['Immediate action taken', ''], ['Reporting', 'Reportable under section 24? Date reported to the Department and reference.'], ['Investigation', 'Root causes, corrective and preventive actions, owners and dates.'], ['Sign-off', 'Reported by, supervisor, investigator, manager.']]),
+    form('Toolbox Talk Record', ['OHS Act s8','Construction Regulations 2014'], 'Attendance and topic record for a toolbox talk.', [['Details', 'Date, site, presenter, topic.'], ['Key points covered', ''], ['Questions and concerns raised', ''], ['Attendance', 'Name, company number, signature for each attendee.']]),
+    form('Permit to Work (Hot Work)', ['General Safety Regulations','ISO 3834-2'], 'Authorisation for welding, cutting and other hot work.', [['Work', 'Location, task, start and end time.'], ['Hazards and controls', 'Fire watch, extinguisher, combustibles removed or covered, ventilation, gas tests.'], ['Authorisation', 'Issuer and receiver sign. Fire watch continues for the required time after work.'], ['Close-out', 'Area inspected and signed off.']]),
+    form('Contractor and Visitor Induction Record', ['OHS Act s37','Construction Regulations 2014'], 'Record that a contractor or visitor was inducted.', [['Person', 'Name, company, ID, vehicle, host.'], ['Induction covered', 'Site rules, hazards, emergency, PPE, reporting, permits.'], ['Documents sighted', 'COIDA letter, medical, competency certificates, appointment letters.'], ['Acknowledgement', 'Signed and dated.']]),
+    form('Appointment Acceptance and Competence Declaration', ['OHS Act s16(2)','ISO 9001 cl 5.3'], 'Stand-alone acceptance where the electronic letter is not used.', [['Appointment', 'Role, legal reference, period.'], ['Declaration', 'I accept the appointment and confirm I am competent and that my certificates are valid.'], ['Signatures', 'Appointee, appointer, date.']]),
+  ];
+
+  /* ---------------- registers ---------------- */
+  const REGISTERS = [
+    reg('Appointments', ['OHS Act s16(2)','POPIA s55','ISO 45001 cl 5.3'], 'List of every legal and management-system appointment.', ['Appointee and job title','Appointment and legal reference','Start and expiry date','Renewal notice date','Letter signed and accepted','Competence evidence and expiry'], 'Monthly, and before each expiry'),
+    reg('Legal Requirements', ['ISO 45001 cl 6.1.3','ISO 14001 cl 6.1.3'], 'Legal and other requirements with evaluation of compliance.', ['Act and section','Requirement in plain language','Applicable activity','Responsible person','Compliance status','Evidence','Next review'], 'Annually and when legislation changes'),
+    reg('Environmental Aspects and Impacts', ['ISO 14001 cl 6.1.2'], 'Aspects, impacts, significance and controls.', ['Activity','Aspect','Impact','Condition (normal, abnormal, emergency)','Significance','Controls','Owner'], 'Annually and on change'),
+    reg('Hazard Identification and Risk Assessment', ['ISO 45001 cl 6.1.2'], 'Hazards, risk ratings and controls.', ['Task or area','Hazard','Who is at risk','Inherent risk','Controls','Residual risk','Owner','Review date'], 'Annually and on change'),
+    reg('Training and Competence Matrix', ['ISO 9001 cl 7.2'], 'Competence required against competence held.', ['Person and position','Required competence','Certificate and number','Issue and expiry date','Gap and action'], 'Quarterly'),
+    reg('Calibration and Measuring Equipment', ['ISO 9001 cl 7.1.5','ISO 3834-2'], 'Equipment requiring calibration or verification.', ['Equipment number','Description','Range and accuracy','Calibration body and certificate','Last and next calibration','Status'], 'Monthly'),
+    reg('Information Assets', ['ISO/IEC 27001 Annex A 5.9'], 'Information assets, owners and classification.', ['Asset','Owner','Location','Classification','Contains personal information','Criticality','Controls'], 'Annually'),
+    reg('Welder Qualifications', ['ISO 9606-1','ISO 3834-2'], 'Welders, their approvals and confirmations.', ['Welder and stamp','Standard and certificate number','Process, material, thickness, position','Test date and expiry','Six-monthly confirmations'], 'Monthly'),
+    reg('Welding Procedure Specifications', ['ISO 15614','ISO 15609-1'], 'WPS and their qualification records.', ['WPS number','WPQR number','Process and material group','Thickness range','Status and approval','Review date'], 'Annually'),
+    reg('Incidents and Nonconformances', ['ISO 45001 cl 10.2','ISO 9001 cl 10.2'], 'All incidents, near misses and nonconformances.', ['Reference and date','Description','Severity','Root cause','Corrective action and owner','Due and closed date'], 'Weekly review, summary at management review'),
+  ];
+
+  /* ---------------- checklists ---------------- */
+  const CHECKLISTS = [
+    chk('Workplace Safety Inspection Checklist', ['OHS Act','ISO 45001 cl 9.1'], 'Routine inspection of the workplace.', ['Walkways and exits are clear and unobstructed','Floors are dry, level and free of trip hazards','Housekeeping is acceptable and waste is controlled','Lighting is adequate','Machinery guards are in place and working','Electrical leads, plugs and boards are in good condition','Fire extinguishers are in place, sealed and in date','First aid box is stocked and signed','Emergency exits and assembly points are signed','PPE is available, in good condition and worn','Hazardous substances are labelled and stored correctly','Safety signage is visible','Ladders and access equipment are inspected and tagged']),
+    chk('Fire Equipment Monthly Check', ['SANS 10105','Environmental Regulations for Workplaces r9'], 'Monthly check of fire equipment.', ['Extinguishers are in position and accessible','Pins and seals are intact','Pressure gauges are in the green','Service tags are within date','Hose reels are accessible and in good order','Fire alarm panel shows no faults','Emergency lights work','Fire doors close and are not wedged open']),
+    chk('First Aid Box Check', ['General Safety Regulations r3'], 'Check of first aid boxes and equipment.', ['Box is clearly marked and accessible','Contents match the required list','Nothing is expired','Contents are used or damaged: replaced','Record of use is up to date','First aider names are displayed']),
+    chk('Contractor Onboarding Checklist', ['OHS Act s37','Construction Regulations 2014'], 'Documents and approvals before a contractor starts work.', ['Company registration and tax compliance sighted','COIDA letter of good standing valid','Public liability insurance valid','B-BBEE certificate or affidavit received','Health and safety file and baseline risk assessment received','Appointment letters for legal appointees received','Medical certificates of fitness for workers received','Competency certificates for the work received','Method statement approved','Site induction completed','Section 37(2) agreement signed']),
+    chk('Welding Workshop Safety Checklist', ['ISO 3834-2','General Safety Regulations'], 'Safety check of a welding workshop or work area.', ['Ventilation and fume extraction work','Gas cylinders are secured, upright and capped','Hoses, regulators and flashback arrestors are in date','Welding leads and earth clamps are sound','Screens protect passers-by from arc flash','Combustibles are cleared from the area','Fire extinguisher and fire watch are in place','Welders wear approved PPE and eye protection','Hot work permit is issued where required','Electrodes are stored and issued as controlled']),
+    chk('ISO 3834 Readiness Checklist', ['ISO 3834-2'], 'Self-check of readiness for welding quality assessment.', ['Responsible Welding Coordinator appointed in writing','Contract and technical review recorded for each job','Welding procedures qualified and approved','Welders qualified and confirmed','Inspection personnel competent and NDT personnel qualified','Equipment listed, serviced and calibrated','Consumables certified, stored and issued under control','Parent material identified and stored correctly','Inspection and testing records complete','Nonconformances raised and closed','Traceability established from material to weld to welder','Quality records kept and retrievable']),
+    chk('POPIA Readiness Checklist', ['POPIA 4 of 2013'], 'Self-check of POPIA compliance.', ['Information Officer appointed and registered with the Information Regulator','Deputy Information Officer appointed where needed','Processing activities recorded','Lawful justification recorded for each activity','Privacy notices given to data subjects','Operator agreements signed','Security safeguards in place and tested','Retention schedule applied and disposals logged','Data subject request process works','Breach response plan tested','Staff trained on POPIA']),
+    chk('Information Security Baseline Checklist', ['ISO/IEC 27001'], 'Quick check of basic information security controls.', ['ISMO appointed','Information security policy approved and communicated','Asset register current','Access reviewed in the last six months','Multi-factor authentication on key systems','Backups taken and restored in a test','Endpoints patched and protected','Leavers\' access removed on exit','Staff confidentiality agreements signed','Incident log in use']),
+  ];
+
+  /* ---------------- process flowcharts ---------------- */
+  const FLOWS = [
+    flow('Nonconformance and Corrective Action Process', ['ISO 9001 cl 10.2'], 'From finding a nonconformance to verified closure.', [['start','Nonconformance identified'],['process','Report and contain'],['process','Find root cause'],['process','Agree corrective action, owner and due date'],['decision','Action effective?','Yes','No: repeat analysis'],['document','Record and close'],['end','Review trend at management review']]),
+    flow('Document Approval Process', ['ISO 9001 cl 7.5'], 'Drafting to controlled issue.', [['start','Need for a document'],['process','Draft from template'],['process','Review'],['decision','Approved?','Yes','No: revise'],['document','Issue controlled copy and update register'],['end','Review on due date']]),
+    flow('Legal Appointment Process', ['OHS Act s16(2)','POPIA s55'], 'From need to signed, in-force appointment.', [['start','Appointment needed'],['process','Check competence and certificates'],['decision','Competent and certificates valid?','Yes','No: train or decline'],['process','Draft letter with legal reference'],['process','Appointer signs and issues'],['process','Appointee signs acceptance'],['document','Record in the Appointments Register'],['end','Renew before expiry']]),
+    flow('Incident Management Process', ['OHS Act s24'], 'From incident to lessons learned.', [['start','Incident occurs'],['process','Make safe and give first aid'],['process','Report to supervisor'],['decision','Reportable under section 24?','Yes','No'],['document','Notify the Department'],['process','Investigate and find root cause'],['process','Corrective and preventive actions'],['end','Close and share lessons']]),
+    flow('Supplier Approval Process', ['ISO 9001 cl 8.4'], 'From need for a supplier to approved status.', [['start','Need for a supplier'],['process','Collect documents'],['process','Evaluate against criteria'],['decision','Meets criteria?','Yes','No'],['document','Add to approved list'],['end','Monitor and re-assess annually']]),
+    flow('Personal Information Breach Response Process', ['POPIA s22'], 'Responding to a compromise of personal information.', [['start','Suspected breach'],['process','Report to the ISMO and Information Officer'],['process','Contain and preserve evidence'],['decision','Personal information compromised?','Yes','No: treat as security incident'],['document','Notify the Information Regulator and data subjects'],['process','Recover and fix the cause'],['end','Record lessons']]),
+    flow('Management of Change Process', ['ISO 45001 cl 8.1.3'], 'Assessing a change before it is made.', [['start','Change proposed'],['process','Assess risks'],['decision','Acceptable?','Yes','No'],['process','Plan, communicate and train'],['process','Implement'],['end','Review and update documents']]),
+    flow('Welding Contract Review and Job Release Process', ['ISO 3834-2'], 'From enquiry to released welding job.', [['start','Enquiry or order received'],['process','Review requirements and capability'],['decision','Can we meet them?','Yes','No: decline or negotiate'],['process','Select WPS and welders'],['process','Plan inspection and traceability'],['document','Record review and release the job'],['end','Weld, inspect and hand over records']]),
+    flow('Internal Audit Process', ['ISO 19011'], 'From programme to closed findings.', [['start','Annual audit programme'],['process','Plan and brief the audit'],['process','Audit and gather evidence'],['process','Report findings'],['decision','Nonconformities?','Yes','No'],['process','Raise corrective actions'],['end','Verify closure and report']]),
+  ];
+
+  const catalogue = () => [...letters(), ...POLICIES, ...PROCEDURES, ...FORMS, ...REGISTERS, ...CHECKLISTS, ...FLOWS];
+  const KIND_LABEL = { letter:'Letters of Appointment', policy:'Policies', procedure:'Procedures', form:'Forms', register:'Registers', checklist:'Checklists', flowchart:'Process Flowcharts' };
+  const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const tokensOf = c => c.match || norm(c.title.replace(/^(form|register):\s*/i, '')).split(' ').filter(w => !['and','of','the','a','for','to'].includes(w));
+  const typeOf = c => ({ letter:'policy', policy:'policy', procedure:'procedure', form:'procedure', register:'procedure', checklist:'checklist', flowchart:'process_flowchart' })[c.kind];
+  function existingFor(c){
+    const prefix = c.kind === 'form' ? 'form' : c.kind === 'register' ? 'register' : null;
+    const toks = tokensOf(c);
+    return (STATE.contentTemplates || []).find(t => {
+      if(t.type !== typeOf(c)) return false;
+      const n = norm(t.title);
+      if(prefix && !n.startsWith(prefix) && !toks.every(w => n.includes(w))) return false;
+      return toks.every(w => n.includes(w));
+    });
+  }
+  function audit(){
+    const cat = catalogue().map(c => ({ c, have: existingFor(c) }));
+    const byKind = Object.keys(KIND_LABEL).map(k => { const r = cat.filter(x => x.c.kind === k); return { k, total: r.length, present: r.filter(x => x.have).length, missing: r.filter(x => !x.have).map(x => x.c) }; });
+    const T = STATE.contentTemplates || [];
+    const findings = [];
+    T.forEach(t => {
+      const kids = t.type === 'process_flowchart' ? STATE.contentTemplateSteps.filter(x => x.template_id === t.id).length : t.type === 'checklist' ? STATE.contentTemplateChecklistItems.filter(x => x.template_id === t.id).length : STATE.contentTemplatePolicySections.filter(x => x.template_id === t.id).length;
+      if(!kids) findings.push([t.title, 'No content (sections, items or steps) yet.']);
+      if(!t.description) findings.push([t.title, 'No description.']);
+      if(!(t.standard_refs || []).length) findings.push([t.title, 'No standard or legal reference recorded.']);
+    });
+    const seen = {}; T.forEach(t => { const n = norm(t.title); if(seen[n]) findings.push([t.title, 'Duplicate title.']); seen[n] = 1; });
+    return { cat, byKind, findings, total: cat.length, present: cat.filter(x => x.have).length };
+  }
+  window.tlAudit = audit;
+
+  /* ---------------- seeding ---------------- */
+  async function seedOne(c){
+    const parent = { title: c.title, description: c.desc, type: typeOf(c), module_key: c.kind === 'letter' ? 'orgchart' : null, standard_refs: c.refs || [], is_active: true, version: 1 };
+    if(c.kind === 'checklist') parent.checklist_scoring_method = 'pass_fail';
+    const p = await STATE.supabase.from('content_templates').insert(parent).select().single();
+    if(p.error) return p.error.message;
+    const id = p.data.id;
+    let res;
+    if(c.kind === 'checklist') res = await STATE.supabase.from('content_template_checklist_items').insert(c.items.map((t, i) => ({ template_id:id, sort_order:(i + 1) * 10, item_text:t })));
+    else if(c.kind === 'flowchart') res = await STATE.supabase.from('content_template_steps').insert(c.steps.map((s, i) => ({ template_id:id, sort_order:(i + 1) * 10, step_type:s[0], step_text:s[1], decision_yes_label: s[0] === 'decision' ? (s[2] || 'Yes') : null, decision_no_label: s[0] === 'decision' ? (s[3] || 'No') : null })));
+    else res = await STATE.supabase.from('content_template_policy_sections').insert(c.sections.map((s, i) => ({ template_id:id, sort_order:(i + 1) * 10, heading:s[0], body_text:s[1] })));
+    if(res.error){ await STATE.supabase.from('content_templates').delete().eq('id', id); return res.error.message; }
+    return null;
+  }
+  window.tlAddMissing = async function(kind){
+    if(!isStaff()){ toast('Only platform staff can change the Template Library.', 'error'); return; }
+    const a = audit(); const todo = a.cat.filter(x => !x.have && (!kind || x.c.kind === kind)).map(x => x.c);
+    if(!todo.length){ toast('Nothing missing.', 'success'); return; }
+    if(!confirm(`Add ${todo.length} template${todo.length === 1 ? '' : 's'} to the master library? Existing templates are not changed.`)) return;
+    showLoader('Adding templates…');
+    const failures = []; let ok = 0;
+    for(const c of todo){ const err = await seedOne(c); if(err) failures.push(c.title + ': ' + err); else ok++; if(failures.length >= 3 && ok === 0) break; }
+    hideLoader();
+    STATE.contentTemplates = []; await loadContentTemplates(); renderTemplateLibrary();
+    if(failures.length){
+      toast(`Added ${ok}. ${failures.length} failed: ${failures[0]}`, 'error');
+      console.warn('Template seeding failures', failures);
+    } else toast(`Added ${ok} template${ok === 1 ? '' : 's'}.`, 'success');
+  };
+
+  /* ---------------- panel ---------------- */
+  function panelHTML(){
+    const a = audit(), pctAll = a.total ? Math.round(a.present / a.total * 100) : 0;
+    return `<div class="detail-card" style="margin-bottom:18px"><div class="panel-head"><h3>Library audit and gap check</h3>
+        ${isStaff() && a.present < a.total ? `<button class="btn-small primary" onclick="tlAddMissing()">Add all ${a.total - a.present} missing</button>` : ''}</div>
+      <p style="font-size:12px;color:var(--text-faint);margin-bottom:10px">Compares this library with a recommended catalogue of ${a.total} templates: legal letters of appointment with their legal references, generic policies, procedures, forms, registers, checklists and process flowcharts. Matching is by title and type, so a template you already have under a similar name counts as present. Nothing changes until you add templates.</p>
+      <div class="oa-tiles"><div class="oa-tile"><b>${pctAll}%</b><span>Catalogue covered (${a.present} of ${a.total})</span></div>
+      ${a.byKind.map(k => `<div class="oa-tile"><b style="color:${k.missing.length ? '#B2650F' : '#1F6B52'}">${k.present}/${k.total}</b><span>${KIND_LABEL[k.k]}</span>${isStaff() && k.missing.length ? `<br><a href="#" onclick="tlAddMissing('${k.k}');return false;" style="font-size:11px">Add ${k.missing.length} missing</a>` : ''}</div>`).join('')}</div>
+      ${a.byKind.some(k => k.missing.length) ? `<details><summary style="cursor:pointer;font-size:12.5px;font-weight:600;margin-bottom:6px">Missing from the library</summary>${a.byKind.filter(k => k.missing.length).map(k => `<div style="font-size:12px;margin:6px 0"><b>${KIND_LABEL[k.k]}:</b> ${k.missing.map(c => esc(c.title.replace(/^(Form|Register): /, ''))).join('; ')}</div>`).join('')}</details>` : '<p style="font-size:12.5px;color:#1F6B52">Every template in the catalogue is present.</p>'}
+      ${a.findings.length ? `<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12.5px;font-weight:600">Quality findings in existing templates (${a.findings.length})</summary><table class="oa-table"><tbody>${a.findings.slice(0, 80).map(f => `<tr><td>${esc(f[0])}</td><td>${esc(f[1])}</td></tr>`).join('')}</tbody></table></details>` : ''}
+    </div>`;
+  }
+  { const _r = renderTemplateLibrary;
+    renderTemplateLibrary = window.renderTemplateLibrary = function(){
+      _r.apply(this, arguments);
+      const wrap = document.getElementById('admin-subtab-content'); if(!wrap) return;
+      try{ wrap.insertAdjacentHTML('afterbegin', panelHTML()); }catch(e){ console.error('template audit', e); }
+    };
+  }
+  window.tlCatalogue = catalogue;
+})();
+
 </script>
 </body>
 </html>
