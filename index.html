@@ -1256,7 +1256,7 @@
     <div id="auth-error"></div>
     <div class="field"><label>Email</label><input id="auth-email" type="email"></div>
     <div class="field"><label>Password</label><input id="auth-password" type="password"></div>
-    <button class="gate-btn" id="signin-btn" onclick="doSignIn()">Sign in</button>
+    <button class="gate-btn" id="signin-btn" onclick="doSignIn()">Enter Watchman</button>
     <p style="text-align:center; margin-top:14px;"><a onclick="showGate('gate-reset-request')" style="font-size:12.5px; color:var(--text-faint); cursor:pointer; text-decoration:underline;">Forgot your password?</a></p>
   </div>
 </div>
@@ -1781,7 +1781,7 @@ window.doSignIn = async function(){
   errEl.innerHTML = '';
   btn.disabled = true; btn.textContent = 'Signing in…';
   const { data, error } = await STATE.supabase.auth.signInWithPassword({ email, password });
-  btn.disabled = false; btn.textContent = 'Sign in';
+  btn.disabled = false; btn.textContent = 'Enter Watchman';
   if(error){ errEl.innerHTML = `<div class="gate-error">${error.message}</div>`; return; }
   await afterSignIn(data.user);
 };
@@ -1998,8 +1998,9 @@ window.selectOrg = async function(orgId){
   document.getElementById('user-avatar-initials').textContent = (STATE.profile.name || STATE.user.email).slice(0,2).toUpperCase();
   applyModuleAccessToNav();
   window.scrollTo({top:0, behavior:'instant'});
+  const _quietReload = !!STATE._noPopups || (STATE.currentModule==='administration' && pendingModule==='administration');
   showModule(pendingModule || 'overview');
-  setTimeout(showLatestBulletinPopup, 400); // bulletin first, then reminders — small delay so it doesn't collide with the view transition
+  if(!_quietReload) setTimeout(showLatestBulletinPopup, 400); // bulletin first, then reminders — small delay so it doesn't collide with the view transition
 
   } finally {
     hideBootLoading();
@@ -20739,7 +20740,8 @@ window.toggleOrgModule = async function(field, value){
 // own view of what's enabled can drift apart from each other.
 async function reloadOrgAfterAdminConsoleChange(){
   pendingModule = 'administration';
-  await selectOrg(STATE.org.id);
+  STATE._noPopups = true;
+  try{ await selectOrg(STATE.org.id); } finally { STATE._noPopups = false; }
 }
 
 // ============ Master Documents Register ============
@@ -36175,7 +36177,11 @@ function fmtRev(rev){
     ['bulletins','Bulletins & Toolbox Talks','Bulletins and toolbox talks with acknowledgements.'],
     ['five_s','5S Inspections','5S inspection programme.'],
     ['management_review','Management Review','Management review minutes and actions.'],
-    ['business_health','Business Health Validation','Live health view across the management system. Overview and the Compliance Dashboard are always on.']
+    ['business_health','Business Health Validation','Live health view across the management system. Overview and the Compliance Dashboard are always on.'],
+    ['governance','Governance and Ethics','ISO 37000 assessment, resolutions, delegations, conflicts of interest, gifts and hospitality, stakeholders.'],
+    ['master_register','Master Documents Register','Sequence check across Document Control and All Documents.'],
+    ['privacy','Privacy (POPIA)','POPIA readiness, processing activities, data subject requests and operator agreements.'],
+    ['retention','Records Retention','Retention schedule and disposal register.']
   ];
   const KEY = k => k + '_module_enabled';
   const off = mod => !!(STATE.org && STATE.org['_modOff'] && STATE.org['_modOff'].has(mod));
@@ -36195,7 +36201,9 @@ function fmtRev(rev){
   { const _h = orgHasModule; orgHasModule = window.orgHasModule = function(mod, org){ if(off(mod) && (!org || org === STATE.org)) return false; return _h.apply(this, arguments); }; }
   { const _a = applyModuleAccessToNav; applyModuleAccessToNav = window.applyModuleAccessToNav = function(){
       const r = _a.apply(this, arguments);
-      SW.forEach(([k]) => { const el = document.querySelector('.nav-item[data-mod="' + k + '"]'); if(el && off(k)) el.style.display = 'none'; });
+      SW.forEach(([k]) => { const el = document.querySelector('.nav-item[data-mod="' + k + '"]'); if(!el) return;
+        if(off(k)) el.style.display = 'none';
+        else if(!GATED_MODULES.includes(k) && el.style.display === 'none') el.style.display = ''; /* switched back on */ });
       const mr = document.querySelector('.nav-item[data-mod="master_register"]'); if(mr && STATE.org && STATE.org.document_control_enabled === false) mr.style.display = 'none';
       return r; }; }
   SW.forEach(([k, label, note]) => ADMIN_CONSOLE_TOGGLES.push({ field: KEY(k), label, note: note + ' Switching off hides it; nothing recorded is deleted.' }));
@@ -36237,6 +36245,65 @@ function fmtRev(rev){
   if(typeof _sg === 'function'){ showGate = function(){ const r = _sg.apply(this, arguments); try{ strip(); }catch(e){} return r; }; window.showGate = showGate; }
 })();
 
+
+/* ===== b45: prominent Enter Watchman, centred sign-in, status text weight, Group View removed from the client app, usage events ===== */
+(function(){
+  const css = document.createElement('style');
+  css.textContent = `
+  /* Enter Watchman: homepage hero and header, and the sign-in button */
+  #view-landing .hero-ctas .btn-primary{font-size:21px!important;padding:21px 58px!important;border-radius:999px!important;font-weight:800!important;letter-spacing:.01em;box-shadow:0 16px 38px rgba(213,0,0,.42)!important;}
+  #view-landing .hero-ctas .btn-primary:hover{transform:translateY(-3px) scale(1.02);box-shadow:0 20px 44px rgba(213,0,0,.5)!important;}
+  #view-landing .hero-ctas .btn-ghost{font-size:16px!important;padding:19px 30px!important;border-radius:999px!important;}
+  #view-landing .land-nav-links .btn-primary{font-size:16px!important;padding:14px 32px!important;border-radius:999px!important;font-weight:800!important;box-shadow:0 8px 22px rgba(213,0,0,.38)!important;}
+  .gate-card .gate-btn{font-size:20px!important;font-weight:800!important;padding:20px 24px!important;margin-top:8px;box-shadow:0 16px 34px rgba(178,22,22,.4)!important;letter-spacing:.01em;}
+  .gate-card .gate-btn:hover{transform:translateY(-2px);box-shadow:0 20px 40px rgba(178,22,22,.5)!important;}
+  /* sign-in text centred */
+  .gate-card,.gate-card h2,.gate-card p,.gate-card .field label,.gate-card .gate-brand,.gate-card .gate-error,.gate-card .gate-success{text-align:center!important;}
+  .gate-card .field{align-items:stretch;}
+  .gate-card .field input{text-align:center!important;}
+  .gate-card .field label{display:block;width:100%;}
+  /* status indicators in registers: standard Arial text, not bold */
+  table .pill,table .date-badge,table .sev-badge,table .wd-pill,table .tag,table .sf-chip,table .sf-linktag,table .prog-b,table .chip,table .ovx-chip,table .wm-chip,table .mdr-pill,table .ro-chip,table .rm-chip,table .mrx-chip,table .wd-status,table .rm-bub,
+  table span[class*="badge"],table span[class*="pill"],table span[class*="chip"],table span[class*="status"],table .tag.live,table .tag.soon{font-family:Arial,Helvetica,sans-serif!important;font-weight:400!important;letter-spacing:0!important;}
+  `;
+  document.head.appendChild(css);
+
+  /* Group View (all organisations side by side) does not belong in any client's app: it lives only in the owner console */
+  document.querySelectorAll('.nav-item[data-mod="group_view"]').forEach(e => e.remove());
+  try{ delete MODULE_META.group_view; delete RENDERERS.group_view; }catch(e){}
+  { const _sm = showModule;
+    showModule = window.showModule = function(mod){
+      if(mod === 'group_view') mod = 'overview';
+      const r = _sm.apply(this, [mod].concat(Array.prototype.slice.call(arguments, 1)));
+      try{ logUsage('module', mod); }catch(e){}
+      return r; }; }
+
+  /* usage events: one row when a person opens an organisation in a browser session, and one per module visited (throttled).
+     The owner console reads these; a missing table is tolerated. */
+  let ok = true; const seen = {};
+  async function logUsage(kind, detail){
+    if(!ok || !STATE.org || !STATE.user) return;
+    const key = kind + ':' + detail, now = Date.now();
+    if(kind === 'module' && seen[key] && now - seen[key] < 20 * 60 * 1000) return;
+    seen[key] = now;
+    try{
+      const r = await STATE.supabase.from('usage_events').insert({ organisation_id: STATE.org.id, user_id: STATE.user.id, kind, detail: detail || null, is_staff: !!(STATE.profile && STATE.profile.is_platform_staff) });
+      if(r && r.error) ok = false;
+    }catch(e){ ok = false; }
+  }
+  window.logUsage = logUsage;
+  { const _so = window.selectOrg;
+    selectOrg = window.selectOrg = async function(){
+      const r = await _so.apply(this, arguments);
+      try{
+        if(STATE.org && !STATE._noPopups){
+          const k = 'qw_ev_' + STATE.org.id; let first = true;
+          try{ first = !sessionStorage.getItem(k); sessionStorage.setItem(k, '1'); }catch(e){}
+          if(first) logUsage('session', 'Opened organisation');
+        }
+      }catch(e){}
+      return r; }; }
+})();
 </script>
 </body>
 </html>
