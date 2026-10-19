@@ -8211,7 +8211,7 @@ function renderDocumentsTable(){
     ${rows.map(d=>{ const st = documentWorkflowBadge(d); return `<tr class="clickable" onclick="openDocumentDetail('${d.id}')">
       <td class="mono-cell">${d.doc_number}</td>
       <td class="strong">${d.title}</td>
-      <td style="text-align:center;">${d.current_revision}</td>
+      <td style="text-align:center;">${fmtRev(d.current_revision)}</td>
       <td>${fmtDate(d.current_revision_date)}</td>
       <td>${fmtDate(d.next_review_date)} ${docReviewBadge(d)}</td>
       <td>${d.created_by ? memberName(d.created_by) : (d.developer_id ? memberName(d.developer_id) : '—')}</td>
@@ -8520,7 +8520,7 @@ async function openDocumentDetail(id){
         </div>
       </div>
       <div class="detail-meta">
-        <div class="dm-item"><div class="l">Current revision</div><div class="v">${d.current_revision}</div></div>
+        <div class="dm-item"><div class="l">Current revision</div><div class="v">${fmtRev(d.current_revision)}</div></div>
         <div class="dm-item"><div class="l">Introduced</div><div class="v">${fmtDate(d.introduced_date)}</div></div>
         <div class="dm-item"><div class="l">This revision dated</div><div class="v">${fmtDate(d.current_revision_date)}</div></div>
         <div class="dm-item"><div class="l">Owner</div><div class="v">${memberName(d.owner_id)}</div></div>
@@ -35754,8 +35754,7 @@ window.brandFromLogo = function(){
     ['Platform', ['administration_enabled']],
   ];
   const INCLUDED = [
-    ['Organisation Charts and Appointments', 'Charts, the Appointments Register with signed letters of appointment, personnel information pages and validity checks. Access by module tick.'],
-    ['Business Health Validation', 'One live health view across governance, quality, safety, environment, information security, POPIA, welding and people. Access by module tick.'],
+    ['Overview and Compliance Dashboard', 'Always on for every client. They cannot be switched off.'],
     ['Template Library (search first)', 'Generic policies, procedures, forms, registers, checklists, flowcharts and letters of appointment. Clients adapt a template, or fall back to generating a new document.'],
   ];
   const TABLES = [
@@ -35763,6 +35762,8 @@ window.brandFromLogo = function(){
     ['welding_settings', 'qashe-watchman-schema-welding.sql', 'Welding Management (8 tables)'],
     ['business_health_validations', 'qashe-watchman-schema-business-health.sql', 'Business Health Validation'],
     ['org_disciplines', 'qashe-watchman-schema-disciplines.sql', 'Information Security switch'],
+    ['org_naming_standard', 'qashe-watchman-schema-naming-modules.sql', 'Document naming standard selection and change log'],
+    ['org_modules', 'qashe-watchman-schema-naming-modules.sql', 'Module on/off switches'],
     ['content_templates', '(Template Library tables)', 'Template Library'],
   ];
   window.adminDbCheck = async function(){
@@ -35800,7 +35801,7 @@ window.brandFromLogo = function(){
       const card = Array.from(wrap.querySelectorAll('.detail-card')).find(c => /Other Modules/.test(c.textContent));
       const newCard = `<div class="detail-card"><div class="panel-head"><h3>Modules and disciplines</h3><span style="font-size:12px;color:var(--text-faint)">${on} of ${toggles.length} switched on</span></div>
           <table><tr><th>Module</th><th>Note</th><th style="text-align:right">Status</th></tr>${html}</table></div>
-        <div class="detail-card"><div class="panel-head"><h3>Included for every client</h3></div>
+        <div class="detail-card"><div class="panel-head"><h3>Always included</h3></div>
           <table>${INCLUDED.map(([a, b]) => `<tr><td class="strong">${esc(a)}</td><td style="font-size:12px;color:var(--text-faint)">${esc(b)}</td></tr>`).join('')}</table>
           <p style="font-size:12px;color:var(--text-faint);margin-top:10px">Checklists and Policies and Procedures are retired as modules: their content now comes from the Template Library, and checklists remain available inside Audits, so they have no switch. Non-admin users see these modules only when ticked under Team and Access.</p>
           <div style="margin-top:8px"><button class="btn-small" onclick="switchAdminSubtab('templatelibrary')">Open the Template Library</button></div></div>
@@ -35828,6 +35829,412 @@ window.brandFromLogo = function(){
     'ADMIN CONSOLE (Group QaSHE CG staff only) switches modules and disciplines per client; clients manage departments, people and access in Administration. ' +
     moduleState() + ' Do not suggest features the client has switched off; say who can switch them on.)';
   };
+})();
+
+
+
+/* ============================================================================
+   b44: DOCUMENT NAMING STANDARDS, MODULE SWITCHES, SIGN-IN DECLUTTER
+   1. Two document naming standards, chosen per client in the Admin Console:
+        Current:    Company ID-Department-Document Type-Number-Revision   e.g. TVC-GOV-FRM-001-R0
+        Historical: Company ID-Business Element-Document Type-Number-Revision   e.g. TVC-1-FRM-001-00
+      The choice provisions the client's departments and types, drives upload validation and auto-filing,
+      and the codes can be amended or added by an Admin in Administration only (every change is logged).
+   2. Every module has an on/off switch (Overview and Compliance Dashboard stay permanent).
+   3. The radar is removed from the app landing and sign-in pages.
+   Needs qashe-watchman-schema-naming-modules.sql.
+   ============================================================================ */
+function fmtRev(rev){
+  const n = parseInt(rev, 10); if(isNaN(n)) return String(rev == null ? '' : rev);
+  return (STATE.org && STATE.org.naming_standard === 'historical') ? String(n).padStart(2, '0') : 'R' + n;
+}
+(function(){
+  const esc = s => escapeHtml(s == null ? '' : String(s));
+  const isStaff = () => !!(STATE.profile && STATE.profile.is_platform_staff);
+  const isAdmin = () => STATE.myRole === 'admin' || isStaff();
+  const std = () => (STATE.org && STATE.org.naming_standard) || 'current';
+  const company = () => ((STATE.org && STATE.org.naming_company) || (STATE.org && STATE.org.ref_prefix) || 'ABC').toUpperCase();
+
+  const STANDARDS = {
+    current: { label:'Current standard', pattern:'Company ID-Department-Document Type-Number-Revision', rev:'R0 for first issue, then R1, R2 on each approved revision', example: c => c + '-GOV-FRM-001-R0',
+      detail:'Departments use letter codes (GOV, QUA, HSE and so on).' },
+    historical: { label:'Historical standard', pattern:'Company ID-Business Element-Document Type-Number-Revision', rev:'Two digits: 00 for first issue, then 01, 02 on each approved revision', example: c => c + '-1-FRM-001-00',
+      detail:'Business Elements are numbered: 1 General Management, 2 Operations, 3 Logistics and Maintenance, 4 Human Resources, 5 Health, Safety, Environment, 6 Quality Assurance, 7 Supply Chain, 8 Finance, 9 Information Security.' }
+  };
+  window.NAMING_STANDARDS = STANDARDS;
+
+  /* ---------------- load the client's standard ---------------- */
+  async function loadNaming(){
+    if(!STATE.org) return;
+    try{
+      const { data, error } = await STATE.supabase.from('org_naming_standard').select('*').eq('organisation_id', STATE.org.id).maybeSingle();
+      STATE.org.naming_standard = (!error && data && data.standard) || 'current';
+      STATE.org.naming_company = (!error && data && data.company_id) || null;
+    }catch(e){ STATE.org.naming_standard = 'current'; STATE.org.naming_company = null; }
+  }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ await _lc.apply(this, arguments); await loadNaming(); }; }
+
+  /* ---------------- parse and validate a file name ---------------- */
+  const RX = {
+    current:    /^([A-Z0-9]{2,8})-([A-Z]{2,5})-([A-Z]{3})-(\d{3})(?:-(\d{2}))?-R(\d{1,2})$/,
+    historical: /^([A-Z0-9]{2,8})-([1-9])-([A-Z]{3})-(\d{3})-(\d{2})$/
+  };
+  function identifierOf(fileName){
+    const base = String(fileName || '').replace(/\.[^.]+$/, '');
+    const cut = base.search(/[ _]/);
+    return { id: (cut === -1 ? base : base.slice(0, cut)).trim(), title: (cut === -1 ? '' : base.slice(cut + 1)).replace(/_/g, ' ').trim() };
+  }
+  function activeCodes(){
+    return { d: new Set((STATE.docDepartments || []).filter(x => x.is_active).map(x => String(x.code).toUpperCase())),
+             t: new Set((STATE.docTypes || []).filter(x => x.is_active).map(x => String(x.code).toUpperCase())) };
+  }
+  /* try to repair the common slips so the person is told exactly what to rename it to */
+  function repair(idText, which){
+    let toks = idText.toUpperCase().split('-').map(x => x.trim()).filter(Boolean);
+    /* a number with no Company ID in front: add this client's */
+    if(toks.length >= 3 && activeCodes().d.has(toks[0]) && activeCodes().t.has(toks[1])) toks.unshift(company());
+    if(toks.length < 4) return null;
+    const last = toks[toks.length - 1];
+    const rm = last.match(/^(?:R|REV|V)?(\d{1,2})$/);
+    if(rm && toks.length >= 5){
+      toks[toks.length - 1] = which === 'historical' ? String(parseInt(rm[1], 10)).padStart(2, '0') : 'R' + parseInt(rm[1], 10);
+    } else if(toks.length === 4 && /^\d{1,3}$/.test(last)){
+      toks.push(which === 'historical' ? '00' : 'R0');
+    }
+    const si = toks.findIndex((t, i) => i >= 3 && /^\d{1,3}$/.test(t));
+    if(si > 0) toks[si] = toks[si].padStart(3, '0');
+    const out = toks.join('-');
+    return RX[which].test(out) ? out : null;
+  }
+  function validateName(fileName){
+    const which = std(), { id, title } = identifierOf(fileName);
+    const issues = []; let suggest = null;
+    if(!id){ return { ok:false, issues:['No document number at the start of the name.'], suggest:null, id, title }; }
+    let m = RX[which].exec(id);
+    if(!m){
+      const other = which === 'current' ? 'historical' : 'current';
+      if(RX[other].test(id.toUpperCase())) issues.push(`This is in the ${STANDARDS[other].label.toLowerCase()} format. This client uses the ${STANDARDS[which].label.toLowerCase()}: ${STANDARDS[which].pattern}.`);
+      else issues.push(`The number does not follow ${STANDARDS[which].pattern}, for example ${STANDARDS[which].example(company())}.`);
+      suggest = repair(id, which);
+      if(suggest){ m = RX[which].exec(suggest); issues.push('Fix: ' + suggest + (title ? ' ' + title : '')); }
+      else return { ok:false, issues, suggest:null, id, title };
+      return { ok:false, issues: issues.concat(codeIssues(which, m)), suggest: suggest + (title ? ' ' + title : ''), id, title };
+    }
+    const more = codeIssues(which, m);
+    return { ok: more.filter(x => !x.startsWith('Note:')).length === 0, issues: more, suggest:null, id, title, warnOnly: more.length > 0 && more.every(x => x.startsWith('Note:')) };
+  }
+  function codeIssues(which, m){
+    const out = [], c = activeCodes();
+    const dept = which === 'current' ? m[2] : m[2], type = which === 'current' ? m[3] : m[3];
+    if(!c.d.has(dept)) out.push(`Department code ${dept} is not in this client's list.`);
+    if(!c.t.has(type)) out.push(`Document type code ${type} is not in this client's list.`);
+    if(m[1] !== company()) out.push(`Note: Company ID ${m[1]} differs from this client's ${company()}.`);
+    return out;
+  }
+  window.namingValidate = validateName;
+
+  /* ---------------- upload gate ---------------- */
+  function dialog(rows, canForce){
+    return new Promise(resolve => {
+      const bad = rows.filter(r => !r.v.ok), good = rows.length - bad.length;
+      const old = document.getElementById('nm-upload-gate'); if(old) old.remove();
+      const m = document.createElement('div'); m.id = 'nm-upload-gate';
+      m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px';
+      const S = STANDARDS[std()];
+      const corrections = bad.map(r => r.f.name + '  ->  ' + (r.v.suggest ? r.v.suggest + (r.f.name.match(/\.[^.]+$/) || [''])[0] : 'rename to ' + S.example(company()) + ' Title')).join('\n');
+      m.innerHTML = `<div style="background:var(--bg-card,#fff);max-width:820px;width:100%;max-height:88vh;overflow:auto;border-radius:12px;padding:20px;font-family:Arial,sans-serif">
+        <h3 style="margin:0 0 6px">${bad.length} of ${rows.length} file${rows.length === 1 ? '' : 's'} ${bad.length === 1 ? 'does' : 'do'} not follow the naming standard</h3>
+        <p style="font-size:12.5px;margin:0 0 10px;color:var(--text-dim)">This client uses the <b>${esc(S.label.toLowerCase())}</b>: <b>${esc(S.pattern)}</b>, for example <b>${esc(S.example(company()))} Document Title.docx</b>. Files that follow it are filed automatically. ${esc(S.rev)}.</p>
+        <table style="width:100%;font-size:12px"><tr><th style="text-align:left">File</th><th style="text-align:left">Problem and fix</th></tr>
+        ${bad.map(r => `<tr><td style="vertical-align:top;padding:4px 8px 4px 0;word-break:break-all">${esc(r.f.name)}</td><td style="padding:4px 0">${r.v.issues.map(esc).join('<br>')}</td></tr>`).join('')}</table>
+        <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px">
+          <button class="btn-small" id="nm-g-copy">Copy corrections</button>
+          <button class="btn-small" id="nm-g-cancel">Cancel: I will rename them</button>
+          ${canForce ? `<button class="btn-small" id="nm-g-all">Upload all, flag the rest</button>` : ''}
+          ${good ? `<button class="btn-small primary" id="nm-g-ok">Upload the ${good} compliant file${good === 1 ? '' : 's'}</button>` : ''}
+        </div></div>`;
+      document.body.appendChild(m);
+      const done = v => { m.remove(); resolve(v); };
+      m.querySelector('#nm-g-cancel').onclick = () => done('cancel');
+      const a = m.querySelector('#nm-g-all'); if(a) a.onclick = () => done('all');
+      const o = m.querySelector('#nm-g-ok'); if(o) o.onclick = () => done('good');
+      m.querySelector('#nm-g-copy').onclick = () => { try{ navigator.clipboard.writeText(corrections); toast('Corrections copied.', 'success'); }catch(e){ prompt('Copy:', corrections); } };
+    });
+  }
+  function gate(fnName, inputId){
+    const orig = window[fnName]; if(typeof orig !== 'function') return;
+    window[fnName] = async function(){
+      const input = document.getElementById(inputId);
+      const files = input ? Array.from(input.files) : [];
+      if(!files.length) return orig.apply(this, arguments);
+      const rows = files.map(f => ({ f, v: validateName(f.name) }));
+      if(rows.every(r => r.v.ok)) return orig.apply(this, arguments);
+      const choice = await dialog(rows, STATE.myRole === 'admin' || STATE.myRole === 'manager' || isStaff());
+      if(choice === 'cancel') return;
+      if(choice === 'good'){
+        const dt = new DataTransfer(); rows.filter(r => r.v.ok).forEach(r => dt.items.add(r.f)); input.files = dt.files;
+      }
+      return orig.apply(this, arguments);
+    };
+  }
+  gate('uploadBulkDocuments', 'bulkdoc-files');
+  gate('uploadAllDocsSmart', 'alldocs-smart-files');
+
+  /* ---------------- revision display ---------------- */
+  /* (register and detail views read fmtRev; see the small edits in those templates) */
+
+  /* ---------------- Admin Console: choose the standard for a client ---------------- */
+  function standardCard(){
+    const cur = std(), co = (STATE.org && STATE.org.naming_company) || (STATE.org && STATE.org.ref_prefix) || '';
+    return `<div class="detail-card"><div class="panel-head"><h3>Document naming standard</h3><span style="font-size:12px;color:var(--text-faint)">Now: ${esc(STANDARDS[cur].label)}</span></div>
+      <p style="font-size:12.5px;color:var(--text-faint);margin-bottom:10px">Applying a standard sets up this client's departments and document types, controls how uploads are checked, and decides how documents are filed automatically. Existing documents keep their numbers and filing; unused departments of the other standard are retired.</p>
+      <div class="form-grid">
+        <div class="field span2"><label>Standard</label><select id="nm-pick" onchange="nmPreview()">
+          ${Object.keys(STANDARDS).map(k => `<option value="${k}" ${k === cur ? 'selected' : ''}>${esc(STANDARDS[k].label)}${k === 'current' ? ' (use for all new clients)' : ' (existing clients on the older format)'}</option>`).join('')}</select></div>
+        <div class="field"><label>Company ID</label><input id="nm-company" value="${esc(co)}" maxlength="8" style="text-transform:uppercase" oninput="nmPreview()"></div>
+      </div>
+      <div id="nm-prev" style="background:var(--grey-tint);border-radius:8px;padding:10px 14px;font-size:12.5px;line-height:1.6;margin:8px 0"></div>
+      <button class="btn-small primary" onclick="nmApply()">Apply to this client</button>
+      <button class="btn-small" onclick="nmShowLog()">View change log</button><div id="nm-log" style="margin-top:10px"></div></div>`;
+  }
+  window.nmPreview = function(){
+    const k = document.getElementById('nm-pick').value, c = (document.getElementById('nm-company').value || 'ABC').toUpperCase(), S = STANDARDS[k];
+    document.getElementById('nm-prev').innerHTML = `<b>${esc(S.pattern)}</b><br>Example: <b>${esc(S.example(c))} Corrective Action Procedure.docx</b><br>Revision: ${esc(S.rev)}.<br>${esc(S.detail)}`;
+  };
+  window.nmApply = async function(){
+    if(!isAdmin()){ toast('Only an administrator can change the naming standard.', 'error'); return; }
+    const k = document.getElementById('nm-pick').value, c = (document.getElementById('nm-company').value || '').trim().toUpperCase();
+    if(!/^[A-Z0-9]{2,8}$/.test(c)){ toast('Enter the Company ID (2 to 8 letters or digits).', 'error'); return; }
+    if(!confirm(`Apply the ${STANDARDS[k].label.toLowerCase()} to ${STATE.org.name}?`)) return;
+    showLoader('Applying the naming standard…');
+    try{
+      const { data, error } = await STATE.supabase.rpc('apply_naming_standard', { p_org: STATE.org.id, p_standard: k, p_company: c });
+      if(error){ toast('Could not apply: ' + error.message + (/apply_naming_standard/.test(error.message) ? ' (run the naming SQL first)' : ''), 'error'); return; }
+      STATE.org.naming_standard = k; STATE.org.naming_company = c;
+      await loadDocDepartments(); await loadDocTypes();
+      if(typeof autoFileUnassigned === 'function'){ try{ await autoFileUnassigned(); }catch(e){} }
+      toast(`${STANDARDS[k].label} applied. Added ${(data && data.departments_added) || 0} departments and ${(data && data.types_added) || 0} types.`, 'success');
+      renderAdminConsole();
+    } finally { hideLoader(); }
+  };
+  window.nmShowLog = async function(){
+    const box = document.getElementById('nm-log'); if(!box) return;
+    const { data, error } = await STATE.supabase.from('naming_convention_changes').select('*').eq('organisation_id', STATE.org.id).order('changed_at', { ascending:false }).limit(40);
+    if(error){ box.innerHTML = '<p style="font-size:12px;color:var(--red)">' + esc(error.message) + '</p>'; return; }
+    box.innerHTML = (data || []).length ? `<table><tr><th>When</th><th>Action</th><th>Entry</th><th>By</th></tr>${data.map(r => `<tr><td>${esc(fmtDate(r.changed_at))}</td><td>${esc(r.action)}</td><td>${esc(r.kind || '')}: ${esc(r.old_code || '')} ${r.old_code && r.new_code ? '&rarr;' : ''} ${esc(r.new_code || '')} ${esc(r.note || '')}</td><td>${esc(typeof memberName === 'function' ? memberName(r.changed_by) : '')}</td></tr>`).join('')}</table>` : '<p style="font-size:12px;color:var(--text-faint)">No changes recorded yet.</p>';
+  };
+  { const _r = renderAdminConsole;
+    renderAdminConsole = window.renderAdminConsole = function(){
+      _r.apply(this, arguments);
+      const wrap = document.getElementById('admin-subtab-content'); if(!wrap) return;
+      const first = Array.from(wrap.querySelectorAll('.detail-card')).find(c => /Modules and disciplines/.test(c.textContent));
+      const html = standardCard();
+      if(first) first.insertAdjacentHTML('beforebegin', html); else wrap.insertAdjacentHTML('beforeend', html);
+      nmPreview();
+    };
+  }
+
+  /* ---------------- Admin-only editing of the naming convention ---------------- */
+  const readOnlyCtx = () => !document.getElementById('admin-subtab-content');
+  function canEditNaming(){ return isAdmin() && !readOnlyCtx(); }
+  renderDocDepartmentsList = window.renderDocDepartmentsList = function(){
+    const wrap = document.getElementById('doc-departments-list'); if(!wrap) return;
+    const edit = canEditNaming();
+    wrap.innerHTML = STATE.docDepartments.length ? STATE.docDepartments.map(d => `
+      <div class="evidence-row" style="${!d.is_active ? 'opacity:.5;' : ''}">
+        <div style="flex:1;">
+          <div><b class="mono-cell">${esc(d.code)}</b>: <span id="dept-name-${d.id}">${esc(d.name)}</span>${d.is_standard ? ' <span class="mono" style="font-size:10px;color:var(--text-faint)">STANDARD</span>' : ''}${!d.is_active ? ' <span class="mono" style="color:var(--text-faint);font-size:10.5px">(inactive for this client)</span>' : ''}</div>
+          <div style="font-size:11px;color:var(--text-faint);margin-top:2px">Document Controller: ${d.controller_id ? esc(memberName(d.controller_id)) : 'Not appointed: review requests for this department have no one to route to yet.'}</div>
+        </div>
+        ${edit ? `<div class="ev-actions">
+          <select id="dept-controller-${d.id}" style="font-size:12px" onchange="saveDeptController('${d.id}')"><option value="">No controller</option>${STATE.members.map(m => `<option value="${m.user_id}" ${d.controller_id === m.user_id ? 'selected' : ''}>${esc((m.profiles && m.profiles.name) || 'Unknown')}</option>`).join('')}</select>
+          <button class="btn-small" onclick="toggleEditDept('${d.id}')">Edit</button>
+          <button class="btn-small" onclick="toggleDeptActive('${d.id}', ${!d.is_active})">${d.is_active ? 'Deactivate' : 'Activate'}</button></div>` : ''}
+      </div><div id="dept-edit-${d.id}"></div>`).join('') : '<p style="font-size:12px;color:var(--text-faint)">No departments yet.</p>';
+  };
+  renderDocTypesList = window.renderDocTypesList = function(){
+    const wrap = document.getElementById('doc-types-list'); if(!wrap) return;
+    const edit = canEditNaming();
+    wrap.innerHTML = STATE.docTypes.length ? STATE.docTypes.map(t => `
+      <div class="evidence-row" style="${!t.is_active ? 'opacity:.5;' : ''}">
+        <div style="flex:1"><b class="mono-cell">${esc(t.code)}</b>: <span id="type-name-${t.id}">${esc(t.name)}</span>${t.is_standard ? ' <span class="mono" style="font-size:10px;color:var(--text-faint)">STANDARD</span>' : ''}${!t.is_active ? ' <span class="mono" style="color:var(--text-faint);font-size:10.5px">(inactive for this client)</span>' : ''}</div>
+        ${edit ? `<div class="ev-actions"><button class="btn-small" onclick="toggleEditType('${t.id}')">Edit</button>
+          <button class="btn-small" onclick="toggleTypeActive('${t.id}', ${!t.is_active})">${t.is_active ? 'Deactivate' : 'Activate'}</button></div>` : ''}
+      </div><div id="type-edit-${t.id}"></div>`).join('') : '<p style="font-size:12px;color:var(--text-faint)">No document types yet.</p>';
+  };
+  async function editEntry(kind, id, code, name){
+    if(!isAdmin()){ toast('Only an administrator can amend the naming convention.', 'error'); return false; }
+    const { error } = await STATE.supabase.rpc('admin_edit_naming_entry', { p_kind: kind, p_id: id, p_code: code, p_name: name });
+    if(error){
+      toast('Could not save: ' + error.message + (/admin_edit_naming_entry/.test(error.message) ? ' (run the naming SQL first)' : ''), 'error');
+      return false;
+    }
+    return true;
+  }
+  saveDeptName = window.saveDeptName = async function(id){
+    const name = document.getElementById('dept-edit-input-' + id).value.trim(), code = document.getElementById('dept-edit-code-' + id).value.trim().toUpperCase();
+    if(!name || !code){ alert('Code and description cannot be empty.'); return; }
+    if(!(await editEntry('department', id, code, name))) return;
+    await loadDocDepartments(); renderDocDepartmentsList(); toast('Department updated and logged.', 'success');
+  };
+  saveTypeName = window.saveTypeName = async function(id){
+    const name = document.getElementById('type-edit-input-' + id).value.trim(), code = document.getElementById('type-edit-code-' + id).value.trim().toUpperCase();
+    if(!name || !code){ alert('Code and description cannot be empty.'); return; }
+    if(!(await editEntry('type', id, code, name))) return;
+    await loadDocTypes(); renderDocTypesList(); toast('Document type updated and logged.', 'success');
+  };
+  async function logAdd(kind, code, name){
+    try{ await STATE.supabase.from('naming_convention_changes').insert({ organisation_id: STATE.org.id, action:'add', kind, new_code: code, new_name: name, changed_by: STATE.user.id }); }catch(e){}
+  }
+  { const _ad = addDocDepartment;
+    addDocDepartment = window.addDocDepartment = async function(){
+      if(!isAdmin()){ toast('Only an administrator can add to the naming convention.', 'error'); return; }
+      const code = (document.getElementById('dept-new-code') || {}).value, name = (document.getElementById('dept-new-name') || {}).value;
+      await _ad.apply(this, arguments); if(code && name) logAdd('department', code.trim().toUpperCase(), name.trim());
+    }; }
+  { const _at = addDocType;
+    addDocType = window.addDocType = async function(){
+      if(!isAdmin()){ toast('Only an administrator can add to the naming convention.', 'error'); return; }
+      const code = (document.getElementById('type-new-code') || {}).value, name = (document.getElementById('type-new-name') || {}).value;
+      await _at.apply(this, arguments); if(code && name) logAdd('type', code.trim().toUpperCase(), name.trim());
+    }; }
+  ['saveDeptController', 'toggleDeptActive', 'toggleTypeActive', 'restoreStandardNaming', 'openNamingModeDialog', 'applyNamingMode'].forEach(fn => {
+    const o = window[fn]; if(typeof o !== 'function') return;
+    window[fn] = function(){ if(!isAdmin()){ toast('Only an administrator can change the naming convention.', 'error'); return; } return o.apply(this, arguments); };
+  });
+
+  /* Documents > Naming Convention Setup is now a locked, read-only reference */
+  renderDocSetupTab = window.renderDocSetupTab = function(){
+    const wrap = document.getElementById('doc-subtab-content'); if(!wrap) return;
+    const S = STANDARDS[std()];
+    wrap.innerHTML = `
+      <div class="detail-card">
+        <div class="panel-head"><h3>Document naming convention</h3><span class="mono" style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--grey-tint)">LOCKED</span></div>
+        <div style="background:var(--grey-tint);border-radius:8px;padding:12px 16px;margin-bottom:14px;font-size:12.5px;line-height:1.6">
+          <b>${esc(S.label)}:</b> ${esc(S.pattern)}.<br>Example: <b>${esc(S.example(company()))} Corrective Action Procedure.docx</b><br>Revision: ${esc(S.rev)}.<br>${esc(S.detail)}
+          <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn-small" onclick="printNamingGuide()">Print the naming convention guide</button>
+          ${isAdmin() ? '<button class="btn-small" onclick="showModule(\'administration\');setTimeout(()=>switchAdminSubtab(\'departments\'),0)">Amend or add (Administration)</button>' : ''}</div></div>
+        <p style="font-size:12px;color:var(--text-faint);margin-bottom:12px">The convention can only be amended or added to by an Administrator in Administration, Document Architecture. Every change is logged.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+          <div><div class="l" style="font-size:10px;color:var(--text-faint);text-transform:uppercase;margin-bottom:8px">${std() === 'historical' ? 'Business Elements' : 'Departments'}</div><div id="doc-departments-list"></div></div>
+          <div><div class="l" style="font-size:10px;color:var(--text-faint);text-transform:uppercase;margin-bottom:8px">Document Types</div><div id="doc-types-list"></div></div>
+        </div>
+      </div>
+      <div class="detail-card"><div class="panel-head"><h3>Form Identification Numbers</h3></div>
+        <p style="font-size:12px;color:var(--text-faint);margin-bottom:14px">Each built-in electronic form has its own controlled identity, separate from any individual record.</p><div id="form-ids-list"></div></div>`;
+    renderDocDepartmentsList(); renderDocTypesList(); renderFormIdsList();
+  };
+
+  /* Administration > Document Architecture: show the standard in force */
+  { const _ad = renderAdminDepartments;
+    renderAdminDepartments = window.renderAdminDepartments = function(){
+      _ad.apply(this, arguments);
+      const wrap = document.getElementById('admin-subtab-content'); if(!wrap) return;
+      const S = STANDARDS[std()];
+      wrap.insertAdjacentHTML('afterbegin', `<div class="detail-card"><div class="panel-head"><h3>Naming standard in force: ${esc(S.label)}</h3></div>
+        <p style="font-size:12.5px;line-height:1.6;margin:0">${esc(S.pattern)}. Example: <b>${esc(S.example(company()))} Corrective Action Procedure.docx</b>. Revision: ${esc(S.rev)}. Only an Administrator can amend these codes or add new ones, here. Amending a code affects documents created from now on; numbers already issued keep their code.</p></div>`);
+    }; }
+
+  /* guide */
+  printNamingGuide = window.printNamingGuide = function(){
+    const S = STANDARDS[std()], c = company();
+    const dep = STATE.docDepartments.filter(d => d.is_active), typ = STATE.docTypes.filter(t => t.is_active);
+    const rows = list => list.map(x => `<tr><td style="font-weight:700">${esc(x.code)}</td><td>${esc(x.name)}</td></tr>`).join('');
+    const w = window.open('', '_blank'); if(!w){ alert('Please allow pop-ups to print the guide.'); return; }
+    w.document.write(`<!doctype html><html><head><title>Document Naming Convention: ${esc(STATE.org.name)}</title>
+    <style>body{font-family:Arial,sans-serif;margin:32px;color:#111;font-size:12.5px}h1{font-size:20px}h2{font-size:15px;margin-top:22px}table{border-collapse:collapse;width:100%;margin-top:6px}td,th{border:1px solid #bbb;padding:5px 8px;text-align:left}.box{border:2px solid #111;padding:10px 14px;font-size:15px;font-weight:700;margin:10px 0}</style></head><body>
+    <h1>Document Naming Convention</h1><p>${esc(STATE.org.name)} · ${esc(S.label)}</p>
+    <h2>1. The rule</h2><p>Every controlled or uploaded document is identified and named as:</p><p class="box">${esc(S.pattern)}</p>
+    <p>Example: <b>${esc(S.example(c))} Corrective Action Procedure.docx</b>. One space separates the identifier from the title. ${esc(S.rev)}. Sequence numbers always have three digits and run from 001 within each ${std() === 'historical' ? 'Business Element' : 'Department'} and Document Type. Numbers are never reused.</p>
+    <h2>2. Why it matters</h2><p>Watchman files each uploaded document automatically from its name. A file that does not follow the rule is held back at upload and listed with the correction needed.</p>
+    <h2>3. ${std() === 'historical' ? 'Business Elements' : 'Departments'}</h2><table><tr><th>Code</th><th>Name</th></tr>${rows(dep)}</table>
+    <h2>4. Document types</h2><table><tr><th>Code</th><th>Type</th></tr>${rows(typ)}</table>
+    <h2>5. Do and do not</h2><ul><li>Do use capital letters for codes and a hyphen between the parts.</li><li>Do not use / \\ : * ? " &lt; &gt; | # % in file names, and keep names under 120 characters.</li><li>Do not write revisions as "Rev 1", "V1" or dates in the file name.</li><li>Only an Administrator may add or amend codes.</li></ul>
+    <script>window.onload=function(){window.print()}<\/script></body></html>`);
+    w.document.close();
+  };
+})();
+
+/* ---------------- module switches for every module ---------------- */
+(function(){
+  const esc = s => escapeHtml(s == null ? '' : String(s));
+  /* modules with no organisations column of their own: stored in org_modules, default ON */
+  const SW = [
+    ['tasks','Task Management','Actions and tasks, and the links from other modules.'],
+    ['audits','Audits','Annual plan, audit board, checklists and findings.'],
+    ['risks','Risk & Opportunity Register','ISO 31000 risks and opportunities, controls and objectives programmes.'],
+    ['suppliers','Supplier & Subcontractor Management','Supplier register, risk classification and evaluation.'],
+    ['customers','Customers','Customer register and satisfaction monitoring.'],
+    ['objectives','Objectives & Targets','SMART objectives per ISO 6.2.'],
+    ['legal','Legal Compliance','Legal register and compliance reviews.'],
+    ['personnel','Personnel & Competence','Personnel register, positions and the competence matrix. Organisation Charts and Appointments depend on it.'],
+    ['orgchart','Organisation Charts and Appointments','Charts, the Appointments Register and letters of appointment.'],
+    ['training','Training','Needs, planning, completion and certificates.'],
+    ['appraisals','KPIs & Appraisals','Position KPIs, self-assessment and manager review.'],
+    ['assets','Assets Management & Maintenance','Asset register, inspection checklists and certificates.'],
+    ['bulletins','Bulletins & Toolbox Talks','Bulletins and toolbox talks with acknowledgements.'],
+    ['five_s','5S Inspections','5S inspection programme.'],
+    ['management_review','Management Review','Management review minutes and actions.'],
+    ['business_health','Business Health Validation','Live health view across the management system. Overview and the Compliance Dashboard are always on.']
+  ];
+  const KEY = k => k + '_module_enabled';
+  const off = mod => !!(STATE.org && STATE.org['_modOff'] && STATE.org['_modOff'].has(mod));
+  async function loadMods(){
+    if(!STATE.org) return;
+    const set = new Set();
+    try{
+      const { data, error } = await STATE.supabase.from('org_modules').select('*').eq('organisation_id', STATE.org.id);
+      if(!error) (data || []).forEach(r => { if(r.enabled === false) set.add(r.module_key); });
+    }catch(e){}
+    STATE.org._modOff = set;
+    SW.forEach(([k]) => { STATE.org[KEY(k)] = !set.has(k); });
+    if(typeof applyModuleAccessToNav === 'function') applyModuleAccessToNav();
+  }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ await _lc.apply(this, arguments); await loadMods(); }; }
+  { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){ if(off(mod)) return false; return _c.apply(this, arguments); }; }
+  { const _h = orgHasModule; orgHasModule = window.orgHasModule = function(mod, org){ if(off(mod) && (!org || org === STATE.org)) return false; return _h.apply(this, arguments); }; }
+  { const _a = applyModuleAccessToNav; applyModuleAccessToNav = window.applyModuleAccessToNav = function(){
+      const r = _a.apply(this, arguments);
+      SW.forEach(([k]) => { const el = document.querySelector('.nav-item[data-mod="' + k + '"]'); if(el && off(k)) el.style.display = 'none'; });
+      const mr = document.querySelector('.nav-item[data-mod="master_register"]'); if(mr && STATE.org && STATE.org.document_control_enabled === false) mr.style.display = 'none';
+      return r; }; }
+  SW.forEach(([k, label, note]) => ADMIN_CONSOLE_TOGGLES.push({ field: KEY(k), label, note: note + ' Switching off hides it; nothing recorded is deleted.' }));
+  { const _t = toggleOrgModule;
+    toggleOrgModule = window.toggleOrgModule = async function(field, value){
+      const sw = SW.find(([k]) => KEY(k) === field);
+      if(!sw) return _t.apply(this, arguments);
+      const row = { organisation_id: STATE.org.id, module_key: sw[0], enabled: value, updated_at: new Date().toISOString() };
+      const { error } = await STATE.supabase.from('org_modules').upsert(row, { onConflict:'organisation_id,module_key' });
+      if(error){ toast('Could not update: ' + error.message + ' (has the naming and modules SQL been run?)', 'error'); return; }
+      toast('Saved: reloading to apply…', 'success');
+      await reloadOrgAfterAdminConsoleChange();
+    }; }
+  /* group them in the console */
+  { const _r = renderAdminConsole;
+    renderAdminConsole = window.renderAdminConsole = function(){
+      _r.apply(this, arguments);
+      /* the console groups known fields; move these into a group of their own */
+      const wrap = document.getElementById('admin-subtab-content'); if(!wrap) return;
+      const rows = Array.from(wrap.querySelectorAll('tr')).filter(tr => SW.some(([k]) => (tr.innerHTML || '').includes("'" + KEY(k) + "'")));
+      if(!rows.length) return;
+      const other = Array.from(wrap.querySelectorAll('th[colspan="3"]')).find(th => /^Other/.test(th.textContent.trim()));
+      if(other) other.textContent = 'Other modules (each can be switched off for clients it does not apply to)';
+    }; }
+  window.moduleSwitches = SW;
+})();
+
+/* ---------------- radar removed from the app landing and sign-in pages ---------------- */
+(function(){
+  const css = document.createElement('style');
+  css.textContent = `.ga-radarrow,.ga-radar,.ga-legend,.landing-legend,#view-landing .watch-wrap,.gate-card .gate-watch{display:none!important}
+    #view-landing .hero{grid-template-columns:1fr!important;text-align:left!important}
+    #view-landing .hero-left{grid-column:1!important;max-width:760px}
+    .ga-ticks{margin-top:8px!important}`;
+  document.head.appendChild(css);
+  const strip = () => document.querySelectorAll('.ga-radarrow,.ga-radar,.landing-legend,#view-landing .watch-wrap').forEach(e => e.remove());
+  strip();
+  const _sg = window.showGate;
+  if(typeof _sg === 'function'){ showGate = function(){ const r = _sg.apply(this, arguments); try{ strip(); }catch(e){} return r; }; window.showGate = showGate; }
 })();
 
 </script>
