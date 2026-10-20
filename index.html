@@ -36304,6 +36304,123 @@ function fmtRev(rev){
       }catch(e){}
       return r; }; }
 })();
+
+/* ===== b46: quick find and no scrolling, in every module =====
+   1. Every long register gets a search box and filter dropdowns (built from its own columns), unless the module already has its own search.
+   2. Opening a record from a list scrolls straight to its detail and edit panel, and closing it returns to the same place in the list. */
+(function(){
+  const css = document.createElement('style');
+  css.textContent = `
+  .detail-panel{scroll-margin-top:124px;}
+  .qs-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 14px;margin:0 0 10px;background:#fff;border:1px solid var(--border,#E3E1DF);border-radius:10px;font-family:Arial,Helvetica,sans-serif;}
+  .panel > .qs-bar,.panel .qs-bar{border:0;border-bottom:1px solid var(--border,#E3E1DF);border-radius:0;margin:0;}
+  .qs-bar input.qs-input{flex:1 1 240px;min-width:200px;max-width:420px;border:1px solid var(--border,#E3E1DF);border-radius:999px;padding:9px 14px 9px 36px;font-size:13px;font-family:Arial,Helvetica,sans-serif;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239C9895' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='21' y1='21' x2='16.5' y2='16.5'/%3E%3C/svg%3E") no-repeat 12px center/16px;}
+  .qs-bar input.qs-input:focus{outline:none;border-color:var(--red,#B21616);box-shadow:0 0 0 3px rgba(178,22,22,.12);}
+  .qs-bar select.qs-sel{border:1px solid var(--border,#E3E1DF);border-radius:8px;padding:8px 10px;font-size:12.5px;font-family:Arial,Helvetica,sans-serif;background:#fff;max-width:200px;}
+  .qs-bar .qs-count{font-size:12px;color:var(--text-faint,#9C9895);margin-left:auto;white-space:nowrap;}
+  .qs-bar button.qs-clear{border:1px solid var(--border,#E3E1DF);background:#fff;border-radius:8px;padding:7px 12px;font-size:12px;font-family:Arial,Helvetica,sans-serif;cursor:pointer;color:var(--text-dim,#615C59);display:none;}
+  .qs-bar button.qs-clear:hover{border-color:var(--red,#B21616);color:var(--red,#B21616);}
+  tr[data-qs-hide]{display:none!important;}
+  @media print{.qs-bar{display:none!important;} tr[data-qs-hide]{display:table-row!important;}}
+  `;
+  document.head.appendChild(css);
+
+  const MIN_ROWS = 6, MAX_OPTIONS = 15;
+  const FILTER_HEADS = /^(status|risk|type|category|department|dept|owner|severity|priority|level|source|standard|division|position|role|result|frequency|stage|rating|classification|method|kind|area|site|project|assigned|responsible|raised by|state|outcome|grade|class)\b/i;
+  const QS = {};                                   // per list: { q, f:{colIndex:value} }, cleared when the module changes
+  const norm = t => String(t || '').replace(/\s+/g, ' ').trim();
+  const cellVal = c => { if(!c) return ''; const b = c.querySelector('.pill,.date-badge,.sev-badge,.tag,.prog-b,.wd-pill'); return norm(b ? b.textContent : c.textContent).slice(0, 60); };
+  const dataRows = t => Array.from(t.rows).filter(r => r.querySelector('td') && !r.querySelector('th'));
+  const nativeSearch = root => !!root.querySelector('input[type="search"]:not(.qs-input), input[placeholder*="earch"]:not(.qs-input), input[placeholder*="ilter"]:not(.qs-input)');
+
+  function listTable(w){
+    const t = w.querySelector('table'); if(!t) return null;
+    if(t.closest('.detail-panel,.modal,.form-panel,#print-area,[id$="detail-slot"]')) return null;
+    return t;
+  }
+  function apply(w, t, bar){
+    const st = QS[w.id] || (QS[w.id] = { q:'', f:{} });
+    const toks = st.q.toLowerCase().split(/\s+/).filter(Boolean);
+    const rows = dataRows(t); let shown = 0;
+    rows.forEach(r => {
+      let ok = true;
+      if(toks.length){ const tx = r.textContent.toLowerCase(); ok = toks.every(k => tx.includes(k)); }
+      if(ok) for(const ci in st.f){ if(st.f[ci] && cellVal(r.cells[ci]).toLowerCase() !== st.f[ci].toLowerCase()){ ok = false; break; } }
+      if(ok){ r.removeAttribute('data-qs-hide'); shown++; } else r.setAttribute('data-qs-hide', '1');
+    });
+    const active = !!toks.length || Object.values(st.f).some(Boolean);
+    bar.querySelector('.qs-count').textContent = active ? (shown ? 'Showing ' + shown + ' of ' + rows.length : 'No records match: ' + rows.length + ' in total') : rows.length + ' records';
+    bar.querySelector('.qs-clear').style.display = active ? 'inline-block' : 'none';
+  }
+  function build(w, t){
+    const heads = Array.from((t.querySelector('tr') || {cells:[]}).cells).map(c => norm(c.textContent));
+    const rows = dataRows(t), cols = [];
+    heads.forEach((h, i) => {
+      if(!h || !FILTER_HEADS.test(h)) return;
+      const vals = new Map(); rows.forEach(r => { const v = cellVal(r.cells[i]); if(v && v !== '—' && v !== '-') vals.set(v.toLowerCase(), v); });
+      if(vals.size >= 2 && vals.size <= MAX_OPTIONS) cols.push({ i, h, vals: Array.from(vals.values()).sort((a, b) => a.localeCompare(b)) });
+    });
+    const sig = heads.join('|') + '#' + cols.map(c => c.i + ':' + c.vals.join(',')).join(';');
+    let bar = w.previousElementSibling && w.previousElementSibling.classList.contains('qs-bar') && w.previousElementSibling.dataset.for === w.id ? w.previousElementSibling : null;
+    const st = QS[w.id] || (QS[w.id] = { q:'', f:{} });
+    if(!bar || bar.dataset.sig !== sig){
+      if(!bar){ bar = document.createElement('div'); bar.className = 'qs-bar'; bar.dataset.for = w.id; w.parentNode.insertBefore(bar, w); }
+      bar.dataset.sig = sig;
+      bar.innerHTML = '<input class="qs-input" type="search" placeholder="Search this list: name, reference, status…" aria-label="Search this list" autocomplete="off">' +
+        cols.map(c => '<select class="qs-sel" data-col="' + c.i + '" aria-label="Filter by ' + c.h.replace(/"/g, '') + '"><option value="">All: ' + c.h.replace(/</g, '&lt;') + '</option>' + c.vals.map(v => '<option>' + v.replace(/</g, '&lt;') + '</option>').join('') + '</select>').join('') +
+        '<span class="qs-count"></span><button type="button" class="qs-clear">Clear</button>';
+      const inp = bar.querySelector('.qs-input'); inp.value = st.q;
+      bar.querySelectorAll('.qs-sel').forEach(s => { s.value = st.f[s.dataset.col] || ''; });
+      inp.addEventListener('input', () => { st.q = inp.value; apply(w, listTable(w) || t, bar); });
+      inp.addEventListener('keydown', e => { if(e.key === 'Escape'){ inp.value = ''; st.q = ''; apply(w, listTable(w) || t, bar); } });
+      bar.querySelectorAll('.qs-sel').forEach(s => s.addEventListener('change', () => { st.f[s.dataset.col] = s.value; apply(w, listTable(w) || t, bar); }));
+      bar.querySelector('.qs-clear').addEventListener('click', () => { st.q = ''; st.f = {}; inp.value = ''; bar.querySelectorAll('.qs-sel').forEach(s => { s.value = ''; }); apply(w, listTable(w) || t, bar); inp.focus(); });
+    }
+    apply(w, t, bar);
+  }
+  function scan(){
+    const root = document.getElementById('content-root'); if(!root) return;
+    const native = nativeSearch(root);
+    root.querySelectorAll('[id$="-table-wrap"],[id$="-list-wrap"]').forEach(w => {
+      const t = listTable(w), bar = w.previousElementSibling && w.previousElementSibling.classList.contains('qs-bar') ? w.previousElementSibling : null;
+      if(!t || dataRows(t).length < MIN_ROWS || native){ if(bar && (!t || native)) bar.remove(); return; }
+      build(w, t);
+    });
+  }
+  let timer = null; const later = () => { clearTimeout(timer); timer = setTimeout(() => { try{ scan(); }catch(e){ console.warn(e); } }, 120); };
+
+  /* ---- jump to the detail and edit panel, and back again ---- */
+  let pend = null;
+  document.addEventListener('click', e => {
+    const t = e.target.closest && e.target.closest('#content-root tr.clickable,#content-root .clickable,#content-root [onclick]');
+    if(t && !t.closest('.detail-panel,.modal,.form-panel')){
+      const oc = t.getAttribute('onclick') || '';
+      if(t.classList.contains('clickable') || /^(open|edit|view|select|show|manage|review)[A-Za-z]*\(/.test(oc)) pend = { t: Date.now(), y: window.scrollY };
+    }
+    const c = e.target.closest && e.target.closest('.detail-panel .close-btn');
+    if(c && window.__qsBack != null){ const y = window.__qsBack; window.__qsBack = null; setTimeout(() => window.scrollTo({ top:y, behavior:'smooth' }), 150); }
+  }, true);
+  function jump(muts){
+    if(!pend || Date.now() - pend.t > 8000) return;
+    for(const m of muts){
+      const slot = m.target.closest ? m.target.closest('[id$="detail-slot"]') : null;
+      const panel = slot && slot.querySelector('.detail-panel');
+      if(panel){
+        const y = pend.y; pend = null; window.__qsBack = y;
+        const r = panel.getBoundingClientRect();
+        if(r.top < 70 || r.top > window.innerHeight * 0.45) panel.scrollIntoView({ behavior:'smooth', block:'start' });
+        return;
+      }
+    }
+  }
+  const root = document.getElementById('content-root');
+  if(root){
+    new MutationObserver(muts => { later(); jump(muts); }).observe(root, { childList:true, subtree:true });
+  }
+  { const _sm = showModule;
+    showModule = window.showModule = function(){ Object.keys(QS).forEach(k => delete QS[k]); pend = null; window.__qsBack = null; const r = _sm.apply(this, arguments); later(); return r; }; }
+  window.quickFindScan = scan;
+})();
 </script>
 </body>
 </html>
