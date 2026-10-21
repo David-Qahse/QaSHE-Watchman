@@ -7726,13 +7726,10 @@ window.submitDocument = async function(mode){
     if(mode==='ai'){
       try {
         const type = STATE.docTypes.find(x=>x.id===typeId);
-        const prompt = dwBuildAiPrompt(title, purpose, type && type.name, tplSections, w.refText);
-        const { data: sd } = await STATE.supabase.auth.getSession();
-        const token = sd && sd.session && sd.session.access_token;
-        let parsed = await requestAiDraftSections(token, prompt);
-        if(!parsed || !parsed.sections || !parsed.sections.length) parsed = await requestAiDraftSections(token, prompt);
-        if(parsed && parsed.sections && parsed.sections.length) sections = parsed.sections.map(x => ({ title:x.title, content:x.content }));
-        else throw new Error('unreadable draft');
+        const r = await aiDraftSections({ title, purpose, typeName: type && type.name, refText: w.refText, tplSections,
+          onProgress:(n,t)=>{ const el=document.getElementById('global-loader-text'); if(el) el.textContent=`Generating draft with AI… ${n} of ${t} sections`; } });
+        sections = r.sections.map(x => ({ title:x.title, content:x.content }));
+        if(r.failed) toast(r.failed === r.sections.length ? 'The assistant could not be reached, so starter text was used. Reason: '+(r.firstError||'unknown') : `${r.failed} section(s) need your own text. Reason: ${r.firstError||'unknown'}`, 'error');
       } catch(e) {
         sections = tplSections.map(x => ({ title:x.heading, content:x.body_text||'' }));
         toast(sections.length ? 'The assistant could not produce a draft, so the template text was used instead.' : 'The assistant could not produce a draft. You can try again from the document.', 'error');
@@ -36421,6 +36418,305 @@ function fmtRev(rev){
     showModule = window.showModule = function(){ Object.keys(QS).forEach(k => delete QS[k]); pend = null; window.__qsBack = null; const r = _sm.apply(this, arguments); later(); return r; }; }
   window.quickFindScan = scan;
 })();
+/* ===== b47 part A: resilient AI drafting (section by section, real error reporting) ===== */
+(function(){
+  async function getToken(){
+    const { data } = await STATE.supabase.auth.getSession();
+    return data && data.session && data.session.access_token;
+  }
+  // One plain-text call. Throws an Error carrying the real reason.
+  async function aiCall(token, prompt, maxTokens){
+    let res;
+    try {
+      res = await fetch(`${SUPABASE_URL}/functions/v1/watchman-chat`, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${token}` },
+        body: JSON.stringify({ messages:[{ role:'user', content: prompt }], max_tokens: maxTokens || 1200 }),
+      });
+    } catch(e){ throw new Error('Could not reach the assistant (network): ' + (e.message||e)); }
+    let data = null, txt = '';
+    try { txt = await res.text(); data = txt ? JSON.parse(txt) : null; } catch(e){ data = null; }
+    if(!res.ok){
+      const why = (data && (data.error && (data.error.message || data.error) || data.message)) || txt.substring(0,160) || res.statusText;
+      throw new Error('The assistant returned ' + res.status + ': ' + why);
+    }
+    const reply = data && (data.reply || data.message || data.content);
+    const out = (typeof reply === 'string' ? reply : (reply && reply.text) || '').trim();
+    if(!out) throw new Error('The assistant returned an empty reply' + (data && data.error ? ': ' + (data.error.message||data.error) : '') + '.');
+    return out;
+  }
+  window.__aiCall = aiCall;
+
+  // Harden the shared JSON helper (used by the other AI features).
+  requestAiDraftSections = window.requestAiDraftSections = async function(token, instructionPrompt){
+    const raw = await aiCall(token, instructionPrompt, 4096);
+    return parseAiDraftJson(raw);
+  };
+
+  const DEFAULT_OUTLINE = ['Purpose','Scope','Definitions','Responsibilities','Procedure','Records','References','Review and Revision'];
+
+  function parseOutline(txt){
+    const lines = txt.split(/\r?\n/).map(l => l.replace(/^[\s\-\*•#>\d\.\)\:]+/,'').replace(/[\*_`"]+/g,'').trim())
+      .filter(l => l && l.length <= 80 && !/^(here|sure|below|the following)/i.test(l));
+    const seen = new Set(), out = [];
+    lines.forEach(l => { const k = l.toLowerCase(); if(!seen.has(k)){ seen.add(k); out.push(l); } });
+    return out.slice(0, 12);
+  }
+  function cleanSection(txt){
+    return txt.replace(/^```[a-z]*\n?|```$/gm,'').replace(/^\s*#{1,4}\s+.*\n/,'').replace(/\*\*(.+?)\*\*/g,'$1').trim();
+  }
+
+  // Returns { sections:[{title,content,source:'ai'|'starter'}], failed:n, firstError }
+  window.aiDraftSections = async function(opt){
+    const token = await getToken();
+    const org = (STATE.org && STATE.org.name) || 'the organisation';
+    const ctx = `Organisation: ${org}. Document: "${opt.title}" (${opt.typeName || 'business document'}). Subject: ${opt.purpose || opt.title}.` +
+      (opt.refText ? `\nThe organisation's own existing document, for terminology and roles (do not copy verbatim):\n"""${opt.refText.substring(0,5000)}"""` : '');
+    const tpl = (opt.tplSections || []).filter(x => x && (x.heading || x.title));
+    let titles = tpl.map(x => x.heading || x.title);
+    let firstError = null;
+
+    if(!titles.length){
+      try {
+        const txt = await aiCall(token, `${ctx}\n\nList the section headings for this ISO-aligned document, one per line, 6 to 10 headings, nothing else (no numbering, no commentary). Typical headings: Purpose, Scope, Definitions, Responsibilities, Procedure or Requirements, Records, References. Adapt to what fits.`, 300);
+        titles = parseOutline(txt);
+      } catch(e){ firstError = e.message; }
+      if(titles.length < 3) titles = DEFAULT_OUTLINE.slice();
+    }
+
+    const results = new Array(titles.length);
+    let failed = 0, done = 0;
+    async function one(i){
+      const t = titles[i];
+      const base = tpl.find(x => (x.heading||x.title) === t);
+      const guide = base && (base.body_text || base.content) ? `\nStandard template text to adapt (keep its compliance intent):\n"""${String(base.body_text||base.content).substring(0,1500)}"""` : '';
+      const prompt = `${ctx}\n\nWrite ONLY the content of the section "${t}" of this document, as a formal, practical, audit-ready ISO-aligned section. Plain text only: no heading, no markdown symbols, no preamble. Use short paragraphs, and numbered points (1., 2., 3.) where steps or requirements are listed. Refer to roles, not named people.${guide}`;
+      let lastErr = null;
+      const dead = failed >= 3 && done === failed; // the assistant is down: stop hammering it
+      for(let attempt=0; attempt<(dead?0:2); attempt++){
+        try {
+          const c = cleanSection(await aiCall(token, prompt, 1200));
+          if(c.length > 20){ results[i] = { title:t, content:c, source:'ai' }; break; }
+          lastErr = new Error('Reply too short');
+        } catch(e){ lastErr = e; }
+      }
+      if(!results[i]){
+        failed++; if(!firstError) firstError = (lastErr && lastErr.message) || 'The assistant is not responding.';
+        results[i] = { title:t, content: (base && (base.body_text||base.content)) || `[Starter: complete the "${t}" section for ${opt.title}. Describe it here.]`, source:'starter' };
+      }
+      done++; if(opt.onProgress) opt.onProgress(done, titles.length);
+    }
+    const queue = titles.map((_,i)=>i);
+    const workers = Array.from({length: 3}, async () => { while(queue.length){ await one(queue.shift()); } });
+    await Promise.all(workers);
+    return { sections: results, failed, firstError };
+  };
+
+  // Document detail "Generate draft sections" button.
+  window.generateAiDraft = async function(docId){
+    const d = documentById(docId);
+    const type = STATE.docTypes.find(x=>x.id===d.type_id);
+    const userPrompt = document.getElementById('ai-draft-prompt').value.trim();
+    if(!userPrompt){ alert('Describe what this document is about first.'); return; }
+    const btn = document.getElementById('ai-draft-btn');
+    btn.disabled = true; btn.textContent = 'Generating…';
+    showLoader('Generating draft with AI…');
+    try {
+      const { data: refs } = await STATE.supabase.from('document_reference_uploads').select('extracted_text').eq('document_id', docId).not('extracted_text','is',null);
+      const refText = (refs||[]).map(u=>u.extracted_text).join('\n\n---\n\n').substring(0,8000);
+      const r = await aiDraftSections({ title:d.title, purpose:userPrompt, typeName:type&&type.name, refText,
+        onProgress:(n,t)=>{ const el=document.getElementById('global-loader-text'); if(el) el.textContent=`Generating draft with AI… ${n} of ${t} sections`; } });
+      const { data: existing } = await STATE.supabase.from('document_content_sections').select('id').eq('document_id', docId);
+      let nextSort = ((existing||[]).length) * 10;
+      const rows = r.sections.map(s => ({ organisation_id:STATE.org.id, document_id:docId, section_title:s.title, content:s.content, sort_order:(nextSort += 10) }));
+      const { error } = await STATE.supabase.from('document_content_sections').insert(rows);
+      if(error) throw new Error(error.message);
+      openDocumentDetail(docId);
+      if(r.failed === r.sections.length) toast('The assistant could not be reached, so starter headings were added. Reason: ' + (r.firstError||'unknown'), 'error');
+      else if(r.failed) toast(`Draft generated. ${r.failed} section(s) need your own text (starter prompts were added). Reason: ${r.firstError||'unknown'}`, 'error');
+      else toast('Draft generated: review and edit before signing off.', 'success');
+    } catch(e){
+      toast('Could not generate a draft: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Generate draft sections';
+      hideLoader();
+    }
+  };
+})();
+
+/* ===== b47 part B: Template list export (Excel) ===== */
+(function(){
+  window.tlDownloadList = async function(){
+    try {
+      showLoader('Preparing template list…');
+      const XLSX = await ensureXLSX();
+      const a = tlAudit();
+      const KL = { letter:'Letters of Appointment', policy:'Policy', procedure:'Procedure', form:'Form', register:'Register', checklist:'Checklist', flowchart:'Process Flowchart' };
+      const cat = a.cat.map(x => [KL[x.c.kind] || x.c.kind, x.c.title, (x.c.refs||[]).join('; '), x.c.desc || '', x.have ? 'In library' : 'Missing']);
+      const lib = (STATE.contentTemplates||[]).map(t => [t.type, t.module_key || '', t.title, t.description || '', (t.standard_refs||[]).join('; ')])
+        .sort((p,q) => (p[0]+p[1]+p[2]).localeCompare(q[0]+q[1]+q[2]));
+      const miss = cat.filter(r => r[4] === 'Missing');
+      const wb = XLSX.utils.book_new();
+      const add = (name, head, rows, w) => { const ws = XLSX.utils.aoa_to_sheet([head, ...rows]); ws['!cols'] = w.map(n => ({ wch:n })); XLSX.utils.book_append_sheet(wb, ws, name); };
+      add('Catalogue status', ['Kind','Title','Standard or legal reference','Description','Status'], cat, [22,52,38,70,12]);
+      add('Library', ['Type','Module','Title','Description','Standard or legal reference'], lib, [18,20,52,70,38]);
+      add('Missing', ['Kind','Title','Standard or legal reference','Description','Status'], miss, [22,52,38,70,12]);
+      add('Your requests', ['Module','Kind (policy, procedure, form, register, checklist, flowchart)','Title wanted','Standard or legal reference','Priority (High, Medium, Low)','Notes'], [], [20,40,50,34,24,50]);
+      XLSX.writeFile(wb, 'QaSHE-Watchman-template-list.xlsx');
+      toast(`Template list downloaded: ${cat.length} catalogue items, ${lib.length} in the library, ${miss.length} missing.`, 'success');
+    } catch(e){ toast('Could not build the template list: ' + e.message, 'error'); }
+    finally { hideLoader(); }
+  };
+  const _r = renderTemplateLibrary;
+  renderTemplateLibrary = window.renderTemplateLibrary = function(){
+    _r.apply(this, arguments);
+    try {
+      const h = document.querySelector('#admin-subtab-content .detail-card .panel-head');
+      if(h && !h.querySelector('.tl-xl')) h.insertAdjacentHTML('beforeend', '<button class="btn-small tl-xl" onclick="tlDownloadList()">Download template list (Excel)</button>');
+    } catch(e){}
+  };
+})();
+
+/* ===== b47 part C: delete (void) any record, number kept as Deleted with a reason ===== */
+(function(){
+  const CFG = [
+    { t:'documents', loader:'loadDocuments', key:'documents', wrap:'doc-table-wrap', open:'openDocumentDetail', label:'Documents' },
+    { t:'nonconformances', loader:'loadNCs', key:'ncs', wrap:'nc-table-wrap', open:'openNCDetail', label:'Nonconformances' },
+    { t:'raga_alerts', loader:'loadRagaAlerts', key:'ragaAlerts', wrap:'raga-table-wrap', open:'openRagaDetail', label:'RAGA alerts' },
+    { t:'risk_register', loader:'loadRisks', key:'risks', wrap:'risk-table-wrap', open:'openRiskDetail', label:'Risk register entries' },
+    { t:'audits', loader:'loadAudits', key:'audits', wrap:'audit-list-wrap', open:'openAuditDetail', label:'Audits' },
+    { t:'tasks', loader:'loadTasks', key:'tasks', wrap:'task-table-wrap', open:'openTaskDetail', label:'Tasks' },
+    { t:'assets', loader:'loadAssets', key:'assets', wrap:'asset-table-wrap', open:'openAssetDetail', label:'Assets' },
+    { t:'suppliers', loader:'loadSuppliers', key:'suppliers', wrap:'sup-table-wrap', open:'openSupplierDetail', label:'Suppliers' },
+    { t:'customers', loader:'loadCustomers', key:'customers', wrap:'cust-table-wrap', open:'openCustomerDetail', label:'Customers' },
+    { t:'objectives', loader:'loadObjectives', key:'objectives', wrap:'obj-table-wrap', open:'openObjectiveDetail', label:'Objectives' },
+    { t:'legal_register', loader:'loadLegalRegister', key:'legalRegister', wrap:'legal-table-wrap', open:'openLegalDetail', label:'Legal register entries' },
+    { t:'management_reviews', loader:'loadManagementReviews', key:'managementReviews', wrap:'mr-table-wrap', open:'openMRDetail', label:'Management reviews' },
+    { t:'five_s_inspections', loader:'loadFiveSInspections', key:'fiveSInspections', wrap:'fives-table-wrap', open:'openFiveSDetail', label:'5S inspections' },
+  ];
+  STATE._voided = STATE._voided || {};
+  const num = r => r.doc_number || r.ref_code || r.audit_ref || r.ref || (r.id||'').slice(0,8);
+  const ttl = r => r.title || r.description || r.specific_statement || r.name || r.supplier_name || r.customer_name || r.requirement || '';
+  const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const isAdm = () => STATE.myRole === 'admin' || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const cfgOf = t => CFG.find(c => c.t === t);
+
+  // Split voided rows out of every list the app uses.
+  CFG.forEach(c => {
+    const o = window[c.loader]; if(typeof o !== 'function') return;
+    window[c.loader] = async function(){
+      const r = await o.apply(this, arguments);
+      try {
+        const rows = STATE[c.key];
+        if(Array.isArray(rows)){
+          STATE._voided[c.t] = rows.filter(x => x && x.voided_at);
+          STATE[c.key] = rows.filter(x => x && !x.voided_at);
+          refreshBar(c);
+        }
+      } catch(e){}
+      return r;
+    };
+  });
+  // Reassign the bare names too, so internal calls use the wrapped versions.
+  try { loadDocuments = window.loadDocuments; loadNCs = window.loadNCs; loadRagaAlerts = window.loadRagaAlerts; loadRisks = window.loadRisks;
+    loadAudits = window.loadAudits; loadTasks = window.loadTasks; loadAssets = window.loadAssets; loadSuppliers = window.loadSuppliers;
+    loadCustomers = window.loadCustomers; loadObjectives = window.loadObjectives; loadLegalRegister = window.loadLegalRegister;
+    loadManagementReviews = window.loadManagementReviews; loadFiveSInspections = window.loadFiveSInspections; } catch(e){}
+
+  function canVoid(c, rec){
+    if(!rec || rec.voided_at) return false;
+    if(c.t === 'documents'){
+      if(rec.ever_approved || rec.workflow_status === 'approved' || rec.approval_status === 'approved') return false;
+      return isAdm() || rec.created_by === (STATE.user && STATE.user.id);
+    }
+    return isAdm();
+  }
+
+  // Delete button inside an opened detail panel.
+  CFG.forEach(c => {
+    const o = window[c.open]; if(typeof o !== 'function') return;
+    window[c.open] = async function(id){
+      const r = await o.apply(this, arguments);
+      try {
+        const rec = (STATE[c.key]||[]).find(x => x.id === id);
+        if(canVoid(c, rec)){
+          const close = document.querySelector('.detail-panel .detail-head .close-btn');
+          if(close && !close.parentNode.querySelector('.void-btn')){
+            const b = document.createElement('button');
+            b.className = 'btn-small void-btn'; b.style.cssText = 'color:#9B2C2C;border-color:#D9A3A3';
+            b.title = c.t === 'documents' ? 'Delete this draft. Its number stays in the register as Deleted.' : 'Delete this record. Its number stays as Deleted, with your reason.';
+            b.textContent = c.t === 'documents' ? 'Delete draft' : 'Delete record';
+            b.onclick = () => voidDialog(c.t, id);
+            close.parentNode.insertBefore(b, close);
+          }
+        }
+      } catch(e){ console.warn('void button', e); }
+      return r;
+    };
+  });
+
+  function modal(html){
+    document.getElementById('void-modal')?.remove();
+    document.body.insertAdjacentHTML('beforeend', `<div id="void-modal" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px"><div style="background:var(--bg-card,#fff);max-width:720px;width:100%;max-height:88vh;overflow:auto;border-radius:12px;padding:20px;font-family:Arial,sans-serif">${html}</div></div>`);
+  }
+  window.voidClose = () => document.getElementById('void-modal')?.remove();
+
+  window.voidDialog = function(t, id){
+    const c = cfgOf(t), rec = (STATE[c.key]||[]).find(x => x.id === id); if(!rec) return;
+    modal(`<h3 style="margin:0 0 6px">Delete ${esc(num(rec))}?</h3>
+      <p style="font-size:13px;margin:0 0 10px">${esc(ttl(rec))}</p>
+      <p style="font-size:12.5px;color:var(--text-faint);margin:0 0 12px">The record is removed from the working lists. Its number <b>${esc(num(rec))}</b> stays in the sequence and is shown as <b>Deleted</b> with your reason, who deleted it and when. The number is never reused.</p>
+      <div class="field"><label>Standard reason</label><select id="void-std"><option>Created in error</option><option>Duplicate record</option><option>Wrong approach, starting again</option><option>Test or practice record</option><option>No longer required before approval</option><option>Other</option></select></div>
+      <div class="field"><label>Explain why (required, at least 10 characters)</label><textarea id="void-txt" rows="3" style="width:100%"></textarea></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button class="btn-small" onclick="voidClose()">Cancel</button><button class="btn-small primary" style="background:#9B2C2C;border-color:#9B2C2C" onclick="voidConfirm('${t}','${id}')">Delete and keep the number</button></div>`);
+  };
+  window.voidConfirm = async function(t, id){
+    const c = cfgOf(t), std = document.getElementById('void-std').value, txt = document.getElementById('void-txt').value.trim();
+    if(txt.length < 10){ toast('Please explain why, in at least 10 characters.', 'error'); return; }
+    showLoader('Deleting…');
+    const { error } = await STATE.supabase.rpc('void_record', { p_table:t, p_id:id, p_reason: std + ': ' + txt });
+    if(error){ hideLoader(); toast('Could not delete: ' + error.message, 'error'); return; }
+    voidClose();
+    try { await window[c.loader](); } catch(e){}
+    hideLoader();
+    document.querySelectorAll('.detail-panel').forEach(p => { const s = p.parentNode; if(s && /detail-slot$/.test(s.id||'')) s.innerHTML = ''; else p.remove(); });
+    try { showModule(STATE.currentModule); } catch(e){}
+    toast('Deleted. The number stays in the register as Deleted.', 'success');
+  };
+
+  window.voidList = function(t){
+    const c = cfgOf(t), rows = (STATE._voided[t]||[]).slice().sort((a,b) => String(num(a)).localeCompare(String(num(b)), undefined, {numeric:true}));
+    modal(`<div style="display:flex;justify-content:space-between;align-items:center"><h3 style="margin:0">Deleted numbers: ${esc(c.label)}</h3><button class="btn-small" onclick="voidClose()">Close</button></div>
+      <p style="font-size:12.5px;color:var(--text-faint)">These numbers are retained so the sequence stays complete and auditable.</p>
+      <table style="width:100%;font-size:12.5px"><tr><th>Number</th><th>Title</th><th>Deleted</th><th>By</th><th>Reason</th>${isAdm() ? '<th></th>' : ''}</tr>
+      ${rows.map(r => `<tr><td class="mono-cell">${esc(num(r))}</td><td>${esc(ttl(r))}</td><td>${esc(fmtDate(r.voided_at))}</td><td>${esc(typeof memberName==='function' ? memberName(r.voided_by) : '')}</td><td>${esc(r.void_reason)}</td>${isAdm() ? `<td><button class="btn-small" onclick="voidRestore('${t}','${r.id}')">Restore</button></td>` : ''}</tr>`).join('')}</table>`);
+  };
+  window.voidRestore = async function(t, id){
+    if(!confirm('Restore this record to the working list?')) return;
+    const c = cfgOf(t);
+    const { error } = await STATE.supabase.rpc('restore_voided_record', { p_table:t, p_id:id });
+    if(error){ toast('Could not restore: ' + error.message, 'error'); return; }
+    await window[c.loader](); voidClose();
+    try { showModule(STATE.currentModule); } catch(e){}
+    toast('Record restored.', 'success');
+  };
+
+  function refreshBar(c){
+    const wrap = document.getElementById(c.wrap); if(!wrap) return;
+    let bar = document.getElementById('void-bar-' + c.t);
+    const n = (STATE._voided[c.t]||[]).length;
+    if(!n){ bar && bar.remove(); return; }
+    if(!bar){ bar = document.createElement('div'); bar.id = 'void-bar-' + c.t; bar.style.cssText = 'margin:0 0 8px;text-align:right'; wrap.parentNode.insertBefore(bar, wrap); }
+    bar.innerHTML = `<button class="btn-small" onclick="voidList('${c.t}')">Deleted numbers (${n})</button>`;
+  }
+  const _sm = showModule;
+  showModule = window.showModule = function(mod){
+    const r = _sm.apply(this, arguments);
+    setTimeout(() => CFG.forEach(refreshBar), 60);
+    return r;
+  };
+})();
+
 </script>
 </body>
 </html>
