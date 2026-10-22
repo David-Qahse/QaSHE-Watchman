@@ -2284,6 +2284,7 @@ async function loadPopupSettings(){
     if(!error && data) STATE.popupSettings = { bulletin_popup_mode: data.bulletin_popup_mode || 'latest', reminder_popup_enabled: data.reminder_popup_enabled !== false };
   } catch(e){ /* table not created yet: defaults apply */ }
 }
+function headsUpEnabled(){ return !(STATE.popupSettings && STATE.popupSettings.headsup_enabled === false); }
 function popupIsAdmin(){ return STATE.myRole === 'admin' || (STATE.profile && STATE.profile.is_platform_staff); }
 window.savePopupSettings = async function(){
   const mode = document.getElementById('popup-bul-mode').value;
@@ -27531,7 +27532,7 @@ const roChipDoc = d => `<span class="ro-chip doc" title="${ROH(d.title)}" onclic
     _sm(mod);
     STATE._roMod = mod;
     try{
-      if((mod==='risks' || mod==='objectives') && prev !== mod && MODULE_META[mod] && document.getElementById('mod-title').textContent === MODULE_META[mod].title){
+      if((mod==='risks' || mod==='objectives') && headsUpEnabled() && prev !== mod && MODULE_META[mod] && document.getElementById('mod-title').textContent === MODULE_META[mod].title){
         const rem = document.getElementById('reminder-overlay');
         if(rem && rem.classList.contains('active')) return;
         setTimeout(() => { mod==='risks' ? showRiskInfographic() : showObjectivesInfographic(); }, 150);
@@ -28727,7 +28728,7 @@ for(const [mod, fn] of [['risks','showRiskInfographic'], ['objectives','showObje
     _sm2(mod);
     STATE._huMod = mod;
     try{
-      if(HEADSUP[mod] && prev !== mod && MODULE_META[mod] && document.getElementById('mod-title').textContent === MODULE_META[mod].title && !huSkippedToday(mod)){
+      if(HEADSUP[mod] && headsUpEnabled() && prev !== mod && MODULE_META[mod] && document.getElementById('mod-title').textContent === MODULE_META[mod].title && !huSkippedToday(mod)){
         const rem = document.getElementById('reminder-overlay');
         if(rem && rem.classList.contains('active')) return;
         setTimeout(() => showHeadsUp(mod), 200);
@@ -36733,7 +36734,7 @@ function fmtRev(rev){
 
   function place(){
     const fab = document.getElementById('watchman-chat-fab'), brand = document.querySelector('.sidebar .sb-brand');
-    if(fab && brand && fab.parentNode !== brand){ brand.appendChild(fab); fab.title = 'Ask Me for Help'; }
+    if(fab && brand && !brand.contains(fab)){ brand.appendChild(fab); fab.title = 'Ask Me for Help'; }
   }
   place();
   const _a = window.wmApplyHelper;
@@ -37361,6 +37362,326 @@ function fmtRev(rev){
   };
 })();
 
+
+/* ===== b51: module heads-up pop-ups get their own admin switch; the Helper is labelled "Ask me for Help" ===== */
+(function(){
+  const _lps = loadPopupSettings;
+  loadPopupSettings = window.loadPopupSettings = async function(){
+    const r = await _lps.apply(this, arguments);
+    STATE.popupSettings = STATE.popupSettings || {}; STATE.popupSettings.headsup_enabled = true;
+    try{
+      const q = await STATE.supabase.from('org_popup_settings').select('headsup_enabled').eq('organisation_id', STATE.org.id).maybeSingle();
+      if(q && !q.error && q.data) STATE.popupSettings.headsup_enabled = q.data.headsup_enabled !== false;
+    }catch(e){}
+    return r;
+  };
+  const _sps = window.savePopupSettings;
+  window.savePopupSettings = async function(){
+    const keep = STATE.popupSettings && STATE.popupSettings.headsup_enabled;
+    const r = await _sps.apply(this, arguments);
+    if(STATE.popupSettings) STATE.popupSettings.headsup_enabled = keep !== false;
+    return r;
+  };
+  window.saveHeadsUpSetting = async function(on){
+    if(!popupIsAdmin()) return;
+    const { error } = await STATE.supabase.from('org_popup_settings').upsert({ organisation_id: STATE.org.id, headsup_enabled: !!on, updated_at: new Date().toISOString(), updated_by: STATE.user.id });
+    if(error){ toast('Could not save: ' + error.message + ' (has the heads-up SQL file been run?)', 'error'); const s = document.getElementById('popup-hu-on'); if(s) s.value = headsUpEnabled() ? '1' : '0'; return; }
+    STATE.popupSettings.headsup_enabled = !!on;
+    toast(on ? 'Module heads-up pop-ups are ON.' : 'Module heads-up pop-ups are OFF. Users can still open the Compliance Dashboard.', 'success');
+  };
+
+
+  // Administration module: the switch lives here
+  function huAdminPanel(){
+    if(typeof popupIsAdmin !== 'function' || !popupIsAdmin()) return '';
+    const on = headsUpEnabled();
+    return `<div class="panel" style="padding:14px 18px;margin-bottom:14px;">
+      <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;">
+        <div style="font-size:12.5px;font-weight:700;min-width:190px;">Module heads-up pop-ups<br><span style="font-weight:400;color:var(--text-faint);font-size:11px;">Admin only</span></div>
+        <div class="field" style="min-width:260px;margin:0;"><select id="popup-hu-on" onchange="saveHeadsUpSetting(this.value==='1')">
+          <option value="1" ${on?'selected':''}>On: show a heads-up when a module is opened</option><option value="0" ${on?'':'selected'}>Off: users refer to the Compliance Dashboard</option></select></div>
+        <div style="font-size:11.5px;color:var(--text-faint);flex:1;min-width:240px;">Separate from the bulletin pop-up and the reminders pop-up, which are not affected. The Risk and Objectives dashboards remain available from their own buttons.</div>
+      </div></div>`;
+  }
+  const _rad = RENDERERS.administration;
+  if(typeof _rad === 'function') RENDERERS.administration = function(){ return huAdminPanel() + _rad.apply(this, arguments); };
+
+  // Helper: plain-text label under the button
+  const css = document.createElement('style'); css.id = 'b51-css'; css.textContent = `
+  .sb-brand .wm-helper-wrap{margin-left:auto; display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; flex:0 0 auto}
+  .sb-brand .wm-helper-cap{font-family:Arial,Helvetica,sans-serif; font-size:10.5px; font-weight:700; line-height:1.15; color:var(--red); text-align:center; white-space:nowrap; letter-spacing:.2px}
+  .sb-brand{gap:8px !important}
+  .sb-brand .ring-mark,.sb-brand svg.ring-mark{flex:0 0 32px; width:32px; height:32px}
+  .sb-brand > span{flex:1 1 auto; min-width:0; font-size:16.5px !important}
+  .sb-brand .wm-helper-wrap:hover .wm-helper-cap{text-decoration:underline}
+  .sb-brand .wm-helper-wrap .watchman-chat-fab{margin-left:0 !important}`;
+  document.head.appendChild(css);
+  function wrap(){
+    const fab = document.getElementById('watchman-chat-fab'), brand = document.querySelector('.sidebar .sb-brand');
+    if(!fab || !brand) return;
+    let w = brand.querySelector('.wm-helper-wrap');
+    if(!w){
+      w = document.createElement('div'); w.className = 'wm-helper-wrap';
+      const cap = document.createElement('div'); cap.className = 'wm-helper-cap'; cap.textContent = 'Ask me for Help';
+      w.onclick = function(e){ if(e.target !== fab && !fab.contains(e.target)) fab.click(); };
+      w.appendChild(cap); brand.appendChild(w);
+    }
+    if(fab.parentNode !== w) w.insertBefore(fab, w.firstChild);
+  }
+  wrap(); setTimeout(wrap, 600); setTimeout(wrap, 2200);
+  new MutationObserver(wrap).observe(document.body, { childList:true, subtree:true });
+})();
+
+/* ===== b52: copyable error messages, supplier documents (many files, description and expiry each, task when expiry is near) ===== */
+(function(){
+  const E = s => (typeof escapeHtml === 'function' ? escapeHtml(s) : String(s == null ? '' : s));
+
+  /* ---- 1. error messages can be selected and copied, and stay until closed ---- */
+  const css = document.createElement('style'); css.id = 'b52-css'; css.textContent = `
+  .toast.err-keep{user-select:text !important; -webkit-user-select:text !important; cursor:text !important; align-items:flex-start !important; flex-wrap:wrap}
+  .toast.err-keep .tm{flex:1 1 220px; min-width:0; white-space:pre-wrap; word-break:break-word; user-select:text}
+  .toast.err-keep .tb{display:flex; gap:8px; width:100%; justify-content:flex-end; margin-top:2px}
+  .toast.err-keep .tb button{font:700 12px Arial,Helvetica,sans-serif; border:1px solid rgba(255,255,255,.55); background:rgba(255,255,255,.14); color:#fff; border-radius:8px; padding:6px 12px; cursor:pointer}
+  .toast.err-keep .tb button:hover{background:rgba(255,255,255,.28)}
+  .sd-wrap .sd-row td{vertical-align:top}
+  .sd-drop{border:2px dashed var(--border); border-radius:12px; padding:14px; background:var(--grey-tint,#f7f6f5)}
+  .sd-files{margin-top:10px; display:grid; gap:8px}
+  .sd-file{display:grid; grid-template-columns:minmax(150px,1.1fr) minmax(170px,1.4fr) 150px 140px 110px 30px; gap:8px; align-items:end; background:#fff; border:1px solid var(--border-soft,#e6e3df); border-radius:10px; padding:10px}
+  .sd-file label{display:block; font-size:10px; font-weight:700; text-transform:uppercase; color:var(--text-faint); margin-bottom:3px}
+  .sd-file input,.sd-file select{width:100%; box-sizing:border-box}
+  .sd-file .nm{font-size:12.5px; font-weight:700; word-break:break-all}
+  .sd-file .sz{font-size:11px; color:var(--text-faint)}
+  @media (max-width:900px){.sd-file{grid-template-columns:1fr 1fr}}
+  .sd-report{margin-top:10px; background:#fff; border:2px solid #D50000; border-radius:10px; padding:10px 12px}
+  .sd-report pre{margin:6px 0; white-space:pre-wrap; word-break:break-word; font:12px/1.45 Consolas,monospace; user-select:text; max-height:240px; overflow:auto}`;
+  document.head.appendChild(css);
+
+  window.__errorLog = window.__errorLog || [];
+  window.copyText = async function(text){
+    try{ await navigator.clipboard.writeText(text); return true; }catch(e){}
+    try{ const t = document.createElement('textarea'); t.value = text; t.style.position = 'fixed'; t.style.opacity = '0'; document.body.appendChild(t); t.select(); const ok = document.execCommand('copy'); t.remove(); return ok; }catch(e){ return false; }
+  };
+  const _toast = window.toast;
+  toast = window.toast = function(msg, kind){
+    if(kind !== 'error'){ return _toast.apply(this, arguments); }
+    const root = document.getElementById('toast-root'); if(!root) return _toast.apply(this, arguments);
+    const text = String(msg == null ? '' : msg);
+    window.__errorLog.push({ at: new Date().toISOString(), text });
+    const el = document.createElement('div'); el.className = 'toast error err-keep';
+    const i = document.createElement('span'); i.className = 'ti'; i.textContent = '!';
+    const m = document.createElement('span'); m.className = 'tm'; m.textContent = text;
+    const b = document.createElement('div'); b.className = 'tb';
+    const cp = document.createElement('button'); cp.textContent = 'Copy message';
+    const cl = document.createElement('button'); cl.textContent = 'Close';
+    const kill = () => { if(!el.isConnected) return; el.classList.add('out'); setTimeout(() => el.remove(), 260); };
+    cp.onclick = async e => { e.stopPropagation(); const ok = await copyText(text); cp.textContent = ok ? 'Copied' : 'Press Ctrl+C'; };
+    cl.onclick = e => { e.stopPropagation(); kill(); };
+    b.appendChild(cp); b.appendChild(cl); el.appendChild(i); el.appendChild(m); el.appendChild(b); root.appendChild(el);
+    setTimeout(kill, 90000);
+  };
+
+  /* ---- 2. supplier documents ---- */
+  const BLOCKED = ['exe','bat','cmd','com','msi','scr','ps1','vbs','js','jar','dll','sh','app','apk'];
+  const MAXMB = () => (typeof EVIDENCE_MAX_SIZE_MB === 'number' ? EVIDENCE_MAX_SIZE_MB : 10);
+  const canAdd = () => ['admin','manager','contributor'].includes(STATE.myRole);
+  const canEdit = () => ['admin','manager'].includes(STATE.myRole);
+  const fsize = n => n >= 1048576 ? (n/1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n/1024)) + ' KB';
+  const typeOptions = sel => Object.entries(SUP_CERT_CATS).map(([k,v]) => `<option value="${k}" ${k===sel?'selected':''}>${E(v)}</option>`).join('');
+  STATE.supplierDocs = STATE.supplierDocs || [];
+  let pending = []; // files chosen but not yet saved
+
+  async function loadSupplierDocs(){
+    try{
+      const r = await STATE.supabase.from('supplier_documents').select('*').eq('organisation_id', STATE.org.id);
+      STATE.supplierDocs = r.error ? [] : (r.data || []).filter(d => !d.archived); STATE._sdBroken = !!r.error;
+    }catch(e){ STATE.supplierDocs = []; STATE._sdBroken = true; }
+  }
+  const _lse = loadSupplierExtras;
+  loadSupplierExtras = window.loadSupplierExtras = async function(){ const r = await _lse.apply(this, arguments); await loadSupplierDocs(); return r; };
+
+  DATE_TRACKED_MODULES.push({ key:'suppliers', label:'Suppliers: Document Expiry',
+    list: () => (STATE.supplierDocs||[]).filter(d => !d.archived && d.expiry_date).map(d => ({ ...d, _t: E(`${supName(d.supplier_id)}: ${d.description}`) })),
+    dateField:'expiry_date', isResolved:()=>false, titleField:'_t', getPerson:x=>E(SUP_CERT_CATS[x.doc_type] || '') });
+
+  const daysTo = iso => Math.round((new Date(iso + 'T00:00:00') - new Date(new Date().toDateString())) / 86400000);
+
+  function sectionHtml(sid){
+    const docs = (STATE.supplierDocs||[]).filter(d => d.supplier_id === sid && !d.archived).sort((a,b) => String(a.expiry_date||'9999').localeCompare(String(b.expiry_date||'9999')));
+    const broken = STATE._sdBroken;
+    const rows = docs.map(d => {
+      const left = d.expiry_date ? daysTo(d.expiry_date) : null;
+      const badge = left === null ? '<span style="color:var(--text-faint)">No expiry</span>' : (fmtDate(d.expiry_date) + ' ' + (typeof dateStatusBadge === 'function' ? dateStatusBadge(d.expiry_date, false) : ''));
+      return `<tr class="sd-row" id="sd-row-${d.id}"><td class="strong">${E(d.description)}<div style="font-size:11.5px;font-weight:400;color:var(--text-faint);">${E(d.file_name)} · ${E(SUP_CERT_CATS[d.doc_type]||'Other')} · ${d.file_size ? fsize(d.file_size) : ''}</div></td>
+        <td>${badge}${d.expiry_date ? `<div style="font-size:11px;color:var(--text-faint);">Task raised ${d.remind_days} days before${d.task_id ? ' (raised)' : ''}</div>` : ''}</td>
+        <td style="text-align:right;white-space:nowrap;"><button class="btn-small" onclick="sdView('${d.id}')">View file</button>
+        ${canAdd() ? ` <button class="btn-small" onclick="sdEdit('${d.id}')">Edit</button>` : ''}
+        ${canEdit() ? ` <button class="btn-small" onclick="sdArchive('${d.id}')">Archive</button>` : ''}</td></tr>`;
+    }).join('');
+    return `<div class="sd-wrap" id="sd-wrap" style="margin:22px 0;">
+      <div class="l" style="font-family:Arial,Helvetica,sans-serif; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Supplier documents</div>
+      ${broken ? '<div class="warn-note"><div>Run qashe-watchman-schema-supplier-documents.sql in Supabase to switch supplier documents on.</div></div>' : ''}
+      ${docs.length ? `<table><tr><th>Document</th><th>Expiry</th><th></th></tr>${rows}</table>` : (broken ? '' : '<p style="font-size:12.5px;color:var(--text-faint);">No documents on file yet.</p>')}
+      ${canAdd() && !broken ? `<div style="margin-top:10px;"><button class="btn-small primary" onclick="sdToggle()">+ Add documents</button>
+        <div class="form-panel" id="sd-form" style="display:none;"><div class="sd-drop">
+          <label style="font-size:12.5px;font-weight:700;">Choose one or many files, any format (up to ${MAXMB()} MB each)</label>
+          <input type="file" id="sd-input" multiple onchange="sdPick(this)" style="display:block;margin-top:6px;">
+          <div class="sd-files" id="sd-files"></div>
+          <div class="form-actions" style="margin-top:12px;"><button class="btn-cancel" onclick="sdToggle()">Cancel</button><button class="btn-primary" id="sd-save" onclick="sdSave('${sid}')" disabled>Upload documents</button></div>
+          <div id="sd-report"></div></div></div></div>` : ''}
+    </div>`;
+  }
+
+  window.sdToggle = function(){
+    const f = document.getElementById('sd-form'); if(!f) return;
+    const show = f.style.display === 'none'; f.style.display = show ? 'block' : 'none';
+    if(!show){ pending = []; const i = document.getElementById('sd-input'); if(i) i.value = ''; const l = document.getElementById('sd-files'); if(l) l.innerHTML = ''; const r = document.getElementById('sd-report'); if(r) r.innerHTML = ''; const b = document.getElementById('sd-save'); if(b) b.disabled = true; }
+  };
+  function renderPending(){
+    const host = document.getElementById('sd-files'); if(!host) return;
+    host.innerHTML = pending.map((p, ix) => `<div class="sd-file" data-ix="${ix}">
+      <div><div class="nm">${E(p.file.name)}</div><div class="sz">${fsize(p.file.size)}</div></div>
+      <div><label>Description (required)</label><input id="sdf-desc-${ix}" value="${E(p.desc)}" oninput="sdSet(${ix},'desc',this.value)" placeholder="e.g. Public liability insurance 2026"></div>
+      <div><label>Document type</label><select onchange="sdSet(${ix},'type',this.value)">${typeOptions(p.type)}</select></div>
+      <div><label>Expiry date</label><input type="date" value="${E(p.expiry)}" onchange="sdSet(${ix},'expiry',this.value)"></div>
+      <div><label>Task before</label><select onchange="sdSet(${ix},'lead',this.value)">${[14,30,60,90].map(n=>`<option value="${n}" ${+p.lead===n?'selected':''}>${n} days</option>`).join('')}</select></div>
+      <button class="btn-small" title="Remove" onclick="sdDrop(${ix})" style="padding:4px 8px;">×</button></div>`).join('');
+    const b = document.getElementById('sd-save'); if(b) b.disabled = !pending.length;
+  }
+  window.sdSet = (ix, k, v) => { if(pending[ix]) pending[ix][k] = v; };
+  window.sdDrop = ix => { pending.splice(ix, 1); renderPending(); };
+  window.sdPick = function(input){
+    const rep = document.getElementById('sd-report'); const msgs = [];
+    Array.from(input.files || []).forEach(f => {
+      const ext = (f.name.split('.').pop() || '').toLowerCase();
+      if(BLOCKED.includes(ext)){ msgs.push(`${f.name}: program files (.${ext}) cannot be stored.`); return; }
+      if(f.size > MAXMB() * 1048576){ msgs.push(`${f.name}: ${fsize(f.size)} is over the ${MAXMB()} MB limit.`); return; }
+      if(f.size === 0){ msgs.push(`${f.name}: the file is empty.`); return; }
+      pending.push({ file:f, desc: f.name.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' '), type:'other', expiry:'', lead:30 });
+    });
+    input.value = '';
+    renderPending();
+    if(rep) rep.innerHTML = msgs.length ? `<div class="sd-report"><b>Not added</b><pre>${E(msgs.join('\n'))}</pre></div>` : '';
+  };
+  window.sdSave = async function(sid){
+    const rep = document.getElementById('sd-report'), btn = document.getElementById('sd-save');
+    const missing = pending.findIndex(p => !String(p.desc||'').trim());
+    if(missing >= 0){ toast('Please give every document a description.', 'error'); const i = document.getElementById('sdf-desc-' + missing); if(i) i.focus(); return; }
+    btn.disabled = true; btn.textContent = 'Uploading…';
+    const done = [], fail = [];
+    for(let n = 0; n < pending.length; n++){
+      const p = pending[n], f = p.file;
+      btn.textContent = `Uploading ${n+1} of ${pending.length}…`;
+      const path = `${STATE.org.id}/supplier/${sid}/${Date.now()}-${n}-${sanitizeFileName(f.name)}`;
+      try{
+        const up = await STATE.supabase.storage.from('evidence').upload(path, f, evidenceUploadOpts(f));
+        if(up.error){ fail.push(`${f.name}: upload failed: ${up.error.message || JSON.stringify(up.error)}${up.error.statusCode ? ' (status ' + up.error.statusCode + ')' : ''}`); continue; }
+        const row = { organisation_id:STATE.org.id, supplier_id:sid, file_name:f.name, storage_bucket:'evidence', storage_path:path, file_type:evidenceMime(f), file_size:f.size,
+          doc_type:p.type, description:String(p.desc).trim(), expiry_date:p.expiry || null, remind_days:+p.lead || 30, uploaded_by:STATE.user.id };
+        const ins = await STATE.supabase.from('supplier_documents').insert(row);
+        if(ins.error){ await STATE.supabase.storage.from('evidence').remove([path]); fail.push(`${f.name}: could not save the record: ${ins.error.message}${/supplier_documents/.test(ins.error.message||'') ? ' (run qashe-watchman-schema-supplier-documents.sql first)' : ''}`); continue; }
+        done.push(f.name);
+      }catch(e){ fail.push(`${f.name}: ${e && e.message ? e.message : e}`); }
+    }
+    btn.textContent = 'Upload documents';
+    if(done.length){ await loadSupplierDocs(); await sdSyncTasks(); }
+    if(fail.length){
+      pending = pending.filter(p => fail.some(m => m.startsWith(p.file.name + ':')));
+      renderPending();
+      const text = `Supplier document upload report (${new Date().toLocaleString()})\n${done.length} saved, ${fail.length} failed.\n` + fail.join('\n');
+      window.__errorLog.push({ at:new Date().toISOString(), text });
+      rep.innerHTML = `<div class="sd-report"><b style="color:#D50000;">${done.length} saved, ${fail.length} failed</b><pre id="sd-report-text">${E(text)}</pre><button class="btn-small" onclick="copyText(document.getElementById('sd-report-text').textContent).then(ok=>toast(ok?'Copied. Paste it into your message.':'Select the text and press Ctrl+C','success'))">Copy this message</button></div>`;
+      btn.disabled = !pending.length;
+      if(done.length) toast(`${done.length} document${done.length===1?'':'s'} saved. ${fail.length} failed: see the message below the list.`, 'success');
+      return;
+    }
+    toast(`${done.length} document${done.length===1?'':'s'} saved.`, 'success');
+    pending = []; openSupplierDetail(sid);
+  };
+  window.sdView = async function(id){
+    const d = (STATE.supplierDocs||[]).find(x => x.id === id); if(!d) return;
+    const { data, error } = await STATE.supabase.storage.from(d.storage_bucket || 'evidence').createSignedUrl(d.storage_path, 3600);
+    if(error || !data){ toast('Could not open the file: ' + (error ? error.message : 'no link returned'), 'error'); return; }
+    window.open(data.signedUrl, '_blank');
+  };
+  window.sdEdit = function(id){
+    const d = (STATE.supplierDocs||[]).find(x => x.id === id), row = document.getElementById('sd-row-' + id); if(!d || !row) return;
+    row.innerHTML = `<td colspan="3"><div class="sd-file" style="grid-template-columns:minmax(170px,1.6fr) 150px 140px 110px auto;">
+      <div><label>Description</label><input id="sde-desc" value="${E(d.description)}"></div>
+      <div><label>Document type</label><select id="sde-type">${typeOptions(d.doc_type)}</select></div>
+      <div><label>Expiry date</label><input type="date" id="sde-exp" value="${E(d.expiry_date||'')}"></div>
+      <div><label>Task before</label><select id="sde-lead">${[14,30,60,90].map(n=>`<option value="${n}" ${+d.remind_days===n?'selected':''}>${n} days</option>`).join('')}</select></div>
+      <div style="display:flex;gap:6px;"><button class="btn-small primary" onclick="sdEditSave('${id}')">Save</button><button class="btn-small" onclick="openSupplierDetail('${d.supplier_id}')">Cancel</button></div></div></td>`;
+  };
+  window.sdEditSave = async function(id){
+    const d = (STATE.supplierDocs||[]).find(x => x.id === id); if(!d) return;
+    const desc = document.getElementById('sde-desc').value.trim(); if(!desc){ toast('A description is required.', 'error'); return; }
+    const patch = { description:desc, doc_type:document.getElementById('sde-type').value, expiry_date:document.getElementById('sde-exp').value || null, remind_days:+document.getElementById('sde-lead').value || 30, updated_at:new Date().toISOString() };
+    const { error } = await STATE.supabase.from('supplier_documents').update(patch).eq('id', id);
+    if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+    // a renewed expiry date moves the linked task, or closes it when the document no longer needs one
+    if(d.task_id){
+      const left = patch.expiry_date ? daysTo(patch.expiry_date) : null;
+      const tp = { title: taskTitle(d.supplier_id, desc), due_date: patch.expiry_date || undefined };
+      if(left === null || left > patch.remind_days){ tp.status = 'done'; tp.completed_at = new Date().toISOString(); }
+      Object.keys(tp).forEach(k => tp[k] === undefined && delete tp[k]);
+      await STATE.supabase.from('tasks').update(tp).eq('id', d.task_id);
+      if(tp.status === 'done') await STATE.supabase.from('supplier_documents').update({ task_id:null }).eq('id', id);
+    }
+    await loadSupplierDocs(); await sdSyncTasks(); try{ await loadTasks(); }catch(e){}
+    openSupplierDetail(d.supplier_id); toast('Document updated.', 'success');
+  };
+  window.sdArchive = async function(id){
+    const d = (STATE.supplierDocs||[]).find(x => x.id === id); if(!d) return;
+    if(!confirm('Archive this document? It stays on file but stops raising expiry tasks.')) return;
+    const { error } = await STATE.supabase.from('supplier_documents').update({ archived:true, updated_at:new Date().toISOString() }).eq('id', id);
+    if(error){ toast('Could not archive: ' + error.message, 'error'); return; }
+    if(d.task_id) await STATE.supabase.from('tasks').update({ status:'done', completed_at:new Date().toISOString() }).eq('id', d.task_id);
+    await loadSupplierDocs(); try{ await loadTasks(); }catch(e){} openSupplierDetail(d.supplier_id);
+  };
+
+  /* ---- tasks: raised once, when the expiry date is within the chosen lead time ---- */
+  const taskTitle = (sid, desc) => `Supplier document expiring: ${supName(sid)}: ${desc}`.slice(0, 160);
+  async function sdSyncTasks(){
+    if(!canAdd() || !STATE.user) return;
+    const due = (STATE.supplierDocs||[]).filter(d => !d.archived && d.expiry_date && !d.task_id && daysTo(d.expiry_date) <= (d.remind_days || 30));
+    let made = 0;
+    for(const d of due){
+      const s = (STATE.suppliers||[]).find(x => x.id === d.supplier_id);
+      const tid = (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random()*16|0; return (c === 'x' ? r : (r&3|8)).toString(16); });
+      const claim = await STATE.supabase.from('supplier_documents').update({ task_id:tid }).eq('id', d.id).is('task_id', null).select('id');
+      if(claim.error || !claim.data || !claim.data.length) continue; // someone else raised it first
+      const left = daysTo(d.expiry_date);
+      const ins = await STATE.supabase.from('tasks').insert({ id:tid, organisation_id:STATE.org.id, title:taskTitle(d.supplier_id, d.description),
+        description:`${d.description} (${d.file_name}) for ${supName(d.supplier_id)} ${left < 0 ? 'expired ' + (-left) + ' day(s) ago' : 'expires on ' + d.expiry_date + ' (' + left + ' day(s))'}. Obtain the renewed document from the supplier, upload it under Supplier documents, and update or archive the old one.`,
+        linked_type:'supplier', linked_id:d.supplier_id, assignee_id:(s && s.owner_id) || STATE.user.id, priority: left <= 7 ? 'high' : 'medium', due_date:d.expiry_date, created_by:STATE.user.id });
+      if(ins.error){ await STATE.supabase.from('supplier_documents').update({ task_id:null }).eq('id', d.id); console.warn('supplier document task', ins.error.message); continue; }
+      d.task_id = tid; made++;
+    }
+    if(made){ try{ await loadTasks(); }catch(e){} toast(`${made} supplier document task${made===1?'':'s'} raised for documents nearing expiry.`, 'success'); }
+  }
+  window.sdSyncTasks = sdSyncTasks;
+  if(typeof taskLinkedRef === 'function'){ const _tl = taskLinkedRef; taskLinkedRef = window.taskLinkedRef = function(t){ if(t && t.linked_type === 'supplier'){ const s = (STATE.suppliers||[]).find(x => x.id === t.linked_id); return s ? (s.ref_code || s.name) : null; } return _tl.apply(this, arguments); }; }
+
+  /* ---- put the section on the supplier profile, and check for near expiries when the module opens ---- */
+  const _osd = openSupplierDetail;
+  openSupplierDetail = window.openSupplierDetail = async function(id){
+    await _osd.apply(this, arguments);
+    try{
+      if(!STATE._sdLoaded){ await loadSupplierDocs(); STATE._sdLoaded = true; }
+      const panel = document.querySelector('#sup-detail-slot .detail-panel'); if(!panel) return;
+      panel.querySelectorAll('#sd-wrap').forEach(n => n.remove());
+      const suite = panel.querySelector('#sup-suite');
+      const html = sectionHtml(id);
+      if(suite) suite.insertAdjacentHTML('afterbegin', html); else panel.insertAdjacentHTML('beforeend', html);
+    }catch(e){ console.warn('supplier documents', e); }
+  };
+  const _sm = showModule;
+  showModule = window.showModule = function(mod){
+    const r = _sm.apply(this, arguments);
+    if(mod === 'suppliers'){ setTimeout(async () => { try{ await loadSupplierDocs(); STATE._sdLoaded = true; await sdSyncTasks(); }catch(e){} }, 600); }
+    return r;
+  };
+})();
 </script>
 </body>
 </html>
