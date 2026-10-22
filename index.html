@@ -37987,6 +37987,102 @@ async function renderNcResponsePage(token){
     await loadNCs(); openNCDetail(n.id); toast('Response written into the corrective and preventive action fields.', 'success');
   };
 })();
+
+/* ===== b55: organisation chart zoom, and multi-page printing ===== */
+(function(){
+  const st = document.createElement('style'); st.id = 'b55-css';
+  st.textContent = `
+    :root{--ocz:1;}
+    .oc-zoomable .oc-tree{zoom:var(--ocz); min-width:calc(100% / var(--ocz));}
+    .ocz-bar{display:flex;align-items:center;gap:6px;justify-content:flex-end;margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;}
+    .ocz-bar button{border:1px solid var(--border);background:#fff;border-radius:8px;min-width:32px;height:30px;padding:0 10px;font-size:15px;font-weight:700;cursor:pointer;}
+    .ocz-bar button:hover{background:#f3f3f3;}
+    .ocz-bar .ocz-lbl{font-size:12px;font-weight:700;min-width:46px;text-align:center;color:var(--text-dim);}
+    .ocz-bar .ocz-txt{font-size:12px;font-weight:600;}
+    .oc-tile{overflow:hidden;position:relative;margin:0 auto;break-after:page;page-break-after:always;border:1px dashed #bbb;}
+    .oc-tile:last-child{break-after:auto;page-break-after:auto;}
+    .oc-tile-cap{font:600 10px Arial,Helvetica,sans-serif;color:#666;text-align:center;margin:3px 0 0;}
+    @media print{.ocz-bar{display:none !important;} .oc-tile{border:0;} }`;
+  document.head.appendChild(st);
+
+  let Z = 1;
+  try{ const v = parseFloat(sessionStorage.getItem('ocz')); if(v >= .3 && v <= 2) Z = v; }catch(e){}
+  const apply = () => {
+    document.documentElement.style.setProperty('--ocz', Z);
+    document.querySelectorAll('.ocz-lbl').forEach(l => l.textContent = Math.round(Z*100) + '%');
+    try{ sessionStorage.setItem('ocz', Z); }catch(e){}
+  };
+  window.oczStep = d => { Z = Math.min(2, Math.max(.3, Math.round((Z + d)*100)/100)); apply(); };
+  window.oczSet = v => { Z = v; apply(); };
+  window.oczFit = function(){
+    const sc = document.querySelector('.oc-zoomable'); if(!sc) return;
+    const keep = Z; document.documentElement.style.setProperty('--ocz', 1);
+    let need = 0; document.querySelectorAll('.oc-zoomable').forEach(s => { const t = s.querySelector('.oc-tree'); if(t) need = Math.max(need, t.scrollWidth + 40); });
+    const avail = sc.clientWidth || 1;
+    Z = Math.min(1, Math.max(.3, Math.floor(avail / (need || 1) * 100)/100)); apply();
+  };
+  const _t = orgChartTreeHTML;
+  orgChartTreeHTML = window.orgChartTreeHTML = function(people, clickable){
+    const h = _t.apply(this, arguments);
+    if(!clickable || h.indexOf('oc-scroll') < 0) return h;
+    const bar = `<div class="ocz-bar"><span class="ocz-txt">Zoom</span><button type="button" title="Zoom out" onclick="oczStep(-0.1)">−</button><span class="ocz-lbl">${Math.round(Z*100)}%</span><button type="button" title="Zoom in" onclick="oczStep(0.1)">+</button><button type="button" style="font-size:12px" onclick="oczFit()">Fit width</button><button type="button" style="font-size:12px" onclick="oczSet(1)">100%</button></div>`;
+    return bar + h.replace('class="oc-scroll"', 'class="oc-scroll oc-zoomable"');
+  };
+  apply();
+
+  /* printing: one page (existing) or spread over several A4 pages */
+  const _open = openOrgChartPrintDialog, _confirm = window.confirmOrgChartPrint;
+  openOrgChartPrintDialog = window.openOrgChartPrintDialog = function(job){
+    _open(job);
+    const dlg = document.querySelector('#oc-print-dialog .import-modal'); if(!dlg) return;
+    const lbl = 'display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;text-transform:none;font-family:Arial,Helvetica,sans-serif;';
+    const lastL = STATE._ocPrintLayout || 'fit', lastS = STATE._ocPrintScale || '0.8';
+    const sub = dlg.querySelector('.sub'); if(sub) sub.innerHTML = escapeHtml(job.title) + '<br>Choose how the chart is laid out on paper, and the page orientation.';
+    const box = document.createElement('div');
+    box.style.cssText = 'border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:12px;display:flex;flex-direction:column;gap:8px;';
+    box.innerHTML = `
+      <label style="${lbl}"><input type="radio" name="oc-layout" value="fit" style="width:auto;" ${lastL==='fit'?'checked':''}> Fit on one page (scaled down)</label>
+      <label style="${lbl}"><input type="radio" name="oc-layout" value="multi" style="width:auto;" ${lastL==='multi'?'checked':''}> Spread over several pages (larger, easier to read)</label>
+      <div style="margin-left:24px;font-size:12.5px;font-family:Arial,Helvetica,sans-serif;">Size on paper:
+        <select id="oc-scale" style="margin-left:6px;width:auto;">
+          ${[['1','100% (full size)'],['0.8','80%'],['0.65','65%'],['0.5','50%']].map(o => `<option value="${o[0]}" ${o[0]===lastS?'selected':''}>${o[1]}</option>`).join('')}
+        </select>
+        <div style="color:var(--text-faint);font-size:11.5px;margin-top:4px;">Join the pages edge to edge, or read each page on its own. Each page is labelled with its row and column.</div></div>`;
+    dlg.insertBefore(box, dlg.querySelector('.import-actions'));
+  };
+  window.confirmOrgChartPrint = async function(){
+    const lay = document.querySelector('input[name="oc-layout"]:checked');
+    const layout = lay ? lay.value : 'fit';
+    STATE._ocPrintLayout = layout;
+    if(layout !== 'multi') return _confirm.apply(this, arguments);
+    const sc = parseFloat((document.getElementById('oc-scale') || {}).value) || .8; STATE._ocPrintScale = String(sc);
+    const picked = document.querySelector('input[name="oc-orient"]:checked');
+    const orientation = picked ? picked.value : 'landscape'; STATE._ocPrintOrientation = orientation;
+    const dlg = document.getElementById('oc-print-dialog'); if(dlg) dlg.remove();
+    const job = _ocPrintJob; if(!job) return;
+    const margin = 12, mm = 3.7795;
+    const pageW = orientation === 'landscape' ? 297 : 210, pageH = orientation === 'landscape' ? 210 : 297;
+    const tileW = Math.floor((pageW - margin*2) * mm), tileH = Math.floor((pageH - margin*2) * mm - 235);
+    const probe = document.createElement('div'); probe.className = 'oc-fit-inner';
+    probe.style.cssText = 'position:absolute;left:-20000px;top:0;width:max-content;visibility:hidden;';
+    probe.innerHTML = orgChartTreeHTML(job.members, false); document.body.appendChild(probe);
+    const natW = Math.max(probe.scrollWidth, probe.offsetWidth, 1), natH = Math.max(probe.scrollHeight, probe.offsetHeight, 1);
+    probe.remove();
+    const W = Math.ceil(natW*sc), H = Math.ceil(natH*sc);
+    const cols = Math.max(1, Math.ceil(W / tileW)), rows = Math.max(1, Math.ceil(H / tileH));
+    const inner = orgChartTreeHTML(job.members, false);
+    let tiles = '';
+    for(let r = 0; r < rows; r++) for(let c = 0; c < cols; c++){
+      tiles += `<div class="oc-tile" style="width:${tileW}px;height:${tileH}px;"><div class="oc-fit-inner" style="position:absolute;left:${-c*tileW}px;top:${-r*tileH}px;width:${natW}px;transform:scale(${sc});transform-origin:top left;">${inner}</div></div>
+        <div class="oc-tile-cap">Page ${r*cols + c + 1} of ${rows*cols} (row ${r+1}, column ${c+1})${rows*cols > 1 ? ': reads left to right, then down' : ''}</div>`;
+    }
+    const styleEl = document.createElement('style'); styleEl.id = 'oc-page-style';
+    styleEl.textContent = `@page{ size:A4 ${orientation}; margin:${margin}mm; }`; document.head.appendChild(styleEl);
+    const cleanup = () => { const s = document.getElementById('oc-page-style'); if(s) s.remove(); window.removeEventListener('afterprint', cleanup); };
+    window.addEventListener('afterprint', cleanup);
+    await printRecord(job.title, job.refLine, job.meta || [], tiles, null, null);
+  };
+})();
 </script>
 </body>
 </html>
