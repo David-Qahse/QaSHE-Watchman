@@ -36984,6 +36984,383 @@ function fmtRev(rev){
   };
 })();
 
+
+/* ===== b50: staff QR ID tags, scanner stations, work schedules, attendance conformance, appraisal exceptions ===== */
+(function(){
+  const E = s => (typeof escapeHtml === 'function' ? escapeHtml(s) : String(s == null ? '' : s));
+  const GREEN = '#2E7D4F', RED = '#B21616', AMBER = '#B8791C', GREY = '#A6A6A6', BLUE = '#3B6EA5', PURPLE = '#7B3FA0';
+  const pad = n => String(n).padStart(2,'0');
+  const ymd = d => d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
+  const addDays = (d, n) => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate() + n); return x; };
+  const mins = t => { const m = String(t||'').match(/^(\d{1,2}):(\d{2})/); return m ? (+m[1])*60 + (+m[2]) : 0; };
+  const fmtH = m => (m/60).toFixed(1) + ' h';
+  const canManage = () => ['admin','manager'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const isAdm = () => STATE.myRole === 'admin' || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const DOW = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const KINDS = { flexible_hours:'Flexible hours (e.g. sales or field role)', approved_off_site:'Approved work off site', approved_late_or_short:'Approved late start or early finish', other_approved:'Other approved reason' };
+  const DEFAULT_SCHED = { mode:'fixed', days:[1,2,3,4,5], start_time:'08:00', end_time:'17:00', break_minutes:30, grace_minutes:10, weekly_hours:null, effective_from:'1900-01-01', assumed:true };
+  const ratingFor = p => p == null ? null : p >= 95 ? 5 : p >= 85 ? 4 : p >= 75 ? 3 : p >= 60 ? 2 : 1;
+  const bandKey = p => p == null ? 'grey' : p >= 85 ? 'green' : p >= 70 ? 'amber' : 'red';
+  const bandCol = p => ({ green:GREEN, amber:AMBER, red:RED, grey:GREY })[bandKey(p)];
+  const pageBase = () => `${window.location.origin}${window.location.pathname.replace(/index\.html$/,'')}`;
+
+  /* ------------------------------------------------------------------ data */
+  async function fetchPersonData(personId, fromISO, toISO){
+    const start = fromISO + 'T00:00:00', end = toISO + 'T23:59:59';
+    const [rec, sch, exc] = await Promise.all([
+      STATE.supabase.from('attendance_records').select('*').eq('personnel_id', personId).gte('clock_in_at', new Date(start).toISOString()).lte('clock_in_at', new Date(end).toISOString()).order('clock_in_at'),
+      STATE.supabase.from('work_schedules').select('*').eq('personnel_id', personId).order('effective_from', { ascending:false }),
+      STATE.supabase.from('attendance_exceptions').select('*').eq('personnel_id', personId).lte('date_from', toISO).gte('date_to', fromISO).order('date_from'),
+    ]);
+    return { records: rec.data || [], schedules: sch.data || [], exceptions: exc.data || [], error: rec.error || sch.error || exc.error };
+  }
+  const schedFor = (list, iso) => (list || []).find(s => s.effective_from <= iso) || DEFAULT_SCHED;
+
+  // Core engine: returns per-day rows, weekly buckets and totals.
+  function computeConformance(personId, fromISO, toISO, data){
+    const today = ymd(new Date()), last = toISO < today ? toISO : today;
+    const leave = (STATE.leaveApplications||[]).filter(l => l.personnel_id === personId && l.status === 'approved');
+    const byDay = {};
+    (data.records||[]).forEach(r => { const k = ymd(new Date(r.clock_in_at)); (byDay[k] = byDay[k] || []).push(r); });
+    const days = []; let reqTotal = 0, hrsTotal = 0, schedDays = 0, attended = 0, late = 0, early = 0, missing = 0, excDays = 0, leaveDays = 0, actualAll = 0;
+    let flexActual = 0, flexReq = 0, anyFlex = false, anyFixed = false;
+    const weeks = {};
+    for(let d = new Date(fromISO + 'T00:00:00'); ymd(d) <= last; d = addDays(d, 1)){
+      const iso = ymd(d), dow = d.getDay() === 0 ? 7 : d.getDay(), s = schedFor(data.schedules, iso);
+      const recs = byDay[iso] || [];
+      let actual = 0, firstIn = null, lastOut = null, miss = 0;
+      recs.forEach(r => { if(r.clock_out_at && new Date(r.clock_out_at) > new Date(r.clock_in_at) && (new Date(r.clock_out_at) - new Date(r.clock_in_at)) < 20*3600e3){
+          actual += (new Date(r.clock_out_at) - new Date(r.clock_in_at))/60000; const ci = new Date(r.clock_in_at), co = new Date(r.clock_out_at);
+          if(!firstIn || ci < firstIn) firstIn = ci; if(!lastOut || co > lastOut) lastOut = co; } else miss++; });
+      actual = Math.round(actual); missing += miss; actualAll += actual;
+      const wk = ymd(addDays(d, -(dow-1))); const W = weeks[wk] = weeks[wk] || { req:0, act:0 };
+      const row = { iso, dow, actual, status:'off', firstIn, lastOut, sched:s };
+      const scheduled = (s.days||[]).includes(dow);
+      if(!scheduled){ row.status = actual ? 'extra' : 'off'; W.act += actual; days.push(row); continue; }
+      const req = s.mode === 'flexible' ? Math.round((Number(s.weekly_hours)||40)*60 / Math.max(1,(s.days||[]).length)) : Math.max(0, mins(s.end_time) - mins(s.start_time) - (s.break_minutes||0));
+      row.required = req;
+      const onLeave = leave.some(l => l.start_date <= iso && l.end_date >= iso);
+      const exc = (data.exceptions||[]).find(x => x.date_from <= iso && x.date_to >= iso);
+      if(onLeave){ row.status = 'leave'; leaveDays++; W.act += actual; days.push(row); continue; }
+      if(exc){ row.status = 'exception'; row.exc = exc; excDays++; W.act += actual; days.push(row); continue; }
+      schedDays++; reqTotal += req; W.req += req;
+      if(s.mode === 'flexible'){ anyFlex = true; flexActual += actual; flexReq += req; if(actual) attended++; W.act += actual; row.status = actual ? 'ok' : 'absent'; }
+      else {
+        anyFixed = true; const credit = Math.min(actual, req); hrsTotal += credit; W.act += credit;
+        if(!actual){ row.status = miss ? 'missing_out' : 'absent'; }
+        else { attended++; const isLate = firstIn && (firstIn.getHours()*60 + firstIn.getMinutes()) > mins(s.start_time) + (s.grace_minutes||0);
+          const isEarly = lastOut && (lastOut.getHours()*60 + lastOut.getMinutes()) < mins(s.end_time) - (s.grace_minutes||0);
+          if(isLate) late++; if(isEarly) early++; row.late = !!isLate; row.early = !!isEarly; row.status = isLate ? 'late' : (isEarly || actual < req*0.9) ? 'short' : 'ok'; }
+      }
+      days.push(row);
+    }
+    if(anyFlex) hrsTotal += Math.min(flexActual, flexReq);
+    const hoursPct = reqTotal ? Math.round(hrsTotal/reqTotal*1000)/10 : null;
+    const fixedSched = days.filter(r => r.sched && r.sched.mode !== 'flexible' && r.required != null && !['leave','exception'].includes(r.status)).length;
+    const fixedAtt = days.filter(r => r.sched && r.sched.mode !== 'flexible' && ['ok','late','short'].includes(r.status)).length;
+    const attendPct = fixedSched ? Math.round(fixedAtt/fixedSched*1000)/10 : null;
+    const punctPct = fixedAtt ? Math.round((fixedAtt - late)/fixedAtt*1000)/10 : null;
+    let overall = null;
+    if(hoursPct != null){
+      if(anyFixed && attendPct != null && punctPct != null) overall = Math.round((0.5*hoursPct + 0.3*attendPct + 0.2*punctPct)*10)/10; else overall = hoursPct;
+    }
+    const noData = (data.schedules||[]).length === 0 && actualAll === 0 && missing === 0; if(noData) overall = null;
+    return { noData, days, weeks, reqTotal, hrsTotal, hoursPct, attendPct, punctPct, overall, rating: ratingFor(overall), schedDays, attended, late, early, missing, excDays, leaveDays, actualAll, mode: anyFlex && !anyFixed ? 'flexible' : anyFlex ? 'mixed' : 'fixed', assumed: (data.schedules||[]).length === 0 };
+  }
+
+  /* --------------------------------------------------------------- graphics */
+  function clusterBars(cats, req, act, cols){
+    const W = 620, H = 200, pl = 30, pr = 10, pt = 16, pb = 28, pw = W-pl-pr, ph = H-pt-pb;
+    let max = Math.max(1, ...req, ...act); max = Math.ceil(max/10)*10 || 10;
+    const y = v => pt + ph - v/max*ph, step = pw/Math.max(1,cats.length), bw = Math.min(18, step*0.34);
+    let g = [0,0.5,1].map(f => `<line x1="${pl}" x2="${W-pr}" y1="${y(max*f).toFixed(1)}" y2="${y(max*f).toFixed(1)}" stroke="#EDEBE9"/><text x="${pl-6}" y="${(y(max*f)+3).toFixed(1)}" text-anchor="end" font-size="9" fill="#9C9895" font-family="Arial,Helvetica,sans-serif">${Math.round(max*f)}h</text>`).join('');
+    cats.forEach((c,i) => { const cx = pl + step*i + step/2;
+      g += `<rect x="${(cx-bw-1).toFixed(1)}" y="${y(req[i]).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0.5,y(0)-y(req[i])).toFixed(1)}" rx="2" fill="#CFCBC8"><title>${E(c)} required ${req[i]} h</title></rect>`;
+      g += `<rect x="${(cx+1).toFixed(1)}" y="${y(act[i]).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0.5,y(0)-y(act[i])).toFixed(1)}" rx="2" fill="${cols[i]}"><title>${E(c)} worked ${act[i]} h</title></rect>`;
+      if(cats.length <= 14 || i % 2 === 0) g += `<text x="${cx.toFixed(1)}" y="${H-10}" text-anchor="middle" font-size="9" fill="#615C59" font-family="Arial,Helvetica,sans-serif">${E(c)}</text>`; });
+    return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;stroke:none;fill:none" role="img" aria-label="Hours required and worked per week">${g}</svg>
+      <div style="display:flex;gap:14px;font-size:11.5px;color:#615C59;margin-top:2px"><span><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#CFCBC8;margin-right:5px"></i>Required</span><span><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${GREEN};margin-right:5px"></i>Worked (green on track, amber and red below)</span></div>`;
+  }
+  const STATUS_COL = { ok:GREEN, late:AMBER, short:AMBER, absent:RED, missing_out:RED, leave:BLUE, exception:PURPLE, extra:'#7FB596', off:'#E3E1DF' };
+  const STATUS_TXT = { ok:'On time and full hours', late:'Late arrival', short:'Short day or early finish', absent:'Absent', missing_out:'No clock-out recorded', leave:'Approved leave', exception:'Manager exception', extra:'Worked on a non-scheduled day', off:'Not scheduled' };
+  function dayStrip(days){
+    const last = days.slice(-35);
+    return `<div style="display:flex;gap:4px;flex-wrap:wrap">${last.map(r => `<div title="${E(r.iso + ': ' + STATUS_TXT[r.status] + (r.actual ? ', ' + fmtH(r.actual) : '') + (r.exc ? ' (' + r.exc.reason + ')' : ''))}" style="width:22px;height:22px;border-radius:5px;background:${STATUS_COL[r.status]};color:#fff;font-size:9px;display:flex;align-items:center;justify-content:center;font-family:Arial,Helvetica,sans-serif">${r.iso.slice(8)}</div>`).join('')}</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:#615C59;margin-top:6px">${['ok','late','short','absent','missing_out','leave','exception','off'].map(k => `<span><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${STATUS_COL[k]};margin-right:4px"></i>${STATUS_TXT[k]}</span>`).join('')}</div>`;
+  }
+  function weekSeries(cf){
+    const keys = Object.keys(cf.weeks).sort();
+    return { cats: keys.map(k => k.slice(8) + '/' + k.slice(5,7)), req: keys.map(k => Math.round(cf.weeks[k].req/6)/10), act: keys.map(k => Math.round(cf.weeks[k].act/6)/10),
+      cols: keys.map(k => { const w = cf.weeks[k]; if(!w.req) return GREEN; const p = w.act/w.req*100; return p >= 95 ? GREEN : p >= 80 ? AMBER : RED; }) };
+  }
+  function statTile(l, v, c){ return `<div style="min-width:100px"><div style="font-size:10px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.04em">${l}</div><div style="font-size:18px;font-weight:700;color:${c||'var(--text)'}">${v}</div></div>`; }
+  function statsRow(cf){
+    const p = v => v == null ? '—' : v + '%';
+    return `<div style="display:flex;gap:18px;flex-wrap:wrap;margin:10px 0">${statTile('Hours worked / required', `${fmtH(cf.hrsTotal)} / ${fmtH(cf.reqTotal)}`)}${statTile('Hours', p(cf.hoursPct), bandCol(cf.hoursPct))}${cf.mode==='flexible'?'':statTile('Days attended', `${cf.attended} of ${cf.schedDays}`)}${cf.mode==='flexible'?'':statTile('Punctuality', p(cf.punctPct), bandCol(cf.punctPct))}${statTile('Late arrivals', cf.late)}${statTile('Early departures', cf.early)}${statTile('No clock-out', cf.missing, cf.missing?RED:null)}${statTile('Exception days', cf.excDays, cf.excDays?PURPLE:null)}${statTile('Leave days', cf.leaveDays)}</div>`;
+  }
+  const howText = 'Conformance = 50% hours worked against hours required (capped at the required hours each day), 30% days attended against days scheduled, 20% punctuality (arrived within the grace period). For flexible schedules it is hours worked against the weekly hours required. Approved leave and manager exceptions are removed from the requirement. 95% and above rates 5, 85% rates 4, 75% rates 3, 60% rates 2, below 60% rates 1.';
+
+  /* ------------------------------------------------------ person profile card */
+  STATE._attWeeks = STATE._attWeeks || 12;
+  async function renderPersonAttendance(personId){
+    const box = document.getElementById('pers-att-body'); if(!box) return;
+    const weeks = STATE._attWeeks, to = ymd(new Date()), from = ymd(addDays(new Date(), -7*weeks + 1));
+    box.innerHTML = '<p style="font-size:12.5px;color:var(--text-faint)">Loading attendance…</p>';
+    const data = await fetchPersonData(personId, from, to);
+    if(data.error){ box.innerHTML = `<p style="font-size:12.5px;color:var(--text-faint)">Attendance is not available yet. Run qashe-watchman-schema-badge-attendance.sql. (${E(data.error.message)})</p>`; return; }
+    const cf = computeConformance(personId, from, to, data), ws = weekSeries(cf), s = schedFor(data.schedules, to);
+    const sTxt = s.mode === 'flexible' ? `Flexible: ${s.weekly_hours || 40} hours per week on ${(s.days||[]).map(d=>DOW[d-1]).join(', ')}` : `${(s.days||[]).map(d=>DOW[d-1]).join(', ')}, ${String(s.start_time).slice(0,5)} to ${String(s.end_time).slice(0,5)}, ${s.break_minutes} min break, ${s.grace_minutes} min grace`;
+    box.innerHTML = `
+      <div style="display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start">
+        <div style="flex:0 0 150px;text-align:center"><div style="font-size:10px;color:var(--text-faint);text-transform:uppercase;margin-bottom:2px">Attendance conformance</div><div style="width:150px;margin:0 auto">${wdDial(cf.overall, bandKey(cf.overall), 150)}</div>
+          <div style="font-weight:700;font-size:13px;margin-top:-4px;color:${bandCol(cf.overall)}">${cf.rating ? 'Rating ' + cf.rating + ' of 5' : (cf.noData ? 'No scans recorded yet' : 'No scheduled days yet')}</div></div>
+        <div style="flex:1;min-width:260px"><div style="font-size:12.5px;color:var(--text-dim)"><b>Schedule:</b> ${E(sTxt)}${cf.assumed ? ' <span style="color:var(--amber)">(standard hours assumed: set this person\'s schedule)</span>' : ''}</div>${statsRow(cf)}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;margin-top:6px">
+        <div><div style="font-size:11.5px;color:var(--text-faint);margin-bottom:4px">Hours per week: required against worked</div>${clusterBars(ws.cats, ws.req, ws.act, ws.cols)}</div>
+        <div><div style="font-size:11.5px;color:var(--text-faint);margin-bottom:6px">Daily pattern (last 5 weeks)</div>${dayStrip(cf.days)}</div></div>
+      <p style="font-size:11px;color:var(--text-faint);margin-top:10px;line-height:1.5">${E(howText)}</p>
+      <div style="margin-top:12px;border-top:1px solid var(--border-soft);padding-top:10px">
+        <div style="font-size:12.5px;font-weight:700;margin-bottom:6px">Manager exceptions in this period</div>
+        ${data.exceptions.length ? `<table style="font-size:12px"><tr><th>From</th><th>To</th><th>Type</th><th>Reason</th><th></th></tr>${data.exceptions.map(x => `<tr><td>${fmtDate(x.date_from)}</td><td>${fmtDate(x.date_to)}</td><td>${E(KINDS[x.kind]||x.kind)}</td><td>${E(x.reason)}</td><td>${canManage() ? `<button class="btn-small" onclick="attDeleteException('${x.id}','${personId}')">Remove</button>` : ''}</td></tr>`).join('')}</table>` : '<p style="font-size:12px;color:var(--text-faint)">None. Attendance is measured against the schedule.</p>'}
+        ${canManage() ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn-small" onclick="attShowExceptionForm('${personId}')">Add an exception</button><button class="btn-small" onclick="attShowScheduleForm('${personId}')">Set work schedule</button></div><div id="att-form-slot"></div>` : ''}
+      </div>`;
+  }
+  window.attSetWeeks = (personId, n) => { STATE._attWeeks = n; renderPersonAttendance(personId); };
+
+  function tagCard(p){
+    return `<div class="detail-card" id="pers-att-card" style="padding:16px;margin-bottom:16px">
+      <div class="panel-head" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h3 style="font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:600">Attendance, schedule and ID tag</h3>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><select onchange="attSetWeeks('${p.id}',+this.value)" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px">${[4,12,26].map(n=>`<option value="${n}" ${n===STATE._attWeeks?'selected':''}>Last ${n} weeks</option>`).join('')}</select>
+        ${canManage() ? `<button class="btn-small primary" onclick="printIdTags(['${p.id}'])">Print ID tag</button><button class="btn-small" onclick="attReissueBadge('${p.id}')">Reissue tag (lost card)</button>` : ''}</div></div>
+      <div id="pers-att-body"></div></div>`;
+  }
+  const _opd = openPersonDetail;
+  openPersonDetail = window.openPersonDetail = async function(id){
+    const r = await _opd.apply(this, arguments);
+    try {
+      const p = personById(id), panel = document.querySelector('#pers-detail-slot .detail-panel'); if(!p || !panel) return r;
+      const holder = document.createElement('div'); holder.innerHTML = tagCard(p);
+      const anchor = panel.querySelector('.form-grid') || panel.querySelector('.status-row');
+      anchor ? anchor.parentNode.insertBefore(holder.firstElementChild, anchor) : panel.appendChild(holder.firstElementChild);
+      renderPersonAttendance(id);
+    } catch(e){ console.warn('person attendance', e); }
+    return r;
+  };
+
+  /* ------------------------------------------------ schedule and exceptions */
+  window.attShowScheduleForm = function(personId){
+    const slot = document.getElementById('att-form-slot'); if(!slot) return;
+    slot.innerHTML = `<div class="detail-card" style="padding:14px;margin-top:10px;background:var(--grey-tint)"><div class="form-grid">
+      <div class="field"><label>Type</label><select id="sch-mode" onchange="document.getElementById('sch-flex').style.display=this.value==='flexible'?'block':'none'"><option value="fixed">Fixed hours</option><option value="flexible">Flexible (weekly hours)</option></select></div>
+      <div class="field span2"><label>Working days</label><div style="display:flex;gap:10px;flex-wrap:wrap">${DOW.map((d,i)=>`<label style="text-transform:none;font-size:12.5px"><input type="checkbox" class="sch-day" value="${i+1}" ${i<5?'checked':''} style="width:auto"> ${d}</label>`).join('')}</div></div>
+      <div class="field"><label>Start</label><input type="time" id="sch-start" value="08:00"></div><div class="field"><label>End</label><input type="time" id="sch-end" value="17:00"></div>
+      <div class="field"><label>Unpaid break (minutes)</label><input type="number" id="sch-break" value="30" min="0" max="240"></div>
+      <div class="field"><label>Grace for arrival and departure (minutes)</label><input type="number" id="sch-grace" value="10" min="0" max="120"></div>
+      <div class="field" id="sch-flex" style="display:none"><label>Required hours per week</label><input type="number" id="sch-weekly" value="40" min="1" max="80" step="0.5"></div>
+      <div class="field"><label>Effective from</label><input type="date" id="sch-from" value="${ymd(new Date())}"></div></div>
+      <p style="font-size:11.5px;color:var(--text-faint)">Past periods keep the schedule that applied then. For a flexible role, hours are measured per week, so a long day can offset a short one.</p>
+      <button class="btn-small primary" onclick="attSaveSchedule('${personId}')">Save schedule</button> <button class="btn-small" onclick="document.getElementById('att-form-slot').innerHTML=''">Cancel</button></div>`;
+  };
+  window.attSaveSchedule = async function(personId){
+    const days = [...document.querySelectorAll('.sch-day:checked')].map(c => +c.value); if(!days.length){ toast('Choose at least one working day.', 'error'); return; }
+    const mode = document.getElementById('sch-mode').value;
+    const row = { organisation_id: STATE.org.id, personnel_id: personId, mode, days, start_time: document.getElementById('sch-start').value || '08:00', end_time: document.getElementById('sch-end').value || '17:00',
+      break_minutes: +document.getElementById('sch-break').value || 0, grace_minutes: +document.getElementById('sch-grace').value || 0, weekly_hours: mode === 'flexible' ? (+document.getElementById('sch-weekly').value || 40) : null,
+      effective_from: document.getElementById('sch-from').value || ymd(new Date()), created_by: STATE.user.id };
+    const { error } = await STATE.supabase.from('work_schedules').insert(row);
+    if(error){ toast('Could not save the schedule: ' + error.message, 'error'); return; }
+    toast('Schedule saved.', 'success'); renderPersonAttendance(personId); if(window.__attAfter) window.__attAfter(personId);
+  };
+  window.attShowExceptionForm = function(personId, appraisalId, slotId){
+    const slot = document.getElementById(slotId || 'att-form-slot'); if(!slot) return; const t = ymd(new Date());
+    slot.innerHTML = `<div class="detail-card" style="padding:14px;margin-top:10px;background:var(--grey-tint)"><div class="form-grid">
+      <div class="field"><label>From</label><input type="date" id="exc-from" value="${t}"></div><div class="field"><label>To</label><input type="date" id="exc-to" value="${t}"></div>
+      <div class="field"><label>Type</label><select id="exc-kind">${Object.entries(KINDS).map(([k,v])=>`<option value="${k}">${E(v)}</option>`).join('')}</select></div>
+      <div class="field span3"><label>Reason (required: this is kept on record)</label><input id="exc-reason" placeholder="e.g. Sales rep on client visits, hours agreed with manager"></div></div>
+      <p style="font-size:11.5px;color:var(--text-faint)">Days in this range are removed from the required hours, lateness and absence measures. Any time actually worked still counts.</p>
+      <button class="btn-small primary" onclick="attSaveException('${personId}','${appraisalId||''}','${slotId||''}')">Save exception</button> <button class="btn-small" onclick="this.closest('.detail-card').remove()">Cancel</button></div>`;
+  };
+  window.attSaveException = async function(personId, appraisalId, slotId){
+    const f = document.getElementById('exc-from').value, t = document.getElementById('exc-to').value, reason = document.getElementById('exc-reason').value.trim();
+    if(!f || !t || t < f){ toast('Check the dates.', 'error'); return; } if(reason.length < 5){ toast('Please give a reason.', 'error'); return; }
+    const { error } = await STATE.supabase.from('attendance_exceptions').insert({ organisation_id: STATE.org.id, personnel_id: personId, date_from: f, date_to: t, kind: document.getElementById('exc-kind').value, reason, appraisal_id: appraisalId || null, created_by: STATE.user.id });
+    if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+    toast('Exception recorded.', 'success'); renderPersonAttendance(personId); if(window.__attAfter) window.__attAfter(personId);
+  };
+  window.attDeleteException = async function(id, personId){
+    if(!confirm('Remove this exception? The days will be measured against the schedule again.')) return;
+    const { error } = await STATE.supabase.from('attendance_exceptions').delete().eq('id', id);
+    if(error){ toast('Could not remove: ' + error.message, 'error'); return; } renderPersonAttendance(personId); if(window.__attAfter) window.__attAfter(personId);
+  };
+
+  /* ------------------------------------------------------------- ID tags */
+  async function ensureBadges(ids){
+    const { data, error } = await STATE.supabase.from('personnel_badges').select('personnel_id, token, version, issued_at').in('personnel_id', ids);
+    if(error) throw new Error(error.message);
+    const have = {}; (data||[]).forEach(b => have[b.personnel_id] = b);
+    for(const id of ids){ if(!have[id]){ const r = await STATE.supabase.rpc('badge_issue', { p_personnel: id, p_reissue: false }); if(r.error) throw new Error(r.error.message); have[id] = r.data; } }
+    return have;
+  }
+  const qrImg = (text, px) => `https://api.qrserver.com/v1/create-qr-code/?size=${px}x${px}&margin=0&ecc=M&data=${encodeURIComponent(text)}`;
+  window.printIdTags = async function(ids){
+    if(!canManage()){ toast('Only managers and administrators can print ID tags.', 'error'); return; }
+    showLoader('Preparing ID tags…');
+    try {
+      const people = ids.map(personById).filter(Boolean); if(!people.length) throw new Error('No people selected.');
+      const badges = await ensureBadges(people.map(p => p.id));
+      const logo = STATE.org.logo_url ? `<img src="${E(STATE.org.logo_url)}" style="max-height:8mm;max-width:30mm;object-fit:contain">` : '';
+      const cards = people.map(p => {
+        const pos = primaryCompetenceFor(p.id), position = pos && pos.position_id ? positionById(pos.position_id) : null, photo = personPhotoUrl(p), b = badges[p.id];
+        const front = `<div class="idt front"><div class="idt-top"><div class="idt-org">${E(STATE.org.name)}</div><div class="idt-lbl">STAFF IDENTIFICATION</div></div>
+          <div class="idt-main"><div class="idt-photo">${photo ? `<img src="${E(photo)}" style="width:100%;height:100%;object-fit:cover">` : `<div style="font-size:22pt;color:#fff;font-weight:700">${E(initialsFor(p.full_name))}</div>`}</div>
+            <div class="idt-info"><div class="idt-name">${E(p.full_name)}</div><div class="idt-pos">${E(position ? position.title : (p.job_title || ''))}</div><div class="idt-no">Employee no: <b>${E(p.ref_code)}</b>${p.company_number ? '<br>Company no: <b>' + E(p.company_number) + '</b>' : ''}</div></div>
+            <div class="idt-qr"><img src="${qrImg('WMB:' + b.token, 300)}"></div></div>
+          <div class="idt-bot">${logo}<span>Scan at the attendance station</span></div></div>`;
+        const back = `<div class="idt back"><div class="idt-top"><div class="idt-org">${E(STATE.org.name)}</div><div class="idt-lbl">IMPORTANT</div></div>
+          <div class="idt-back-body">This card is the property of ${E(STATE.org.name)} and must be worn visibly while on site. It records your attendance when scanned. It is not transferable: never lend it to anyone. Report a lost or damaged card to your supervisor immediately so it can be cancelled and replaced.<br><br>If found, please return to ${E(STATE.org.name)}.</div>
+          <div class="idt-bot"><span>Issue ${b.version} · ${fmtDate(b.issued_at)}</span><span>Authorised signature: ______________</span></div></div>`;
+        return `<div class="idt-row">${front}${back}</div>`;
+      }).join('');
+      const c = document.getElementById('print-container');
+      c.innerHTML = `<style>
+        @page{size:A4;margin:12mm}
+        .idt-sheet{font-family:Arial,Helvetica,sans-serif;color:#000}
+        .idt-row{display:grid;grid-template-columns:85.6mm 85.6mm;gap:0;margin:0 0 4mm;break-inside:avoid;page-break-inside:avoid}
+        .idt{width:85.6mm;height:54mm;border:0.3mm solid #999;box-sizing:border-box;position:relative;overflow:hidden;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+        .idt-top{background:#B21616;color:#fff;height:9mm;padding:0 3.5mm;display:flex;justify-content:space-between;align-items:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+        .idt-org{font-size:8pt;font-weight:700;max-width:50mm;line-height:1.1}.idt-lbl{font-size:6pt;letter-spacing:.08em}
+        .idt-main{display:flex;gap:3mm;padding:3mm 3.5mm 0;height:36mm}
+        .idt-photo{width:22mm;height:27mm;background:#545454;display:flex;align-items:center;justify-content:center;flex:none;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+        .idt-info{flex:1;min-width:0}.idt-name{font-size:10.5pt;font-weight:700;line-height:1.15}.idt-pos{font-size:7.5pt;color:#444;margin-top:1mm}.idt-no{font-size:7pt;margin-top:2.5mm;line-height:1.45}
+        .idt-qr{width:19mm;flex:none;align-self:flex-end;margin-bottom:1mm}.idt-qr img{width:19mm;height:19mm;display:block}
+        .idt-bot{position:absolute;left:0;right:0;bottom:0;height:7mm;border-top:0.2mm solid #ddd;display:flex;justify-content:space-between;align-items:center;padding:0 3.5mm;font-size:6pt;color:#555}
+        .idt-back-body{font-size:6.8pt;line-height:1.45;padding:3.5mm}
+      </style><div class="idt-sheet">${cards}</div>`;
+      await waitForPrintImages(c); hideLoader(); window.print();
+    } catch(e){ hideLoader(); toast('Could not prepare the ID tags: ' + e.message, 'error'); }
+  };
+  window.attReissueBadge = async function(personId){
+    if(!confirm('Reissue this ID tag? The old card stops working at once and a new tag is printed. Use this when a card is lost or stolen.')) return;
+    const { error } = await STATE.supabase.rpc('badge_issue', { p_personnel: personId, p_reissue: true });
+    if(error){ toast('Could not reissue: ' + error.message, 'error'); return; }
+    toast('Old tag cancelled. Printing the new one.', 'success'); printIdTags([personId]);
+  };
+  window.attPrintAllTags = async function(){
+    const ids = (STATE.personnel||[]).filter(p => p.status === 'active' || !p.status).map(p => p.id);
+    if(!ids.length){ toast('No active personnel.', 'error'); return; }
+    if(!confirm(`Print ID tags for ${ids.length} people? Anyone without a tag is issued one now.`)) return; printIdTags(ids);
+  };
+
+  /* ------------------------------------------- Time and Attendance module */
+  async function renderStations(){
+    const box = document.getElementById('att-stations-body'); if(!box) return;
+    const { data, error } = await STATE.supabase.from('attendance_kiosks').select('*').eq('organisation_id', STATE.org.id).order('created_at');
+    if(error){ box.innerHTML = `<p style="font-size:12.5px;color:var(--text-faint)">Scanner stations need the new SQL: run qashe-watchman-schema-badge-attendance.sql. (${E(error.message)})</p>`; return; }
+    box.innerHTML = (data||[]).length ? data.map(k => { const url = pageBase() + 'qashe-watchman-attendance-scanner.html?k=' + k.token;
+      return `<div class="evidence-row" style="align-items:center"><div style="flex:1;min-width:200px"><b>${E(k.name)}</b> ${k.active ? '' : '<span class="sev-badge" style="background:#999;color:#fff">Inactive</span>'}<div style="font-size:11px;color:var(--text-faint)">Last scan: ${k.last_scan_at ? fmtDateTime(k.last_scan_at) : 'never'}</div></div>
+        <a class="btn-small primary" href="${E(url)}" target="_blank" rel="noopener" style="text-decoration:none">Open scanner</a><button class="btn-small" onclick="navigator.clipboard.writeText('${E(url)}');toast('Scanner link copied.','success')">Copy link</button>
+        ${isAdm() ? `<button class="btn-small" onclick="attToggleStation('${k.id}',${!k.active})">${k.active ? 'Deactivate' : 'Activate'}</button>` : ''}</div>`; }).join('') : '<p style="font-size:12.5px;color:var(--text-faint)">No scanner station yet. Add one for each gate or entrance.</p>';
+  }
+  window.attAddStation = async function(){
+    const name = (document.getElementById('att-station-name').value || '').trim(); if(!name){ toast('Name the station, for example Main gate.', 'error'); return; }
+    const { error } = await STATE.supabase.from('attendance_kiosks').insert({ organisation_id: STATE.org.id, name, created_by: STATE.user.id });
+    if(error){ toast('Could not add: ' + error.message, 'error'); return; } document.getElementById('att-station-name').value = ''; renderStations();
+  };
+  window.attToggleStation = async function(id, active){ const { error } = await STATE.supabase.from('attendance_kiosks').update({ active }).eq('id', id); if(error){ toast(error.message, 'error'); return; } renderStations(); };
+
+  window.attRunReport = async function(){
+    const box = document.getElementById('att-report-body'); if(!box) return;
+    const weeks = +document.getElementById('att-rep-weeks').value || 4, to = ymd(new Date()), from = ymd(addDays(new Date(), -7*weeks + 1));
+    box.innerHTML = '<p style="font-size:12.5px;color:var(--text-faint)">Calculating…</p>';
+    const [rec, sch, exc] = await Promise.all([
+      STATE.supabase.from('attendance_records').select('*').eq('organisation_id', STATE.org.id).gte('clock_in_at', new Date(from + 'T00:00:00').toISOString()).lte('clock_in_at', new Date(to + 'T23:59:59').toISOString()).limit(20000),
+      STATE.supabase.from('work_schedules').select('*').eq('organisation_id', STATE.org.id).order('effective_from', { ascending:false }),
+      STATE.supabase.from('attendance_exceptions').select('*').eq('organisation_id', STATE.org.id).lte('date_from', to).gte('date_to', from) ]);
+    if(rec.error){ box.innerHTML = `<p style="font-size:12.5px;color:var(--text-faint)">${E(rec.error.message)}</p>`; return; }
+    const rows = (STATE.personnel||[]).filter(p => p.status === 'active' || !p.status).map(p => {
+      const cf = computeConformance(p.id, from, to, { records:(rec.data||[]).filter(r => r.personnel_id === p.id), schedules:(sch.data||[]).filter(s => s.personnel_id === p.id), exceptions:(exc.data||[]).filter(x => x.personnel_id === p.id) });
+      return { p, cf }; }).sort((a,b) => (a.cf.overall == null ? 999 : a.cf.overall) - (b.cf.overall == null ? 999 : b.cf.overall));
+    window.__attRows = rows.map(({p,cf}) => ({ Employee:p.ref_code, Name:p.full_name, Schedule:cf.assumed?'Standard (assumed)':cf.mode, 'Required hours':+(cf.reqTotal/60).toFixed(1), 'Hours worked':+(cf.hrsTotal/60).toFixed(1), 'Hours %':cf.hoursPct, 'Attendance %':cf.attendPct, 'Punctuality %':cf.punctPct, 'Conformance %':cf.overall, Rating:cf.rating, 'Late':cf.late, 'No clock-out':cf.missing, 'Exception days':cf.excDays }));
+    const pc = v => v == null ? '—' : v + '%';
+    box.innerHTML = `<div style="overflow-x:auto"><table style="font-size:12.5px"><tr><th>Person</th><th>Schedule</th><th>Hours worked / required</th><th>Attendance</th><th>Punctuality</th><th>Conformance</th><th>Rating</th><th>Exceptions</th></tr>
+      ${rows.map(({p,cf}) => `<tr class="clickable" onclick="showModule('personnel');setTimeout(()=>openPersonDetail('${p.id}'),0)"><td class="strong">${E(p.full_name)}</td><td>${cf.assumed ? '<span style="color:var(--amber)">Standard (assumed)</span>' : cf.mode === 'flexible' ? 'Flexible' : 'Fixed'}</td><td>${fmtH(cf.hrsTotal)} / ${fmtH(cf.reqTotal)}</td><td>${pc(cf.attendPct)}</td><td>${pc(cf.punctPct)}</td>
+        <td><b style="color:${bandCol(cf.overall)}">${pc(cf.overall)}</b></td><td>${cf.rating ? cf.rating + ' / 5' : '—'}</td><td>${cf.excDays || '—'}</td></tr>`).join('')}</table></div>
+      <div style="margin-top:8px"><button class="btn-small" onclick="attExportReport()">Export Excel</button></div>
+      <p style="font-size:11px;color:var(--text-faint);margin-top:8px;line-height:1.5">${E(howText)}</p>`;
+  };
+  window.attExportReport = async function(){
+    const XLSX = await ensureXLSX(), ws = XLSX.utils.json_to_sheet(window.__attRows || []), wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Attendance conformance'); XLSX.writeFile(wb, 'attendance-conformance.xlsx');
+  };
+  const _rhs = renderHrSubtabContent;
+  renderHrSubtabContent = window.renderHrSubtabContent = function(tab){
+    const r = _rhs.apply(this, arguments);
+    try {
+      if(tab !== 'attendance') return r; const root = document.getElementById('hr-subtab-content'); if(!root || document.getElementById('att-stations-card')) return r;
+      const html = `<div class="detail-card" id="att-stations-card" style="margin:16px 0 18px">
+          <div class="panel-head"><h3 style="font-family:Arial,Helvetica,sans-serif;font-size:15.5px;font-weight:600">Scanner stations and staff ID tags</h3></div>
+          <p style="font-size:12.5px;color:var(--text-dim);line-height:1.55;margin-bottom:10px">Every person has a QR ID tag printed from their Personnel profile. Staff show the tag to a scanner station and are clocked in or out: a USB or Bluetooth QR scanner plugged into any PC or tablet, or the camera of a tablet or phone, on the station page. Each scan updates this register, the person's profile and their conformance rating.</p>
+          <div id="att-stations-body"></div>
+          ${isAdm() ? `<div style="display:flex;gap:6px;margin-top:10px"><input id="att-station-name" placeholder="New station name, e.g. Main gate" style="flex:1;max-width:320px;padding:7px 10px;border:1px solid var(--border);border-radius:6px"><button class="btn-small primary" onclick="attAddStation()">Add station</button></div>` : ''}
+          ${canManage() ? `<div style="margin-top:12px"><button class="btn-small" onclick="attPrintAllTags()">Issue and print ID tags for all staff</button></div>` : ''}</div>
+        <div class="detail-card" id="att-report-card" style="margin:0 0 18px"><div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h3 style="font-family:Arial,Helvetica,sans-serif;font-size:15.5px;font-weight:600">Attendance conformance, all staff</h3>
+          <div style="display:flex;gap:6px"><select id="att-rep-weeks" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px"><option value="4">Last 4 weeks</option><option value="12">Last 12 weeks</option><option value="26">Last 26 weeks</option></select><button class="btn-small primary" onclick="attRunReport()">Run report</button></div></div>
+          <div id="att-report-body"><p style="font-size:12.5px;color:var(--text-faint)">Choose a period and run the report. Lowest conformance is listed first.</p></div></div>`;
+      root.insertAdjacentHTML('afterbegin', html); renderStations();
+    } catch(e){ console.warn('attendance tab', e); }
+    return r;
+  };
+
+  /* ------------------------------------------------ Personnel list button */
+  const _sm = showModule;
+  showModule = window.showModule = function(mod){
+    const r = _sm.apply(this, arguments);
+    if(mod === 'personnel') setTimeout(() => { try {
+      const nb = document.querySelector('button.btn-add[onclick="togglePersonForm()"]');
+      if(nb && canManage() && !document.querySelector('.att-tags-btn')) nb.insertAdjacentHTML('beforebegin', '<button class="btn-small att-tags-btn" onclick="attPrintAllTags()">Print ID tags</button>');
+    } catch(e){} }, 120);
+    return r;
+  };
+
+  /* -------------------------------------------------- Appraisal integration */
+  const _oap = openAppraisalDetail;
+  openAppraisalDetail = window.openAppraisalDetail = async function(id){
+    const r = await _oap.apply(this, arguments);
+    try { await appraisalAttendanceCard(id); } catch(e){ console.warn('appraisal attendance', e); }
+    return r;
+  };
+  async function appraisalAttendanceCard(id){
+    const a = appraisalById(id); const panel = document.querySelector('#appraisal-detail-slot .detail-panel'); if(!a || !panel) return;
+    panel.querySelector('#appr-att-card')?.remove();
+    const card = document.createElement('div'); card.className = 'detail-card'; card.id = 'appr-att-card'; card.style.cssText = 'padding:16px;margin-bottom:16px';
+    const heads = [...panel.querySelectorAll('.panel-head')]; const kpiHead = heads.find(h => /KPIs/.test(h.textContent));
+    kpiHead ? kpiHead.parentNode.insertBefore(card, kpiHead) : panel.appendChild(card);
+    card.innerHTML = '<p style="font-size:12.5px;color:var(--text-faint)">Loading attendance for the review period…</p>';
+    window.__attAfter = pid => { if(pid === a.personnel_id) appraisalAttendanceCard(id); };
+    const data = await fetchPersonData(a.personnel_id, a.period_start, a.period_end);
+    if(data.error){ card.innerHTML = '<h3 style="font-size:15px">Attendance conformance</h3><p style="font-size:12.5px;color:var(--text-faint)">Not available until qashe-watchman-schema-badge-attendance.sql has been run.</p>'; return; }
+    const cf = computeConformance(a.personnel_id, a.period_start, a.period_end, data), ws = weekSeries(cf);
+    const selects = [...panel.querySelectorAll('select[id^="mgr-rating-"]')];
+    const opts = selects.map(s => { const row = s.closest('.detail-card'); const t = row ? (row.querySelector('b')||{}).textContent : ''; return `<option value="${s.id}">${E(t || s.id)}</option>`; }).join('');
+    card.innerHTML = `<div class="panel-head" style="margin-bottom:8px"><h3 style="font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:600">Attendance conformance for this review period</h3></div>
+      <div style="display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start"><div style="flex:0 0 140px;text-align:center"><div style="width:140px;margin:0 auto">${wdDial(cf.overall, bandKey(cf.overall), 140)}</div><div style="font-weight:700;font-size:13px;margin-top:-4px;color:${bandCol(cf.overall)}">${cf.rating ? 'Suggested rating ' + cf.rating + ' of 5' : (cf.noData ? 'No scans recorded' : 'No scheduled days')}</div></div>
+        <div style="flex:1;min-width:260px">${statsRow(cf)}${cf.assumed ? '<p style="font-size:12px;color:var(--amber)">No work schedule is set for this person, so standard hours were assumed. Set it on their Personnel profile.</p>' : ''}</div></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px"><div>${clusterBars(ws.cats, ws.req, ws.act, ws.cols)}</div><div>${dayStrip(cf.days)}</div></div>
+      <div style="margin-top:12px;border-top:1px solid var(--border-soft);padding-top:10px"><div style="font-size:12.5px;font-weight:700;margin-bottom:6px">Line manager exceptions</div>
+        ${data.exceptions.length ? `<table style="font-size:12px"><tr><th>From</th><th>To</th><th>Type</th><th>Reason</th><th></th></tr>${data.exceptions.map(x => `<tr><td>${fmtDate(x.date_from)}</td><td>${fmtDate(x.date_to)}</td><td>${E(KINDS[x.kind]||x.kind)}</td><td>${E(x.reason)}</td><td>${canManage() ? `<button class="btn-small" onclick="attDeleteException('${x.id}','${a.personnel_id}')">Remove</button>` : ''}</td></tr>`).join('')}</table>` : '<p style="font-size:12px;color:var(--text-faint)">None. Where actual attendance does not match the schedule (for example flexible hours for sales reps), the line manager can record an exception with a reason.</p>'}
+        ${canManage() ? `<button class="btn-small" style="margin-top:8px" onclick="attShowExceptionForm('${a.personnel_id}','${a.id}','appr-att-form')">Add an exception for this period</button><div id="appr-att-form"></div>` : ''}</div>
+      ${selects.length ? `<div style="margin-top:12px;border-top:1px solid var(--border-soft);padding-top:10px"><div style="font-size:12.5px;font-weight:700;margin-bottom:6px">Use as evidence for a KPI rating</div><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><select id="appr-att-kpi" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;max-width:320px">${opts}</select><button class="btn-small primary" ${cf.rating ? '' : 'disabled'} onclick="attApplyToKpi(${cf.rating||0},'${cf.overall}','${cf.hoursPct}','${cf.attendPct}','${cf.punctPct}')">Apply suggested rating ${cf.rating||''}</button></div><p style="font-size:11px;color:var(--text-faint);margin-top:6px">This fills the manager rating and note for the chosen KPI. You can still change it before finalising.</p></div>` : ''}
+      <p style="font-size:11px;color:var(--text-faint);margin-top:10px;line-height:1.5">${E(howText)}</p>`;
+  }
+  window.attApplyToKpi = function(rating, overall, hrs, att, pun){
+    const sel = document.getElementById(document.getElementById('appr-att-kpi').value); if(!sel) return;
+    sel.value = String(rating);
+    const cm = document.getElementById(sel.id.replace('mgr-rating-','mgr-comment-'));
+    if(cm) cm.value = `Attendance conformance ${overall}% (hours ${hrs}%, attendance ${att}%, punctuality ${pun}%) from scanner records, after manager exceptions.`.replace(/null/g,'n/a');
+    toast('Rating filled in. Review it, then finalise the appraisal.', 'success');
+  };
+})();
+
 </script>
 </body>
 </html>
