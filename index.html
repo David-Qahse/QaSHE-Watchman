@@ -38083,6 +38083,192 @@ async function renderNcResponsePage(token){
     await printRecord(job.title, job.refLine, job.meta || [], tiles, null, null);
   };
 })();
+
+/* ===== b56: Processes & KPIs: register with KPI compliance %, magazine page view (flowchart left, KPIs right), edit only on request ===== */
+(function(){
+  const E = s => escapeHtml(String(s == null ? '' : s));
+  const st = document.createElement('style'); st.id = 'b56-css';
+  st.textContent = `
+    .pcc-bar{display:inline-block;width:90px;height:8px;border-radius:5px;background:#e6e3dd;overflow:hidden;vertical-align:middle;margin-right:8px;}
+    .pcc-bar i{display:block;height:100%;border-radius:5px;}
+    .mag-top{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:12px;}
+    .mag-spread{display:grid;grid-template-columns:1fr 1fr;background:#d9d5cc;padding:16px;border-radius:16px;gap:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.05);}
+    .mag-page{background:#fff;padding:26px 30px 34px;min-height:620px;position:relative;font-family:Arial,Helvetica,sans-serif;box-shadow:0 6px 18px rgba(0,0,0,.12);}
+    .mag-page.l{border-radius:10px 0 0 10px;background:linear-gradient(90deg,#fff 93%,#eceae4 100%);}
+    .mag-page.r{border-radius:0 10px 10px 0;background:linear-gradient(270deg,#fff 93%,#eceae4 100%);}
+    .mag-eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--red);}
+    .mag-title{font-size:26px;font-weight:800;line-height:1.15;margin:4px 0 6px;}
+    .mag-meta{font-size:12px;color:var(--text-dim);margin-bottom:16px;}
+    .mag-h{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-faint);margin:0 0 10px;padding-bottom:6px;border-bottom:2px solid #111;}
+    .mag-folio{position:absolute;bottom:10px;font-size:10.5px;color:var(--text-faint);} .mag-page.l .mag-folio{left:30px;} .mag-page.r .mag-folio{right:30px;}
+    .mag-big{font-size:54px;font-weight:800;line-height:1;} .mag-sub{font-size:12px;color:var(--text-dim);}
+    .mag-kpi{border-top:1px solid var(--border);padding:12px 0;} .mag-kpi:first-of-type{border-top:0;}
+    .mag-flow svg{width:100%;height:auto;max-width:560px;display:block;margin:0 auto;stroke:none;fill:none;}
+    @media (max-width:900px){.mag-spread{grid-template-columns:1fr;padding:8px;} .mag-page.l,.mag-page.r{border-radius:10px;margin-bottom:8px;background:#fff;}}
+    @media print{.mag-top{display:none;} .mag-spread{display:block;background:none;padding:0;box-shadow:none;} .mag-page{box-shadow:none;break-inside:avoid;}}`;
+  document.head.appendChild(st);
+
+  const TH = { good:90, ok:70 };
+  const col = pct => pct == null ? '#A6A6A6' : pct >= TH.good ? '#2E7D4F' : pct >= TH.ok ? '#B8791C' : '#B3261E';
+  window.pcCompliance = function(p){
+    const ks = pcKpisOf(p).filter(k => k.is_active);
+    let on = 0, near = 0, off = 0, none = 0;
+    ks.forEach(k => { const s = kpiInfo(k).status; if(s === 'green') on++; else if(s === 'amber') near++; else if(s === 'red') off++; else none++; });
+    const measured = on + near + off;
+    return { total:ks.length, on, near, off, none, measured, pct: measured ? Math.round(on / measured * 100) : null };
+  };
+  const pctCell = c => c.pct == null
+    ? `<span style="color:var(--text-faint);font-size:12px;">${c.total ? 'No readings yet' : '—'}</span>`
+    : `<span class="pcc-bar"><i style="width:${c.pct}%;background:${col(c.pct)}"></i></span><b style="color:${col(c.pct)}">${c.pct}%</b><span style="font-size:11px;color:var(--text-faint);"> ${c.on}/${c.measured}</span>`;
+
+  /* ---- register ---- */
+  window.renderProcessesTable = renderProcessesTable = function(){
+    const wrap = document.getElementById('process-table-wrap'); if(!wrap) return;
+    const sel = document.getElementById('proc-filter-status'), fStatus = sel ? sel.value : '';
+    const rows = STATE.processes.filter(p => !fStatus || p.status === fStatus);
+    if(!rows.length){ wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.1-2.8-2.8L7 14"/></svg><p>No processes yet. Use <b>New Process</b> to add one from a generic flowchart, an old document, or with the AI assistant.</p></div>`; return; }
+    const all = rows.map(p => pcCompliance(p)).filter(c => c.pct != null);
+    const on = all.reduce((a,c)=>a+c.on,0), meas = all.reduce((a,c)=>a+c.measured,0);
+    const overall = meas ? Math.round(on/meas*100) : null;
+    wrap.innerHTML = `
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;gap:18px;align-items:center;flex-wrap:wrap;font-size:12.5px;">
+        <span><b>${rows.length}</b> process${rows.length===1?'':'es'}</span>
+        <span>Overall KPI compliance: ${overall==null ? '<span style="color:var(--text-faint)">no readings yet</span>' : `<b style="color:${col(overall)};font-size:16px;">${overall}%</b> <span style="color:var(--text-faint)">(${on} of ${meas} measured KPIs on target)</span>`}</span>
+        <span style="color:var(--text-faint);">Click a process to open it as a page.</span></div>
+      <table><tr><th>Ref</th><th>Process</th><th>Owner</th><th>KPI compliance</th><th>KPI status</th><th>Flowchart</th><th>Review</th><th>Status</th></tr>
+      ${rows.map(p => `<tr class="clickable" onclick="pcMag('${p.id}')">
+        <td class="mono-cell">${E(p.ref_code)}</td>
+        <td class="strong">${E(p.name)}${p.ai_assisted ? ' <span style="font-size:10px;color:var(--text-faint);font-weight:500;">· AI-assisted</span>' : ''}</td>
+        <td>${E(memberName(p.owner_id))}</td>
+        <td style="white-space:nowrap;">${pctCell(pcCompliance(p))}</td>
+        <td>${pcKpiSummary(p)}</td>
+        <td>${p.flowchart_id ? '<span style="color:var(--green);font-size:12.5px;">✓ ' + STATE.orgFlowchartSteps.filter(s=>s.flowchart_id===p.flowchart_id).length + ' steps</span>' : '<span style="color:var(--text-faint);font-size:12px;">—</span>'}</td>
+        <td style="text-transform:capitalize">${E(p.review_frequency || '—')}</td>
+        <td>${pill(p.status)}</td></tr>`).join('')}</table>`;
+  };
+
+  /* ---- flowchart drawing ---- */
+  const KC = { start:['#2E7D4F','#E8F3EC'], step:['#3B6FA0','#EAF1F8'], decision:['#B8791C','#FBF2DE'], end:['#B3261E','#FBEAE8'] };
+  function wrap(t, n, maxLines){
+    const words = String(t || '').split(/\s+/).filter(Boolean), out = []; let cur = '';
+    words.forEach(w => { if((cur + ' ' + w).trim().length > n && cur){ out.push(cur); cur = w; } else cur = (cur + ' ' + w).trim(); });
+    if(cur) out.push(cur);
+    if(out.length > maxLines){ out.length = maxLines; out[maxLines-1] = out[maxLines-1].replace(/.{0,2}$/, '…'); }
+    return out;
+  }
+  function flowSvg(steps){
+    const CX = 270, BW = 280, GAP = 38, W = 540; let y = 14; const node = [];
+    steps.forEach((s, i) => {
+      const kind = s.step_kind || 'step', role = s.responsible_role ? wrap(s.responsible_role, 40, 1)[0] : '';
+      let lines, h;
+      if(kind === 'decision'){ lines = wrap(s.title, 24, 3); h = Math.max(100, 54 + lines.length*15); }
+      else { lines = wrap(s.title, 34, 3); h = 20 + lines.length*16 + (role ? 16 : 0) + 10; if(kind==='start'||kind==='end') h = Math.max(h, 44); }
+      node.push({ s, i, kind, lines, role, h, top:y, cy:y + h/2 }); y += h + GAP;
+    });
+    const H = y - GAP + 14, idxBySort = {}; node.forEach(n => idxBySort[n.s.sort_order] = n.i);
+    let out = '', jumpsR = 0, jumpsL = 0;
+    const arrow = (x1,y1,x2,y2,dash) => `<path d="M${x1},${y1} L${x2},${y2}" stroke="#555" stroke-width="1.8" ${dash?'stroke-dasharray="4 3"':''} fill="none" marker-end="url(#pfA)"/>`;
+    const label = (x,y,t,c) => `<text x="${x}" y="${y}" font-size="11" font-weight="700" fill="${c}" font-family="Arial">${E(t)}</text>`;
+    node.forEach(n => {
+      const next = node[n.i+1], bot = n.top + n.h;
+      if(n.kind === 'end') return;
+      if(n.kind === 'decision'){
+        const br = [[n.s.on_yes_goto_sort_order, n.s.decision_yes_label || 'Yes', '#2E7D4F'], [n.s.on_no_goto_sort_order, n.s.decision_no_label || 'No', '#B3261E']];
+        let usedNext = br.some(b => b[0] != null && idxBySort[b[0]] === n.i+1);
+        br.forEach(b => {
+          let ti = b[0] != null ? idxBySort[b[0]] : undefined;
+          if(ti == null && !usedNext && next){ ti = n.i + 1; usedNext = true; }
+          if(ti == null) return;
+          if(ti === n.i + 1){ out += arrow(CX, bot, CX, next.top - 1) + label(CX + 8, bot + 15, b[1], b[2]); return; }
+          const t = node[ti], right = jumpsR <= jumpsL; const lane = right ? CX + BW/2 + 22 + jumpsR++*14 : CX - BW/2 - 22 - jumpsL++*14;
+          const x0 = right ? CX + BW/2 : CX - BW/2, x1 = right ? CX + BW/2 : CX - BW/2;
+          out += `<path d="M${x0},${n.cy} H${lane} V${t.cy} H${x1 + (right?3:-3)}" stroke="${b[2]}" stroke-width="1.6" stroke-dasharray="5 3" fill="none" marker-end="url(#pfA)"/>` + label(right ? x0 + 6 : x0 - 30, n.cy - 5, b[1], b[2]);
+        });
+      } else if(next){ out += arrow(CX, bot, CX, next.top - 1); }
+    });
+    node.forEach(n => {
+      const [c, f] = KC[n.kind] || KC.step, x = CX - BW/2, tt = `<title>${E(n.s.title)}${n.s.description ? ' — ' + E(n.s.description) : ''}</title>`;
+      let shape;
+      if(n.kind === 'decision') shape = `<polygon points="${CX},${n.top} ${x+BW},${n.cy} ${CX},${n.top+n.h} ${x},${n.cy}" fill="${f}" stroke="${c}" stroke-width="2"/>`;
+      else if(n.kind === 'start' || n.kind === 'end') shape = `<rect x="${x}" y="${n.top}" width="${BW}" height="${n.h}" rx="${n.h/2}" fill="${f}" stroke="${c}" stroke-width="2"/>`;
+      else shape = `<rect x="${x}" y="${n.top}" width="${BW}" height="${n.h}" rx="8" fill="${f}" stroke="${c}" stroke-width="2"/>`;
+      const startY = n.kind === 'decision' ? n.cy - (n.lines.length-1)*7.5 + 4 : n.top + 20;
+      const txt = n.lines.map((l,i) => `<text x="${CX}" y="${startY + i*(n.kind==='decision'?15:16)}" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1a1a1a" font-family="Arial">${E(l)}</text>`).join('')
+        + (n.role && n.kind !== 'decision' ? `<text x="${CX}" y="${n.top + n.h - 9}" text-anchor="middle" font-size="10" fill="#666" font-family="Arial">${E(n.role)}</text>` : '');
+      const badge = `<circle cx="${x+12}" cy="${n.top+12}" r="0" /><text x="${x - 10}" y="${n.top + 14}" text-anchor="end" font-size="10" fill="#999" font-family="Arial">${n.i+1}</text>`;
+      out += `<g>${tt}${shape}${txt}${badge}</g>`;
+    });
+    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Process flowchart"><defs><marker id="pfA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#555" stroke="none"/></marker></defs>${out}</svg>`;
+  }
+
+  /* ---- the page view ---- */
+  function magHtml(p){
+    const fc = p.flowchart_id ? flowchartById(p.flowchart_id) : null;
+    const steps = fc ? STATE.orgFlowchartSteps.filter(s => s.flowchart_id === fc.id).sort((a,b) => a.sort_order - b.sort_order) : [];
+    const kpis = pcKpisOf(p).filter(k => k.is_active), c = pcCompliance(p);
+    const mods = (p.linked_modules || []).filter(k => MODULE_META[k]), docs = pcDocLinksOf(p);
+    const kpiRows = kpis.map(k => {
+      const i = kpiInfo(k), l = i.latest;
+      return `<div class="mag-kpi"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;"><b style="font-size:13.5px;">${E(k.name)}</b>${kpiChip(i.status)}</div>
+        <div style="display:flex;align-items:baseline;gap:14px;margin-top:4px;flex-wrap:wrap;">
+          <span style="font-size:24px;font-weight:800;">${l ? E(l.value) : '—'}<span style="font-size:12px;font-weight:400;color:var(--text-faint);"> ${E(k.unit || '')}</span></span>
+          <span style="font-size:12px;color:var(--text-dim);">Target ${k.direction === 'lower' ? '≤' : '≥'} <b>${k.target_value != null ? E(k.target_value) : '—'}</b> ${E(k.unit || '')}</span>
+          <span style="margin-left:auto;">${kpiSpark(k)}</span></div>
+        <div style="font-size:11.5px;color:var(--text-faint);margin-top:2px;">${KPI_FREQ[k.frequency] ? KPI_FREQ[k.frequency].label : ''}${k.owner_id ? ' · ' + E(memberName(k.owner_id)) : ''}${l ? ' · last reading ' + fmtDate(l.period_date) : ''} · next reading ${fmtDate(i.due)} ${dateStatusBadge(i.due, false)}</div></div>`;
+    }).join('');
+    return `
+      <div class="mag-top">
+        <button class="btn-small" onclick="pcMagClose()">&larr; All processes</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn-small" onclick="printProcess('${p.id}')">Print / PDF</button>
+          ${canEditFlowchart() || canRecordKpi() ? `<button class="btn-small primary" onclick="pcMagEdit('${p.id}')">Edit this page</button>` : ''}</div></div>
+      <div class="mag-spread">
+        <div class="mag-page l">
+          <div class="mag-eyebrow">Process ${E(p.ref_code)}</div><div class="mag-title">${E(p.name)}</div>
+          <div class="mag-meta">Owner: <b>${E(memberName(p.owner_id))}</b> · Review: ${E(p.review_frequency || '—')} · ${pill(p.status)}${fc && fc.standard_refs && fc.standard_refs.length ? '<br>' + E(fc.standard_refs.join(' · ')) : ''}</div>
+          <div class="mag-h">Process flow</div>
+          <div class="mag-flow">${steps.length ? flowSvg(steps) : '<p style="font-size:13px;color:var(--text-faint);">No flowchart has been built for this process yet. Use Edit this page to build one from a template or with the assistant.</p>'}</div>
+          <div class="mag-folio">${E(p.ref_code)} · Process flow</div></div>
+        <div class="mag-page r">
+          <div class="mag-eyebrow">KPI performance</div>
+          <div style="display:flex;align-items:flex-end;gap:16px;margin:6px 0 14px;"><div class="mag-big" style="color:${col(c.pct)};">${c.pct == null ? '—' : c.pct + '%'}</div>
+            <div class="mag-sub"><b>Compliance</b><br>${c.pct == null ? (c.total ? 'No readings recorded yet' : 'No KPIs set up yet') : `${c.on} of ${c.measured} measured KPI${c.measured===1?'':'s'} on target${c.near ? ', ' + c.near + ' near target' : ''}${c.off ? ', ' + c.off + ' off target' : ''}${c.none ? '<br>' + c.none + ' not yet measured' : ''}`}</div></div>
+          <div class="mag-h">Measures</div>
+          ${kpiRows || '<p style="font-size:13px;color:var(--text-faint);">No active KPIs. Use Edit this page to add them.</p>'}
+          ${docs.length || mods.length ? `<div class="mag-h" style="margin-top:20px;">Linked documents and modules</div>
+            <div style="font-size:12.5px;line-height:1.7;">${docs.map(l => { const dd = l.document_id ? documentById(l.document_id) : null; return dd ? `<div>${E(dd.doc_number)}: ${E(dd.title)}</div>` : ''; }).join('')}
+            <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:6px;">${mods.map(k => `<span class="linked-task-chip" style="cursor:pointer;" onclick="showModule('${k}')">${E(pcModuleLabel(k))}</span>`).join('')}</div></div>` : ''}
+          <div class="mag-folio">KPI performance</div></div>
+      </div>`;
+  }
+  window.pcMag = function(id){ STATE._pfMag = id; STATE._pfTab = 'register'; STATE._pfOpenId = null; renderProcessFlowchartsList(); window.scrollTo({top:0}); };
+  window.pcMagClose = function(){ STATE._pfMag = null; renderProcessFlowchartsList(); };
+  window.pcMagEdit = function(id){ STATE._pfMag = null; renderProcessFlowchartsList(); openProcessDetail(id); setTimeout(() => { const s = document.getElementById('process-detail-slot'); if(s) s.scrollIntoView({behavior:'smooth', block:'start'}); }, 400); };
+
+  const _list = renderProcessFlowchartsList;
+  renderProcessFlowchartsList = window.renderProcessFlowchartsList = function(){
+    const root = document.getElementById('pf-root');
+    if(root && STATE._pfMag === true) STATE._pfMag = null;
+    if(root && STATE._pfMag && !STATE._pfOpenId && (STATE._pfTab || 'register') === 'register'){
+      const p = STATE.processes.find(x => x.id === STATE._pfMag);
+      if(p){ root.innerHTML = `<div id="process-detail-slot"></div>` + magHtml(p); return; }
+      STATE._pfMag = null;
+    }
+    return _list.apply(this, arguments);
+  };
+  const _sw = window.pfSwitchTab;
+  window.pfSwitchTab = function(t){ STATE._pfMag = null; return _sw.apply(this, arguments); };
+  const _showMod = showModule;
+  showModule = window.showModule = function(mod){ if(mod === 'process_flowcharts' || mod === 'processes'){ STATE._pfMag = null; } return _showMod.apply(this, arguments); };
+
+  /* the edit page gets a way back to the page view */
+  const _od = openProcessDetail;
+  openProcessDetail = window.openProcessDetail = async function(id){
+    const r = await _od.apply(this, arguments);
+    try{ const box = document.querySelector('#process-detail-slot .detail-head > div:last-child');
+      if(box && !box.querySelector('.pc-pageview')) box.insertAdjacentHTML('afterbegin', `<button class="btn-small pc-pageview" onclick="pcMag('${id}')">&larr; Page view</button>`); }catch(e){}
+    return r;
+  };
+})();
 </script>
 </body>
 </html>
