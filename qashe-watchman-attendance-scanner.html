@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Attendance scanner: Watchman</title>
+<style>
+  :root{--red:#B21616;--red-dark:#7E0F0F;--bg:#F7F6F5;--border:#E3E1DF;--text:#1E1C1B;--dim:#615C59;--faint:#9C9895;--green:#2E7D4F;--amber:#B8791C}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column;-webkit-font-smoothing:antialiased;user-select:none}
+  header{background:#fff;border-bottom:1px solid var(--border);padding:14px 22px;display:flex;align-items:center;gap:14px}
+  header svg{width:40px;height:40px;flex:none}
+  header b{font-size:20px;display:block}header small{font-size:11px;color:var(--faint);letter-spacing:.06em;text-transform:uppercase}
+  .clock{margin-left:auto;text-align:right}.clock b{font-size:30px;font-variant-numeric:tabular-nums}.clock small{display:block;letter-spacing:0;text-transform:none;font-size:13px}
+  main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;text-align:center;transition:background .2s}
+  main.in{background:#E9F5EE}main.out{background:#FBF1E1}main.err{background:#FCEAEA}
+  .prompt{font-size:34px;font-weight:700}.sub{font-size:16px;color:var(--dim);margin-top:10px}
+  .ring{width:150px;height:150px;margin-bottom:22px}
+  .name{font-size:46px;font-weight:700;line-height:1.1}.act{font-size:30px;font-weight:700;margin-top:14px}
+  main.in .act{color:var(--green)}main.out .act{color:var(--amber)}main.err .act{color:var(--red)}
+  .det{font-size:20px;color:var(--dim);margin-top:8px}
+  footer{background:#fff;border-top:1px solid var(--border);padding:10px 22px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--dim)}
+  footer button{border:1px solid var(--border);background:#fff;border-radius:8px;padding:10px 14px;font:700 13px Arial,Helvetica,sans-serif;color:var(--dim);cursor:pointer}
+  #recent{flex:1;min-width:200px;text-align:right}
+  #cam{display:none;position:fixed;inset:0;background:#000;z-index:10;flex-direction:column;align-items:center;justify-content:center}
+  #cam video{max-width:100%;max-height:78%;border-radius:14px}
+  #cam p{color:#fff;margin:14px;font-size:16px}
+  #cam button{background:#fff;border:0;border-radius:10px;padding:14px 26px;font:700 15px Arial,Helvetica,sans-serif;cursor:pointer;margin:6px}
+  #sink{position:fixed;left:-300px;top:0;opacity:0}
+  .bad{padding:40px;text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="17" stroke="#545454" stroke-width="2.6" opacity="0.9"/><circle cx="20" cy="20" r="17" stroke="#A6A6A6" stroke-width="2.6" stroke-dasharray="60 46" transform="rotate(-40 20 20)" opacity="0.9"/><circle cx="20" cy="20" r="17" stroke="#B21616" stroke-width="2.6" stroke-dasharray="80 46" transform="rotate(140 20 20)"/></svg>
+  <div><b id="org">Watchman</b><small id="station">Attendance scanner</small></div>
+  <div class="clock"><b id="t">--:--</b><small id="d"></small></div>
+</header>
+<main id="main"><svg class="ring" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="17" stroke="#545454" stroke-width="2" opacity="0.6"/><circle cx="20" cy="20" r="17" stroke="#B21616" stroke-width="2" stroke-dasharray="80 46" transform="rotate(140 20 20)"/></svg>
+  <div class="prompt" id="msg">Show your ID tag to the scanner</div><div class="sub" id="sub">Your tag clocks you in or out.</div></main>
+<footer><button id="camBtn" onclick="openCam()">Use the camera</button><button onclick="document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen()">Full screen</button><span id="recent"></span></footer>
+<input id="sink" type="text" autocomplete="off" autocapitalize="off" spellcheck="false">
+<div id="cam"><video id="vid" playsinline muted></video><p id="camMsg">Hold your ID tag in front of the camera</p><div><button onclick="flipCam()">Switch camera</button><button onclick="closeCam()">Close</button></div></div>
+
+<script type="module">
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+const supabase = createClient('https://uzywxhptwavnvpfzbhkb.supabase.co', 'sb_publishable_8XxT0I-Qdmswhd2I-TT_jg_CuI8a24f');
+const kiosk = new URLSearchParams(location.search).get('k') || '';
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const recent = []; let busy = false, resetT = null, lastCode = '', lastAt = 0;
+
+function tick(){ const n = new Date(); $('t').textContent = n.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); $('d').textContent = n.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'}); }
+setInterval(tick, 5000); tick();
+function beep(ok){ try { const c = new (window.AudioContext||window.webkitAudioContext)(), o = c.createOscillator(), g = c.createGain(); o.connect(g); g.connect(c.destination); o.frequency.value = ok ? 880 : 220; g.gain.value = 0.15; o.start(); o.stop(c.currentTime + (ok ? 0.12 : 0.35)); } catch(e){} }
+function idle(){ $('main').className = ''; $('msg').className = 'prompt'; $('msg').textContent = 'Show your ID tag to the scanner'; $('sub').textContent = 'Your tag clocks you in or out.'; $('sink').focus(); }
+function show(cls, name, act, det){ $('main').className = cls; $('msg').className = ''; $('msg').innerHTML = `<div class="name">${esc(name)}</div><div class="act">${esc(act)}</div><div class="det">${esc(det||'')}</div>`; $('sub').textContent = ''; clearTimeout(resetT); resetT = setTimeout(idle, cls === 'in' || cls === 'out' ? 4500 : 3500); }
+const hm = iso => new Date(iso).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+
+async function handle(raw){
+  const code = String(raw||'').trim(); if(!code) return;
+  if(busy) return; if(code === lastCode && Date.now() - lastAt < 4000) return;
+  busy = true; lastCode = code; lastAt = Date.now();
+  try {
+    const { data, error } = await supabase.rpc('attendance_kiosk_scan', { p_kiosk: kiosk, p_badge: code });
+    if(error){ beep(false); show('err', 'No connection', 'Not recorded', 'Check the network and scan again. ' + error.message); return; }
+    if(data && data.ok){
+      beep(true);
+      if(data.action === 'in'){ show('in', data.name, 'CLOCKED IN ' + hm(data.at), 'Welcome. Have a safe day.'); }
+      else { const m = Math.max(0, Math.round(data.worked_minutes||0)); show('out', data.name, 'CLOCKED OUT ' + hm(data.at), `Time worked: ${Math.floor(m/60)}h ${String(m%60).padStart(2,'0')}m. Travel safely.`); }
+      recent.unshift(`${data.name} ${data.action === 'in' ? 'in' : 'out'} ${hm(data.at)}`); $('recent').textContent = recent.slice(0,3).join('  |  ');
+    } else { beep(false); show('err', (data && data.name) || 'Not recorded', (data && data.duplicate) ? 'Already scanned' : 'Not recorded', (data && data.error) || 'Try again or see your supervisor.'); }
+  } finally { busy = false; }
+}
+
+// keyboard-wedge scanners type the code then press Enter
+const sink = $('sink'); let buf = '';
+document.addEventListener('keydown', e => {
+  if($('cam').style.display === 'flex') return;
+  if(e.key === 'Enter'){ const c = buf; buf = ''; sink.value = ''; handle(c); e.preventDefault(); }
+  else if(e.key.length === 1){ buf += e.key; }
+});
+document.addEventListener('click', () => { if($('cam').style.display !== 'flex') sink.focus(); });
+window.addEventListener('focus', () => sink.focus());
+
+// camera scanning
+let stream = null, facing = 'user', timer = null, detector = null, jsq = null;
+window.openCam = async () => {
+  $('cam').style.display = 'flex';
+  try {
+    if('BarcodeDetector' in window){ detector = new BarcodeDetector({ formats:['qr_code'] }); }
+    else if(!jsq){ await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); jsq = window.jsQR; }
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing } });
+    $('vid').srcObject = stream; await $('vid').play();
+    const cv = document.createElement('canvas'), cx = cv.getContext('2d', { willReadFrequently:true });
+    timer = setInterval(async () => {
+      const v = $('vid'); if(!v.videoWidth) return;
+      let code = null;
+      if(detector){ try { const r = await detector.detect(v); if(r.length) code = r[0].rawValue; } catch(e){} }
+      else { cv.width = v.videoWidth; cv.height = v.videoHeight; cx.drawImage(v,0,0); const im = cx.getImageData(0,0,cv.width,cv.height); const r = jsq(im.data, cv.width, cv.height); if(r) code = r.data; }
+      if(code){ closeCam(); handle(code); }
+    }, 250);
+  } catch(e){ $('camMsg').textContent = 'The camera could not be opened: ' + e.message; }
+};
+window.closeCam = () => { clearInterval(timer); if(stream) stream.getTracks().forEach(t => t.stop()); stream = null; $('cam').style.display = 'none'; sink.focus(); };
+window.flipCam = () => { facing = facing === 'user' ? 'environment' : 'user'; closeCam(); openCam(); };
+
+(async () => {
+  if(!kiosk){ $('main').innerHTML = '<div class="bad"><div class="name">Scanner link incomplete</div><p class="sub">Open the full link from Watchman: Time and Attendance, Scanner stations.</p></div>'; return; }
+  const { data, error } = await supabase.rpc('attendance_kiosk_info', { p_kiosk: kiosk });
+  if(error || !data || data.error){ $('main').innerHTML = '<div class="bad"><div class="name">This scanner station is not active</div><p class="sub">Ask an administrator to check it under Time and Attendance, Scanner stations.</p></div>'; return; }
+  $('org').textContent = data.org; $('station').textContent = data.station;
+  try { if(navigator.wakeLock) navigator.wakeLock.request('screen'); } catch(e){}
+  sink.focus();
+})();
+</script>
+</body>
+</html>
