@@ -2,105 +2,148 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Asset Inspection</title>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Asset inspection: Watchman</title>
 <style>
-  :root{ --red:#B21616; --red-dark:#7E0F0F; --bg:#F7F6F5; --panel:#fff; --border:#E3E1DF; --text:#1E1C1B; --dim:#615C59; --faint:#9C9895; --green:#2E7D4F; --green-tint:#E9F5EE; --amber:#B2790F; --amber-tint:#FCF3E3; --red-tint:#FCEAEA; }
-  @media (prefers-color-scheme: dark){ :root{ --bg:#161413; --panel:#211F1E; --border:#3A3735; --text:#F2EFEC; --dim:#B5AFAB; --faint:#8A8582; --green-tint:#1B2E23; --amber-tint:#33290F; --red-tint:#361818; } }
-  *{box-sizing:border-box; margin:0; padding:0;}
-  body{background:var(--bg); color:var(--text); font-family:'Inter',sans-serif; padding:16px; min-height:100vh;}
-  .wrap{max-width:560px; margin:0 auto;}
-  .card{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:14px;}
-  h1{font-family:'Poppins'; font-size:20px; margin-bottom:4px;}
-  .sub{font-size:13px; color:var(--dim); line-height:1.5;}
-  .ref{font-size:12px; color:var(--faint); font-weight:600; letter-spacing:.04em;}
-  label{font-size:13px; font-weight:600; display:block; margin:14px 0 6px;}
-  input[type=text], textarea{width:100%; border:1.5px solid var(--border); border-radius:8px; padding:12px; font-size:16px; background:var(--panel); color:var(--text); font-family:inherit;}
-  textarea{min-height:70px;}
-  .item{border-top:1px solid var(--border); padding:14px 0;}
-  .item:first-child{border-top:none;}
-  .item .t{font-size:14.5px; font-weight:600; line-height:1.4; margin-bottom:10px;}
-  .rate{display:grid; grid-template-columns:repeat(5,1fr); gap:6px;}
-  .rate button{border:1.5px solid var(--border); background:var(--panel); color:var(--text); border-radius:8px; padding:12px 0; font-size:16px; font-weight:700;}
-  .rate button.on1,.rate button.on2{background:var(--green); border-color:var(--green); color:#fff;}
-  .rate button.on3{background:var(--amber); border-color:var(--amber); color:#fff;}
-  .rate button.on4,.rate button.on5{background:var(--red); border-color:var(--red); color:#fff;}
-  .legend{font-size:11.5px; color:var(--faint); margin-top:6px; line-height:1.5;}
-  .item input{margin-top:8px; font-size:14px; padding:9px 10px;}
-  .big{width:100%; border:none; border-radius:10px; padding:16px; font-size:16px; font-weight:700; color:#fff; background:var(--red); margin-top:10px;}
-  .big:disabled{opacity:.5;}
-  .seg{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
-  .seg button{border:1.5px solid var(--border); background:var(--panel); color:var(--text); border-radius:10px; padding:14px 8px; font-size:14px; font-weight:700;}
-  .seg button.ok{background:var(--green); border-color:var(--green); color:#fff;}
-  .seg button.q{background:var(--red); border-color:var(--red); color:#fff;}
-  .msg{padding:14px; border-radius:10px; font-size:14px; line-height:1.5;}
-  .msg.ok{background:var(--green-tint); color:var(--green);} .msg.err{background:var(--red-tint); color:var(--red);}
+  :root{--red:#B21616;--red-dark:#7E0F0F;--red-tint:#FCEAEA;--grey-tint:#F0F0EF;--bg:#F7F6F5;--border:#E3E1DF;--text:#1E1C1B;--dim:#615C59;--faint:#9C9895;--green:#2E7D4F;--green-tint:#E9F5EE;--amber:#B8791C;--amber-tint:#FBF1E1}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;padding-bottom:40px}
+  .top{background:#fff;border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:5}
+  .top svg{width:30px;height:30px;flex:none}
+  .top b{font-size:16px}.top small{display:block;font-size:10.5px;color:var(--faint);letter-spacing:.06em;text-transform:uppercase}
+  .wrap{max-width:640px;margin:0 auto;padding:16px}
+  .card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px}
+  h1{font-size:20px;line-height:1.25}.ref{font-size:12px;color:var(--faint);margin-bottom:4px}
+  .meta{font-size:13px;color:var(--dim);margin-top:8px;line-height:1.5}
+  label.l{display:block;font-size:11px;color:var(--faint);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px}
+  input[type=text],textarea{width:100%;border:1px solid var(--border);border-radius:8px;padding:12px;font:16px Arial,Helvetica,sans-serif;background:#fff;color:var(--text)}
+  textarea{min-height:84px;resize:vertical}
+  input:focus,textarea:focus{outline:none;border-color:var(--red)}
+  .item{border-top:1px solid var(--border);padding:14px 0}.item:first-of-type{border-top:0;padding-top:4px}
+  .item .t{font-size:15px;line-height:1.4;margin-bottom:10px}.item .n{color:var(--faint);font-size:12px;margin-right:6px}
+  .scale{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+  .scale button{border:1px solid var(--border);background:#fff;border-radius:8px;padding:11px 0;font:700 16px Arial,Helvetica,sans-serif;color:var(--dim);cursor:pointer}
+  .scale button.on[data-v="1"],.scale button.on[data-v="2"]{background:var(--green);border-color:var(--green);color:#fff}
+  .scale button.on[data-v="3"]{background:var(--amber);border-color:var(--amber);color:#fff}
+  .scale button.on[data-v="4"],.scale button.on[data-v="5"]{background:var(--red);border-color:var(--red);color:#fff}
+  .legend{display:flex;justify-content:space-between;font-size:10.5px;color:var(--faint);margin-top:5px}
+  .note{margin-top:8px;font-size:13px;color:var(--red);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline}
+  .item textarea{min-height:60px;margin-top:8px;font-size:14px}
+  .item.missing{background:var(--red-tint);margin:0 -16px;padding-left:16px;padding-right:16px}
+  .opt{display:flex;gap:10px}.opt label{flex:1;border:2px solid var(--border);border-radius:10px;padding:14px 10px;text-align:center;font-weight:700;font-size:14px;cursor:pointer;color:var(--dim)}
+  .opt input{display:none}
+  .opt input:checked + span{color:#fff}
+  .opt label:has(input[value=compliant]:checked){background:var(--green);border-color:var(--green);color:#fff}
+  .opt label:has(input[value=quarantine]:checked){background:var(--red);border-color:var(--red);color:#fff}
+  .go{width:100%;background:var(--red);color:#fff;border:0;border-radius:10px;padding:16px;font:700 16px Arial,Helvetica,sans-serif;cursor:pointer}
+  .go:disabled{opacity:.55}
+  .err{background:var(--red-tint);color:var(--red);border-radius:8px;padding:12px;font-size:13.5px;margin-bottom:12px;display:none;line-height:1.45}
+  .big{text-align:center;padding:30px 16px}.big .tick{width:64px;height:64px;border-radius:50%;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;font-size:34px;color:#fff}
+  .pill{display:inline-block;border-radius:100px;padding:5px 12px;font-size:12px;font-weight:700}
+  .p-ok{background:var(--green-tint);color:var(--green)}.p-bad{background:var(--red-tint);color:var(--red)}
+  .sub{font-size:12px;color:var(--faint);text-align:center;margin-top:18px}
 </style>
 </head>
 <body>
-<div class="wrap" id="app"><div class="card"><p class="sub">Loading asset…</p></div></div>
+<div class="top">
+  <svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="17" stroke="#545454" stroke-width="2.6" opacity="0.9"/><circle cx="20" cy="20" r="17" stroke="#A6A6A6" stroke-width="2.6" stroke-dasharray="60 46" transform="rotate(-40 20 20)" opacity="0.9"/><circle cx="20" cy="20" r="17" stroke="#B21616" stroke-width="2.6" stroke-dasharray="80 46" transform="rotate(140 20 20)"/></svg>
+  <div><b>Watchman</b><small id="orgname">Asset inspection</small></div>
+</div>
+<div class="wrap" id="app"><div class="card" style="text-align:center;color:var(--faint)">Loading the inspection…</div></div>
+
 <script type="module">
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-const supabase = createClient('https://uzywxhptwavnvpfzbhkb.supabase.co', 'sb_publishable_8XxT0I-Qdmswhd2I-TT_jg_CuI8a24f');
-const token = new URLSearchParams(location.search).get('t');
+const SUPABASE_URL = 'https://uzywxhptwavnvpfzbhkb.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_8XxT0I-Qdmswhd2I-TT_jg_CuI8a24f';
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const token = new URLSearchParams(location.search).get('t') || '';
 const app = document.getElementById('app');
-const LEG = {1:'Perfect',2:'Good, minor wear',3:'Fair, monitor',4:'Poor, needs attention',5:'Write off'};
-const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let data = null, results = {}, status = null;
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const LABELS = {1:'Perfect',2:'Good',3:'Fair',4:'Poor',5:'Write off'};
+let data = null, answers = [], notes = [];
+
+function fail(msg){ app.innerHTML = `<div class="card"><h1>This QR code could not be opened</h1><p class="meta">${esc(msg)}</p><p class="meta">If the problem continues, tell your supervisor and give them the asset reference printed on the label.</p></div>`; }
 
 async function load(){
-  if(!token){ app.innerHTML = '<div class="card"><div class="msg err">This QR code is not valid.</div></div>'; return; }
-  const { data: d, error } = await supabase.rpc('scan_get_asset', { p_token: token });
-  if(error || !d){ app.innerHTML = '<div class="card"><div class="msg err">We could not find this asset. The label may be out of date: please contact your administrator.</div></div>'; return; }
-  data = d; render();
+  if(!token){ fail('The QR code link is incomplete. Scan the label on the asset again.'); return; }
+  const { data: d, error } = await supabase.rpc('asset_scan_get', { p_token: token });
+  if(error){ fail('Could not reach Watchman: ' + error.message); return; }
+  if(!d || d.error){ fail(d && d.error === 'not_found' ? 'This asset is not on the register any more.' : 'This QR code is not valid.'); return; }
+  data = d;
+  document.getElementById('orgname').textContent = d.org || 'Asset inspection';
+  const items = (d.checklist && d.checklist.items) || [];
+  const list = items.length ? items : [{ text:'Overall condition of the asset' }];
+  data._list = list; answers.length = 0; notes.length = 0; list.forEach(() => { answers.push(null); notes.push(''); });
+  render();
 }
+
 function render(){
-  const a = data.asset, items = data.items || [];
+  const a = data.asset, last = data.last, list = data._list;
+  const saved = (() => { try { return localStorage.getItem('wm_inspector') || ''; } catch(e){ return ''; } })();
   app.innerHTML = `
     <div class="card">
-      <div class="ref">${esc(a.org_name||'')} · ${esc(a.ref_code)}</div>
+      <div class="ref">${esc(a.ref)}</div>
       <h1>${esc(a.description)}</h1>
-      <p class="sub">${[a.location, a.category].filter(Boolean).map(esc).join(' · ')}${a.last_inspection_date ? '<br>Last inspected ' + esc(a.last_inspection_date) : '<br>No previous inspection recorded'}</p>
+      <div class="meta">${a.location ? 'Location: ' + esc(a.location) + '<br>' : ''}${last ? 'Last inspected ' + esc(last.date) + (last.by ? ' by ' + esc(last.by) : '') : 'Not inspected yet'}${a.status === 'quarantine' ? '<br><span class="pill p-bad">Currently quarantined</span>' : ''}</div>
     </div>
+    <div id="err" class="err"></div>
+    <div class="card"><label class="l">Your name</label><input type="text" id="who" value="${esc(saved)}" placeholder="Full name" autocomplete="name">
+      <label class="l" style="margin-top:12px">Phone or email (optional)</label><input type="text" id="contact" placeholder="So we can follow up if needed"></div>
     <div class="card">
-      <label style="margin-top:0;">Your name</label>
-      <input type="text" id="who" autocomplete="name" placeholder="Full name" value="${esc(localStorage.getItem('qw_inspector')||'')}">
-      ${items.length ? `<label>Checklist</label><div class="legend" style="margin:-2px 0 6px;">Tap 1 to 5 for each item: 1 Perfect · 2 Good · 3 Fair · 4 Poor · 5 Write off</div>
-      ${items.map((it,i) => `<div class="item"><div class="t">${i+1}. ${esc(it.text)}</div>
-        <div class="rate">${[1,2,3,4,5].map(n => `<button type="button" data-i="${i}" data-n="${n}">${n}</button>`).join('')}</div>
-        <input type="text" data-note="${i}" placeholder="Note (optional)"></div>`).join('')}`
-      : '<p class="sub" style="margin-top:12px;">This asset has no checklist yet, so record an overall result and notes.</p>'}
-      <label>Overall result</label>
-      <div class="seg"><button type="button" id="r-ok">✔ Safe to use</button><button type="button" id="r-q">⚠ Quarantine</button></div>
-      <label>Notes</label><textarea id="notes" placeholder="Anything the responsible person should know"></textarea>
-      <button class="big" id="go">Submit inspection</button>
-      <div id="out" style="margin-top:12px;"></div>
-    </div>`;
-  app.querySelectorAll('.rate button').forEach(b => b.onclick = () => {
-    const i = +b.dataset.i, n = +b.dataset.n; results[i] = n;
-    app.querySelectorAll(`.rate button[data-i="${i}"]`).forEach(x => x.className = (+x.dataset.n === n) ? 'on'+n : '');
-    if(n >= 4 && !status) pick('q');
-    if(items.length && Object.keys(results).length === items.length && !status) pick('ok');
-  });
-  document.getElementById('r-ok').onclick = () => pick('ok');
-  document.getElementById('r-q').onclick = () => pick('q');
-  document.getElementById('go').onclick = submit;
+      <label class="l">${esc((data.checklist && data.checklist.title) || 'Inspection')}</label>
+      ${list.map((it,i) => `<div class="item" id="it${i}">
+        <div class="t"><span class="n">${i+1}.</span>${esc(it.text)}</div>
+        <div class="scale">${[1,2,3,4,5].map(v => `<button type="button" data-v="${v}" onclick="rate(${i},${v})">${v}</button>`).join('')}</div>
+        <div class="legend"><span>1 Perfect</span><span>3 Fair</span><span>5 Write off</span></div>
+        <button type="button" class="note" onclick="toggleNote(${i})">Add a note</button>
+        <textarea id="nt${i}" style="display:none" placeholder="What did you see?" oninput="notes[${i}]=this.value"></textarea>
+      </div>`).join('')}
+    </div>
+    <div class="card"><label class="l">Overall: is the asset fit for use?</label>
+      <div class="opt"><label><input type="radio" name="ov" value="compliant"><span>Yes, fit for use</span></label><label><input type="radio" name="ov" value="quarantine"><span>No, quarantine it</span></label></div>
+      <label class="l" style="margin-top:14px">Overall notes (optional)</label><textarea id="onotes" placeholder="Anything else the responsible person should know"></textarea></div>
+    <button class="go" id="go" onclick="submitIt()">Submit inspection</button>
+    <div class="sub">Submitting records this inspection in Watchman and updates the asset register.</div>`;
 }
-function pick(s){ status = s; document.getElementById('r-ok').className = s==='ok' ? 'ok' : ''; document.getElementById('r-q').className = s==='q' ? 'q' : ''; }
-async function submit(){
-  const out = document.getElementById('out'), items = data.items || [];
-  const who = document.getElementById('who').value.trim();
-  if(!who){ out.innerHTML = '<div class="msg err">Please enter your name.</div>'; return; }
-  if(items.length && Object.keys(results).length < items.length){ out.innerHTML = '<div class="msg err">Please rate every checklist item.</div>'; return; }
-  if(!status){ out.innerHTML = '<div class="msg err">Choose the overall result: safe to use or quarantine.</div>'; return; }
-  localStorage.setItem('qw_inspector', who);
-  const payload = items.map((it,i) => ({ text: it.text, sort: it.sort, result: String(results[i]), notes: (app.querySelector(`[data-note="${i}"]`).value||'').trim() }));
+
+window.notes = notes;
+window.rate = (i, v) => {
+  answers[i] = v;
+  document.querySelectorAll(`#it${i} .scale button`).forEach(b => b.classList.toggle('on', +b.dataset.v === v));
+  document.getElementById('it'+i).classList.remove('missing');
+  const worst = Math.max(...answers.filter(Boolean));
+  const ov = document.querySelectorAll('input[name=ov]');
+  if(!document.querySelector('input[name=ov]:checked') || worst >= 4){
+    const want = worst >= 5 ? 'quarantine' : (answers.every(Boolean) ? (worst >= 4 ? 'quarantine' : 'compliant') : null);
+    if(want) ov.forEach(r => r.checked = r.value === want);
+  }
+};
+window.toggleNote = i => { const t = document.getElementById('nt'+i); t.style.display = t.style.display === 'none' ? 'block' : 'none'; if(t.style.display === 'block') t.focus(); };
+function showErr(m){ const e = document.getElementById('err'); e.textContent = m; e.style.display = 'block'; e.scrollIntoView({ behavior:'smooth', block:'center' }); }
+
+window.submitIt = async () => {
+  const name = document.getElementById('who').value.trim();
+  document.getElementById('err').style.display = 'none';
+  if(name.length < 2){ showErr('Please enter your name.'); document.getElementById('who').focus(); return; }
+  const miss = answers.findIndex(a => !a);
+  if(miss >= 0){ data._list.forEach((_, i) => document.getElementById('it'+i).classList.toggle('missing', !answers[i])); showErr('Please rate every item. The unanswered items are highlighted.'); document.getElementById('it'+miss).scrollIntoView({ behavior:'smooth', block:'center' }); return; }
+  const ov = document.querySelector('input[name=ov]:checked');
+  if(!ov){ showErr('Please choose whether the asset is fit for use.'); return; }
   const btn = document.getElementById('go'); btn.disabled = true; btn.textContent = 'Submitting…';
-  const { data: res, error } = await supabase.rpc('scan_submit_inspection', { p_token: token, p_inspector: who, p_status: status==='q' ? 'quarantine' : 'compliant', p_notes: document.getElementById('notes').value.trim(), p_items: payload });
-  if(error){ btn.disabled = false; btn.textContent = 'Submit inspection'; out.innerHTML = '<div class="msg err">Could not submit: ' + esc(error.message) + '</div>'; return; }
-  app.innerHTML = `<div class="card"><div class="msg ok"><b>Inspection submitted.</b><br>${esc(data.asset.ref_code)} has been updated in Watchman${res && res.next_inspection_date ? '. Next inspection due ' + esc(res.next_inspection_date) : ''}.${status==='q' ? '<br><b>The asset has been marked as quarantined: do not use it until it is cleared.</b>' : ''}</div></div>`;
-}
+  try { localStorage.setItem('wm_inspector', name); } catch(e){}
+  const results = answers.map((v, i) => ({ result: String(v), notes: notes[i] || '' }));
+  const { data: r, error } = await supabase.rpc('asset_scan_submit', {
+    p_token: token, p_name: name, p_results: results, p_overall: ov.value,
+    p_notes: document.getElementById('onotes').value.trim() || null, p_contact: document.getElementById('contact').value.trim() || null });
+  if(error || !r || !r.ok){ btn.disabled = false; btn.textContent = 'Submit inspection'; showErr('Could not submit: ' + (error ? error.message : 'no response') + '. Your answers are still on the screen: check your signal and try again.'); return; }
+  const q = r.status === 'quarantine';
+  app.innerHTML = `<div class="card big"><div class="tick" style="background:${q ? 'var(--red)' : 'var(--green)'}">${q ? '!' : '&#10003;'}</div>
+    <h1>Inspection submitted</h1><p class="meta">${esc(data.asset.ref)}: ${esc(data.asset.description)}</p>
+    <p style="margin-top:14px"><span class="pill ${q ? 'p-bad' : 'p-ok'}">${q ? 'Quarantined: do not use until released' : 'Fit for use'}</span></p>
+    ${r.next_inspection ? `<p class="meta">Next inspection due ${esc(r.next_inspection)}</p>` : ''}
+    <p class="meta" style="margin-top:12px">Thank you, ${esc(name)}. The asset register has been updated.</p></div>`;
+  window.scrollTo(0, 0);
+};
 load();
 </script>
 </body>
