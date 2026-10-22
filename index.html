@@ -1760,7 +1760,7 @@ async function enterApp(){
 // already signed in on this device.
 document.addEventListener('DOMContentLoaded', async () => {
   try {
-    { const _q = new URLSearchParams(location.search); if(_q.get('sp') || _q.get('sv') || _q.get('sq') || _q.get('g')) return; } // public page modes
+    { const _q = new URLSearchParams(location.search); if(_q.get('sp') || _q.get('sv') || _q.get('sq') || _q.get('g') || _q.get('nr')) return; } // public page modes
     await ensureSupabaseLib();
     if(!STATE.supabase) initSupabase(SUPABASE_URL, SUPABASE_ANON_KEY);
     const { data:{ session } } = await STATE.supabase.auth.getSession();
@@ -4628,7 +4628,7 @@ function renderNCTable(){
     return;
   }
   wrap.innerHTML = `<table>
-    <tr><th>Ref</th><th>Type</th><th>Severity</th><th>Owner</th><th>Target close</th><th>Status</th></tr>
+    <tr><th>Ref</th><th>Type</th><th>Severity</th><th>Owner</th><th>Target close</th><th>Status</th><th></th></tr>
     ${rows.map(n=>`<tr class="clickable" onclick="openNCDetail('${n.id}')">
       <td class="mono-cell">${n.ref_code}</td>
       <td class="strong">${n.title}</td>
@@ -4636,6 +4636,7 @@ function renderNCTable(){
       <td>${memberName(n.owner_id)}</td>
       <td>${fmtDate(n.target_close_date)} ${dateStatusBadge(n.target_close_date, n.status==='closed')}</td>
       <td>${pill(n.status)}</td>
+      <td style="text-align:right;white-space:nowrap;"><button class="btn-small nc-view-btn" title="View ${n.ref_code}" onclick="event.stopPropagation(); openNCDetail('${n.id}')">View Nonconformance</button></td>
     </tr>`).join('')}
   </table>`;
 }
@@ -26971,7 +26972,7 @@ function supplierSuiteHtml(s){
   <div style="margin:22px 0;"><div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:10px;">
       <div style="min-width:96px;text-align:center;border-radius:14px;padding:12px 14px;color:#fff;background:${sc.band.c};font-family:Arial;"><div style="font-size:34px;font-weight:900;line-height:1;">${sc.total}%</div><div style="font-size:11px;font-weight:800;text-transform:uppercase;">${sc.band.t}</div></div>
       <div style="flex:1;min-width:260px;">${H('Supplier scorecard')}
-        ${bar('Quality (nonconformances)', sc.quality, 40)}${bar('Latest assessment', sc.assess, 30)}${bar('Certificates on file', sc.docs, 20)}${bar('Assessment up to date', sc.current, 10)}</div></div></div>
+        ${bar('Quality (nonconformances)', sc.quality, 40)}${bar('Latest assessment', sc.assess, 30)}${bar('Required documents on file', sc.docs, 20)}${bar('Assessment up to date', sc.current, 10)}</div></div></div>
 
   <div style="margin:22px 0;">${H('Certificates and compliance documents')}
     ${missing.length ? `<div class="warn-note" style="margin-bottom:10px;"><div><b>Missing or expired:</b> ${missing.map(k=>SUP_CERT_CATS[k]).join(', ')}</div></div>` : ''}
@@ -35042,7 +35043,7 @@ window.brandFromLogo = function(){
     { k:'suppliers', label:'Suppliers and Contractors', mod:'suppliers', checks:() => {
         const s = arr(STATE.suppliers);
         if(!s.length) return [C('Suppliers', 'nodata', 'No suppliers recorded.', 'suppliers')];
-        const certs = arr(STATE.supplierCerts).filter(c => !c.archived && c.review_status === 'accepted' && c.expiry_date);
+        const certs = arr(STATE.supplierCerts).filter(c => !c.archived && c.review_status === 'accepted' && c.expiry_date).concat(arr(STATE.supplierDocs).filter(d => !d.archived && d.expiry_date));
         return [
           byRatio('Suppliers approved', s.filter(x => x.status === 'approved').length, s.length, 0.7, 0.4, '', 'suppliers'),
           zero('Suppliers suspended or removed but still active', s.filter(x => ['suspended','removed'].includes(x.status)).length, '', 'suppliers', 1),
@@ -37508,6 +37509,9 @@ function fmtRev(rev){
   function sectionHtml(sid){
     const docs = (STATE.supplierDocs||[]).filter(d => d.supplier_id === sid && !d.archived).sort((a,b) => String(a.expiry_date||'9999').localeCompare(String(b.expiry_date||'9999')));
     const broken = STATE._sdBroken;
+    const sup = (STATE.suppliers||[]).find(x => x.id === sid);
+    let miss = [];
+    try{ if(sup && typeof supplierScore === 'function'){ const sc = supplierScore(sup); miss = sc.expected.filter(k => !sc.have.includes(k)); } }catch(e){}
     const rows = docs.map(d => {
       const left = d.expiry_date ? daysTo(d.expiry_date) : null;
       const badge = left === null ? '<span style="color:var(--text-faint)">No expiry</span>' : (fmtDate(d.expiry_date) + ' ' + (typeof dateStatusBadge === 'function' ? dateStatusBadge(d.expiry_date, false) : ''));
@@ -37520,6 +37524,7 @@ function fmtRev(rev){
     return `<div class="sd-wrap" id="sd-wrap" style="margin:22px 0;">
       <div class="l" style="font-family:Arial,Helvetica,sans-serif; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Supplier documents</div>
       ${broken ? '<div class="warn-note"><div>Run qashe-watchman-schema-supplier-documents.sql in Supabase to switch supplier documents on.</div></div>' : ''}
+      ${miss.length ? `<div class="warn-note" style="margin-bottom:10px;"><div><b>Required documents missing or expired:</b> ${miss.map(k=>E(SUP_CERT_CATS[k])).join(', ')}. Add them below and choose the matching document type.</div></div>` : ''}
       ${docs.length ? `<table><tr><th>Document</th><th>Expiry</th><th></th></tr>${rows}</table>` : (broken ? '' : '<p style="font-size:12.5px;color:var(--text-faint);">No documents on file yet.</p>')}
       ${canAdd() && !broken ? `<div style="margin-top:10px;"><button class="btn-small primary" onclick="sdToggle()">+ Add documents</button>
         <div class="form-panel" id="sd-form" style="display:none;"><div class="sd-drop">
@@ -37680,6 +37685,306 @@ function fmtRev(rev){
     const r = _sm.apply(this, arguments);
     if(mod === 'suppliers'){ setTimeout(async () => { try{ await loadSupplierDocs(); STATE._sdLoaded = true; await sdSyncTasks(); }catch(e){} }, 600); }
     return r;
+  };
+})();
+
+/* ===== b53: "View Nonconformance" button on every register row; the view opens in place and is brought into sight ===== */
+(function(){
+  const _o = openNCDetail;
+  openNCDetail = window.openNCDetail = async function(id){
+    const r = await _o.apply(this, arguments);
+    try{
+      const slot = document.getElementById('nc-detail-slot');
+      if(slot && slot.firstElementChild){ const t = slot.getBoundingClientRect().top; if(t < 0 || t > window.innerHeight * 0.5) slot.scrollIntoView({ behavior:'smooth', block:'start' }); }
+    }catch(e){}
+    return r;
+  };
+})();
+
+/* ===== b54: landing page centred ===== */
+(function(){
+  const css = document.createElement('style'); css.id = 'b54-landing-css'; css.textContent = `
+  #view-landing .hero{grid-template-columns:minmax(0,1fr) !important; text-align:center !important; justify-items:center}
+  #view-landing .hero-left,#view-landing .hero > *{grid-column:1 !important}
+  #view-landing .hero p.lead{margin-left:auto !important; margin-right:auto !important; text-align:center}
+  #view-landing .hero-eyebrow{text-align:center}
+  #view-landing .hero-ctas{justify-content:center !important}
+  #view-landing .watch-wrap{grid-column:1 !important; grid-row:auto !important; justify-self:center; align-items:center; text-align:center; margin-top:34px !important}
+  #view-landing .icon-strip{justify-content:center !important; flex-wrap:wrap}
+  #view-landing .section-head{text-align:center}
+  #view-landing .section-title{margin-left:auto; margin-right:auto; text-align:center}
+  #view-landing .section-label{text-align:center}
+  #view-landing .iso-card,#view-landing .mod-card,#view-landing .module-card{text-align:center}
+  #view-landing .iso-card svg,#view-landing .mod-card svg{margin-left:auto; margin-right:auto}
+  #view-landing .mod-card .mod-icon{margin-left:auto !important; margin-right:auto !important}
+  #view-landing .mod-card .code{text-align:center}
+  #view-landing .iso-grid{display:flex !important; flex-wrap:wrap; justify-content:center}
+  #view-landing .iso-grid .iso-card{flex:0 1 calc(25% - 12px); min-width:220px}`;
+  document.head.appendChild(css);
+})();
+
+/* ===== b54: animated android faces for the Helper, Report a Bug and Request a Change ===== */
+(function(){
+  const css = document.createElement('style'); css.id = 'b54-android-css'; css.textContent = `
+  .wmx{display:block; overflow:visible; stroke:none; fill:none; width:34px; height:34px}
+  .wmx *{stroke-linecap:round; stroke-linejoin:round}
+  .wmx .wmx-head{animation:wmxBob 2.6s ease-in-out infinite alternate; transform-origin:16px 28px}
+  .wmx .wmx-al{transform-origin:11px 8px; animation:wmxAnt 1.7s ease-in-out infinite alternate}
+  .wmx .wmx-ar{transform-origin:21px 8px; animation:wmxAnt 1.9s ease-in-out infinite alternate-reverse}
+  .wmx .wmx-eye{transform-box:fill-box; transform-origin:center; animation:wmxBlink 4.2s infinite}
+  .wmx .wmx-eye.b{animation-delay:.05s}
+  .wmx.bug .wmx-eyes{animation:wmxScan 3.2s ease-in-out infinite}
+  .wmx.bug .wmx-ladybug{transform-origin:23.6px 3.4px; animation:wmxCrawl 1.1s ease-in-out infinite alternate}
+  .wmx.chg .wmx-pencil{transform-origin:21px 8px; animation:wmxWrite .9s ease-in-out infinite alternate}
+  .wmx .wmx-spark{transform-box:fill-box; transform-origin:center; animation:wmxSpark 2.4s ease-in-out infinite}
+  @keyframes wmxBob{from{transform:translateY(0) rotate(-2deg)}to{transform:translateY(-1.4px) rotate(2deg)}}
+  @keyframes wmxAnt{from{transform:rotate(-14deg)}to{transform:rotate(14deg)}}
+  @keyframes wmxBlink{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.08)}}
+  @keyframes wmxScan{0%,100%{transform:translateX(0)}30%{transform:translateX(-1.3px)}70%{transform:translateX(1.3px)}}
+  @keyframes wmxCrawl{from{transform:rotate(-18deg)}to{transform:rotate(18deg)}}
+  @keyframes wmxWrite{from{transform:rotate(-8deg)}to{transform:rotate(16deg)}}
+  @keyframes wmxSpark{0%,60%,100%{transform:scale(0); opacity:0}75%{transform:scale(1); opacity:1}}
+  .watchman-chat-fab:hover .wmx .wmx-head,.wm-bug-btn:hover .wmx .wmx-head,.wm-chg-btn:hover .wmx .wmx-head{animation:wmxHop .5s ease-in-out infinite alternate}
+  @keyframes wmxHop{from{transform:translateY(0) scale(1)}to{transform:translateY(-2.4px) scale(1.06)}}
+  @media (prefers-reduced-motion:reduce){.wmx *{animation:none !important}}
+  /* sizes in each place */
+  .sb-brand .watchman-chat-fab .wm-pill-head svg.wmx{width:36px !important; height:36px !important}
+  .wm-bug-btn .wm-pill-head svg.wmx,.wm-chg-btn .ico svg.wmx{width:30px !important; height:30px !important}
+  .wm-bug-btn .wm-pill-head,.wm-chg-btn .ico{overflow:visible}
+  .wm-chg-btn .ico{background:rgba(0,0,0,.22)}
+  svg.wmx,.wm-chg-btn svg.wmx,.wm-bug-btn svg.wmx,.watchman-chat-fab svg.wmx{stroke:none !important; stroke-width:1 !important; fill:none !important}`;
+  document.head.appendChild(css);
+
+  const INK = '#1c1c1c';
+  const eyes = (kind) => {
+    if(kind === 'chg') return `<g class="wmx-eyes"><ellipse class="wmx-eye" cx="12" cy="16" rx="2.1" ry="2.6" fill="${INK}"/><ellipse class="wmx-eye b" cx="20" cy="16" rx="2.1" ry="2.6" fill="${INK}"/>
+      <circle cx="12.7" cy="15" r=".75" fill="#fff"/><circle cx="20.7" cy="15" r=".75" fill="#fff"/></g>`;
+    if(kind === 'bug') return `<g class="wmx-eyes"><ellipse class="wmx-eye" cx="12" cy="16" rx="2.3" ry="2.7" fill="${INK}"/><ellipse class="wmx-eye b" cx="20" cy="16" rx="2.3" ry="2.7" fill="${INK}"/>
+      <circle cx="12.9" cy="15" r=".8" fill="#fff"/><circle cx="20.9" cy="15" r=".8" fill="#fff"/>
+      <path d="M9.4 11.6l4.2-1.1" stroke="${INK}" stroke-width="1.4" fill="none"/></g>`;
+    return `<g class="wmx-eyes"><ellipse class="wmx-eye" cx="12" cy="16" rx="2.1" ry="2.6" fill="${INK}"/><ellipse class="wmx-eye b" cx="20" cy="16" rx="2.1" ry="2.6" fill="${INK}"/>
+      <circle cx="12.7" cy="15" r=".75" fill="#fff"/><circle cx="20.7" cy="15" r=".75" fill="#fff"/></g>`;
+  };
+  const mouth = (kind) => kind === 'bug'
+    ? `<path d="M12.6 22q1.6-1.5 3.4 0t3.4 0" stroke="${INK}" stroke-width="1.5" fill="none"/>`
+    : kind === 'chg'
+      ? `<path d="M12.2 20.6q3.8 4 7.6 0z" fill="${INK}"/>`
+      : `<path d="M12.4 21q3.6 3.2 7.2 0" stroke="${INK}" stroke-width="1.7" fill="none"/>`;
+  const rightAnt = (kind) => kind === 'bug'
+    ? `<g class="wmx-ar"><path d="M21 8l2.5-4" stroke="#fff" stroke-width="1.6" fill="none"/></g>
+       <g class="wmx-ladybug"><ellipse cx="23.7" cy="3.2" rx="2.1" ry="1.7" fill="#E53935" stroke="#fff" stroke-width=".7"/><path d="M23.7 1.5v3.4" stroke="${INK}" stroke-width=".5"/><circle cx="22.9" cy="3" r=".35" fill="${INK}"/><circle cx="24.5" cy="3.4" r=".35" fill="${INK}"/></g>`
+    : kind === 'chg'
+      ? `<g class="wmx-pencil"><path d="M21 8l3.4-5.2" stroke="#fff" stroke-width="1.6" fill="none"/><path d="M23.3 3.9l2.4 1.6 1.2-1.9-2.4-1.6z" fill="#FFD54F" stroke="#fff" stroke-width=".5"/><path d="M26.2 2.2l.9.6.6-1-.9-.6z" fill="#F48FB1"/></g>`
+      : `<g class="wmx-ar"><path d="M21 8l2.5-4" stroke="#fff" stroke-width="1.6" fill="none"/><circle cx="23.8" cy="3.2" r="1.5" fill="#fff"/></g>`;
+  window.wmAndroidSvg = function(kind){
+    kind = kind || 'help';
+    return `<svg class="wmx ${kind}" viewBox="0 0 32 32" aria-hidden="true">
+      <g class="wmx-head">
+        <g class="wmx-al"><path d="M11 8L8.5 4" stroke="#fff" stroke-width="1.6" fill="none"/><circle cx="8.2" cy="3.2" r="1.5" fill="#fff"/></g>
+        ${rightAnt(kind)}
+        <rect x="2.6" y="15" width="2.2" height="5" rx="1.1" fill="#fff" opacity=".9"/><rect x="27.2" y="15" width="2.2" height="5" rx="1.1" fill="#fff" opacity=".9"/>
+        <path d="M5 17a11 11 0 0 1 22 0v4a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4z" fill="#fff"/>
+        <circle cx="8.6" cy="20.4" r="1.7" fill="#FF8A80" opacity=".75"/><circle cx="23.4" cy="20.4" r="1.7" fill="#FF8A80" opacity=".75"/>
+        ${eyes(kind)}${mouth(kind)}
+        ${kind === 'help' ? '<path class="wmx-spark" d="M27.5 9.2l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z" fill="#FFE082"/>' : ''}
+      </g></svg>`;
+  };
+
+  function swap(){
+    const jobs = [['#watchman-chat-fab .wm-pill-head','help'], ['#report-problem-fab .wm-pill-head','bug'], ['#wm-chg-btn .ico','chg'], ['.wm-pill-head','help']];
+    jobs.forEach(([sel, kind]) => document.querySelectorAll(sel).forEach(el => {
+      if(el.dataset.wmx) return;
+      if(sel === '.wm-pill-head' && el.closest('#report-problem-fab,#watchman-chat-fab')) return;
+      el.innerHTML = wmAndroidSvg(kind); el.dataset.wmx = kind;
+    }));
+  }
+  const _a = window.wmApplyHelper;
+  if(typeof _a === 'function'){ window.wmApplyHelper = function(){ const r = _a.apply(this, arguments); swap(); return r; }; }
+  let queued = false;
+  new MutationObserver(() => { if(queued) return; queued = true; requestAnimationFrame(() => { queued = false; swap(); }); }).observe(document.body, { childList:true, subtree:true });
+  swap(); setTimeout(swap, 600); setTimeout(swap, 2200);
+})();
+
+/* ===== b54: the older certificate section goes; supplier documents carry the scoring ===== */
+(function(){
+  const _sc = supCerts;
+  supCerts = window.supCerts = function(sid, includePending){
+    const base = _sc.apply(this, arguments);
+    const docs = (STATE.supplierDocs || []).filter(d => d.supplier_id === sid && !d.archived)
+      .map(d => ({ id:d.id, supplier_id:sid, category:d.doc_type, expiry_date:d.expiry_date, review_status:'accepted', archived:false, _doc:true }));
+    return base.concat(docs);
+  };
+  const _osd = openSupplierDetail;
+  openSupplierDetail = window.openSupplierDetail = async function(id){
+    await _osd.apply(this, arguments);
+    try{
+      const panel = document.querySelector('#sup-detail-slot .detail-panel'); if(!panel) return;
+      const legacy = (STATE.supplierCerts || []).some(c => c.supplier_id === id && !c.archived);
+      panel.querySelectorAll('#sup-suite .l').forEach(h => {
+        if(!/^Certificates and compliance documents$/i.test(h.textContent.trim())) return;
+        const box = h.parentElement; if(!box) return;
+        if(!legacy){ box.remove(); return; }
+        // earlier certificates (and anything a supplier sent through the portal) stay visible and reviewable, but nothing new is added here
+        h.textContent = 'Earlier certificates (kept for reference; add new documents under Supplier documents)';
+        box.querySelectorAll('.warn-note').forEach(n => n.remove());
+        box.querySelectorAll('button[onclick*="sup-cert-form"]').forEach(btn => { const wrap = btn.closest('div'); if(wrap) wrap.remove(); });
+      });
+    }catch(e){ console.warn('older certificate section', e); }
+  };
+})();
+
+/* ===== b54: nonconformance external response (emailed link; client, supplier or third party completes root cause, corrective and preventive action) ===== */
+async function renderNcResponsePage(token){
+  const ov = pubMount('ncr-public'); await pubInit();
+  const { data: info } = await STATE.supabase.rpc('nc_response_info', { p_token: token });
+  if(!info || !info.ok){ pubBad(ov, 'This link is not active'); return; }
+  const SEV = { minor:'Minor', major:'Major', critical:'Critical' };
+  const fld = (id, label, ph, rows, req) => `<div style="margin-top:12px;"><label style="font-size:12.5px;font-weight:800;">${label}${req?' <span style="color:#D50000">*</span>':''}</label><textarea id="${id}" rows="${rows}" placeholder="${PE(ph)}" style="margin-top:4px;"></textarea></div>`;
+  const found = `<div class="card"><h3>The nonconformance</h3>
+      <div style="font-size:12px;font-weight:800;color:#666;">${PE(info.reference)}${info.severity ? ' · ' + PE(SEV[info.severity] || info.severity) : ''}${info.raised_date ? ' · raised ' + PE(info.raised_date) : ''}</div>
+      <div style="font-size:18px;font-weight:900;margin:4px 0 8px;">${PE(info.title)}</div>
+      ${info.description ? `<div style="font-size:14px;line-height:1.5;white-space:pre-wrap;">${PE(info.description)}</div>` : ''}
+      ${info.message ? `<div style="margin-top:12px;background:#f7f7f7;border-radius:10px;padding:10px 14px;font-size:14px;"><b>Message from ${PE(info.organisation_name)}:</b><br>${PE(info.message)}</div>` : ''}
+      ${info.due_date ? `<div style="margin-top:10px;font-size:13px;font-weight:700;">Please respond by ${PE(info.due_date)}.</div>` : ''}</div>`;
+  const hero = pubHero(info, 'Nonconformance response', `Response requested from ${info.party_name}`, 'Please describe what was done, and what will stop it happening again. Your answer goes straight to the team.');
+  if(info.responded){
+    ov.innerHTML = PUB_CSS + `<div class="pb"><div class="w">${hero}${found}<div class="card" style="text-align:center;"><div style="font-size:56px;">✅</div><h2 style="margin:6px 0;">Response received</h2><p style="color:#555;">Thank you. ${PE(info.organisation_name)} has your response. If something needs to change, please contact them directly.</p></div></div></div>`;
+    return;
+  }
+  ov.innerHTML = PUB_CSS + `<div class="pb"><div class="w">${hero}${found}
+    <div class="card"><h3>Your response</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div><label style="font-size:12.5px;font-weight:800;">Your name <span style="color:#D50000">*</span></label><input id="nr-name" style="margin-top:4px;" autocomplete="name"></div>
+        <div><label style="font-size:12.5px;font-weight:800;">Your email</label><input id="nr-email" type="email" style="margin-top:4px;" autocomplete="email"></div></div>
+      ${fld('nr-root', 'Root cause: why did this happen?', 'The underlying reason, not only the symptom', 3, false)}
+      ${fld('nr-corr', 'Corrective action: what was done to fix this instance?', 'The fix for this specific case', 4, true)}
+      ${fld('nr-prev', 'Preventive action: what will stop it happening again?', 'What changes so this does not recur. If nothing is required, write "None required" and why.', 4, true)}
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:12px;">
+        <div><label style="font-size:12.5px;font-weight:800;">Responsible person</label><input id="nr-resp" style="margin-top:4px;"></div>
+        <div><label style="font-size:12.5px;font-weight:800;">Target date</label><input id="nr-target" type="date" style="margin-top:4px;"></div>
+        <div><label style="font-size:12.5px;font-weight:800;">Date completed</label><input id="nr-done" type="date" style="margin-top:4px;"></div></div></div>
+    <div style="text-align:center;margin-top:18px;"><button class="btn" id="nr-send">Send response</button></div><div id="nr-msg"></div></div></div>`;
+  document.getElementById('nr-send').onclick = async () => {
+    const g = id => document.getElementById(id).value, b = document.getElementById('nr-send');
+    if(g('nr-name').trim().length < 2){ document.getElementById('nr-msg').innerHTML = '<div class="msg bad">Please enter your name.</div>'; return; }
+    if(g('nr-corr').trim().length < 5 || g('nr-prev').trim().length < 5){ document.getElementById('nr-msg').innerHTML = '<div class="msg bad">Please complete the corrective action and the preventive action.</div>'; return; }
+    b.disabled = true; b.textContent = 'Sending…';
+    const { data, error } = await STATE.supabase.rpc('nc_response_submit', { p_token:token, p_by_name:g('nr-name'), p_by_email:g('nr-email'), p_root_cause:g('nr-root'), p_correction:g('nr-corr'),
+      p_preventive:g('nr-prev'), p_responsible:g('nr-resp'), p_target_date:g('nr-target') || null, p_completed_date:g('nr-done') || null });
+    if(data && data.ok){
+      ov.innerHTML = PUB_CSS + `<div class="pb"><div class="w">${hero}<div class="card" style="text-align:center;"><div style="font-size:56px;">✅</div><h2 style="margin:6px 0;">Thank you</h2><p style="color:#555;">Your response has been sent to ${PE(info.organisation_name)}.</p></div></div></div>`;
+    } else { b.disabled = false; b.textContent = 'Send response'; document.getElementById('nr-msg').innerHTML = `<div class="msg bad">${PE((data && data.error) || (error && error.message) || 'Could not send. Please try again.')}</div>`; }
+  };
+}
+(function(){ const nr = new URLSearchParams(location.search).get('nr'); if(nr) document.addEventListener('DOMContentLoaded', () => renderNcResponsePage(nr)); })();
+
+(function(){
+  const E = s => escapeHtml(String(s == null ? '' : s));
+  const canAdd = () => ['admin','manager','contributor'].includes(STATE.myRole);
+  const TYPE = { client:'Client', supplier:'Supplier', third_party:'Third party' };
+  const linkOf = r => `${location.origin}${location.pathname}?nr=${r.token}`;
+  const statusPill = r => { const m = { sent:['Sent','#6B7280'], opened:['Opened','#B8791C'], responded:['Response received','#2E7D4F'], closed:['Closed','#9CA3AF'] }[r.status] || [r.status,'#6B7280'];
+    return `<span class="sev-badge" style="background:${m[1]};color:#fff;">${m[0]}</span>`; };
+  const header = (r) => `[Response from ${r.resp_by_name}, ${r.party_name} (${String(r.party_type).replace('_',' ')}), ${new Date(r.responded_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}]`;
+  const blocks = r => { const h = header(r), fmt = d => new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+    return { c: h + '\n' + (r.resp_root_cause ? 'Root cause: ' + r.resp_root_cause + '\n' : '') + r.resp_correction + (r.resp_responsible ? '\nResponsible: ' + r.resp_responsible : '') + (r.resp_target_date ? '\nTarget date: ' + fmt(r.resp_target_date) : '') + (r.resp_completed_date ? '\nCompleted: ' + fmt(r.resp_completed_date) : ''),
+             p: h + '\n' + r.resp_preventive }; };
+
+  function cardHtml(n, reqs, broken){
+    const sup = n.supplier_id ? (STATE.suppliers||[]).find(s => s.id === n.supplier_id) : null;
+    const preType = sup ? 'supplier' : 'client', preName = sup ? sup.name : '', preEmail = sup ? (sup.contact_email || '') : '';
+    const due = new Date(Date.now() + 14*86400000).toISOString().slice(0,10);
+    const rows = reqs.map(r => `<tr><td><b>${E(r.party_name)}</b><div style="font-size:11.5px;color:var(--text-faint);">${E(TYPE[r.party_type]||r.party_type)}${r.party_email ? ' · ' + E(r.party_email) : ''}</div></td>
+      <td>${fmtDate(String(r.sent_at).slice(0,10))}${r.due_date ? '<div style="font-size:11.5px;color:var(--text-faint);">due ' + fmtDate(r.due_date) + '</div>' : ''}</td>
+      <td>${statusPill(r)}${r.status==='responded' ? `<div style="font-size:11.5px;color:var(--text-faint);">${r.applied_at ? 'Written into the fields below' : 'Not yet applied'}</div>` : ''}</td>
+      <td style="text-align:right;white-space:nowrap;">
+        ${r.status!=='closed' && r.status!=='responded' ? `<button class="btn-small" onclick="ncxCopy('${r.id}')">Copy link</button> ${r.party_email ? `<button class="btn-small" onclick="ncxResend('${r.id}')">Resend email</button>` : ''} <button class="btn-small" onclick="ncxSet('${r.id}','closed')">Close link</button>` : ''}
+        ${r.status==='responded' ? `<button class="btn-small" onclick="ncxToggle('${r.id}')">View response</button> ${!r.applied_at ? `<button class="btn-small primary" onclick="ncxApply('${r.id}')">Apply to this nonconformance</button>` : ''} <button class="btn-small" onclick="ncxSet('${r.id}','sent')" title="Let them answer again">Reopen link</button>` : ''}
+        ${r.status==='closed' ? `<button class="btn-small" onclick="ncxSet('${r.id}','sent')">Reopen link</button>` : ''}</td></tr>
+      ${r.status==='responded' ? `<tr id="ncx-resp-${r.id}" style="display:none;"><td colspan="4" style="background:#F7F6F4;font-size:13px;line-height:1.5;white-space:pre-wrap;">${E(blocks(r).c)}\n\n${E(blocks(r).p)}\n\nFrom ${E(r.resp_by_name)}${r.resp_by_email ? ' (' + E(r.resp_by_email) + ')' : ''}</td></tr>` : ''}`).join('');
+    return `<div id="ncx-card" style="border:2px solid var(--border);border-radius:14px;padding:14px 16px;margin:0 0 16px;background:#fff;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint);margin-bottom:6px;">Ask a client, supplier or third party to respond</div>
+      ${broken ? '<div class="warn-note"><div>Run qashe-watchman-schema-nc-external-response.sql in Supabase to switch this on.</div></div>' : `
+      <p style="font-size:12.5px;color:var(--text-dim);margin:0 0 10px;">Send a link by email. They complete the root cause, corrective action and preventive action on a plain page, with no sign-in. Their answer is written into the fields below and a review task is raised for the owner.</p>
+      ${reqs.length ? `<table style="margin-bottom:10px;"><tr><th>Party</th><th>Sent</th><th>Status</th><th></th></tr>${rows}</table>` : ''}
+      ${canAdd() ? `<button class="btn-small primary" onclick="ncxToggleForm()">+ Request a response</button>
+      <div id="ncx-form" style="display:none;margin-top:10px;"><div class="form-grid">
+        <div class="field"><label>Who is this for</label><select id="ncx-type"><option value="client" ${preType==='client'?'selected':''}>Client</option><option value="supplier" ${preType==='supplier'?'selected':''}>Supplier</option><option value="third_party">Third party</option></select></div>
+        <div class="field"><label>Name or company</label><input id="ncx-name" value="${E(preName)}" placeholder="e.g. Acme Steel"></div>
+        <div class="field"><label>Email address</label><input id="ncx-email" type="email" value="${E(preEmail)}" placeholder="their email"></div>
+        <div class="field"><label>Please respond by</label><input id="ncx-due" type="date" value="${due}"></div>
+        <div class="field span3"><label>Message (optional)</label><textarea id="ncx-msg" placeholder="Anything they should know before responding"></textarea></div></div>
+        <div class="form-actions" style="justify-content:flex-start;"><button class="btn-primary" id="ncx-send" onclick="ncxSend('${n.id}')">Send by email</button><button class="btn-cancel" onclick="ncxToggleForm()">Cancel</button></div>
+        <div id="ncx-result"></div></div>` : ''}`}
+    </div>`;
+  }
+
+  async function fetchReqs(id){
+    try{ const r = await STATE.supabase.from('nc_external_requests').select('*').eq('nonconformance_id', id).order('sent_at', {ascending:false});
+      return r.error ? { reqs:[], broken:true } : { reqs:r.data || [], broken:false }; }catch(e){ return { reqs:[], broken:true }; }
+  }
+  const _o = openNCDetail;
+  openNCDetail = window.openNCDetail = async function(id){
+    // a response that was applied after the register was loaded: refresh the register data first
+    let pre = null;
+    try{
+      pre = await fetchReqs(id); const n0 = ncById(id);
+      if(n0 && pre.reqs.some(r => r.status === 'responded' && r.applied_at && !String(n0.correction || '').includes('[Response from ' + r.resp_by_name))){ await loadNCs(); }
+    }catch(e){}
+    const res = await _o.apply(this, arguments);
+    try{
+      const n = ncById(id); const ta = document.getElementById('d-correction'); if(!n || !ta) return res;
+      const grid = ta.closest('.form-grid'); if(!grid) return res;
+      const old = document.getElementById('ncx-card'); if(old) old.remove();
+      const data = pre || await fetchReqs(id);
+      grid.insertAdjacentHTML('beforebegin', cardHtml(n, data.reqs, data.broken));
+      STATE._ncxReqs = data.reqs;
+    }catch(e){ console.warn('nc external response card', e); }
+    return res;
+  };
+
+  window.ncxToggleForm = function(){ const f = document.getElementById('ncx-form'); if(f) f.style.display = f.style.display === 'none' ? 'block' : 'none'; };
+  window.ncxToggle = id => { const r = document.getElementById('ncx-resp-' + id); if(r) r.style.display = r.style.display === 'none' ? 'table-row' : 'none'; };
+  const reqById = id => (STATE._ncxReqs || []).find(r => r.id === id);
+  async function emailFor(r, n){
+    const link = linkOf(r), org = STATE.org.name;
+    const body = `Hello${r.party_name ? ' ' + r.party_name : ''},\n\n${org} has recorded a nonconformance and would like your response.\n\nReference: ${n.ref_code}\nSubject: ${n.title}\n${r.due_date ? 'Please respond by: ' + fmtDate(r.due_date) + '\n' : ''}${r.message ? '\n' + r.message + '\n' : ''}\nPlease open the link below. It takes a few minutes and needs no sign-in. You will be asked for the corrective action and the preventive action.\n\n${link}\n\nThank you,\n${org}`;
+    return await sendEmailToAddress(r.party_email, `Response requested: ${n.ref_code}, ${n.title} (${org})`, body);
+  }
+  window.ncxSend = async function(ncId){
+    const n = ncById(ncId), g = id => document.getElementById(id), btn = g('ncx-send');
+    const name = g('ncx-name').value.trim(), email = g('ncx-email').value.trim();
+    if(!name){ toast('Enter the name or company of the person you are asking.', 'error'); return; }
+    if(email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ toast('That email address does not look right.', 'error'); return; }
+    btn.disabled = true; btn.textContent = 'Sending…';
+    const { data: r, error } = await STATE.supabase.from('nc_external_requests').insert({ organisation_id:STATE.org.id, nonconformance_id:ncId, party_type:g('ncx-type').value,
+      party_name:name, party_email:email || null, message:g('ncx-msg').value.trim() || null, due_date:g('ncx-due').value || null, sent_by:STATE.user.id }).select().single();
+    if(error){ btn.disabled = false; btn.textContent = 'Send by email'; toast('Could not create the request: ' + error.message + (/nc_external_requests/.test(error.message||'') ? ' (run qashe-watchman-schema-nc-external-response.sql first)' : ''), 'error'); return; }
+    let sent = false; if(email){ sent = await emailFor(r, n); }
+    const link = linkOf(r);
+    g('ncx-result').innerHTML = `<div class="link-box" style="margin-top:12px;"><div style="font-size:12px;font-weight:600;${sent?'color:var(--green);':'color:var(--red);'}margin-bottom:8px;">${email ? (sent ? '✓ Emailed to ' + E(email) : 'Could not email automatically: send the link below yourself.') : 'No email address given: send the link below yourself.'}</div>
+      <div class="link-box-label">The link (keep it private: anyone with it can respond)</div><div class="link-box-row"><input type="text" readonly id="ncx-link-${r.id}" value="${E(link)}"><button class="btn-small primary" onclick="copyApprLink('ncx-link-${r.id}')">Copy</button></div></div>`;
+    btn.textContent = 'Sent'; toast(sent ? 'Response request emailed.' : 'Request created. Send the link yourself.', sent ? 'success' : 'info');
+    setTimeout(() => openNCDetail(ncId), 4500);
+  };
+  window.ncxCopy = async function(id){ const r = reqById(id); if(!r) return; const ok = await copyText(linkOf(r)); toast(ok ? 'Link copied.' : 'Could not copy: ' + linkOf(r), ok ? 'success' : 'error'); };
+  window.ncxResend = async function(id){ const r = reqById(id), n = ncById(r && r.nonconformance_id); if(!r || !n) return; const ok = await emailFor(r, n); toast(ok ? 'Email sent again to ' + r.party_email + '.' : 'Could not send the email. Use Copy link instead.', ok ? 'success' : 'error'); };
+  window.ncxSet = async function(id, status){
+    const r = reqById(id); if(!r) return;
+    const patch = status === 'sent' ? { status:'sent', responded_at:null, opened_at:null, applied_at:r.status==='responded' ? r.applied_at : null, expires_at:new Date(Date.now()+90*86400000).toISOString() } : { status };
+    if(status === 'closed' && !confirm('Close this link? The page will stop working for them.')) return;
+    if(status === 'sent' && r.status === 'responded'){ delete patch.applied_at; patch.resp_by_name = r.resp_by_name; }
+    const { error } = await STATE.supabase.from('nc_external_requests').update(patch).eq('id', id);
+    if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+    openNCDetail(r.nonconformance_id);
+  };
+  window.ncxApply = async function(id){
+    const r = reqById(id), n = ncById(r && r.nonconformance_id); if(!r || !n) return;
+    const b = blocks(r);
+    const patch = { correction: (n.correction && n.correction.trim() ? n.correction + '\n\n' : '') + b.c, preventive_action: (n.preventive_action && n.preventive_action.trim() ? n.preventive_action + '\n\n' : '') + b.p };
+    const { error } = await STATE.supabase.from('nonconformances').update(patch).eq('id', n.id);
+    if(error){ toast('Could not apply: ' + error.message, 'error'); return; }
+    await STATE.supabase.from('nc_external_requests').update({ applied_at:new Date().toISOString() }).eq('id', id);
+    await loadNCs(); openNCDetail(n.id); toast('Response written into the corrective and preventive action fields.', 'success');
   };
 })();
 </script>
