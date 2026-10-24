@@ -1163,7 +1163,7 @@
     <div class="mod-card live" onclick="goTo('dashboard','suppliers')"><span class="tag live">LIVE</span>
       <div class="code">MOD-07</div>
       <div class="mod-icon"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a4 4 0 018 0v2"/></svg></div>
-      <h3>Supplier &amp; Subcontractor Management</h3>
+      <h3>Suppliers and Subcontractors</h3>
       <p>Risk-classified register: audit to qualify high risk, quarterly exception monitoring for low risk.</p>
     </div>
     <div class="mod-card live" onclick="goTo('dashboard','customers')"><span class="tag live">LIVE</span>
@@ -1478,7 +1478,7 @@
       <div class="nav-item" data-mod="documents" onclick="showModule('documents')"><svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z"/><line x1="9" y1="12" x2="17" y2="12"/><line x1="9" y1="16" x2="17" y2="16"/></svg> Document Management <span class="nd amber" id="nd-doc"></span></div>
       <div class="nav-item" data-mod="audits" onclick="showModule('audits')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg> Audits <span class="nd amber" id="nd-audit"></span></div>
       <div class="nav-item" data-mod="risks" onclick="showModule('risks')"><svg viewBox="0 0 24 24"><path d="M3 12h4l2 6 4-12 2 6h6"/></svg> Risk &amp; Opportunity <span class="nd red" id="nd-risk"></span></div>
-      <div class="nav-item" data-mod="suppliers" onclick="showModule('suppliers')"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a4 4 0 018 0v2"/></svg> Suppliers <span class="nd amber" id="nd-supplier"></span></div>
+      <div class="nav-item" data-mod="suppliers" onclick="showModule('suppliers')"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a4 4 0 018 0v2"/></svg> Suppliers and Subcontractors <span class="nd amber" id="nd-supplier"></span></div>
       <div class="nav-item" data-mod="customers" onclick="showModule('customers')"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21v-2a5 5 0 015-5h4a5 5 0 015 5v2"/><path d="M17 4a4 4 0 010 8"/><path d="M22 21v-2a5 5 0 00-4-4.9"/></svg> Customers <span class="nd amber" id="nd-customer"></span></div>
       <div class="nav-item" data-mod="objectives" onclick="showModule('objectives')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg> Objectives &amp; Targets <span class="nd amber" id="nd-objective"></span></div>
       <div class="nav-item" data-mod="legal" onclick="showModule('legal')"><svg viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M5 8l-3 6a3 3 0 006 0z"/><path d="M19 8l-3 6a3 3 0 006 0z"/><path d="M5 8h14"/><path d="M8 21h8"/></svg> Legal Compliance <span class="nd amber" id="nd-legal"></span></div>
@@ -2492,7 +2492,7 @@ const MODULE_META = {
   documents:{title:'Document Management', sub:() => 'MOD-03 · Where documents are created, numbered, and revisioned: approved documents surface automatically in All Documents'},
   audits:{title:'Audits', sub:() => 'MOD-04 · Audits, findings, and promotion to nonconformance'},
   risks:{title:'Risk & Opportunity Register', sub:() => 'MOD-05 · Scored, treated, and linked back to nonconformances'},
-  suppliers:{title:'Supplier & Subcontractor Management', sub:() => 'MOD-07 · Risk-classified register, audit or exception-monitored'},
+  suppliers:{title:'Suppliers and Subcontractors', sub:() => 'MOD-07 · Risk-classified register, audit or exception-monitored'},
   customers:{title:'Customers', sub:() => 'MOD-08 · Register and satisfaction monitoring'},
   objectives:{title:'Objectives & Targets', sub:() => 'MOD-09 · SMART objectives, planned and monitored per ISO 6.2'},
   legal_certs:{title:'Legal Documents & Certificates', sub:() => 'A repository of registration, tax, B-BBEE, membership and accreditation certificates: with expiry dates, and a reminder 30 days before each one lapses'},
@@ -3080,7 +3080,7 @@ const DATE_TRACKED_MODULES = [
   { key:'nonconformances', label:'Nonconformances', list:() => STATE.ncs, dateField:'target_close_date', isResolved:x=>x.status==='closed', titleField:'title', getPerson:x=>memberName(x.owner_id) },
   { key:'tasks', label:'Tasks', list:() => STATE.tasks, dateField:'due_date', isResolved:x=>x.status==='done', titleField:'title', getPerson:x=>memberName(x.assignee_id) },
   { key:'documents', label:'Document Management', list:() => STATE.documents, dateField:'next_review_date', isResolved:x=>['withdrawn','superseded'].includes(x.status), titleField:'title', getPerson:x=>memberName(x.owner_id) },
-  { key:'suppliers', label:'Suppliers', list:() => STATE.suppliers, dateField:'next_review_date', isResolved:x=>x.status==='removed', titleField:'name', getPerson:x=>supplierOwnerName(x) },
+  { key:'suppliers', label:'Suppliers and Subcontractors', list:() => STATE.suppliers, dateField:'next_review_date', isResolved:x=>x.status==='removed', titleField:'name', getPerson:x=>supplierOwnerName(x) },
   { key:'objectives', label:'Objectives & Targets', list:() => STATE.objectives, dateField:'target_date', isResolved:x=>['achieved','not_achieved','discontinued'].includes(x.status), titleField:'specific_statement', getPerson:x=>memberName(x.owner_id) },
   { key:'legal', label:'Legal Compliance', list:() => STATE.legalRegister, dateField:'next_review_due_date', isResolved:() => false, titleField:'title', getPerson:x=>memberName(x.owner_id) },
   { key:'training', label:'Training', list:() => STATE.training, dateField:'due_date', isResolved:x=>['completed','cancelled'].includes(x.status), titleField:'training_required', getPerson:x=>{const p=personById(x.personnel_id); return p?p.full_name:'—';} },
@@ -3719,11 +3719,11 @@ const RENDERERS = {
       <button class="btn-small" onclick="exportModuleExcel('suppliers')">Export Excel</button>
       <button class="btn-small" onclick="printCurrentRegister('suppliers','Suppliers Register')">Print Register</button>
       <button class="btn-small" onclick="printApprovedSupplierList()">Approved Supplier List</button>
-      <button class="btn-primary btn-add" onclick="toggleSupplierForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Supplier</button>
+      <button class="btn-primary btn-add" onclick="toggleSupplierForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Supplier or Subcontractor</button>
     </div>
 
     <div class="form-panel" id="sup-form">
-      <h3 style="font-family:Arial,Helvetica,sans-serif; font-size:15.5px; font-weight:600; margin-bottom:14px;">Add a supplier / subcontractor</h3>
+      <h3 style="font-family:Arial,Helvetica,sans-serif; font-size:15.5px; font-weight:600; margin-bottom:14px;">Add a supplier or subcontractor</h3>
       <div class="form-grid">
         <div class="field span2"><label>Name</label><input id="sf-name" placeholder="Company name"></div>
         <div class="field"><label>Risk classification</label><select id="sf-risk">
@@ -10337,7 +10337,7 @@ function renderSuppliersTable(){
   const fStatus = document.getElementById('sup-filter-status').value;
   const rows = STATE.suppliers.filter(s => (!fRisk||s.risk_classification===fRisk) && (!fStatus||s.status===fStatus));
   if(!rows.length){
-    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a4 4 0 018 0v2"/></svg><p>No suppliers match this filter.</p></div>`;
+    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a4 4 0 018 0v2"/></svg><p>No suppliers or subcontractors match this filter.</p></div>`;
     return;
   }
   wrap.innerHTML = `<table>
@@ -10618,7 +10618,7 @@ window.addAssessmentItem = async function(entityType){
   if(!text) return;
   let template = getAssessmentTemplate(entityType);
   if(!template){
-    const titles = { supplier:'Supplier & Subcontractor Basic Assessment', customer:'New Customer Onboarding Checklist', '5s_inspection':'5S Standard Inspection Checklist' };
+    const titles = { supplier:'Supplier and Subcontractor Basic Assessment', customer:'New Customer Onboarding Checklist', '5s_inspection':'5S Standard Inspection Checklist' };
     const { data: newTemplate, error: tErr } = await STATE.supabase.from('assessment_checklist_templates').insert({
       organisation_id: STATE.org.id, applies_to: entityType, title: titles[entityType] || 'Checklist', created_by: STATE.user.id,
     }).select().single();
@@ -11424,7 +11424,7 @@ const IMPORT_SPECS = {
     }
   },
   suppliers: {
-    label: 'Suppliers',
+    label: 'Suppliers and Subcontractors',
     table: 'suppliers',
     columns: [
       {key:'name', label:'Name', required:true, type:'text', example:'ABC Fabrication (Pty) Ltd'},
@@ -22959,7 +22959,7 @@ function renderComplianceDashboard(){
     }
     {
       const suppliers = STATE.suppliers||[];
-      tiles.push(complianceCard('Suppliers', 'suppliers', [
+      tiles.push(complianceCard('Suppliers and Subcontractors', 'suppliers', [
         { label:'Approved', count: suppliers.filter(s=>s.status==='approved').length, color:'green' },
         { label:'Pending / conditional', count: suppliers.filter(s=>['pending_qualification','conditional'].includes(s.status)).length, color:'amber' },
         { label:'Suspended / removed', count: suppliers.filter(s=>['suspended','removed'].includes(s.status)).length, color:'red' },
@@ -23111,7 +23111,7 @@ function renderComplianceDashboard(){
       .sort((a,b)=>a.score-b.score)
       .slice(0,5);
 
-    html += mrSection('Supplier & Subcontractor Performance', 'suppliers', `
+    html += mrSection('Suppliers and Subcontractors Performance', 'suppliers', `
       <div class="mr-stat-row">
         ${mrStatCard(suppliers.length, 'Total suppliers', null, null)}
         ${mrStatCard(suppliers.length ? Math.round(assessedSupplierIds.size/suppliers.length*100)+'%' : '—', 'Have an assessment on file', assessedSupplierIds.size+' of '+suppliers.length, null)}
@@ -28556,7 +28556,7 @@ function commsRecipientOf(label, x){
   if(L === 'Tasks') return { u:x.assignee_id };
   if(L === 'Training' || L === 'KPIs & Appraisals') return { p:x.personnel_id };
   if(L.startsWith('Assets')) return { p:x.responsible_person_id };
-  if(L === 'Suppliers') return { u:x.owner_id, p:x.owner_personnel_id };
+  if(L === 'Suppliers' || L.startsWith('Suppliers and')) return { u:x.owner_id, p:x.owner_personnel_id };
   if(L.startsWith('Management Review')) return { u:x.chair_id };
   return { u:x.owner_id };
 }
@@ -29991,7 +29991,7 @@ renderSuppliersTable = function(){
   if(!STATE._sqLoaded && !STATE._sqLoading){ STATE._sqLoading = true; loadSupplierQuestionnaires().then(()=>{ STATE._sqLoading = false; renderSuppliersTable(); }); }
   const fRisk = document.getElementById('sup-filter-risk').value, fStatus = document.getElementById('sup-filter-status').value;
   const rows = STATE.suppliers.filter(s => (!fRisk||s.risk_classification===fRisk) && (!fStatus||s.status===fStatus));
-  if(!rows.length){ wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a4 4 0 018 0v2"/></svg><p>No suppliers match this filter.</p></div>`; return; }
+  if(!rows.length){ wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a4 4 0 018 0v2"/></svg><p>No suppliers or subcontractors match this filter.</p></div>`; return; }
   wrap.innerHTML = `<table>
     <tr><th>Ref</th><th>Account no.</th><th>Name</th><th>Scope</th><th>Risk</th><th>Owner</th><th>Review</th><th>Score</th><th>NCR performance</th><th>Onboarding questionnaire</th><th>Status</th></tr>
     ${rows.map(s=>{ const p = supPerf(s); const why = supplierReassessmentReason(s, null); return `<tr class="clickable" onclick="openSupplierDetail('${s.id}')">
@@ -35540,7 +35540,195 @@ window.brandFromLogo = function(){
     flow('Welding Fabrication Job Process', ['ISO 3834-2'], 'Welding job.', [['start','Order received'],['process','Contract review'],['process','Select WPS and welders'],['process','Weld and inspect'],['decision','Welds acceptable?','Yes','No: repair'],['document','Release with records'],['end','Deliver']]),
   ];
 
-  const catalogue = () => [...letters(), ...POLICIES, ...POLICIES_B, ...PROCEDURES, ...PROCEDURES_B, ...FORMS, ...FORMS_B, ...REGISTERS, ...REGISTERS_B, ...CHECKLISTS, ...CHECKLISTS_B, ...FLOWS, ...FLOWS_B];
+  /* ---------------- b62: gap-fill templates (Release 3u audit) ---------------- */
+  const EXTRA_POLICIES = [
+    P('Customer Relationship Management Policy', ['ISO 9001 cl 9.1.2, 8.2'], 'How the organisation builds and keeps customer relationships.', ['Every customer has a named account manager.','Customer requirements, products and services are recorded in the customer register.','Customer satisfaction is measured and acted on at least annually.','Complaints are handled within the agreed times and learning is recorded.','Customer information is protected under POPIA.']),
+    P('Supplier and Subcontractor Code of Conduct', ['OHS Act s37','ISO 45001 cl 8.1.4'], 'What the organisation expects from its suppliers and subcontractors.', ['Comply with all applicable law, including the OHS Act and COIDA.','Provide current compliance documents before work starts and keep them valid.','Work only with competent, inducted and appointed persons.','Report every incident, accident and near miss immediately.','Allow audits and inspections of the work and the documents.']),
+    P('Hazard Reporting and Stop Work Authority Policy', ['OHS Act s8, s14','ISO 45001 cl 5.4'], 'Every person may report a hazard and stop unsafe work.', ['Any person may stop work they believe is unsafe without fear of action against them.','Hazards, near misses and unsafe acts are reported on the day.','Reports are acknowledged within one working day and acted on by a named owner.','Recognition is given to people who report and improve safety (Green Alerts).']),
+    P('Visitor and Access Management Policy', ['ISO 45001 cl 8.1','ISO/IEC 27001 Annex A 7.2'], 'Control of visitors and access to sites and premises.', ['All visitors sign in, receive a safety briefing and wear visitor identification.','Visitors are escorted in controlled areas.','Access rights of staff and contractors are reviewed at least quarterly.']),
+    P('Legal Compliance Policy', ['ISO 45001 cl 6.1.3, 9.1.2','ISO 14001 cl 6.1.3'], 'Commitment to identify, comply with and evaluate legal requirements.', ['Legal and other requirements are identified and kept in the legal register.','Compliance is evaluated at least annually and after changes in law.','Non-compliance is recorded, corrected and prevented from recurring.']),
+    P('Risk and Opportunity Management Policy', ['ISO 31000','ISO 9001 cl 6.1'], 'Systematic management of risks and opportunities.', ['Risks and opportunities are identified, scored and treated using one method.','Owners and due dates are assigned to every treatment.','The register is reviewed at least quarterly and at management review.']),
+    P('Continual Improvement and Opportunities for Improvement Policy', ['ISO 9001 cl 10.3','ISO 45001 cl 10.3'], 'Every finding is an Opportunity for Improvement.', ['Nonconformances, alerts, audit findings and suggestions are recorded in one register.','Root causes are found and corrective actions are verified for effectiveness.','Trends by category are reviewed by management every quarter.']),
+    P('HIV, AIDS and TB in the Workplace Policy', ['Employment Equity Act s7','Code of Good Practice on HIV/AIDS'], 'Non-discrimination and support.', ['No employee is tested without informed consent or discriminated against for their status.','Confidentiality of health information is protected.','Awareness, prevention and access to treatment are promoted.']),
+  ];
+  const EXTRA_PROCEDURES = [
+    PR('RAGA Alert Procedure (Red, Orange and Green Alerts)', ['ISO 45001 cl 10.2','ISO 9001 cl 10.2'], 'How alerts are raised, escalated and closed.', ['Choose the category first, then describe what happened.','Red: serious or high risk. Notify the owner and top management at once.','Orange: minor or low risk. Owner acts within the target date.','Green: positive recognition. Recognise the person and share the example.','Investigate Red and Orange alerts to root cause and agree actions.','Verify the actions and close the alert.'], 'RAGA register, alert records, action records.'),
+    PR('Near Miss and Hazard Reporting Procedure', ['ISO 45001 cl 8.1.2, 10.2'], 'Reporting and learning from near misses and hazards.', ['Report the near miss or hazard on the day, choosing the category first.','Make the area safe.','The owner reviews and rates the potential severity.','Agree and track controls.','Review near miss trends monthly.'], 'Incidents, Accidents and Near Miss register.'),
+    PR('Incident Root Cause Analysis Procedure', ['ISO 45001 cl 10.2','OHS Act s24'], 'Finding the real cause of an incident.', ['Secure the scene and the evidence.','Collect statements and photos.','Build the timeline.','Ask why until the system cause is found (5 Whys or fishbone).','Agree corrective and preventive actions with owners and dates.','Verify effectiveness after implementation.'], 'Investigation report, statements, action records.'),
+    PR('Injury on Duty and Return to Work Procedure', ['COIDA','OHS Act s24'], 'Handling injuries, claims and return to work.', ['Give first aid and medical treatment.','Report to the supervisor and record the incident the same day.','Submit the employer report to the Compensation Fund within the legal time.','Notify the Department of Employment and Labour where required.','Record days lost and medical clearance.','Agree return to work and light duties where needed.'], 'Injury on duty file, claim forms, clearance certificates.'),
+    PR('Customer Onboarding Procedure', ['ISO 9001 cl 8.2'], 'Setting up a new customer.', ['Create the customer in the register with contacts and legal details.','Assign the account manager.','Record the products or services supplied and the customer requirements.','Agree the contract and any special SHERQ requirements.','Schedule the first review and satisfaction survey.'], 'Customer record, contract, requirements list.'),
+    PR('Customer Relationship and Account Management Procedure', ['ISO 9001 cl 9.1.2'], 'Managing customer relationships over time.', ['Plan contact with each key customer (visits, calls, reviews).','Log every interaction against the customer.','Review open actions with the customer.','Review customer satisfaction results and agree improvements.','Report account status to management monthly.'], 'Interaction log, account plans, review minutes.'),
+    PR('Sales Planning and Pipeline Review Procedure', ['ISO 9001 cl 8.2.1'], 'Planning and reviewing sales activity.', ['Set sales targets per account manager.','Record every opportunity with value, stage and expected date.','Review the pipeline weekly.','Hand won opportunities to contract review.','Record lost reasons and learn from them.'], 'Pipeline, targets, review notes.'),
+    PR('Subcontractor SHERQ File Procedure', ['OHS Act s37','Construction Regulations 2014 r5'], 'Obtaining and keeping the subcontractor SHERQ file.', ['Send the subcontractor the checklist and templates by email link.','Subcontractor uploads each document.','Review each document for validity and correctness.','Approve, or return with comments.','Track expiry dates and request renewals.','Do not allow work to start until the file is approved.'], 'Subcontractor SHERQ file, approval record, expiry register.'),
+    PR('Supplier Performance Monitoring Procedure', ['ISO 9001 cl 8.4'], 'Rating suppliers and subcontractors.', ['Score delivery, quality, SHERQ compliance and responsiveness each period.','Record nonconformances against the supplier.','Review scores quarterly.','Agree improvement or remove from the approved list.'], 'Performance scores, supplier register.'),
+    PR('Asset Register and Inspection Procedure', ['ISO 55001','OHS Act General Machinery Regulations'], 'Keeping assets registered and inspected.', ['Register each asset with owner, location and criticality.','Set inspection frequency and checklist.','Inspect and record results.','Tag out unsafe assets.','Track certificates and calibration expiry.'], 'Asset register, inspection records, certificates.'),
+    PR('Asset Condition Monitoring Procedure', ['ISO 55001'], 'Monitoring the condition and performance of equipment.', ['Define the condition indicators for each critical asset.','Record readings at the set frequency.','Compare to limits and trend.','Raise a job card or action when a limit is exceeded.','Review trends at management review.'], 'Condition readings, job cards.'),
+    PR('Toolbox Talk and Bulletin Procedure', ['ISO 45001 cl 7.4'], 'Communicating safety messages.', ['Plan topics from incidents, risks and legal changes.','Deliver the talk and record attendance.','Issue bulletins and flash notices for important events.','Check that everyone has read or attended.'], 'Toolbox talk register, bulletins.'),
+    PR('5S Inspection Procedure', ['ISO 45001 cl 8.1'], 'Open participation inspections.', ['Inspect the area against sort, set in order, shine, standardise and sustain.','Score and photograph findings.','Raise actions for each finding.','Publish the scores and recognise the best areas.'], '5S inspection records and scores.'),
+    PR('Process Performance and KPI Monitoring Procedure', ['ISO 9001 cl 4.4, 9.1'], 'Measuring processes with KPIs.', ['List each process with an owner.','Set weighted KPIs and targets.','Record readings each period.','Investigate misses and raise actions.','Report results at management review.'], 'Process register, KPI readings.'),
+    PR('Performance Appraisal Procedure', ['ISO 9001 cl 7.2'], 'Position KPIs and appraisals.', ['Set position KPIs at the start of the year.','Employee completes the self-assessment.','Manager reviews and rates.','Agree development actions.','File the appraisal and feed training needs.'], 'Appraisal forms, training needs.'),
+    PR('Legal Documents and Certificates Expiry Procedure', ['ISO 45001 cl 9.1.2'], 'Keeping registrations and certificates valid.', ['Record each certificate with expiry date and owner.','Receive reminders 30 days before expiry.','Renew and upload the new certificate.','Escalate any lapsed certificate.'], 'Legal documents register.'),
+    PR('Site SHERQ File Management Procedure', ['Construction Regulations 2014','OHS Act'], 'Building and controlling the site SHERQ file.', ['Open a file for each client site.','Add the required documents to each section.','Check readiness against the required list.','Review and update when conditions change.','Hand over a copy to the client where required.'], 'Site SHERQ file.'),
+    PR('Health and Safety Committee and Representatives Procedure', ['OHS Act s17, s18, s19, s20'], 'Running the committee.', ['Appoint representatives in writing.','Hold meetings at least every three months.','Record minutes and actions.','Track actions to closure.','Report to management review.'], 'Appointments, minutes, action records.'),
+    PR('Safety Induction Procedure', ['OHS Act s8(2)(d)','Construction Regulations 2014 r7'], 'Inducting employees, contractors and visitors.', ['Confirm identity and fitness for work.','Deliver the induction content.','Test understanding.','Record and issue the induction card.','Refresh at the set interval.'], 'Induction register.'),
+    PR('Task and Action Tracking Procedure', ['ISO 9001 cl 10.2'], 'Every action has an owner and a date.', ['Create the action from its source record.','Assign an owner and due date.','Update progress.','Verify completion.','Escalate overdue actions.'], 'Task register.'),
+  ];
+  const EXTRA_FORMS = [
+    frm('Injury on Duty Report', ['COIDA','OHS Act s24'], 'Employer report of an injury on duty.', ['Injured person','Date and time','Location','Nature of injury','Treatment given','Days lost','Witnesses','Reported to Compensation Fund (date)']),
+    frm('Witness Statement', ['ISO 45001 cl 10.2'], 'Statement from a witness.', ['Name and contact','Date','What was seen','Where the witness was','Sketch or photos attached']),
+    frm('Root Cause Analysis (5 Whys)', ['ISO 45001 cl 10.2'], 'Finds the root cause.', ['Event','Why 1','Why 2','Why 3','Why 4','Why 5','Root cause','Corrective action','Preventive action']),
+    frm('Property or Equipment Damage Report', ['ISO 45001 cl 10.2'], 'Records damage.', ['Item damaged','Date and place','Description of damage','Estimated cost','Cause','Action taken']),
+    frm('Vehicle Accident Report', ['National Road Traffic Act'], 'Vehicle accident.', ['Driver','Vehicle','Date, time and place','Other parties and vehicles','Description','Police case number','Injuries','Photos attached']),
+    frm('Environmental Incident Report', ['ISO 14001 cl 8.2','NEMA s30'], 'Environmental incident.', ['What was released','Quantity','Date and place','Cause','Containment','Notification to authority','Clean-up and disposal']),
+    frm('Hazard Report', ['OHS Act s8','ISO 45001 cl 6.1.2'], 'Hazard report.', ['Category','Location','Description of hazard','Potential severity','Immediate action','Suggested control']),
+    frm('RAGA Green Alert: Recognition', ['ISO 45001 cl 5.4'], 'Recognise good practice.', ['Person recognised','What was done','Benefit to safety, quality or the customer','Recognised by','Date']),
+    frm('Return to Work Clearance', ['COIDA','OHS Act'], 'Fit to return after injury or illness.', ['Employee','Date of injury or illness','Medical clearance attached','Restrictions','Review date','Manager approval']),
+    frm('Customer Visit Report', ['ISO 9001 cl 9.1.2'], 'Record of a customer visit.', ['Customer and contact','Date','Purpose','Discussion','Feedback and complaints','Opportunities','Actions with owners and dates']),
+    frm('Sales Opportunity Record', ['ISO 9001 cl 8.2'], 'Opportunity in the pipeline.', ['Customer','Description','Value','Stage','Expected decision date','Owner','Competitors','Outcome and reason']),
+    frm('Customer Account Plan', ['ISO 9001 cl 9.1.2'], 'Annual plan for a key customer.', ['Customer','Account manager','Products or services supplied','Goals for the year','Planned contacts','Risks','Opportunities','Satisfaction target']),
+    frm('Customer Master Data Form', ['ISO 9001 cl 8.2','POPIA'], 'Details to register a customer.', ['Legal name and registration number','VAT number','Physical address','Contacts and roles','Account manager','Products or services provided','Special requirements','Payment terms']),
+    frm('Supplier Approval Application', ['ISO 9001 cl 8.4'], 'Application to be approved.', ['Company details','Services or goods','Registration documents attached','B-BBEE certificate','Insurance','SHERQ documents','References']),
+    frm('Supplier Corrective Action Request (SCAR)', ['ISO 9001 cl 8.4, 10.2'], 'Request to a supplier.', ['Supplier','Description of nonconformance','Evidence','Containment requested','Root cause required by','Corrective action required by','Verification']),
+    frm('Supplier Performance Review', ['ISO 9001 cl 8.4'], 'Scored review.', ['Supplier','Period','Delivery score','Quality score','SHERQ score','Responsiveness score','Overall rating','Decision']),
+    frm('Audit Plan', ['ISO 19011','ISO 9001 cl 9.2'], 'Plan for one audit.', ['Scope and criteria','Auditor and team','Auditees and departments','Date and time','Documents to review','Opening and closing meeting']),
+    frm('Opportunity for Improvement Record', ['ISO 9001 cl 10.3'], 'Finding recorded as an opportunity.', ['Category','Description','Source','Root cause','Action','Owner and due date','Verification of effectiveness']),
+    frm('Risk Treatment Plan', ['ISO 31000','ISO 45001 cl 6.1'], 'Treatment of a risk.', ['Risk','Current rating','Treatment','Owner','Due date','Residual rating','Review date']),
+    frm('Legal Compliance Review Record', ['ISO 45001 cl 9.1.2'], 'Evaluation of compliance.', ['Legal requirement','Evidence reviewed','Compliant? yes or no','Gap','Action','Reviewer and date']),
+    frm('Document Change Request', ['ISO 9001 cl 7.5'], 'Request to change a document.', ['Document number and title','Requested change','Reason','Requested by','Approver','New revision']),
+    frm('Training Evaluation (Effectiveness)', ['ISO 9001 cl 7.2','ISO 45001 cl 7.2'], 'Was the training effective.', ['Employee','Course','Date','Knowledge test result','Supervisor observation after 3 months','Effective? yes or no','Further training']),
+    frm('Training Request', ['ISO 45001 cl 7.2'], 'Request for training.', ['Employee','Course requested','Reason','Cost estimate','Manager approval']),
+    frm('Asset Inspection Record', ['General Machinery Regulations'], 'Inspection of an asset.', ['Asset number and description','Date','Inspector','Findings','Safe to use? yes or no','Defects and actions','Next inspection']),
+    frm('Lock-out Tag-out Record', ['General Machinery Regulations'], 'Isolation record.', ['Equipment','Energy sources isolated','Lock and tag numbers','Isolated by','Verified by','Removed by and date']),
+    frm('5S Inspection Record', ['ISO 45001 cl 8.1'], '5S inspection score sheet.', ['Area','Date','Sort score','Set in order score','Shine score','Standardise score','Sustain score','Findings and photos','Actions']),
+    frm('Health and Safety Committee Meeting Minutes', ['OHS Act s19, s20'], 'Committee minutes.', ['Date and venue','Attendees and apologies','Previous actions','Incidents reviewed','New items','Actions with owners','Next meeting']),
+    frm('Job Description', ['ISO 9001 cl 7.1.2','ISO 45001 cl 5.3'], 'Role and SHERQ responsibilities.', ['Job title','Reports to','Purpose','Key duties','SHERQ responsibilities and authorities','Qualifications and competence','Appointments held']),
+    frm('Position KPI Scorecard', ['ISO 9001 cl 9.1'], 'KPIs for a position.', ['Position','Period','KPI','Weight','Target','Actual','Score']),
+    frm('Employee Self-Assessment', ['ISO 9001 cl 7.2'], 'Self rating before appraisal.', ['Employee','Period','Achievements','Rating per KPI','Development needs','Comments']),
+    frm('Disciplinary Notice of Hearing', ['LRA Schedule 8'], 'Notice of hearing.', ['Employee','Allegations','Date, time and venue','Right to representation','Issued by and date']),
+    frm('Safety Alert and Bulletin', ['ISO 45001 cl 7.4'], 'Flash notice.', ['Title','Date','What happened','Lesson learned','Required action','Issued by']),
+    frm('Emergency Drill Evaluation', ['Environmental Regulations for Workplaces r9'], 'Evaluation of a drill.', ['Drill type','Date and time','Time to evacuate','Persons accounted for','Problems found','Actions']),
+    frm('Contractor Daily Attendance and Hours', ['Construction Regulations 2014'], 'Daily record.', ['Contractor','Date','Names present','Hours worked','Tasks','Supervisor']),
+    frm('Management Review Agenda', ['ISO 9001 cl 9.3','OHS Act s19'], 'Agenda with required inputs.', ['Date and attendees','Previous actions','Audit results','Incident and nonconformance trends by category','Customer satisfaction','Risks and opportunities','Objectives','Resources','Decisions']),
+  ];
+  const EXTRA_REGISTERS = [
+    reg('RAGA Alerts (Red, Orange and Green)', ['ISO 45001 cl 10.2'], 'All alerts raised.', ['Reference','Type','Category','Description','Owner','Status','Raised date','Closed date'], 'Monthly'),
+    reg('Opportunities for Improvement', ['ISO 9001 cl 10.3'], 'All findings and improvements.', ['Reference','Category','Source','Description','Root cause','Action owner','Target date','Effectiveness verified'], 'Monthly'),
+    reg('Customer Accounts and Interactions', ['ISO 9001 cl 9.1.2'], 'Accounts, contacts and interactions.', ['Customer','Account manager','Products or services','Last contact','Next contact','Open actions'], 'Monthly'),
+    reg('Sales Pipeline and Opportunities', ['ISO 9001 cl 8.2'], 'Opportunities by stage.', ['Customer','Opportunity','Value','Stage','Expected date','Owner','Outcome'], 'Weekly'),
+    reg('Customer Satisfaction Results', ['ISO 9001 cl 9.1.2'], 'Survey results.', ['Customer','Survey date','Score','Comments','Actions','Closed'], 'Quarterly'),
+    reg('Subcontractor SHERQ Files', ['OHS Act s37'], 'Status of each subcontractor file.', ['Subcontractor','Documents required','Documents approved','Expiry dates','Status','Approved by'], 'Monthly'),
+    reg('Supplier Performance Scores', ['ISO 9001 cl 8.4'], 'Scores over time.', ['Supplier','Period','Delivery','Quality','SHERQ','Overall','Decision'], 'Quarterly'),
+    reg('Injury on Duty and COIDA Claims', ['COIDA'], 'Claims.', ['Employee','Date of injury','Nature','Days lost','Claim number','Status','Return to work date'], 'Monthly'),
+    reg('Training Plan', ['ISO 45001 cl 7.2'], 'Planned training.', ['Course','Employees','Planned date','Provider','Cost','Status'], 'Quarterly'),
+    reg('Key Performance Indicators', ['ISO 9001 cl 9.1'], 'KPIs and readings.', ['Process','KPI','Weight','Target','Actual','Period'], 'Monthly'),
+    reg('Process Register', ['ISO 9001 cl 4.4'], 'All processes.', ['Process','Owner','Inputs','Outputs','KPIs','Related documents'], 'Annually'),
+    reg('Asset Inspections', ['General Machinery Regulations'], 'Inspection history.', ['Asset','Date','Inspector','Result','Defects','Next due'], 'Monthly'),
+    reg('5S Inspections', ['ISO 45001 cl 8.1'], '5S scores.', ['Area','Date','Score','Findings','Actions'], 'Monthly'),
+    reg('Emergency Drills', ['Environmental Regulations for Workplaces r9'], 'Drills held.', ['Date','Type','Evacuation time','Findings','Actions'], 'Annually'),
+    reg('Safety Observations', ['ISO 45001 cl 9.1'], 'Observations made.', ['Date','Observer','Area','Safe or unsafe','Action'], 'Monthly'),
+    reg('Site SHERQ File Index', ['Construction Regulations 2014'], 'Contents of each site file.', ['Site','Section','Document','Revision','Date','Status'], 'Monthly'),
+    reg('Bulletins and Flash Notices', ['ISO 45001 cl 7.4'], 'Bulletins issued.', ['Date','Title','Issued by','Read by','Actions'], 'Quarterly'),
+    reg('Tasks and Actions', ['ISO 9001 cl 10.2'], 'All actions and owners.', ['Reference','Source','Owner','Due date','Status','Closed date'], 'Weekly'),
+    reg('Departments, Branches and Organisation Structure', ['ISO 9001 cl 5.3'], 'Structure.', ['Department','Branch','Head','Reports to','Employees'], 'Annually'),
+  ];
+  const EXTRA_CHECKLISTS = [
+    chk('Incident Investigation Checklist', ['ISO 45001 cl 10.2'], 'Investigation steps.', ['Scene secured','Injured person treated','Photos taken','Witness statements obtained','Equipment and records secured','Timeline built','Root cause identified','Actions agreed with owners and dates','Authority notified if required','Lessons shared']),
+    chk('Customer Onboarding Checklist', ['ISO 9001 cl 8.2'], 'New customer set-up.', ['Customer registered','Account manager assigned','Products or services recorded','Contract reviewed','SHERQ requirements agreed','Contacts loaded','First review scheduled','Satisfaction survey scheduled']),
+    chk('Subcontractor SHERQ File Checklist', ['OHS Act s37'], 'Documents required from a subcontractor.', ['Company profile','Letter of good standing (COIDA)','Tax compliance status','B-BBEE certificate','Public liability insurance','Health and safety plan','Risk assessments','Method statements','Appointment letters','Competence certificates','Medical fitness certificates','Equipment inspection records','Safety policy','Section 37(2) agreement','Induction records']),
+    chk('Supplier Approval Checklist', ['ISO 9001 cl 8.4'], 'Approval of a supplier.', ['Application received','Registration documents verified','Insurance valid','SHERQ documents reviewed','References checked','Risk class set','Approved by management']),
+    chk('5S Inspection Checklist', ['ISO 45001 cl 8.1'], '5S.', ['Unneeded items removed','Everything has a place and is labelled','Floors, walls and equipment clean','Standards displayed','Routine followed and audited']),
+    chk('Legal Compliance Review Checklist', ['ISO 45001 cl 9.1.2'], 'Legal review.', ['Legal register current','New legislation reviewed','Appointments valid','Certificates in date','Permits and licences valid','Inspections done','Gaps recorded as actions']),
+    chk('ISO 9001 Readiness Checklist', ['ISO 9001:2015'], 'Readiness.', ['Context and interested parties','Scope','Policy and objectives','Risks and opportunities','Documented information','Operational control','Internal audit done','Management review done','Corrective actions closed']),
+    chk('ISO 14001 Readiness Checklist', ['ISO 14001:2015'], 'Readiness.', ['Context','Environmental aspects and impacts','Legal requirements','Objectives','Operational control','Emergency preparedness','Monitoring','Internal audit','Management review']),
+    chk('ISO 45001 Readiness Checklist', ['ISO 45001:2018'], 'Readiness.', ['Context','Worker consultation and participation','Hazards and risks','Legal requirements','Objectives','Competence','Operational control','Emergency preparedness','Incident investigation','Internal audit','Management review']),
+    chk('ISO 27001 Readiness Checklist', ['ISO/IEC 27001:2022'], 'Readiness.', ['Scope','Risk assessment and treatment','Statement of Applicability','Access control','Supplier security','Incident management','Business continuity','Internal audit','Management review']),
+    chk('Ladder Inspection Checklist', ['Construction Regulations 2014 r10'], 'Ladder.', ['Rungs and stiles undamaged','Feet intact','Locking devices work','Labelled and numbered','Stored correctly']),
+    chk('Forklift Pre-Use Checklist', ['Driven Machinery Regulations'], 'Forklift.', ['Operator licence valid','Brakes','Steering','Horn and lights','Forks and chains','Hydraulics','Seat belt','Fire extinguisher']),
+    chk('Machine Guarding Checklist', ['General Machinery Regulations'], 'Guards.', ['Guards fitted','Interlocks work','Emergency stops work','Isolation points marked','Operators trained']),
+    chk('Visitor Induction Checklist', ['ISO 45001 cl 8.1'], 'Visitor.', ['Signed in','Emergency exits shown','Assembly point shown','PPE issued','Escort assigned','Declaration signed']),
+    chk('Return to Work Checklist', ['COIDA'], 'Return after injury.', ['Medical clearance','Restrictions agreed','Supervisor briefed','Light duties arranged','Review date set']),
+    chk('Emergency Drill Evaluation Checklist', ['Environmental Regulations for Workplaces r9'], 'Drill.', ['Alarm heard','Evacuation time recorded','Assembly point roll call','Marshals in position','Problems recorded','Actions raised']),
+    chk('Site SHERQ File Completeness Checklist', ['Construction Regulations 2014'], 'Site file complete.', ['Client documents','Appointments','Risk assessments','Method statements','Permits','Inductions','Inspections','Incident register','Legal documents']),
+    chk('Training Effectiveness Checklist', ['ISO 45001 cl 7.2'], 'Effectiveness.', ['Objectives met','Test passed','Behaviour observed','Certificate filed','Matrix updated']),
+  ];
+  const EXTRA_FLOWS = [
+    flow('RAGA Alert Process', ['ISO 45001 cl 10.2'], 'From alert to closure.', [['start','Alert raised'],['process','Choose category'],['decision','Red, Orange or Green?','Red or Orange','Green: recognise'],['process','Owner investigates'],['process','Agree actions'],['process','Verify and close'],['end','Closed']]),
+    flow('Near Miss and Hazard Reporting Process', ['ISO 45001 cl 8.1.2'], 'Report to close.', [['start','Near miss or hazard seen'],['process','Make safe'],['process','Report with category'],['process','Owner rates and acts'],['end','Trend reviewed monthly']]),
+    flow('Injury on Duty and Return to Work Process', ['COIDA'], 'Injury to return.', [['start','Injury'],['process','First aid or medical'],['process','Report and record'],['process','Submit claim to Compensation Fund'],['decision','Reportable to authority?','Yes: notify','No'],['process','Medical clearance'],['end','Return to work']]),
+    flow('Customer Relationship and Account Management Process', ['ISO 9001 cl 9.1.2'], 'Managing the account.', [['start','Customer registered'],['process','Assign account manager'],['process','Plan contacts'],['process','Log interactions'],['process','Measure satisfaction'],['decision','Satisfied?','Yes','No: raise action'],['end','Review and plan']]),
+    flow('Sales Pipeline Process (Lead to Order)', ['ISO 9001 cl 8.2'], 'Lead to order.', [['start','Lead'],['process','Qualify'],['process','Quote'],['decision','Won?','Yes','No: record reason'],['process','Contract review'],['end','Order handed to operations']]),
+    flow('Customer Onboarding Process', ['ISO 9001 cl 8.2'], 'New customer.', [['start','New customer'],['process','Register and assign manager'],['process','Record requirements'],['process','Agree contract'],['end','First review scheduled']]),
+    flow('Subcontractor Onboarding and SHERQ File Process', ['OHS Act s37'], 'Onboarding.', [['start','Subcontractor selected'],['process','Send file link'],['process','Subcontractor uploads documents'],['decision','Documents valid?','Yes','No: return with comments'],['process','Sign Section 37(2) agreement'],['end','Approved to start']]),
+    flow('Supplier Performance Review Process', ['ISO 9001 cl 8.4'], 'Review.', [['start','Period ends'],['process','Score supplier'],['decision','Acceptable?','Yes','No: corrective action request'],['process','Update approved list'],['end','Next review']]),
+    flow('Asset Inspection Process', ['General Machinery Regulations'], 'Inspection.', [['start','Inspection due'],['process','Inspect'],['decision','Safe?','Yes','No: tag out'],['process','Repair'],['process','Re-inspect'],['end','Return to service']]),
+    flow('Task and Action Tracking Process', ['ISO 9001 cl 10.2'], 'Actions.', [['start','Action created'],['process','Assign owner and date'],['process','Progress'],['decision','Done by date?','Yes','No: escalate'],['process','Verify'],['end','Closed']]),
+    flow('Performance Appraisal Process', ['ISO 9001 cl 7.2'], 'Appraisal.', [['start','Set KPIs'],['process','Self-assessment'],['process','Manager review'],['process','Agree development'],['end','Training needs updated']]),
+    flow('Toolbox Talk and Bulletin Process', ['ISO 45001 cl 7.4'], 'Communication.', [['start','Topic chosen'],['process','Deliver talk or issue bulletin'],['process','Record attendance'],['end','Check understanding']]),
+    flow('Legal Document Expiry Process', ['ISO 45001 cl 9.1.2'], 'Expiry.', [['start','Certificate recorded'],['process','Reminder 30 days before'],['process','Renew'],['decision','Renewed?','Yes: upload','No: escalate'],['end','Register updated']]),
+    flow('Site SHERQ File Build Process', ['Construction Regulations 2014'], 'File build.', [['start','Site opened'],['process','Add documents to sections'],['process','Check readiness'],['decision','Complete?','Yes','No: close gaps'],['end','File issued']]),
+  ];
+
+  const EXTRA_ALL = () => [...EXTRA_POLICIES, ...EXTRA_PROCEDURES, ...EXTRA_FORMS, ...EXTRA_REGISTERS, ...EXTRA_CHECKLISTS, ...EXTRA_FLOWS];
+  /* ---------------- b62c: remaining recommended gaps ---------------- */
+  const EXTRA2_ALL = () => [
+    frm('Contract Review Record', ['ISO 9001 cl 8.2.3'], 'Review of customer requirements before acceptance.', ['Customer and order number','Requirements reviewed','Capacity and competence confirmed','Legal and SHERQ requirements','Differences resolved','Approved by and date']),
+    frm('Quotation', ['ISO 9001 cl 8.2'], 'Quotation to a customer.', ['Customer and contact','Quotation number and date','Scope and specification','Price and validity','Delivery and payment terms','Exclusions','Prepared and approved by']),
+    frm('Fire Risk Assessment', ['Environmental Regulations for Workplaces r9','SANS 10400-T'], 'Fire risk assessment of an area.', ['Area and occupancy','Ignition sources','Fuel sources','People at risk','Detection and alarm','Extinguishers and hose reels','Escape routes','Actions and owners']),
+    frm('Evacuation Plan', ['Environmental Regulations for Workplaces r9'], 'Site evacuation plan.', ['Site and building','Assembly points','Escape routes','Fire marshals and emergency coordinator','Alarm signal','Special needs assistance','Plan drill date']),
+    frm('Ergonomic Risk Assessment', ['Ergonomics Regulations 2019'], 'Ergonomic risk assessment of a task.', ['Task and workstation','Posture and repetition','Force and load','Duration and breaks','Controls','Employee consulted','Review date']),
+    frm('Exposure Monitoring Record', ['Hazardous Chemical Agents Regulations 2021','Noise-Induced Hearing Loss Regulations'], 'Noise, dust or chemical exposure monitoring.', ['Agent or noise source','Area or person monitored','Method and instrument (calibrated)','Result','Occupational exposure limit','Compliant? yes or no','Actions','Next monitoring date']),
+    frm('Business Impact Analysis', ['ISO 22301 cl 8.2','ISO/IEC 27001 Annex A 5.30'], 'Impact of disruption.', ['Process or activity','Maximum tolerable outage','Impact after 1 day, 1 week, 1 month','Dependencies','Minimum resources','Recovery priority']),
+    frm('Business Continuity Test Record', ['ISO 22301 cl 8.5'], 'Continuity test.', ['Scenario','Date','Participants','Recovery time achieved','Gaps found','Actions with owners']),
+    frm('Control Plan', ['ISO 9001 cl 8.5.1'], 'Control of a product or process.', ['Product or process','Characteristic','Specification and tolerance','Measurement method','Frequency and sample','Reaction plan','Responsible']),
+    frm('Inspection and Test Plan', ['ISO 9001 cl 8.6'], 'Inspection and test plan.', ['Activity','Standard or specification','Inspection or test','Frequency','Acceptance criteria','Record','Hold or witness point','Responsible']),
+    frm('Nonconforming Product Tag', ['ISO 9001 cl 8.7'], 'Tag for nonconforming product.', ['Item and number','Date','Nonconformance','Raised by','Disposition: rework, scrap, concession, return','Approved by','Linked Opportunity for Improvement reference']),
+    frm('Employment Equity Plan Summary', ['Employment Equity Act s20'], 'EE plan summary.', ['Reporting period','Workforce profile','Barriers identified','Numerical goals','Measures','Responsible manager','Consultation record']),
+    frm('Workplace Skills Plan and Annual Training Report', ['Skills Development Act'], 'WSP and ATR.', ['Occupational category','Planned training','Number of employees','Cost','Training done','Variance']),
+    frm('Management Meeting Agenda and Resolutions', ['Companies Act s73'], 'Board or management meeting.', ['Date and attendees','Apologies','Previous resolutions','Items for decision','Resolutions passed','Actions with owners','Next meeting']),
+    reg('Electrical Certificates of Compliance', ['Electrical Installation Regulations'], 'CoC for every installation.', ['Premises','Certificate number','Issued by registered person','Issue date','Alterations since issue','Next inspection'], 'Annually'),
+    reg('Energy and Water Consumption', ['ISO 14001 cl 9.1','ISO 50001'], 'Utilities by period.', ['Period','Electricity kWh','Water kl','Fuel litres','Target','Variance'], 'Monthly'),
+    reg('Greenhouse Gas Emissions', ['Climate Change Act','ISO 14064'], 'Emissions by source.', ['Period','Source','Activity data','Emission factor','tCO2e','Reduction action'], 'Annually'),
+    reg('Emergency Contacts', ['Environmental Regulations for Workplaces r9'], 'Who to call.', ['Service or role','Name','Phone','Alternative phone','Last verified'], 'Quarterly'),
+    reg('Board and Management Resolutions', ['Companies Act s74'], 'Resolutions.', ['Date','Resolution','Proposed by','Passed','Action owner','Status'], 'Quarterly'),
+    reg('Exposure Monitoring Results', ['Hazardous Chemical Agents Regulations 2021'], 'Hygiene monitoring results.', ['Date','Agent','Area or person','Result','Limit','Compliant','Next due'], 'Annually'),
+    PR('Business Impact Analysis and Continuity Testing Procedure', ['ISO 22301'], 'Keeping continuity plans tested.', ['Complete the Business Impact Analysis for each critical process.','Set recovery priorities and resources.','Test the plan at least annually.','Record gaps and agree actions.','Review after any real disruption.'], 'BIA, test records, action records.'),
+    PR('Ergonomics Risk Assessment Procedure', ['Ergonomics Regulations 2019'], 'Assessing ergonomic risk.', ['Identify tasks with posture, force or repetition risk.','Assess with the employee present.','Agree controls and train.','Review after a complaint or change.'], 'Ergonomic risk assessments.'),
+    PR('Fire Risk Assessment and Prevention Procedure', ['Environmental Regulations for Workplaces r9'], 'Assessing and controlling fire risk.', ['Assess each area annually.','Control ignition and fuel sources.','Inspect equipment monthly.','Drill evacuation at least annually.','Record and correct findings.'], 'Fire risk assessments, inspection and drill records.'),
+    PR('Control Plan and Inspection Procedure', ['ISO 9001 cl 8.5.1, 8.6'], 'Controlling and inspecting output.', ['Prepare the control plan and inspection and test plan.','Inspect at the set points.','Tag nonconforming product.','Release only after acceptance.'], 'Control plans, inspection records.'),
+    flow('Contract Review Process', ['ISO 9001 cl 8.2.3'], 'From enquiry to accepted order.', [['start','Enquiry received'],['process','Review requirements'],['decision','Can we meet them?','Yes','No: clarify or decline'],['document','Quote and agree'],['end','Order accepted']]),
+    flow('Business Continuity Activation Process', ['ISO 22301'], 'Activating the plan.', [['start','Disruption'],['process','Assess impact'],['decision','Plan needed?','Yes','No: normal'],['process','Activate by priority'],['process','Communicate'],['end','Recover and review']]),
+  ];
+  /* SHERQ File downloadable templates become controlled library templates (text form of the same documents) */
+  const sfItems = () => {
+    const src = window.WM_SF_TPL || []; const have = new Set(); const out = [];
+    const n2 = s => norm(String(s).replace(/^(form|register):\s*/i, ''));
+    [...letters(), ...POLICIES, ...POLICIES_B, ...PROCEDURES, ...PROCEDURES_B, ...FORMS, ...FORMS_B, ...REGISTERS, ...REGISTERS_B, ...CHECKLISTS, ...CHECKLISTS_B, ...FLOWS, ...FLOWS_B, ...EXTRA_ALL(), ...EXTRA2_ALL()].forEach(c => have.add(n2(c.title)));
+    src.forEach(t => {
+      const title = t[1]; if(/^where to get/i.test(title) || have.has(n2(title)) || have.has(n2(title + ' sherq file'))) return; have.add(n2(title));
+      const doc = new DOMParser().parseFromString('<body>' + [].concat(t[2]).join('') + '</body>', 'text/html');
+      const sections = []; let cur = ['Content', ''];
+      [...doc.body.children].forEach(el => {
+        if(/^H\d$/i.test(el.tagName)){ if(cur[1].trim()) sections.push(cur); cur = [el.textContent.trim(), '']; }
+        else if(el.tagName === 'UL') cur[1] += [...el.children].map(li => '• ' + li.textContent.trim()).join('\n') + '\n';
+        else if(el.tagName === 'TABLE'){ const rows = [...el.rows].map(r => [...r.cells].map(c => c.textContent.trim()).join(' | ')).filter(x => x.replace(/[ |]/g, '')); cur[1] += (rows.join('\n') || '') + '\n(Complete the rows in the working copy.)\n'; }
+        else cur[1] += el.textContent.trim() + '\n';
+      });
+      if(cur[1].trim()) sections.push(cur); if(!sections.length) return;
+      const kind = /policy|statement/i.test(title) ? 'policy' : /procedure/i.test(title) ? 'procedure' : /register/i.test(title) ? 'register' : /checklist/i.test(title) ? 'checklist' : 'form';
+      const ttl = kind === 'form' ? 'Form: ' + title : kind === 'register' ? 'Register: ' + title.replace(/\s*register\s*/i, ' ').replace(/\s+/g, ' ').trim() : title;
+      if(kind === 'checklist'){ out.push({ kind, title:ttl, refs:['OHS Act s37','Construction Regulations 2014'], desc:'Subcontractor SHERQ File template.', items: sections.flatMap(s => s[1].split('\n').map(x => x.replace(/^• /, '').trim()).filter(x => x && !/^\(Complete/.test(x))).slice(0, 40), sf:true }); }
+      else out.push({ kind, title:ttl, refs:['OHS Act s37','Construction Regulations 2014'], desc:'Subcontractor SHERQ File template.', sections: sections.map(s => [s[0], s[1].trim()]), sf:true });
+    });
+    return out;
+  };
+
+  const REF_PFX = { letter:'LOA', policy:'POL', procedure:'PRO', form:'FRM', register:'REG', checklist:'CHK', flowchart:'FLW' };
+  const catalogue = () => {
+    const all = [...letters(), ...POLICIES, ...POLICIES_B, ...PROCEDURES, ...PROCEDURES_B, ...FORMS, ...FORMS_B, ...REGISTERS, ...REGISTERS_B, ...CHECKLISTS, ...CHECKLISTS_B, ...FLOWS, ...FLOWS_B, ...EXTRA_ALL(), ...EXTRA2_ALL(), ...sfItems()];
+    const seq = {}; all.forEach(c => { seq[c.kind] = (seq[c.kind] || 0) + 1; c.ref = REF_PFX[c.kind] + '-' + String(seq[c.kind]).padStart(3, '0'); });
+    return all;
+  };
+  window.WM_TPL_REFS = () => Object.fromEntries(catalogue().map(c => [c.title.toLowerCase(), c.ref]));
   const KIND_LABEL = { letter:'Letters of Appointment', policy:'Policies', procedure:'Procedures', form:'Forms', register:'Registers', checklist:'Checklists', flowchart:'Process Flowcharts' };
   const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
   const tokensOf = c => c.match || norm(c.title.replace(/^(form|register):\s*/i, '')).split(' ').filter(w => !['and','of','the','a','for','to'].includes(w));
@@ -36171,7 +36359,7 @@ function fmtRev(rev){
     ['tasks','Task Management','Actions and tasks, and the links from other modules.'],
     ['audits','Audits','Annual plan, audit board, checklists and findings.'],
     ['risks','Risk & Opportunity Register','ISO 31000 risks and opportunities, controls and objectives programmes.'],
-    ['suppliers','Supplier & Subcontractor Management','Supplier register, risk classification and evaluation.'],
+    ['suppliers','Suppliers and Subcontractors','Supplier register, risk classification and evaluation.'],
     ['customers','Customers','Customer register and satisfaction monitoring.'],
     ['objectives','Objectives & Targets','SMART objectives per ISO 6.2.'],
     ['legal','Legal Compliance','Legal register and compliance reviews.'],
@@ -36596,7 +36784,7 @@ function fmtRev(rev){
     { t:'audits', loader:'loadAudits', key:'audits', wrap:'audit-list-wrap', open:'openAuditDetail', label:'Audits' },
     { t:'tasks', loader:'loadTasks', key:'tasks', wrap:'task-table-wrap', open:'openTaskDetail', label:'Tasks' },
     { t:'assets', loader:'loadAssets', key:'assets', wrap:'asset-table-wrap', open:'openAssetDetail', label:'Assets' },
-    { t:'suppliers', loader:'loadSuppliers', key:'suppliers', wrap:'sup-table-wrap', open:'openSupplierDetail', label:'Suppliers' },
+    { t:'suppliers', loader:'loadSuppliers', key:'suppliers', wrap:'sup-table-wrap', open:'openSupplierDetail', label:'Suppliers and Subcontractors' },
     { t:'customers', loader:'loadCustomers', key:'customers', wrap:'cust-table-wrap', open:'openCustomerDetail', label:'Customers' },
     { t:'objectives', loader:'loadObjectives', key:'objectives', wrap:'obj-table-wrap', open:'openObjectiveDetail', label:'Objectives' },
     { t:'legal_register', loader:'loadLegalRegister', key:'legalRegister', wrap:'legal-table-wrap', open:'openLegalDetail', label:'Legal register entries' },
@@ -38459,7 +38647,7 @@ async function renderNcResponsePage(token){
   window.renderIan = renderIan;
   window.ianToggleForm = function(){ STATE._ianFormOpen = !STATE._ianFormOpen; const f = document.getElementById('ian-form'); if(f){ f.classList.toggle('open', STATE._ianFormOpen); f.style.display = STATE._ianFormOpen ? 'block' : ''; } };
 
-  function catOptions(cls, sel){ return cats().filter(c => c.class_key === cls).map(c => `<option value="${c.key}" ${c.key === sel ? 'selected' : ''}>${E(c.label)}</option>`).join(''); }
+  function catOptions(cls, sel){ return (sel ? '' : '<option value="">— choose a category first —</option>') + cats().filter(c => c.class_key === cls).map(c => `<option value="${c.key}" ${c.key === sel ? 'selected' : ''}>${E(c.label)}</option>`).join(''); }
   function formHtml(){
     const nowLocal = new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,16);
     const tgt = new Date(Date.now() + 14*86400000).toISOString().slice(0,10);
@@ -38494,6 +38682,7 @@ async function renderNcResponsePage(token){
   window.ianSubmit = async function(){
     const g = id => (document.getElementById(id) || {}).value || '';
     const cls = g('ian-cls'), cat = g('ian-cat'), title = g('ian-title').trim();
+    if(!cat){ toast('Choose a category first: it drives the statistics and trends.', 'error'); return; }
     if(!title){ toast('Give the event a short title.', 'error'); return; }
     const btn = document.getElementById('ian-save'); btn.disabled = true; btn.textContent = 'Recording…';
     const payload = { organisation_id:STATE.org.id, title, record_class:cls, category_key:cat, description:g('ian-desc').trim(), immediate_action_taken:g('ian-imm').trim(), contact_details:g('ian-contacts').trim(),
@@ -39207,6 +39396,7 @@ async function renderNcResponsePage(token){
     [/b-bbee/i, 'Where to get this document', [P('Upload your valid B-BBEE certificate, or a sworn affidavit if you are an exempted micro enterprise or qualifying small enterprise, and enter the expiry date.')]],
     [/public liability/i, 'Where to get this document', [P('Upload the current public liability insurance certificate and schedule from your insurer, and enter the expiry date.')]]
   ];
+  window.WM_SF_TPL = TPL;
   const tplFor = name => TPL.find(t => t[0].test(name || ''));
   window.scTemplate = function(name, org){
     const t = tplFor(name); if(!t) return;
@@ -39312,6 +39502,658 @@ async function renderNcResponsePage(token){
     draw();
   };
   (function(){ const ss = new URLSearchParams(location.search).get('ss'); if(ss) document.addEventListener('DOMContentLoaded', () => renderSubFilePage(ss)); })();
+})();
+
+/* ===== b61: Customers become the central register; Customer Relationship Management (CRM) module ===== */
+(function(){
+  const E = s => escapeHtml(String(s == null ? '' : s));
+  const canW = () => ['admin','manager','contributor'].includes(STATE.myRole);
+  const money = n => 'R ' + Number(n || 0).toLocaleString('en-ZA', { maximumFractionDigits:0 });
+  const TIER = { strategic:'Strategic', key:'Key account', standard:'Standard', prospect:'Prospect' };
+  const tierBadge = t => t ? `<span class="sev-badge" style="background:${({strategic:'#B21616',key:'#B8791C',standard:'#6B7280',prospect:'#1F5FA8'})[t]||'#6B7280'};color:#fff;">${TIER[t]||t}</span>` : '—';
+  const STAGES = [['lead','Lead','#6B7280',10],['qualified','Qualified','#1F5FA8',30],['proposal','Proposal','#7A4FB0',50],['negotiation','Negotiation','#B8791C',75],['won','Won','#2E7D4F',100],['lost','Lost','#B3261E',0]];
+  const STG = Object.fromEntries(STAGES.map(s => [s[0], s]));
+  const OPPT = { new_sale:'New sale', upsell:'Upsell or cross-sell', renewal:'Renewal', service_contract:'Service contract', quotation:'Quotation', tender:'Tender', other:'Other' };
+  const ACTT = { call:'Call', meeting:'Meeting', site_visit:'Site visit', email:'Email', quotation:'Quotation sent', presentation:'Presentation', service_review:'Service review', other:'Other' };
+  const ACTI = { call:'📞', meeting:'👥', site_visit:'🏭', email:'✉️', quotation:'🧾', presentation:'📊', service_review:'🔧', other:'•' };
+  const DROLE = { decision_maker:'Decision maker', influencer:'Influencer', user:'User', technical:'Technical', finance:'Finance', other:'Other' };
+  const off = () => !!(STATE.org && STATE.org._modOff && STATE.org._modOff.has('crm'));
+  const day = d => d ? String(d).slice(0,10) : '';
+  const tdy = () => todayISO();
+  const mname = id => id ? memberName(id) : '—';
+  const cust = id => (STATE.customers || []).find(c => c.id === id);
+  const cname = id => { const c = cust(id); return c ? c.name : '—'; };
+  const D = () => STATE.crm = STATE.crm || { opps:[], acts:[], contacts:[], plans:[], targets:[], loaded:false, broken:false };
+
+  /* ---------- 1. Customers: the central register ---------- */
+  { const _r = RENDERERS.customers;
+    RENDERERS.customers = function(){
+      let h = _r.apply(this, arguments);
+      STATE._crmQPanel = (h.match(/<div class="form-panel" id="questionnaire-panel">[\s\S]*?(?=\s*<div class="form-panel" id="cust-form">)/) || [''])[0];
+      h = h.replace(STATE._crmQPanel, '');
+      h = h.replace(/<button class="btn-small"[^>]*id="cust-due-btn"[^>]*><\/button>/, '').replace(/<button class="btn-small"[^>]*onclick="toggleQuestionnairePanel\(\)"[^>]*>[^<]*<\/button>/, '');
+      if(!off()) h = h.replace('<button class="btn-small" onclick="openImportModal(\'customers\')">', `<button class="btn-small" onclick="showModule('crm')" title="Pipeline, activities, account plans, targets and customer satisfaction">Open Customer Relationship Management</button>\n        <button class="btn-small" onclick="openImportModal('customers')">`);
+      h = h.replace('<option value="inactive">Inactive</option>\n        </select>', `<option value="inactive">Inactive</option>\n        </select>\n        <select id="cust-filter-tier" onchange="renderCustomersTable()"><option value="">All tiers</option>${Object.keys(TIER).map(k => `<option value="${k}">${TIER[k]}</option>`).join('')}</select>\n        <select id="cust-filter-mgr" onchange="renderCustomersTable()"><option value="">All account managers</option>${(STATE.members||[]).map(m => `<option value="${m.user_id}">${E((m.profiles&&m.profiles.name)||'Unknown')}</option>`).join('')}</select>`);
+      h = h.replace('<label>Account owner</label>', '<label>Account manager</label>');
+      h = h.replace('<div class="field"><label>Account manager</label><select id="cf-owner">', `<div class="field"><label>Sales representative</label><select id="cf-rep"><option value="">None</option>${memberOptions('')}</select></div>
+        <div class="field"><label>Tier</label><select id="cf-tier"><option value="">Not set</option>${Object.keys(TIER).map(k => `<option value="${k}">${TIER[k]}</option>`).join('')}</select></div>
+        <div class="field"><label>Industry</label><input id="cf-industry" placeholder="e.g. Mining, Water utilities"></div>
+        <div class="field span3"><label>Products or services we provide to this customer</label><textarea id="cf-products" placeholder="e.g. Mechanical seals, pump repairs, condition monitoring contract"></textarea></div>
+        <div class="field"><label>Account manager</label><select id="cf-owner">`);
+      return h;
+    };
+    MODULE_META.customers = { title:'Customers', sub:() => 'MOD-08 · The central customer register: who they are, who manages the account, what we supply' }; }
+
+  { const _s = submitCustomer, extra = ['cf-rep','cf-tier','cf-industry','cf-products'];
+    submitCustomer = window.submitCustomer = async function(){
+      const v = {}; extra.forEach(i => v[i] = ((document.getElementById(i) || {}).value || '').trim());
+      const name = ((document.getElementById('cf-name') || {}).value || '').trim(), before = STATE.customers.length;
+      await _s.apply(this, arguments);
+      if(name && STATE.customers.length > before){
+        const c = STATE.customers.filter(x => x.name === name).sort((a,b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+        const patch = { sales_rep_id:v['cf-rep'] || null, tier:v['cf-tier'] || null, industry:v['cf-industry'] || null, products_services:v['cf-products'] || null, customer_since:tdy() };
+        if(c && (patch.sales_rep_id || patch.tier || patch.industry || patch.products_services)){
+          const { error } = await STATE.supabase.from('customers').update(patch).eq('id', c.id);
+          if(error) toast('Added, but the extra details were not saved: ' + error.message + ' (run qashe-watchman-schema-crm.sql first)', 'error'); else { await loadCustomers(); renderCustomersTable(); }
+        }
+      }
+    }; }
+
+  { const _t = renderCustomersTable;
+    renderCustomersTable = window.renderCustomersTable = function(){
+      const all = STATE.customers, ft = (document.getElementById('cust-filter-tier') || {}).value, fm = (document.getElementById('cust-filter-mgr') || {}).value;
+      if(ft || fm) STATE.customers = all.filter(c => (!ft || c.tier === ft) && (!fm || c.account_owner_id === fm));
+      try{ _t.apply(this, arguments); } finally { STATE.customers = all; }
+      const t = document.querySelector('#cust-table-wrap table'); if(!t) return;
+      t.querySelectorAll('tr').forEach((tr, i) => {
+        const cells = tr.children; if(!cells.length) return;
+        if(i === 0){
+          Array.from(cells).forEach(th => { if(th.textContent === 'Owner') th.textContent = 'Account manager'; if(th.textContent === 'Satisfaction') th.remove(); });
+          tr.insertAdjacentHTML('beforeend', '<th>Tier</th><th>Supplies</th>'); return; }
+        const m = (tr.getAttribute('onclick') || '').match(/'([^']+)'/), c = m ? cust(m[1]) : null; if(!c) return;
+        Array.from(cells).forEach((td, j) => { if(td.style && td.style.fontSize === '12.5px' && /Not surveyed|sent|\/5/.test(td.textContent)) td.remove(); });
+        tr.insertAdjacentHTML('beforeend', `<td>${tierBadge(c.tier)}</td><td style="font-size:12.5px;max-width:260px;">${E((c.products_services || '—').slice(0, 90))}${(c.products_services || '').length > 90 ? '…' : ''}</td>`);
+      });
+    }; }
+
+  // detail: satisfaction moves to CRM; the register shows the master data and an edit form
+  { const _o = openCustomerDetail;
+    openCustomerDetail = window.openCustomerDetail = async function(id){
+      await _o.apply(this, arguments);
+      const c = cust(id), host = document.querySelector('#cust-detail-slot .detail-panel'); if(!c || !host) return;
+      const inCrm = !!document.getElementById('crm-root');
+      { const ob = host.querySelector('#cust-edit-btn'); if(ob && ob.parentElement) ob.parentElement.remove(); }
+      if(inCrm){
+        host.querySelector('.detail-head')?.remove(); host.querySelector('.detail-meta')?.remove();
+        host.querySelectorAll('.ro-assessment, [id^="assessment"]').forEach(e => e.remove());
+        return;
+      }
+      host.querySelector('#cust-sat-panel')?.remove();
+      host.querySelectorAll('.dm-item').forEach(d => { const l = d.querySelector('.l'); if(l && l.textContent === 'Owner') d.remove(); });
+      Array.from(host.children).forEach(el => {
+        const h = el.querySelector && el.querySelector('h3'); if(el.classList.contains('panel-head') && h && /Satisfaction surveys/.test(h.textContent)) el.remove();
+      });
+      ['#send-survey-btn','#send-survey-result','#survey-detail-slot','#survey-history'].forEach(q => host.querySelector(q)?.remove());
+      const meta = host.querySelector('.detail-meta');
+      if(meta){
+        meta.insertAdjacentHTML('beforeend', `<div class="dm-item"><div class="l">Account manager</div><div class="v">${E(mname(c.account_owner_id))}</div></div><div class="dm-item"><div class="l">Sales representative</div><div class="v">${E(mname(c.sales_rep_id))}</div></div><div class="dm-item"><div class="l">Tier</div><div class="v">${tierBadge(c.tier)}</div></div><div class="dm-item"><div class="l">Industry</div><div class="v">${E(c.industry || '—')}</div></div><div class="dm-item"><div class="l">Customer since</div><div class="v">${c.customer_since ? fmtDate(c.customer_since) : '—'}</div></div>`);
+        meta.insertAdjacentHTML('afterend', `<div style="margin:0 0 12px;"><div class="l" style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-faint);">Products or services we provide to this customer</div><div style="font-size:13.5px;white-space:pre-wrap;">${E(c.products_services || 'Not recorded yet.')}</div>
+          ${c.address || c.website ? `<div style="font-size:12.5px;color:var(--text-dim);margin-top:6px;">${E(c.address || '')}${c.address && c.website ? ' · ' : ''}${E(c.website || '')}</div>` : ''}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">${canW() ? `<button class="btn-small primary" onclick="custEdit('${c.id}')">Edit customer details</button>` : ''}${off() ? '' : `<button class="btn-small" onclick="crmOpenCustomer('${c.id}')">Open in Customer Relationship Management</button>`}</div><div id="cust-edit-slot"></div>`);
+      }
+    }; }
+  window.custEdit = function(id){
+    const c = cust(id), slot = document.getElementById('cust-edit-slot'); if(!c || !slot) return;
+    if(slot.innerHTML.trim()){ slot.innerHTML = ''; return; }
+    const sel = (cur, opts) => opts.map(([v, l]) => `<option value="${v}" ${v === (cur || '') ? 'selected' : ''}>${l}</option>`).join('');
+    slot.innerHTML = `<div class="form-panel open" style="margin-bottom:14px;"><div class="form-grid">
+      <div class="field span2"><label>Name</label><input id="ce-name" value="${E(c.name)}"></div>
+      <div class="field"><label>Your account number</label><input id="ce-acc" value="${E(c.account_number || '')}"></div>
+      <div class="field"><label>Account manager</label><select id="ce-mgr">${memberOptions(c.account_owner_id)}</select></div>
+      <div class="field"><label>Sales representative</label><select id="ce-rep"><option value="">None</option>${memberOptions(c.sales_rep_id)}</select></div>
+      <div class="field"><label>Status</label><select id="ce-status">${sel(c.status, [['active','Active'],['inactive','Inactive']])}</select></div>
+      <div class="field"><label>Tier</label><select id="ce-tier">${sel(c.tier, [['', 'Not set']].concat(Object.keys(TIER).map(k => [k, TIER[k]])))}</select></div>
+      <div class="field"><label>Industry</label><input id="ce-ind" value="${E(c.industry || '')}"></div>
+      <div class="field"><label>Customer since</label><input type="date" id="ce-since" value="${E(c.customer_since || '')}"></div>
+      <div class="field span3"><label>Products or services we provide to this customer</label><textarea id="ce-prod">${E(c.products_services || '')}</textarea></div>
+      <div class="field"><label>Contact name</label><input id="ce-cn" value="${E(c.contact_name || '')}"></div>
+      <div class="field"><label>Contact email</label><input id="ce-ce" value="${E(c.contact_email || '')}"></div>
+      <div class="field"><label>Contact phone</label><input id="ce-cp" value="${E(c.contact_phone || '')}"></div>
+      <div class="field span2"><label>Address</label><input id="ce-addr" value="${E(c.address || '')}"></div>
+      <div class="field"><label>Website</label><input id="ce-web" value="${E(c.website || '')}"></div>
+      <div class="field span3"><label>Notes</label><textarea id="ce-notes">${E(c.notes || '')}</textarea></div></div>
+      <div class="form-actions"><button class="btn-cancel" onclick="custEdit('${id}')">Cancel</button><button class="btn-primary" onclick="custSave('${id}')">Save</button></div></div>`;
+  };
+  window.custSave = async function(id){
+    const g = i => (document.getElementById(i) || {}).value || '';
+    if(!g('ce-name').trim()){ toast('Name is required.', 'error'); return; }
+    const patch = { name:g('ce-name').trim(), account_number:g('ce-acc').trim() || null, account_owner_id:g('ce-mgr'), sales_rep_id:g('ce-rep') || null, status:g('ce-status'), tier:g('ce-tier') || null, industry:g('ce-ind').trim() || null,
+      customer_since:g('ce-since') || null, products_services:g('ce-prod').trim() || null, contact_name:g('ce-cn').trim(), contact_email:g('ce-ce').trim(), contact_phone:g('ce-cp').trim(), address:g('ce-addr').trim() || null, website:g('ce-web').trim() || null, notes:g('ce-notes').trim() || null };
+    const { error } = await STATE.supabase.from('customers').update(patch).eq('id', id);
+    if(error){ toast('Could not save: ' + error.message + (/column/.test(error.message || '') ? ' (run qashe-watchman-schema-crm.sql first)' : ''), 'error'); return; }
+    await loadCustomers(); renderCustomersTable(); openCustomerDetail(id); toast('Customer saved.', 'success');
+  };
+
+  /* ---------- 2. switch, navigation, access ---------- */
+  ADMIN_CONSOLE_TOGGLES.push({ field:'crm_module_enabled', label:'Customer Relationship Management', note:'Pipeline, activities and scheduling, account plans, sales targets, reports and customer satisfaction. Switching off hides it and returns nothing to Customers; nothing recorded is deleted.' });
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ await _lc.apply(this, arguments); if(STATE.org) STATE.org.crm_module_enabled = !off(); }; }
+  { const _t = toggleOrgModule;
+    toggleOrgModule = window.toggleOrgModule = async function(field, value){
+      if(field !== 'crm_module_enabled') return _t.apply(this, arguments);
+      const { error } = await STATE.supabase.from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:'crm', enabled:value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
+      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
+    }; }
+  { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){
+      if(mod === 'crm'){ if(off()) return false; return _c('customers') || STATE.myRole === 'admin' || !!(STATE.profile && STATE.profile.is_platform_staff); }
+      return _c.apply(this, arguments); }; }
+  MODULE_META.crm = { title:'Customer Relationship Management', sub:() => 'Pipeline, activities and scheduling, account plans, sales targets and customer satisfaction' };
+  RENDERERS.crm = () => '<div id="crm-root"></div>';
+  { const nc = document.querySelector('.nav-item[data-mod="customers"]');
+    if(nc && !document.querySelector('.nav-item[data-mod="crm"]')) nc.insertAdjacentHTML('afterend', '<div class="nav-item" data-mod="crm" onclick="showModule(\'crm\')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg> Customer Relationship Management</div>'); }
+  { const _a = applyModuleAccessToNav; applyModuleAccessToNav = window.applyModuleAccessToNav = function(){ const r = _a.apply(this, arguments);
+      const el = document.querySelector('.nav-item[data-mod="crm"]'); if(el) el.style.display = canAccessModule('crm') ? '' : 'none'; return r; }; }
+  { const _s = showModule; showModule = window.showModule = function(mod){ const r = _s.apply(this, arguments); if(mod === 'crm' && document.getElementById('crm-root')) crmInit(); return r; }; }
+  setTimeout(() => { try{ applyModuleAccessToNav(); }catch(e){} }, 0);
+
+  // reminders: activities due, opportunities expected to close, account plan reviews
+  DATE_TRACKED_MODULES.push(
+    { key:'crm', label:'CRM: Activities Due', list:() => canAccessModule('crm') ? D().acts.filter(a => a.status === 'planned').map(a => ({ ...a, _d:day(a.scheduled_for), _t:`${ACTT[a.activity_type] || 'Activity'}: ${a.subject} (${cname(a.customer_id)})` })) : [], dateField:'_d', isResolved:() => false, titleField:'_t', getPerson:x => mname(x.owner_id) },
+    { key:'crm', label:'CRM: Opportunities Expected to Close', list:() => canAccessModule('crm') ? D().opps.filter(o => !['won','lost'].includes(o.stage) && o.expected_close).map(o => ({ ...o, _t:`${o.title} (${cname(o.customer_id)})` })) : [], dateField:'expected_close', isResolved:() => false, titleField:'_t', getPerson:x => mname(x.owner_id) },
+    { key:'crm', label:'CRM: Account Plan Reviews', list:() => canAccessModule('crm') ? D().plans.filter(p => p.review_date).map(p => ({ ...p, _t:`Account plan ${p.plan_year}: ${cname(p.customer_id)}` })) : [], dateField:'review_date', isResolved:() => false, titleField:'_t', getPerson:x => mname(x.owner_id) });
+
+  /* ---------- 3. data ---------- */
+  async function loadCrm(){
+    const d = D(), org = STATE.org.id, q = t => STATE.supabase.from(t).select('*').eq('organisation_id', org).limit(5000);
+    try{
+      const [o, a, c, p, t] = await Promise.all([q('crm_opportunities'), q('crm_activities'), q('crm_contacts'), q('crm_account_plans'), q('crm_targets')]);
+      if(o.error || a.error){ d.broken = true; return; }
+      d.broken = false; d.opps = o.data || []; d.acts = a.data || []; d.contacts = c.data || []; d.plans = p.data || []; d.targets = t.data || []; d.loaded = true;
+    }catch(e){ d.broken = true; }
+  }
+  window.crmReload = async function(){ await loadCrm(); crmDraw(); };
+  async function crmInit(){
+    const root = document.getElementById('crm-root'); if(!root) return;
+    if(!(STATE.customerSurveys || []).length) { try{ await loadCustomerSurveys(); }catch(e){} }
+    if(!(STATE.satisfactionQuestions || []).length) { try{ await loadSatisfactionQuestions(); }catch(e){} }
+    await loadCrm(); crmDraw();
+  }
+  window.crmInit = crmInit;
+  window.crmOpenCustomer = async function(id){ STATE._crmTab = 'accounts'; STATE._crmAcct = id; if(document.getElementById('crm-root')) { crmDraw(); } else { showModule('crm'); } };
+  STATE._crmF = STATE._crmF || { owner:'mine', year:new Date().getFullYear() };
+  window.crmSet = (k, v) => { STATE._crmF[k] = v; crmDraw(); };
+  window.crmTab = k => { STATE._crmTab = k; STATE._crmAcct = null; crmDraw(); };
+  const mine = () => STATE._crmF.owner === 'mine';
+  const ownerOk = x => !mine() || x.owner_id === STATE.user.id;
+  const custMine = c => !mine() || c.account_owner_id === STATE.user.id || c.sales_rep_id === STATE.user.id;
+  window.crmEsc = E; window.crmMoney = money; window.crmDay = day;
+  window.CRMX = { STAGES, STG, OPPT, ACTT, ACTI, DROLE, TIER, tierBadge, D, cust, cname, mname, ownerOk, custMine, canW, off, loadCrm };
+})();
+
+/* ===== b61b: the CRM screens ===== */
+(function(){
+  const X = window.CRMX, E = window.crmEsc, money = window.crmMoney, day = window.crmDay, D = X.D;
+  const { STAGES, STG, OPPT, ACTT, ACTI, DROLE, TIER, tierBadge, cust, cname, mname, ownerOk, custMine, canW } = X;
+  const tdy = () => todayISO(), F = () => STATE._crmF, tab = () => STATE._crmTab || 'dashboard';
+  const mine = () => STATE._crmF.owner === 'mine';
+  const yr = () => F().year;
+  const addDays = n => new Date(Date.now() + n*86400000).toISOString().slice(0,10);
+  const daysSince = d => d ? Math.floor((Date.now() - new Date(day(d) + 'T00:00:00').getTime()) / 86400000) : null;
+  const openOpps = () => D().opps.filter(o => !['won','lost'].includes(o.stage) && ownerOk(o));
+  const lastContact = cid => { const a = D().acts.filter(x => x.customer_id === cid && x.status === 'done').map(x => day(x.completed_at || x.scheduled_for)).sort().pop(); return a || null; };
+  const satAvg = cid => { try{ const s = custSurveyStats(cid); return s.avg; }catch(e){ return null; } };
+  const tile = (v, l, c, go) => `<div class="detail-card" ${go ? `style="padding:14px;cursor:pointer;" onclick="${go}"` : 'style="padding:14px;"'}><div style="font-size:24px;font-weight:800;color:${c || 'inherit'};">${v}</div><div style="font-size:12px;color:var(--text-faint);">${l}</div></div>`;
+  const tb = (k, l) => `<button class="btn-small ${tab() === k ? 'primary' : ''}" onclick="crmTab('${k}')">${l}</button>`;
+  const field = (id, l, h, span) => `<div class="field ${span || ''}"><label>${l}</label>${h}</div>`;
+  const opts = (map, sel) => Object.keys(map).map(k => `<option value="${k}" ${k === sel ? 'selected' : ''}>${map[k]}</option>`).join('');
+  const custOpts = sel => (STATE.customers || []).filter(c => c.status !== 'inactive').map(c => `<option value="${c.id}" ${c.id === sel ? 'selected' : ''}>${E(c.name)}</option>`).join('');
+  const g = i => (document.getElementById(i) || {}).value || '';
+  const sb = () => STATE.supabase;
+  const done = async (r, msg) => { if(r.error){ toast('Could not save: ' + r.error.message, 'error'); return false; } await X.loadCrm(); crmDraw(); if(msg) toast(msg, 'success'); return true; };
+
+  window.crmDraw = function(){
+    const root = document.getElementById('crm-root'); if(!root) return;
+    if(D().broken){ root.innerHTML = '<div class="warn-note"><div>Run qashe-watchman-schema-crm.sql in Supabase to switch Customer Relationship Management on.</div></div>'; return; }
+    const t = tab();
+    root.innerHTML = `<div class="toolbar"><div class="filters" style="flex-wrap:wrap;">${tb('dashboard','Dashboard')}${tb('pipeline','Pipeline')}${tb('activities','Activities and schedule')}${tb('accounts','Accounts')}${tb('satisfaction','Customer satisfaction')}${tb('plan','Sales plan and targets')}${tb('reports','Reports')}</div>
+      <div class="filters"><select onchange="crmSet('owner',this.value)"><option value="mine" ${F().owner === 'mine' ? 'selected' : ''}>My accounts and work</option><option value="all" ${F().owner === 'all' ? 'selected' : ''}>Everyone</option></select>
+        <select onchange="crmSet('year',+this.value)">${[0,1,2].map(i => new Date().getFullYear() - i).map(y => `<option ${y === yr() ? 'selected' : ''}>${y}</option>`).join('')}</select></div></div><div id="crm-body"></div>`;
+    ({ dashboard:drawDash, pipeline:drawPipe, activities:drawActs, accounts:drawAccts, satisfaction:drawSat, plan:drawPlan, reports:drawRep }[t] || drawDash)();
+  };
+  const body = h => { document.getElementById('crm-body').innerHTML = h; };
+
+  /* ---------- dashboard ---------- */
+  function wonIn(y, o){ return D().opps.filter(x => x.stage === 'won' && x.closed_at && String(x.closed_at).startsWith(String(y)) && ownerOk(x)); }
+  function targetYtd(){ const m = new Date().getMonth() + 1; return D().targets.filter(t => t.period_month.startsWith(String(yr())) && +t.period_month.slice(5,7) <= (yr() === new Date().getFullYear() ? m : 12) && (!X.ownerOk({ owner_id:t.owner_id }) ? false : true)).reduce((a, t) => a + Number(t.target_value), 0); }
+  function drawDash(){
+    const op = openOpps(), pipe = op.reduce((a, o) => a + Number(o.value), 0), wtd = op.reduce((a, o) => a + Number(o.value) * o.probability / 100, 0);
+    const won = wonIn(yr()), wonV = won.reduce((a, o) => a + Number(o.value), 0), lost = D().opps.filter(o => o.stage === 'lost' && o.closed_at && String(o.closed_at).startsWith(String(yr())) && ownerOk(o));
+    const wr = won.length + lost.length ? Math.round(won.length / (won.length + lost.length) * 100) : null, tg = targetYtd();
+    const acts = D().acts.filter(a => a.status === 'planned' && ownerOk(a)), over = acts.filter(a => day(a.scheduled_for) < tdy()), today = acts.filter(a => day(a.scheduled_for) === tdy());
+    const cs = (STATE.customers || []).filter(c => c.status !== 'inactive' && custMine(c));
+    const cold = cs.filter(c => { const l = lastContact(c.id); return !l || daysSince(l) > 90; });
+    const due = cs.filter(c => { try{ return custSurveyDue(c); }catch(e){ return false; } });
+    const noPlan = cs.filter(c => ['strategic','key'].includes(c.tier) && !D().plans.some(p => p.customer_id === c.id && p.plan_year === yr()));
+    const closing = op.filter(o => o.expected_close && o.expected_close <= addDays(30)).sort((a,b) => a.expected_close.localeCompare(b.expected_close));
+    const list = (arr, f, none) => arr.length ? arr.slice(0, 8).map(f).join('') : `<p style="font-size:12.5px;color:var(--text-faint);">${none}</p>`;
+    body(`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px;margin:12px 0;">
+      ${tile(money(pipe), 'open pipeline', null, "crmTab('pipeline')")}${tile(money(wtd), 'weighted forecast')}${tile(money(wonV), `won in ${yr()}`, '#2E7D4F')}
+      ${tile(tg ? Math.round(wonV / tg * 100) + '%' : '—', tg ? `of target to date (${money(tg)})` : 'target not set', tg && wonV >= tg ? '#2E7D4F' : '#B8791C', "crmTab('plan')")}
+      ${tile(wr === null ? '—' : wr + '%', 'win rate')}${tile(over.length, 'activities overdue', over.length ? '#B3261E' : '#2E7D4F', "crmTab('activities')")}${tile(today.length, 'activities today')}
+      ${tile(cold.length, 'customers not contacted in 90 days', cold.length ? '#B8791C' : '#2E7D4F', "crmTab('accounts')")}${tile(due.length, 'satisfaction surveys due', due.length ? '#B3261E' : '#2E7D4F', "crmTab('satisfaction')")}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px;">
+        <div class="detail-card" style="padding:16px;"><h4 style="margin:0 0 8px;font-size:14px;">Overdue and today</h4>${list(over.concat(today).sort((a,b) => String(a.scheduled_for).localeCompare(String(b.scheduled_for))), a => `<div style="font-size:13px;margin:5px 0;">${ACTI[a.activity_type]} <b>${E(a.subject)}</b> · ${E(cname(a.customer_id))} <span style="color:${day(a.scheduled_for) < tdy() ? '#B3261E' : 'inherit'};">${fmtDate(day(a.scheduled_for))}</span> <button class="btn-small" onclick="crmActDone('${a.id}')">Done</button></div>`, 'Nothing overdue or due today.')}</div>
+        <div class="detail-card" style="padding:16px;"><h4 style="margin:0 0 8px;font-size:14px;">Closing in the next 30 days</h4>${list(closing, o => `<div style="font-size:13px;margin:5px 0;cursor:pointer;" onclick="crmOppForm('${o.id}')"><b>${E(o.title)}</b> · ${E(cname(o.customer_id))} · ${money(o.value)} · ${o.probability}% · ${fmtDate(o.expected_close)}</div>`, 'No opportunities due to close.')}</div>
+        <div class="detail-card" style="padding:16px;"><h4 style="margin:0 0 8px;font-size:14px;">Needs attention</h4>
+          ${list(cold, c => `<div style="font-size:13px;margin:5px 0;cursor:pointer;" onclick="crmOpenCustomer('${c.id}')">⚠ <b>${E(c.name)}</b>: ${lastContact(c.id) ? 'last contact ' + daysSince(lastContact(c.id)) + ' days ago' : 'never contacted'}</div>`, 'Every account has been contacted recently.')}
+          ${noPlan.length ? `<div style="margin-top:8px;font-size:12.5px;color:var(--text-dim);">Strategic and key accounts without a ${yr()} account plan: ${noPlan.map(c => E(c.name)).join(', ')}</div>` : ''}</div></div>`);
+  }
+
+  /* ---------- pipeline ---------- */
+  function drawPipe(){
+    const all = D().opps.filter(ownerOk), open = STAGES.filter(s => !['won','lost'].includes(s[0]));
+    const card = o => `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:9px 11px;margin:7px 0;font-size:12.5px;">
+      <div style="font-weight:800;cursor:pointer;" onclick="crmOppForm('${o.id}')">${E(o.title)}</div><div style="color:var(--text-dim);">${E(cname(o.customer_id))}</div>
+      <div style="margin-top:3px;"><b>${money(o.value)}</b> · ${o.probability}%${o.expected_close ? ' · ' + fmtDate(o.expected_close) : ''}</div>
+      <div style="color:var(--text-faint);">${E(mname(o.owner_id))}${o.product_service ? ' · ' + E(o.product_service) : ''}</div>
+      ${o.next_step ? `<div style="margin-top:3px;">Next: ${E(o.next_step)}${o.next_step_date ? ' (' + fmtDate(o.next_step_date) + ')' : ''}</div>` : ''}
+      ${canW() ? `<select onchange="crmMove('${o.id}',this.value)" style="margin-top:5px;font-size:12px;">${STAGES.map(s => `<option value="${s[0]}" ${s[0] === o.stage ? 'selected' : ''}>${s[1]}</option>`).join('')}</select>` : ''}</div>`;
+    body(`<div class="toolbar" style="margin-top:8px;"><div style="font-size:12.5px;color:var(--text-dim);">${all.filter(o => !['won','lost'].includes(o.stage)).length} open opportunities</div><div style="display:flex;gap:8px;">${canW() ? '<button class="btn-primary btn-add" onclick="crmOppForm()">+ New opportunity</button>' : ''}</div></div>
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(220px,1fr));gap:12px;overflow:auto;">
+      ${open.map(s => { const os = all.filter(o => o.stage === s[0]); return `<div style="background:#f6f5f3;border-radius:12px;padding:10px;min-width:220px;"><div style="font-weight:800;font-size:13px;color:${s[2]};">${s[1]} <span style="color:var(--text-faint);font-weight:600;">${os.length} · ${money(os.reduce((a, o) => a + Number(o.value), 0))}</span></div>${os.map(card).join('') || '<p style="font-size:12px;color:var(--text-faint);">Empty</p>'}</div>`; }).join('')}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;">${['won','lost'].map(k => { const os = all.filter(o => o.stage === k).sort((a,b) => String(b.closed_at).localeCompare(String(a.closed_at))).slice(0, 8); return `<div class="detail-card" style="padding:14px;"><h4 style="margin:0 0 6px;font-size:14px;color:${STG[k][2]};">${STG[k][1]} (${all.filter(o => o.stage === k).length})</h4>${os.map(o => `<div style="font-size:12.5px;margin:4px 0;cursor:pointer;" onclick="crmOppForm('${o.id}')">${E(o.title)} · ${E(cname(o.customer_id))} · ${money(o.value)}${k === 'lost' && o.lost_reason ? ' · ' + E(o.lost_reason) : ''}</div>`).join('') || '<p style="font-size:12px;color:var(--text-faint);">None yet.</p>'}</div>`; }).join('')}</div>`);
+  }
+  window.crmOppForm = function(id, customerId){
+    const o = id ? D().opps.find(x => x.id === id) : null, v = o || { customer_id:customerId || '', title:'', opp_type:'new_sale', stage:'lead', value:0, probability:10, owner_id:STATE.user.id, expected_close:addDays(30) };
+    kpiOverlay(`<h3 style="font-family:Arial,Helvetica,sans-serif;margin:0 0 10px;">${o ? 'Opportunity' : 'New opportunity'}</h3><div class="form-grid">
+      ${field('co-cust','Customer',`<select id="co-cust" ${o ? 'disabled' : ''}>${custOpts(v.customer_id)}</select>`,'span2')}${field('co-type','Type',`<select id="co-type">${opts(OPPT, v.opp_type)}</select>`)}
+      ${field('co-title','What is being sold',`<input id="co-title" value="${E(v.title)}" placeholder="e.g. Seal replacement programme, Pump P-101 overhaul">`,'span3')}
+      ${field('co-prod','Product or service line',`<input id="co-prod" value="${E(v.product_service || '')}">`,'span2')}${field('co-src','Source',`<input id="co-src" value="${E(v.source || '')}" placeholder="Referral, tender, existing client…">`)}
+      ${field('co-val','Value (R)',`<input id="co-val" type="number" min="0" value="${v.value}">`)}${field('co-stage','Stage',`<select id="co-stage" onchange="document.getElementById('co-prob').value=({lead:10,qualified:30,proposal:50,negotiation:75,won:100,lost:0})[this.value]">${STAGES.map(s => `<option value="${s[0]}" ${s[0] === v.stage ? 'selected' : ''}>${s[1]}</option>`).join('')}</select>`)}${field('co-prob','Probability %',`<input id="co-prob" type="number" min="0" max="100" value="${v.probability}">`)}
+      ${field('co-close','Expected close',`<input id="co-close" type="date" value="${v.expected_close || ''}">`)}${field('co-owner','Owner',`<select id="co-owner">${memberOptions(v.owner_id)}</select>`)}${field('co-nsd','Next step due',`<input id="co-nsd" type="date" value="${v.next_step_date || ''}">`)}
+      ${field('co-next','Next step',`<input id="co-next" value="${E(v.next_step || '')}">`,'span3')}${field('co-lost','Reason if lost',`<input id="co-lost" value="${E(v.lost_reason || '')}" placeholder="Price, timing, competitor, no budget…">`,'span3')}${field('co-notes','Notes',`<textarea id="co-notes">${E(v.notes || '')}</textarea>`,'span3')}</div>
+      <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button>${o && STATE.myRole !== 'viewer' && ['admin','manager'].includes(STATE.myRole) ? `<button class="btn-small" onclick="crmOppDelete('${o.id}')">Delete</button>` : ''}${canW() ? `<button class="btn-primary" onclick="crmOppSave('${o ? o.id : ''}')">Save</button>` : ''}</div>`);
+  };
+  window.crmOppSave = async function(id){
+    const title = g('co-title').trim(); if(!title){ toast('Say what is being sold.', 'error'); return; }
+    const stage = g('co-stage'), prev = id ? D().opps.find(x => x.id === id) : null;
+    if(stage === 'lost' && !g('co-lost').trim()){ toast('Record why it was lost: it feeds the win/loss report.', 'error'); return; }
+    const row = { title, opp_type:g('co-type'), product_service:g('co-prod').trim() || null, source:g('co-src').trim() || null, value:+g('co-val') || 0, stage, probability:Math.max(0, Math.min(100, +g('co-prob') || 0)),
+      expected_close:g('co-close') || null, owner_id:g('co-owner') || null, next_step:g('co-next').trim() || null, next_step_date:g('co-nsd') || null, lost_reason:stage === 'lost' ? g('co-lost').trim() : null, notes:g('co-notes').trim() || null, updated_at:new Date().toISOString() };
+    if(['won','lost'].includes(stage) && !(prev && prev.closed_at && ['won','lost'].includes(prev.stage))) row.closed_at = new Date().toISOString();
+    if(!['won','lost'].includes(stage)) row.closed_at = null;
+    const r = id ? await sb().from('crm_opportunities').update(row).eq('id', id) : await sb().from('crm_opportunities').insert({ ...row, organisation_id:STATE.org.id, customer_id:g('co-cust'), created_by:STATE.user.id });
+    if(await done(r, 'Opportunity saved.')) kpiCloseOverlay();
+  };
+  window.crmOppDelete = async function(id){ if(!confirm('Delete this opportunity?')) return; if(await done(await sb().from('crm_opportunities').delete().eq('id', id), 'Deleted.')) kpiCloseOverlay(); };
+  window.crmMove = async function(id, stage){
+    const o = D().opps.find(x => x.id === id); if(!o) return;
+    let reason = null; if(stage === 'lost'){ reason = prompt('Why was it lost?'); if(!reason){ crmDraw(); return; } }
+    await done(await sb().from('crm_opportunities').update({ stage, probability:STG[stage][3], lost_reason:reason, closed_at:['won','lost'].includes(stage) ? new Date().toISOString() : null, updated_at:new Date().toISOString() }).eq('id', id), stage === 'won' ? 'Won. Congratulations.' : 'Moved to ' + STG[stage][1] + '.');
+  };
+
+  /* ---------- activities and schedule ---------- */
+  function drawActs(){
+    const f = STATE._crmAF = STATE._crmAF || { type:'', show:'planned' }, all = D().acts.filter(ownerOk).filter(a => !f.type || a.activity_type === f.type);
+    const pl = all.filter(a => a.status === 'planned').sort((a,b) => String(a.scheduled_for).localeCompare(String(b.scheduled_for)));
+    const t = tdy(), wk = addDays(7);
+    const groups = [['Overdue', pl.filter(a => day(a.scheduled_for) < t), '#B3261E'], ['Today', pl.filter(a => day(a.scheduled_for) === t), '#B8791C'], ['Next 7 days', pl.filter(a => day(a.scheduled_for) > t && day(a.scheduled_for) <= wk), '#1F5FA8'], ['Later', pl.filter(a => day(a.scheduled_for) > wk), '#6B7280']];
+    const row = a => `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-bottom:1px solid #eee;padding:7px 0;font-size:13px;"><span style="font-size:18px;">${ACTI[a.activity_type]}</span>
+      <div style="flex:1;min-width:220px;"><b>${E(a.subject)}</b><div style="font-size:12px;color:var(--text-dim);">${E(cname(a.customer_id))} · ${E(ACTT[a.activity_type])} · ${E(mname(a.owner_id))}${a.opportunity_id ? ' · ' + E((D().opps.find(o => o.id === a.opportunity_id) || {}).title || '') : ''}</div></div>
+      <div style="white-space:nowrap;">${fmtDate(day(a.scheduled_for))} ${String(a.scheduled_for).includes('T') ? new Date(a.scheduled_for).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' }) : ''}</div>
+      ${a.status === 'planned' && canW() ? `<button class="btn-small primary" onclick="crmActDone('${a.id}')">Done</button><button class="btn-small" onclick="crmActForm('${a.id}')">Edit</button>` : ''}${a.status === 'done' && a.outcome ? `<i style="color:var(--text-dim);">${E(a.outcome)}</i>` : ''}</div>`;
+    const recent = all.filter(a => a.status === 'done').sort((a,b) => String(b.completed_at).localeCompare(String(a.completed_at))).slice(0, 15);
+    body(`<div class="toolbar" style="margin-top:8px;"><div class="filters"><select onchange="STATE._crmAF.type=this.value;crmDraw()"><option value="">All activity types</option>${opts(ACTT, f.type)}</select></div><div style="display:flex;gap:8px;">${canW() ? '<button class="btn-small" onclick="crmActForm(null,null,true)">Log something already done</button><button class="btn-primary btn-add" onclick="crmActForm()">+ Schedule an activity</button>' : ''}</div></div>
+      ${groups.map(([t, a, c]) => `<div class="detail-card" style="padding:12px 16px;margin:10px 0;"><h4 style="margin:0 0 4px;font-size:14px;color:${c};">${t} (${a.length})</h4>${a.map(row).join('') || '<p style="font-size:12.5px;color:var(--text-faint);margin:4px 0;">Nothing.</p>'}</div>`).join('')}
+      <div class="detail-card" style="padding:12px 16px;margin:10px 0;"><h4 style="margin:0 0 4px;font-size:14px;">Recently completed</h4>${recent.map(row).join('') || '<p style="font-size:12.5px;color:var(--text-faint);">Nothing logged yet.</p>'}</div>`);
+  }
+  window.crmActForm = function(id, customerId, logged){
+    const a = id ? D().acts.find(x => x.id === id) : null, v = a || { customer_id:customerId || '', activity_type:'call', subject:'', scheduled_for:new Date().toISOString(), owner_id:STATE.user.id };
+    const dt = new Date(new Date(v.scheduled_for).getTime() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,16);
+    const opps = D().opps.filter(o => !['won','lost'].includes(o.stage));
+    kpiOverlay(`<h3 style="font-family:Arial,Helvetica,sans-serif;margin:0 0 10px;">${a ? 'Edit activity' : logged ? 'Log an activity' : 'Schedule an activity'}</h3><div class="form-grid">
+      ${field('ca-cust','Customer',`<select id="ca-cust">${custOpts(v.customer_id)}</select>`,'span2')}${field('ca-type','Type',`<select id="ca-type">${opts(ACTT, v.activity_type)}</select>`)}
+      ${field('ca-subj','Subject',`<input id="ca-subj" value="${E(v.subject)}" placeholder="e.g. Quarterly service review, Site walk-down">`,'span3')}
+      ${field('ca-when','Date and time',`<input id="ca-when" type="datetime-local" value="${dt}">`)}${field('ca-owner','Owner',`<select id="ca-owner">${memberOptions(v.owner_id)}</select>`)}
+      ${field('ca-opp','Linked opportunity',`<select id="ca-opp"><option value="">None</option>${opps.map(o => `<option value="${o.id}" ${o.id === v.opportunity_id ? 'selected' : ''}>${E(o.title)} (${E(cname(o.customer_id))})</option>`).join('')}</select>`)}
+      ${logged ? field('ca-out','Outcome',`<textarea id="ca-out" placeholder="What was agreed or learned"></textarea>`,'span3') : field('ca-notes','Notes',`<textarea id="ca-notes">${E(v.notes || '')}</textarea>`,'span3')}</div>
+      <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button>${a ? `<button class="btn-small" onclick="crmActCancel('${a.id}')">Cancel this activity</button>` : ''}<button class="btn-primary" onclick="crmActSave('${a ? a.id : ''}',${logged ? 'true' : 'false'})">Save</button></div>`);
+  };
+  window.crmActSave = async function(id, logged){
+    if(!g('ca-subj').trim()){ toast('Give the activity a subject.', 'error'); return; }
+    const row = { activity_type:g('ca-type'), subject:g('ca-subj').trim(), scheduled_for:new Date(g('ca-when')).toISOString(), owner_id:g('ca-owner') || null, opportunity_id:g('ca-opp') || null, notes:(document.getElementById('ca-notes') || {}).value || null };
+    if(logged){ row.status = 'done'; row.completed_at = row.scheduled_for; row.outcome = g('ca-out').trim() || null; }
+    const r = id ? await sb().from('crm_activities').update(row).eq('id', id) : await sb().from('crm_activities').insert({ ...row, organisation_id:STATE.org.id, customer_id:g('ca-cust'), created_by:STATE.user.id });
+    if(await done(r, logged ? 'Logged.' : 'Scheduled.')) kpiCloseOverlay();
+  };
+  window.crmActCancel = async function(id){ if(await done(await sb().from('crm_activities').update({ status:'cancelled' }).eq('id', id), 'Cancelled.')) kpiCloseOverlay(); };
+  window.crmActDone = function(id){
+    const a = D().acts.find(x => x.id === id); if(!a) return;
+    kpiOverlay(`<h3 style="font-family:Arial,Helvetica,sans-serif;margin:0 0 6px;">Complete: ${E(a.subject)}</h3><p style="font-size:12.5px;color:var(--text-dim);margin:0 0 10px;">${E(cname(a.customer_id))}</p><div class="form-grid">
+      ${field('cd-out','Outcome',`<textarea id="cd-out" placeholder="What was agreed or learned"></textarea>`,'span3')}
+      ${field('cd-fu','Schedule a follow-up',`<input id="cd-fu" placeholder="e.g. Send revised quotation">`,'span2')}${field('cd-fud','Follow-up date',`<input id="cd-fud" type="date" value="${addDays(7)}">`)}</div>
+      <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" onclick="crmActFinish('${id}')">Mark done</button></div>`);
+  };
+  window.crmActFinish = async function(id){
+    const a = D().acts.find(x => x.id === id); if(!a) return;
+    let r = await sb().from('crm_activities').update({ status:'done', completed_at:new Date().toISOString(), outcome:g('cd-out').trim() || null }).eq('id', id);
+    if(!r.error && g('cd-fu').trim()) r = await sb().from('crm_activities').insert({ organisation_id:STATE.org.id, customer_id:a.customer_id, opportunity_id:a.opportunity_id, activity_type:a.activity_type, subject:g('cd-fu').trim(), scheduled_for:new Date(g('cd-fud') + 'T09:00:00').toISOString(), owner_id:a.owner_id, created_by:STATE.user.id });
+    if(await done(r, 'Done.')) kpiCloseOverlay();
+  };
+
+  /* ---------- accounts: the relationship ---------- */
+  function drawAccts(){
+    if(STATE._crmAcct) return drawAcct(STATE._crmAcct);
+    const f = STATE._crmCF = STATE._crmCF || { q:'', tier:'' }, rows = (STATE.customers || []).filter(c => custMine(c) && (!f.tier || c.tier === f.tier) && (!f.q || (c.name + ' ' + (c.products_services || '')).toLowerCase().includes(f.q.toLowerCase())));
+    body(`<div class="toolbar" style="margin-top:8px;"><div class="filters"><input placeholder="Search customers or what we supply" value="${E(f.q)}" oninput="STATE._crmCF.q=this.value;clearTimeout(window._cT);window._cT=setTimeout(crmDraw,300)" style="min-width:240px;"><select onchange="STATE._crmCF.tier=this.value;crmDraw()"><option value="">All tiers</option>${opts(TIER, f.tier)}</select></div>
+      <button class="btn-small" onclick="showModule('customers')">Customers register</button></div>
+      <div class="panel" style="padding:0;overflow:auto;"><table><tr><th>Customer</th><th>Tier</th><th>Account manager</th><th>Sales rep</th><th>Last contact</th><th>Open pipeline</th><th>Satisfaction</th><th>${yr()} plan</th></tr>
+      ${rows.map(c => { const lc = lastContact(c.id), ds = daysSince(lc), sa = satAvg(c.id), op = D().opps.filter(o => o.customer_id === c.id && !['won','lost'].includes(o.stage)).reduce((a, o) => a + Number(o.value), 0), pl = D().plans.some(p => p.customer_id === c.id && p.plan_year === yr());
+        return `<tr class="clickable" onclick="crmOpenCustomer('${c.id}')"><td class="strong">${E(c.name)}<div style="font-size:11.5px;color:var(--text-faint);font-weight:400;">${E((c.products_services || '').slice(0, 70))}</div></td><td>${tierBadge(c.tier)}</td><td>${E(mname(c.account_owner_id))}</td><td>${E(mname(c.sales_rep_id))}</td>
+          <td style="color:${ds === null || ds > 90 ? '#B3261E' : ds > 45 ? '#B8791C' : 'inherit'};">${lc ? ds + ' days ago' : 'Never'}</td><td>${op ? money(op) : '—'}</td><td>${sa === null || sa === undefined ? '—' : sa.toFixed(1) + ' / 5'}</td><td>${pl ? '✓' : '—'}</td></tr>`; }).join('') || '<tr><td colspan="8">No customers match.</td></tr>'}</table></div>`);
+  }
+  function drawAcct(id){
+    const c = cust(id); if(!c){ STATE._crmAcct = null; return drawAccts(); }
+    const cts = D().contacts.filter(x => x.customer_id === id), ops = D().opps.filter(o => o.customer_id === id), acts = D().acts.filter(a => a.customer_id === id).sort((a,b) => String(b.scheduled_for).localeCompare(String(a.scheduled_for))), plan = D().plans.find(p => p.customer_id === id && p.plan_year === yr());
+    body(`<div style="margin:10px 0;"><button class="btn-small" onclick="STATE._crmAcct=null;crmDraw()">← All accounts</button></div>
+      <div class="detail-card" style="padding:16px;margin-bottom:12px;"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;"><div><div class="mono" style="font-size:11px;color:var(--text-faint);">${E(c.ref_code)}</div><h3 style="margin:2px 0 6px;font-family:Arial,Helvetica,sans-serif;">${E(c.name)} ${tierBadge(c.tier)}</h3>
+        <div style="font-size:13px;">Account manager: <b>${E(mname(c.account_owner_id))}</b> · Sales rep: <b>${E(mname(c.sales_rep_id))}</b>${c.industry ? ' · ' + E(c.industry) : ''}</div>
+        <div style="font-size:13px;margin-top:6px;white-space:pre-wrap;"><b>We supply:</b> ${E(c.products_services || 'not recorded')}</div></div>
+        <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;">${canW() ? `<button class="btn-small primary" onclick="crmOppForm(null,'${id}')">+ Opportunity</button><button class="btn-small" onclick="crmActForm(null,'${id}')">+ Activity</button>` : ''}<button class="btn-small" onclick="showModule('customers');setTimeout(()=>openCustomerDetail('${id}'),0)">Edit in Customers</button></div></div></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px;">
+        <div class="detail-card" style="padding:16px;"><div class="panel-head" style="margin-bottom:6px;"><h4 style="margin:0;font-size:14px;">Contacts</h4>${canW() ? `<button class="btn-small" onclick="crmContactForm(null,'${id}')">+ Contact</button>` : ''}</div>
+          ${cts.map(x => `<div style="font-size:13px;margin:6px 0;"><b>${E(x.name)}</b>${x.is_primary ? ' ★' : ''} <span style="color:var(--text-dim);">${E(x.job_title || '')}${x.decision_role ? ' · ' + DROLE[x.decision_role] : ''}</span><div style="font-size:12px;">${E(x.email || '')} ${E(x.phone || '')} ${canW() ? `<a style="cursor:pointer;" onclick="crmContactForm('${x.id}')">edit</a>` : ''}</div></div>`).join('') || `<p style="font-size:12.5px;color:var(--text-faint);">${c.contact_name ? 'Main contact on the register: ' + E(c.contact_name) + '. ' : ''}Add the people you deal with, and who decides.</p>`}</div>
+        <div class="detail-card" style="padding:16px;"><div class="panel-head" style="margin-bottom:6px;"><h4 style="margin:0;font-size:14px;">${yr()} account plan</h4></div>
+          ${plan ? `<div style="font-size:13px;white-space:pre-wrap;"><b>Revenue target:</b> ${money(plan.revenue_target)}\n<b>Objective:</b> ${E(plan.objective || '')}\n<b>Strategy:</b> ${E(plan.strategy || '')}\n<b>Risks:</b> ${E(plan.key_risks || '')}\n<b>Actions:</b> ${E(plan.actions || '')}\n<b>Review:</b> ${plan.review_date ? fmtDate(plan.review_date) : '—'}</div>` : '<p style="font-size:12.5px;color:var(--text-faint);">No plan for this year yet.</p>'}
+          ${canW() ? `<button class="btn-small" style="margin-top:8px;" onclick="crmPlanForm('${id}')">${plan ? 'Edit plan' : 'Create the plan'}</button>` : ''}</div>
+        <div class="detail-card" style="padding:16px;"><h4 style="margin:0 0 6px;font-size:14px;">Opportunities</h4>${ops.map(o => `<div style="font-size:13px;margin:5px 0;cursor:pointer;" onclick="crmOppForm('${o.id}')"><span class="sev-badge" style="background:${STG[o.stage][2]};color:#fff;">${STG[o.stage][1]}</span> ${E(o.title)} · ${money(o.value)}</div>`).join('') || '<p style="font-size:12.5px;color:var(--text-faint);">None.</p>'}</div>
+        <div class="detail-card" style="padding:16px;"><h4 style="margin:0 0 6px;font-size:14px;">Interaction history</h4>${acts.slice(0, 12).map(a => `<div style="font-size:12.5px;margin:5px 0;">${ACTI[a.activity_type]} ${fmtDate(day(a.scheduled_for))} <b>${E(a.subject)}</b> <span style="color:var(--text-faint);">${a.status === 'planned' ? '(planned)' : a.status === 'cancelled' ? '(cancelled)' : ''}</span>${a.outcome ? `<div style="color:var(--text-dim);">${E(a.outcome)}</div>` : ''}</div>`).join('') || '<p style="font-size:12.5px;color:var(--text-faint);">No interactions recorded.</p>'}</div></div>
+      <div class="detail-card" style="padding:16px;margin-top:14px;"><h4 style="margin:0 0 6px;font-size:14px;">Customer satisfaction</h4><div id="cust-detail-slot"></div></div>`);
+    openCustomerDetail(id);
+  }
+  window.crmContactForm = function(id, cid){
+    const x = id ? D().contacts.find(k => k.id === id) : { customer_id:cid, name:'', is_primary:false };
+    kpiOverlay(`<h3 style="font-family:Arial,Helvetica,sans-serif;margin:0 0 10px;">${id ? 'Edit contact' : 'New contact'}</h3><div class="form-grid">
+      ${field('cc-name','Name',`<input id="cc-name" value="${E(x.name)}">`,'span2')}${field('cc-title','Job title',`<input id="cc-title" value="${E(x.job_title || '')}">`)}${field('cc-email','Email',`<input id="cc-email" value="${E(x.email || '')}">`)}${field('cc-phone','Phone',`<input id="cc-phone" value="${E(x.phone || '')}">`)}
+      ${field('cc-role','Role in buying decisions',`<select id="cc-role"><option value="">Not set</option>${opts(DROLE, x.decision_role)}</select>`)}${field('cc-prim','Main contact',`<select id="cc-prim"><option value="no">No</option><option value="yes" ${x.is_primary ? 'selected' : ''}>Yes</option></select>`)}${field('cc-notes','Notes',`<textarea id="cc-notes">${E(x.notes || '')}</textarea>`,'span3')}</div>
+      <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button>${id ? `<button class="btn-small" onclick="crmContactDelete('${id}')">Delete</button>` : ''}<button class="btn-primary" onclick="crmContactSave('${id || ''}','${x.customer_id}')">Save</button></div>`);
+  };
+  window.crmContactSave = async function(id, cid){
+    if(!g('cc-name').trim()){ toast('Enter the name.', 'error'); return; }
+    const row = { name:g('cc-name').trim(), job_title:g('cc-title').trim() || null, email:g('cc-email').trim() || null, phone:g('cc-phone').trim() || null, decision_role:g('cc-role') || null, is_primary:g('cc-prim') === 'yes', notes:g('cc-notes').trim() || null };
+    const r = id ? await sb().from('crm_contacts').update(row).eq('id', id) : await sb().from('crm_contacts').insert({ ...row, organisation_id:STATE.org.id, customer_id:cid, created_by:STATE.user.id });
+    if(await done(r, 'Contact saved.')) kpiCloseOverlay();
+  };
+  window.crmContactDelete = async function(id){ if(!confirm('Delete this contact?')) return; if(await done(await sb().from('crm_contacts').delete().eq('id', id), 'Deleted.')) kpiCloseOverlay(); };
+  window.crmPlanForm = function(cid){
+    const p = D().plans.find(x => x.customer_id === cid && x.plan_year === yr()) || {}, c = cust(cid);
+    kpiOverlay(`<h3 style="font-family:Arial,Helvetica,sans-serif;margin:0 0 4px;">${yr()} account plan: ${E(c.name)}</h3><div class="form-grid">
+      ${field('cp-rev','Revenue target (R)',`<input id="cp-rev" type="number" min="0" value="${p.revenue_target || ''}">`)}${field('cp-rev2','Review date',`<input id="cp-rev2" type="date" value="${p.review_date || ''}">`)}${field('cp-own','Plan owner',`<select id="cp-own">${memberOptions(p.owner_id || c.account_owner_id)}</select>`)}
+      ${field('cp-obj','Objective for the year',`<textarea id="cp-obj">${E(p.objective || '')}</textarea>`,'span3')}${field('cp-str','Strategy: how we grow and protect this account',`<textarea id="cp-str">${E(p.strategy || '')}</textarea>`,'span3')}
+      ${field('cp-risk','Key risks (competitors, dependency, satisfaction, payment)',`<textarea id="cp-risk">${E(p.key_risks || '')}</textarea>`,'span3')}${field('cp-act','Actions',`<textarea id="cp-act">${E(p.actions || '')}</textarea>`,'span3')}</div>
+      <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" onclick="crmPlanSave('${cid}')">Save plan</button></div>`);
+  };
+  window.crmPlanSave = async function(cid){
+    const row = { organisation_id:STATE.org.id, customer_id:cid, plan_year:yr(), revenue_target:+g('cp-rev') || null, review_date:g('cp-rev2') || null, owner_id:g('cp-own') || null, objective:g('cp-obj').trim() || null, strategy:g('cp-str').trim() || null, key_risks:g('cp-risk').trim() || null, actions:g('cp-act').trim() || null, updated_by:STATE.user.id, updated_at:new Date().toISOString() };
+    if(await done(await sb().from('crm_account_plans').upsert(row, { onConflict:'customer_id,plan_year' }), 'Plan saved.')) kpiCloseOverlay();
+  };
+
+  /* ---------- customer satisfaction: moved here from Customers ---------- */
+  function drawSat(){
+    const cs = (STATE.customers || []).filter(c => c.status !== 'inactive' && custMine(c));
+    const dueN = cs.filter(c => { try{ return custSurveyDue(c) && c.contact_email; }catch(e){ return false; } }).length;
+    const rated = cs.map(c => satAvg(c.id)).filter(v => v !== null && v !== undefined), avg = rated.length ? rated.reduce((a, b) => a + b, 0) / rated.length : null;
+    body(`<div style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0;align-items:center;">
+      <div style="font-size:13px;">Average rating across customers: <b style="font-size:18px;">${avg === null ? '—' : avg.toFixed(1) + ' / 5'}</b></div><div style="flex:1;"></div>
+      <button class="btn-small" onclick="toggleQuestionnairePanel()">Manage Customer Satisfaction Questionnaire</button>
+      ${dueN ? `<button class="btn-small primary" onclick="sendDueSurveys().then(crmDraw)">Send ${dueN} due survey${dueN === 1 ? '' : 's'}</button>` : ''}</div>
+      ${STATE._crmQPanel || ''}
+      <div class="panel" style="padding:0;overflow:auto;"><table><tr><th>Customer</th><th>Account manager</th><th>Result</th><th>Survey</th><th></th></tr>
+      ${cs.map(c => { const s = customerSurveySummary(c.id); let due = null; try{ due = custSurveyDue(c); }catch(e){}
+        return `<tr><td class="strong">${E(c.name)}</td><td>${E(mname(c.account_owner_id))}</td><td style="color:${s.color};font-size:12.5px;">${s.text}</td><td style="font-size:12.5px;">${due ? '<b style="color:#B3261E;">' + E(due.kind === 'never' ? 'Never surveyed' : 'Due') + '</b>' : 'Up to date'}</td>
+          <td style="text-align:right;white-space:nowrap;"><button class="btn-small" onclick="crmSatOpen('${c.id}')">Results</button> ${canW() ? `<button class="btn-small primary" onclick="crmSatSend('${c.id}')">Send survey</button>` : ''}</td></tr>`; }).join('')}</table></div>
+      <div id="cust-detail-slot" style="margin-top:12px;"></div>`);
+  }
+  window.crmSatOpen = id => { openCustomerDetail(id).then(() => document.getElementById('cust-detail-slot')?.scrollIntoView({ behavior:'smooth' })); };
+  window.crmSatSend = async function(id){
+    const c = cust(id); showLoader('Sending…'); const r = await svCreateAndSend(id); hideLoader();
+    if(r.error){ toast(r.error, 'error'); return; }
+    await loadCustomerSurveys(); toast(r.emailed ? 'Survey emailed to ' + c.contact_email + '.' : 'Survey created. ' + (c.contact_email ? 'The email could not be sent: ' : 'No contact email: ') + 'open Results to copy the link.', r.emailed ? 'success' : 'info'); crmDraw(); crmSatOpen(id);
+  };
+
+  /* ---------- sales plan and targets ---------- */
+  const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const pm = (y, m) => `${y}-${String(m + 1).padStart(2, '0')}-01`;
+  function drawPlan(){
+    const y = yr(), reps = (STATE.members || []).filter(m => !mine() || m.user_id === STATE.user.id);
+    const tgt = (o, m) => { const t = D().targets.find(x => x.owner_id === o && x.period_month === pm(y, m)); return t ? Number(t.target_value) : 0; };
+    const won = (o, m) => D().opps.filter(x => x.stage === 'won' && x.owner_id === o && x.closed_at && String(x.closed_at).startsWith(`${y}-${String(m + 1).padStart(2, '0')}`)).reduce((a, x) => a + Number(x.value), 0);
+    const fc = (o, m) => D().opps.filter(x => !['won','lost'].includes(x.stage) && x.owner_id === o && x.expected_close && x.expected_close.startsWith(`${y}-${String(m + 1).padStart(2, '0')}`)).reduce((a, x) => a + Number(x.value) * x.probability / 100, 0);
+    body(`<p style="font-size:12.5px;color:var(--text-dim);margin:10px 0;">Monthly sales targets per person for ${y}. Achieved is the value of opportunities won in the month; forecast is the weighted value expected to close.</p>
+      ${reps.map(m => { const o = m.user_id, nm = (m.profiles && m.profiles.name) || 'Unknown', tt = MON.reduce((a, _, i) => a + tgt(o, i), 0), wt = MON.reduce((a, _, i) => a + won(o, i), 0);
+        return `<div class="detail-card" style="padding:14px;margin:10px 0;overflow:auto;"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;"><b>${E(nm)}</b><span style="font-size:13px;">Target ${money(tt)} · Achieved ${money(wt)} · <b style="color:${tt && wt >= tt ? '#2E7D4F' : '#B8791C'};">${tt ? Math.round(wt / tt * 100) + '%' : '—'}</b></span></div>
+          <table style="font-size:12px;"><tr><th></th>${MON.map(x => `<th>${x}</th>`).join('')}</tr>
+          <tr><td>Target</td>${MON.map((_, i) => `<td><input type="number" min="0" style="width:84px;" id="tg-${o}-${i}" value="${tgt(o, i) || ''}" ${canW() ? '' : 'disabled'}></td>`).join('')}</tr>
+          <tr><td>Achieved</td>${MON.map((_, i) => `<td style="color:${won(o, i) >= tgt(o, i) && tgt(o, i) ? '#2E7D4F' : 'inherit'};">${won(o, i) ? money(won(o, i)) : '—'}</td>`).join('')}</tr>
+          <tr><td>Forecast</td>${MON.map((_, i) => `<td style="color:var(--text-dim);">${fc(o, i) ? money(fc(o, i)) : '—'}</td>`).join('')}</tr></table>
+          ${canW() ? `<div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><button class="btn-small primary" onclick="crmTargetsSave('${o}')">Save targets</button><span style="font-size:12px;color:var(--text-faint);">Spread an annual figure evenly:</span><input type="number" min="0" id="tgy-${o}" placeholder="Annual target" style="width:130px;"><button class="btn-small" onclick="crmTargetsSpread('${o}')">Spread</button></div>` : ''}</div>`; }).join('')}`);
+  }
+  window.crmTargetsSpread = o => { const v = +g('tgy-' + o) || 0; for(let i = 0; i < 12; i++) document.getElementById(`tg-${o}-${i}`).value = Math.round(v / 12); };
+  window.crmTargetsSave = async function(o){
+    const rows = MON.map((_, i) => ({ organisation_id:STATE.org.id, owner_id:o, period_month:pm(yr(), i), target_value:+g(`tg-${o}-${i}`) || 0 }));
+    await done(await sb().from('crm_targets').upsert(rows, { onConflict:'organisation_id,owner_id,period_month' }), 'Targets saved.');
+  };
+
+  /* ---------- reports ---------- */
+  function repData(){
+    const y = String(yr()), ops = D().opps.filter(ownerOk), inY = o => String(o.created_at).startsWith(y) || (o.closed_at && String(o.closed_at).startsWith(y));
+    const reps = {}; (STATE.members || []).forEach(m => reps[m.user_id] = { name:(m.profiles && m.profiles.name) || 'Unknown', created:0, won:0, wonV:0, lost:0, open:0, openV:0, wtd:0, acts:0 });
+    ops.filter(inY).forEach(o => { const r = reps[o.owner_id]; if(!r) return; if(String(o.created_at).startsWith(y)) r.created++; if(o.stage === 'won' && o.closed_at && String(o.closed_at).startsWith(y)){ r.won++; r.wonV += Number(o.value); } if(o.stage === 'lost' && o.closed_at && String(o.closed_at).startsWith(y)) r.lost++; });
+    ops.filter(o => !['won','lost'].includes(o.stage)).forEach(o => { const r = reps[o.owner_id]; if(r){ r.open++; r.openV += Number(o.value); r.wtd += Number(o.value) * o.probability / 100; } });
+    D().acts.filter(a => a.status === 'done' && String(a.completed_at).startsWith(y)).forEach(a => { if(reps[a.owner_id]) reps[a.owner_id].acts++; });
+    const prod = {}; ops.filter(o => o.product_service).forEach(o => { const p = prod[o.product_service] = prod[o.product_service] || { won:0, open:0, n:0 }; p.n++; if(o.stage === 'won') p.won += Number(o.value); else if(o.stage !== 'lost') p.open += Number(o.value); });
+    const lost = {}; ops.filter(o => o.stage === 'lost').forEach(o => { const k = (o.lost_reason || 'No reason').trim(); lost[k] = (lost[k] || 0) + 1; });
+    const stages = STAGES.map(s => ({ s:s[1], n:ops.filter(o => o.stage === s[0]).length, v:ops.filter(o => o.stage === s[0]).reduce((a, o) => a + Number(o.value), 0) }));
+    const cov = (STATE.customers || []).filter(c => c.status !== 'inactive' && custMine(c)).map(c => ({ c, last:lastContact(c.id), n:D().acts.filter(a => a.customer_id === c.id && a.status === 'done' && String(a.completed_at).startsWith(y)).length }));
+    return { reps:Object.values(reps).filter(r => r.created || r.won || r.lost || r.open || r.acts), prod, lost, stages, cov };
+  }
+  function repHtml(){
+    const d = repData();
+    return `<h3>Sales performance by person, ${yr()}</h3><table><tr><th>Person</th><th>Created</th><th>Won</th><th>Won value</th><th>Lost</th><th>Win rate</th><th>Open</th><th>Open value</th><th>Weighted</th><th>Activities done</th></tr>
+      ${d.reps.map(r => `<tr><td>${E(r.name)}</td><td>${r.created}</td><td>${r.won}</td><td>${money(r.wonV)}</td><td>${r.lost}</td><td>${r.won + r.lost ? Math.round(r.won / (r.won + r.lost) * 100) + '%' : '—'}</td><td>${r.open}</td><td>${money(r.openV)}</td><td>${money(r.wtd)}</td><td>${r.acts}</td></tr>`).join('') || '<tr><td colspan="10">No data.</td></tr>'}</table>
+      <h3 style="margin-top:18px;">Pipeline by stage</h3><table><tr><th>Stage</th><th>Opportunities</th><th>Value</th></tr>${d.stages.map(s => `<tr><td>${s.s}</td><td>${s.n}</td><td>${money(s.v)}</td></tr>`).join('')}</table>
+      <h3 style="margin-top:18px;">By product or service line</h3><table><tr><th>Line</th><th>Opportunities</th><th>Won value</th><th>Open value</th></tr>${Object.entries(d.prod).sort((a, b) => b[1].won - a[1].won).map(([k, v]) => `<tr><td>${E(k)}</td><td>${v.n}</td><td>${money(v.won)}</td><td>${money(v.open)}</td></tr>`).join('') || '<tr><td colspan="4">No product lines recorded on opportunities.</td></tr>'}</table>
+      <h3 style="margin-top:18px;">Why we lose</h3><table><tr><th>Reason</th><th>Count</th></tr>${Object.entries(d.lost).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<tr><td>${E(k)}</td><td>${v}</td></tr>`).join('') || '<tr><td colspan="2">No lost opportunities.</td></tr>'}</table>
+      <h3 style="margin-top:18px;">Customer coverage</h3><table><tr><th>Customer</th><th>Tier</th><th>Account manager</th><th>Contacts this year</th><th>Last contact</th></tr>${d.cov.sort((a, b) => a.n - b.n).map(x => `<tr><td>${E(x.c.name)}</td><td>${TIER[x.c.tier] || '—'}</td><td>${E(mname(x.c.account_owner_id))}</td><td>${x.n}</td><td>${x.last ? fmtDate(x.last) : 'Never'}</td></tr>`).join('')}</table>`;
+  }
+  function drawRep(){
+    body(`<div class="detail-card" style="padding:18px;margin-top:10px;"><div class="panel-head" style="margin-bottom:10px;"><h3 style="font-family:Arial,Helvetica,sans-serif;font-size:15px;margin:0;">Sales and customer relationship report</h3><div style="display:flex;gap:8px;"><button class="btn-small primary" onclick="crmPrint()">Print / PDF</button><button class="btn-small" onclick="crmExport()">Export opportunities to Excel</button></div></div><div style="font-size:13px;line-height:1.5;overflow:auto;">${repHtml()}</div></div>`);
+  }
+  window.crmPrint = () => printRecord('Sales and Customer Relationship Report', STATE.org.name, [['Year', String(yr())], ['Scope', mine() ? 'My accounts and work' : 'Everyone'], ['Date', new Date().toLocaleDateString('en-GB')]], repHtml(), null, null);
+  window.crmExport = async () => exportToExcel(`crm-opportunities-${yr()}.xlsx`, D().opps.filter(ownerOk), [
+    { header:'Customer', get:o => cname(o.customer_id) }, { header:'Opportunity', get:o => o.title }, { header:'Type', get:o => OPPT[o.opp_type] }, { header:'Product or service', get:o => o.product_service || '' }, { header:'Stage', get:o => STG[o.stage][1] },
+    { header:'Value', get:o => Number(o.value) }, { header:'Probability %', get:o => o.probability }, { header:'Expected close', get:o => o.expected_close || '' }, { header:'Owner', get:o => mname(o.owner_id) }, { header:'Next step', get:o => o.next_step || '' }, { header:'Lost reason', get:o => o.lost_reason || '' }]);
+})();
+
+/* ===== b62a: permanent category-first selection (NC, RAGA, Incidents) and default categories for every client ===== */
+(function(){
+  const DEFAULT_NC_TYPES = ['Unsafe act or condition','PPE not worn or not suitable','Housekeeping','Fire and emergency preparedness','Machine guarding or equipment safety','Working at height','Electrical safety','Hazardous chemical handling','Product or service defect','Customer complaint','Process deviation','Calibration or measuring equipment','Documentation or records','Waste management','Spill or emission','Resource use (water, energy)','Legal or permit noncompliance','Training or competence gap','Medical surveillance','Supplier or subcontractor nonconformance','Contractor safety breach','Audit finding','Management system gap','Information security or privacy'];
+  window.WM_DEFAULT_NC_TYPES = DEFAULT_NC_TYPES;
+  /* every client always has the permanent category list: seed by RPC, fall back to direct inserts */
+  { const _l = loadNCTypes; loadNCTypes = window.loadNCTypes = async function(){
+      await _l.apply(this, arguments);
+      try{
+        if(STATE.org && STATE.org.id && (!STATE.ncTypes || !STATE.ncTypes.length) && !STATE._ncSeedTried){
+          STATE._ncSeedTried = true;
+          let r = await STATE.supabase.rpc('seed_default_nc_types', { p_org: STATE.org.id });
+          if(r.error){
+            const rows = DEFAULT_NC_TYPES.map((name, i) => ({ organisation_id:STATE.org.id, name, sort_order:(i + 1) * 10, created_by:STATE.user && STATE.user.id }));
+            await STATE.supabase.from('nc_types').insert(rows);
+          }
+          await _l.apply(this, arguments);
+        }
+      }catch(e){}
+    }; }
+
+  /* category gate: details stay hidden and the form cannot be sent until a category is chosen */
+  const css = document.createElement('style');
+  css.textContent = '.wm-gated{display:none!important}.wm-gate-note{grid-column:1/-1;margin:2px 0 4px;padding:9px 12px;border:1px dashed var(--border);border-radius:8px;font-size:12.5px;color:var(--text-faint);background:rgba(127,127,127,.06)}';
+  document.head.appendChild(css);
+  const CFG = [
+    { form:'nc-form',   sel:'f-title-select',    keep:['f-title-select','f-title-other-field'] },
+    { form:'raga-form', sel:'raga-title-select', keep:['raga-title-select','raga-title-other-field','raga-alert-type'] },
+    { form:'ian-form',  sel:'ian-cat',           keep:['ian-cat','ian-cls'] }
+  ];
+  function chosen(c, sel){ return !!sel.value; }
+  function apply(c){
+    const form = document.getElementById(c.form), sel = document.getElementById(c.sel);
+    if(!form || !sel) return;
+    const keepEls = c.keep.map(id => document.getElementById(id)).filter(Boolean).map(e => e.closest('.field') || e);
+    const ok = chosen(c, sel);
+    const targets = form.querySelectorAll('.field, .form-actions, #raga-issue-fields, button.btn-primary, button.btn-small.primary, h4, p.hint');
+    targets.forEach(el => {
+      if(keepEls.some(k => k === el || k.contains(el) || el.contains(k))) return;
+      if(el.classList.contains('wm-gate-note')) return;
+      el.classList.toggle('wm-gated', !ok);
+    });
+    let note = form.querySelector('.wm-gate-note');
+    if(!note){ note = document.createElement('div'); note.className = 'wm-gate-note'; note.textContent = 'Choose a category first. The details open once you have chosen one, so every record can be counted and trended.'; const anchor = keepEls[keepEls.length - 1] || form.firstChild; (anchor.parentNode || form).insertBefore(note, anchor.nextSibling); }
+    note.style.display = ok ? 'none' : '';
+    const other = document.getElementById(c.sel.replace('-select','') + '-title-other-field');
+    if(other && sel.value !== '__other__') other.style.display = 'none';
+  }
+  function applyAll(){ CFG.forEach(apply); }
+  document.addEventListener('change', e => { if(e.target && CFG.some(c => c.sel === e.target.id || (c.form === 'ian-form' && e.target.id === 'ian-cls'))) setTimeout(applyAll, 0); });
+  new MutationObserver(() => { clearTimeout(applyAll._t); applyAll._t = setTimeout(applyAll, 30); }).observe(document.body, { childList:true, subtree:true });
+  /* the required check on send, whatever else changes the form */
+  { const _s = submitNC; submitNC = window.submitNC = async function(){ const v = (document.getElementById('f-title-select') || {}).value; if(!v){ toast('Choose a category first.', 'error'); return; } return _s.apply(this, arguments); }; }
+  { const _r = createRagaAlert; createRagaAlert = window.createRagaAlert = async function(){ const v = (document.getElementById('raga-title-select') || {}).value; if(!v){ toast('Choose a category first.', 'error'); return; } return _r.apply(this, arguments); }; }
+})();
+
+/* ===== b62b: template links per module, "Templates" picker in every module header, in-app template register ===== */
+(function(){
+  const RULES = [
+    [/nonconformance|corrective action|opportunit(y|ies) for improvement|root cause|scar\b|continual improvement/i, ['nonconformances']],
+    [/raga|green alert|recognition/i, ['raga']],
+    [/incident|accident|near miss|injury|hazard report|witness|return to work|damage report|spill|environmental incident|flash|safety alert|bulletin/i, ['incidents']],
+    [/customer|sales|account plan|pipeline|visit report|crm/i, ['customers','crm']],
+    [/supplier|subcontract|contractor|section 37|purchasing|receiving|procurement/i, ['suppliers']],
+    [/audit|readiness|inspection/i, ['audits']],
+    [/risk|hazard identification|baseline|job safety|jsa|opportunit/i, ['risks']],
+    [/legal|compliance|certificate|appointment|popia|permit|licen[cs]e|insurance/i, ['legal']],
+    [/certificate|insurance|licen[cs]e|registration|good standing|expiry/i, ['legal_certs']],
+    [/training|competence|induction|toolbox|awareness/i, ['training']],
+    [/toolbox|bulletin|flash|safety alert/i, ['bulletins']],
+    [/appraisal|kpi|job description|performance|self-assessment/i, ['appraisals']],
+    [/process|kpi/i, ['processes']],
+    [/asset|equipment|machinery|lifting|scaffold|ladder|calibration|maintenance|vehicle|forklift|pressure|plant|tool|lock-out|isolation|condition/i, ['assets']],
+    [/objective|target/i, ['objectives']],
+    [/management review/i, ['management_review']],
+    [/5s|housekeeping/i, ['five_s']],
+    [/weld|ndt|non-destructive/i, ['welding']],
+    [/construction|method statement|health and safety plan|site |sherq file|fall protection|excavation|work at height/i, ['site_files']],
+    [/employee|leave|disciplin|grievance|warning|recruit|onboarding|exit|contract of employment|appraisal|personnel/i, ['personnel']],
+    [/task|action tracking|actions/i, ['tasks']],
+    [/information|password|access|backup|security|privacy|popia|data subject|breach|asset classification|vulnerab/i, ['info_assets']]
+  ];
+  function modulesFor(it){
+    const text = [it.kind || it.type, it.title, (it.refs || []).join(' ')].join(' ');
+    const out = new Set();
+    RULES.forEach(r => { if(r[0].test(text)) r[1].forEach(m => out.add(m)); });
+    if(it.kind === 'letter' || /^Letter of Appointment/i.test(it.title || '')){ out.add('legal'); out.add('orgchart'); }
+    if(it.mk && typeof MODULE_META !== 'undefined' && MODULE_META[it.mk]) out.add(it.mk);
+    out.add('documents'); /* every document template is selectable from the Document wizard */
+    return [...out];
+  }
+  window.WM_TPL_MODULES = modulesFor;
+  const kindOfLive = t => (typeof dwKind === 'function' ? dwKind(t) : t.type);
+  const KIND_NAME = { letter:'Letter of Appointment', policy:'Policy', procedure:'Procedure', form:'Form', register:'Register', checklist:'Checklist', flowchart:'Flowchart', manual:'Manual', other_document:'Document' };
+  function liveItems(){ return (STATE.contentTemplates || []).map(t => ({ id:t.id, kind:kindOfLive(t), title:t.title, refs:Array.isArray(t.standard_refs) ? t.standard_refs : [], mk:t.module_key, desc:t.description || '', live:true })); }
+  function items(){ return liveItems(); }
+  function forModule(mod){ return items().filter(i => modulesFor(i).includes(mod)); }
+  const ME = escapeHtml;
+
+  window.wmTplUse = async function(id, kind){
+    kpiCloseOverlay();
+    try{
+      if(kind === 'flowchart') return applyTemplateToCurrentOrg(id);
+      if(kind === 'checklist') return applyChecklistTemplateToCurrentOrg(id);
+      if(kind === 'letter'){ showModule('orgchart'); toast('Open Appointments to issue this letter of appointment.', 'success'); return; }
+      showModule('documents'); if(typeof switchDocSubtab === 'function') switchDocSubtab('register');
+      const f = document.getElementById('doc-form'); if(f && !f.classList.contains('open')) toggleDocForm();
+      STATE._dw = STATE._dw || {}; STATE._dw.templateId = id;
+      toast('Template selected: name the document and continue.', 'success');
+    }catch(e){ toast('Could not use the template: ' + e.message, 'error'); }
+  };
+  window.wmTplView = function(id){
+    const t = (STATE.contentTemplates || []).find(x => x.id === id); if(!t) return;
+    const sec = (STATE.contentTemplatePolicySections || []).filter(x => x.template_id === id);
+    const chk = (STATE.contentTemplateChecklistItems || []).filter(x => x.template_id === id);
+    const stp = (STATE.contentTemplateSteps || []).filter(x => x.template_id === id);
+    let body = sec.map(s => `<h4 style="margin:12px 0 4px;font-size:13px;">${ME(s.heading)}</h4><div style="white-space:pre-wrap;font-size:12.5px;">${ME(s.body_text)}</div>`).join('')
+      || (chk.length ? '<ol style="font-size:12.5px;padding-left:18px;">' + chk.map(c => `<li>${ME(c.item_text)}</li>`).join('') + '</ol>' : '')
+      || (stp.length ? '<ol style="font-size:12.5px;padding-left:18px;">' + stp.map(c => `<li>${ME(c.step_text)}</li>`).join('') + '</ol>' : '<p style="font-size:12.5px;color:var(--text-faint);">No preview content.</p>');
+    kpiOverlay(`<div style="padding:18px 20px;max-width:720px;"><h3 style="font-size:15.5px;margin-bottom:4px;">${ME(t.title)}</h3><p style="font-size:12px;color:var(--text-faint);margin-bottom:8px;">${ME((t.standard_refs || []).join('; '))}</p>${body}<div style="margin-top:14px;text-align:right;"><button class="btn-cancel" onclick="wmTemplates(STATE._tplMod)">Back</button> <button class="btn-primary" onclick="wmTplUse('${id}','${kindOfLive(t)}')">Use this template</button></div></div>`);
+  };
+  window.wmTemplates = function(mod, q){
+    STATE._tplMod = mod; q = (q || '').toLowerCase();
+    const all = forModule(mod).filter(i => !q || (i.title + ' ' + i.refs.join(' ')).toLowerCase().includes(q));
+    const groups = {}; all.forEach(i => (groups[i.kind] = groups[i.kind] || []).push(i));
+    const title = (MODULE_META[mod] && MODULE_META[mod].title) || mod;
+    const rows = Object.keys(groups).map(k => `<div style="margin:12px 0 4px;font-weight:600;font-size:12.5px;">${KIND_NAME[k] || k} (${groups[k].length})</div>` + groups[k].map(i => `
+      <div style="display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:12.5px;">
+        <div style="flex:1;min-width:0;"><div><span style="color:var(--text-faint);font-size:11px;margin-right:6px;">${ME(window.WM_TPL_REFS ? (WM_TPL_REFS()[String(i.title).toLowerCase()] || '') : '')}</span>${ME(i.title)}</div><div style="color:var(--text-faint);font-size:11.5px;">${ME(i.refs.join('; '))}</div></div>
+        <button class="btn-small" onclick="wmTplView('${i.id}')">View</button>
+        <button class="btn-small primary" onclick="wmTplUse('${i.id}','${i.kind}')">${i.kind === 'flowchart' || i.kind === 'checklist' ? 'Apply' : (i.kind === 'letter' ? 'Appoint' : 'Create')}</button>
+      </div>`).join('')).join('');
+    kpiOverlay(`<div style="padding:18px 20px;width:min(760px,92vw);max-height:80vh;overflow:auto;">
+      <h3 style="font-size:15.5px;margin-bottom:2px;">Templates linked to ${ME(title)}</h3>
+      <p style="font-size:12px;color:var(--text-faint);margin-bottom:8px;">${all.length} template${all.length === 1 ? '' : 's'} from the Group QaSHE CG library. Pick one to apply or create from it.</p>
+      <input placeholder="Search templates" value="${ME(q)}" oninput="clearTimeout(window._tq);const v=this.value;window._tq=setTimeout(()=>wmTemplates('${mod}',v),250)" style="width:100%;margin-bottom:6px;">
+      ${rows || '<p style="font-size:12.5px;color:var(--text-faint);">No templates are linked to this module yet.</p>'}
+      <div style="margin-top:12px;text-align:right;"><button class="btn-cancel" onclick="kpiCloseOverlay()">Close</button></div></div>`);
+  };
+  /* the button, shown in the header of every module that has linked templates */
+  function ensureBtn(){
+    let b = document.getElementById('mod-tpl-btn');
+    if(!b){
+      const h = document.getElementById('mod-title'); if(!h || !h.parentNode) return null;
+      b = document.createElement('button'); b.id = 'mod-tpl-btn'; b.className = 'btn-small'; b.textContent = 'Templates'; b.style.cssText = 'margin-left:auto;display:none;';
+      h.parentNode.parentNode.appendChild(b);
+    }
+    return b;
+  }
+  { const _sm = showModule; showModule = window.showModule = function(mod){
+      const r = _sm.apply(this, arguments);
+      try{
+        const b = ensureBtn(); const m = (mod && MODULE_META[mod]) ? mod : null;
+        if(b){
+          const cur = document.getElementById('mod-title').textContent;
+          const real = Object.keys(MODULE_META).find(k => MODULE_META[k].title === cur) || m;
+          const skip = ['overview','compliance','administration','hr','asset_watchman','business_health','processes'];
+          const show = real && !skip.includes(real) && (STATE.contentTemplates || []).length && forModule(real).length;
+          b.style.display = show ? '' : 'none'; b.onclick = () => wmTemplates(real);
+        }
+      }catch(e){}
+      return r;
+    }; }
+  /* make sure the live library is loaded for every user, not only platform staff */
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ await _lc.apply(this, arguments); try{ await loadContentTemplates(); }catch(e){} }; }
+
+  /* in-app register: live library against the code catalogue, with the modules each template serves (Excel) */
+  window.wmTemplateRegisterExport = function(){
+    const cat = (typeof tlCatalogue === 'function') ? tlCatalogue() : [];
+    const live = liveItems();
+    const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const liveSet = new Set(live.map(i => norm(i.title)));
+    const catSet = new Set(cat.map(i => norm(i.title)));
+    const rows = [];
+    live.forEach(i => rows.push({ ref:(WM_TPL_REFS()[String(i.title).toLowerCase()] || ''), title:i.title, kind:i.kind, refs:i.refs.join('; '), modules:modulesFor(i).join(', '), inlib:'Yes', incat:catSet.has(norm(i.title)) ? 'Yes' : 'No', note:catSet.has(norm(i.title)) ? '' : 'Live only: add to the catalogue' }));
+    cat.forEach(i => { if(!liveSet.has(norm(i.title))) rows.push({ ref:i.ref || '', title:i.title, kind:i.kind, refs:(i.refs || []).join('; '), modules:modulesFor(i).join(', '), inlib:'No', incat:'Yes', note:'Missing from the live library: seed it' }); });
+    exportToExcel('QaSHE-Watchman-Template-Register-' + todayISO() + '.xlsx', rows, [
+      { header:'Ref', get:r => r.ref }, { header:'Template', get:r => r.title }, { header:'Type', get:r => r.kind }, { header:'References', get:r => r.refs }, { header:'Linked modules', get:r => r.modules },
+      { header:'In live library', get:r => r.inlib }, { header:'In code catalogue', get:r => r.incat }, { header:'Action', get:r => r.note } ]);
+  };
 })();
 </script>
 </body>
