@@ -1076,6 +1076,7 @@
     </div>
     <div class="land-nav-links">
       <span>PART OF YOUR TEAM</span>
+      <button class="btn-ghost" onclick="WMTutorial.open()" style="padding:9px 18px;margin-right:10px">Tutorial</button>
       <button class="btn-primary" onclick="goTo('dashboard')">Enter Watchman</button>
     </div>
   </nav>
@@ -1086,6 +1087,7 @@
     <div class="hero-ctas">
       <button class="btn-primary" onclick="goTo('dashboard')">Enter Watchman</button>
       <button class="btn-ghost" onclick="document.getElementById('modules-anchor').scrollIntoView({behavior:'smooth'})">View Modules</button>
+      <button class="btn-ghost" onclick="WMTutorial.open()">Watch the tutorial</button>
     </div>
 
     <div class="watch-wrap">
@@ -1767,7 +1769,7 @@ async function enterApp(){
 // already signed in on this device.
 document.addEventListener('DOMContentLoaded', async () => {
   try {
-    { const _q = new URLSearchParams(location.search); if(_q.get('sp') || _q.get('sv') || _q.get('sq') || _q.get('g') || _q.get('nr') || _q.get('ss')) return; } // public page modes
+    { const _q = new URLSearchParams(location.search); if(_q.get('sp') || _q.get('sv') || _q.get('sq') || _q.get('g') || _q.get('nr') || _q.get('ss') || _q.has('tutorial')) return; } // public page modes
     await ensureSupabaseLib();
     if(!STATE.supabase) initSupabase(SUPABASE_URL, SUPABASE_ANON_KEY);
     const { data:{ session } } = await STATE.supabase.auth.getSession();
@@ -40155,6 +40157,775 @@ async function renderNcResponsePage(token){
       { header:'In live library', get:r => r.inlib }, { header:'In code catalogue', get:r => r.incat }, { header:'Action', get:r => r.note } ]);
   };
 })();
+
+
+/* ===== b63a: Watchman face mascot (ring, no antenna): smile = Ask me, grin = Report a bug, neutral = Request a change ===== */
+(function(){
+  const css = document.createElement('style'); css.id = 'b63a-css'; css.textContent = `
+  .wmz .wmz-ring{transform-box:view-box; transform-origin:16px 16px; animation:wmzSpin 14s linear infinite}
+  .wmz .wmz-face{transform-box:view-box; transform-origin:16px 17px; animation:wmzBreathe 4.6s ease-in-out infinite}
+  .wmz .wmz-eye{transform-box:fill-box; transform-origin:center; animation:wmzBlink 4.4s infinite}
+  .wmz .wmz-eye.b{animation-delay:.04s}
+  .wmz .wmz-look{animation:wmzLook 7s ease-in-out infinite}
+  .wmz .wmz-mouth{transform-box:fill-box; transform-origin:center}
+  .wmz.help .wmz-mouth{animation:wmzSmile 4.4s ease-in-out infinite}
+  .wmz.bug .wmz-mouth{animation:wmzGrin 3.2s ease-in-out infinite}
+  @keyframes wmzSpin{to{transform:rotate(360deg)}}
+  @keyframes wmzBreathe{0%,100%{transform:scale(1)}50%{transform:scale(1.035)}}
+  @keyframes wmzBlink{0%,93%,100%{transform:scaleY(1)}96%{transform:scaleY(.08)}}
+  @keyframes wmzLook{0%,38%,100%{transform:translateX(0)}46%,60%{transform:translateX(.9px)}70%,84%{transform:translateX(-.9px)}}
+  @keyframes wmzSmile{0%,100%{transform:scaleX(1)}50%{transform:scaleX(1.08)}}
+  @keyframes wmzGrin{0%,100%{transform:scale(1)}50%{transform:scale(1.07,1.12)}}
+  .watchman-chat-fab:hover .wmz .wmz-ring,.wm-bug-btn:hover .wmz .wmz-ring,.wm-chg-btn:hover .wmz .wmz-ring,.header-report-fab:hover .wmz .wmz-ring,.wm-tut-btn:hover .wmz .wmz-ring{animation-duration:3s}
+  @media (prefers-reduced-motion:reduce){.wmz *{animation:none !important}}
+  svg.wmz{display:block}
+  .sb-brand .watchman-chat-fab .wm-pill-head svg.wmz,.wm-bug-btn .wm-pill-head svg.wmz,.wm-chg-btn .ico svg.wmz,.wm-tut-btn .ico svg.wmz{width:34px !important; height:34px !important; stroke:none !important; fill:none !important}
+  `;
+  document.head.appendChild(css);
+  const INK = '#23272F';
+  const eyes = () => `<g class="wmz-look"><ellipse class="wmz-eye" cx="12.7" cy="14.1" rx="1.5" ry="1.95" fill="${INK}"/><ellipse class="wmz-eye b" cx="19.3" cy="14.1" rx="1.5" ry="1.95" fill="${INK}"/></g>`;
+  const mouth = k => k === 'bug'
+    ? `<g class="wmz-mouth"><path d="M11 17.4h10c0 3.1-2.2 5.2-5 5.2s-5-2.1-5-5.2z" fill="${INK}"/><rect x="12.2" y="17.4" width="7.6" height="1.5" rx=".4" fill="#fff"/></g>`
+    : k === 'chg'
+      ? `<g class="wmz-mouth"><path d="M12.6 19.6h6.8" stroke="${INK}" stroke-width="1.7" stroke-linecap="round" fill="none"/></g>`
+      : `<g class="wmz-mouth"><path d="M11.7 18.2q4.3 4.1 8.6 0" stroke="${INK}" stroke-width="1.8" stroke-linecap="round" fill="none"/></g>`;
+  window.wmAndroidSvg = function(kind){
+    kind = kind || 'help';
+    const badge = kind === 'tut' ? '<g><circle cx="25.6" cy="25.6" r="5.2" fill="#B21616" stroke="#fff" stroke-width="1.2"/><path d="M24.2 23.2l3.6 2.4-3.6 2.4z" fill="#fff"/></g>' : '';
+    const k = kind === 'tut' ? 'help' : kind;
+    return `<svg class="wmz ${k}" viewBox="0 0 32 32" aria-hidden="true">
+      <circle cx="16" cy="16" r="15" fill="#fff"/>
+      <g class="wmz-ring" fill="none" stroke-width="1.7">
+        <circle cx="16" cy="16" r="12.9" stroke="#4D5460" opacity=".95"/>
+        <circle cx="16" cy="16" r="12.9" stroke="#A6ABB5" stroke-dasharray="26 55" transform="rotate(-40 16 16)"/>
+        <circle cx="16" cy="16" r="12.9" stroke="#B21616" stroke-dasharray="34 47" transform="rotate(140 16 16)"/>
+      </g>
+      <g class="wmz-face">${eyes()}${mouth(k)}</g>${badge}</svg>`;
+  };
+  /* re-render every mascot already on the page, and keep the rest current */
+  function redo(){
+    document.querySelectorAll('[data-wmx]').forEach(el => { const k = el.dataset.wmx; if(el.dataset.wmz === k) return; el.innerHTML = wmAndroidSvg(k); el.dataset.wmz = k; });
+  }
+  redo(); setTimeout(redo, 300); setTimeout(redo, 1500);
+  let q = false; new MutationObserver(() => { if(q) return; q = true; requestAnimationFrame(() => { q = false; redo(); }); }).observe(document.body, { childList:true, subtree:true });
+})();
+
+
+/* ===== b63b: Tutorial (presentation with animated demonstrations): header button, landing page button, ?tutorial link ===== */
+(function(){
+  const css = document.createElement('style'); css.id = 'b63b-css'; css.textContent = `.wmt{position:fixed;inset:0;z-index:100000;background:#0B0E14;color:#fff;font-family:Arial,Helvetica,sans-serif;overflow:hidden;user-select:none;-webkit-user-select:none}
+.wmt.emb{position:absolute;z-index:1}
+.wmt *{box-sizing:border-box}
+.wmt-stage{position:absolute;left:50%;top:50%;width:1280px;height:720px;transform-origin:0 0;background:radial-gradient(1200px 700px at 78% -10%,#2a1216 0,#13161f 55%,#0d1017 100%);overflow:hidden;border-radius:6px}
+.wmt-slide{position:absolute;inset:0;padding:64px 72px 70px;opacity:0;transition:opacity .45s}
+.wmt-slide.on{opacity:1}
+.wmt-slide::before{content:"";position:absolute;right:-180px;bottom:-200px;width:620px;height:620px;border-radius:50%;border:34px solid rgba(255,255,255,.035);border-top-color:rgba(178,22,22,.22);border-right-color:rgba(166,171,181,.08);pointer-events:none}
+.wmt [data-i]{opacity:0}
+.wmt-slide.on [data-i]{animation:wmtIn .65s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i,0) * 85ms)}
+@keyframes wmtIn{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+.wmt .bld{opacity:0;transform:translateY(12px);transition:opacity .55s,transform .55s}
+.wmt .bld.show{opacity:1;transform:none}
+.wmt h1{font-size:60px;line-height:1.05;margin:0;font-weight:800;letter-spacing:-.5px}
+.wmt h2{font-size:38px;line-height:1.12;margin:0;font-weight:800;letter-spacing:-.3px}
+.wmt h3{font-size:20px;margin:0 0 6px;font-weight:700}
+.wmt p{margin:0}
+.wmt .kick{font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:#FF8A80;font-weight:700;margin-bottom:10px}
+.wmt .lede{font-size:21px;line-height:1.45;color:#C9CFDB;max-width:880px;margin-top:14px}
+.wmt .hl{color:#FF6B5E}
+.wmt .card{background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.11);border-radius:16px;padding:18px 20px}
+.wmt .card p{font-size:15px;line-height:1.45;color:#C9CFDB}
+.wmt .grid{display:grid;gap:16px}
+.wmt .chip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;font-size:13px;font-weight:700;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.14);color:#E6E9F0;margin:0 6px 8px 0}
+.wmt .chip.red{background:rgba(178,22,22,.28);border-color:rgba(255,107,94,.5);color:#FFD7D2}
+.wmt .chip.go{cursor:pointer}
+.wmt .chip.go:hover{background:rgba(255,255,255,.18)}
+.wmt .ico{width:46px;height:46px;border-radius:14px;background:linear-gradient(135deg,#B21616,#7E0F0F);display:flex;align-items:center;justify-content:center;flex:none}
+.wmt .ico svg{width:26px;height:26px;stroke:#fff;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.wmt .btn{border:0;border-radius:999px;padding:13px 26px;font-weight:700;font-size:15px;cursor:pointer;font-family:inherit}
+.wmt .btn.p{background:#B21616;color:#fff}
+.wmt .btn.p:hover{background:#d11c1c}
+.wmt .btn.g{background:transparent;color:#fff;border:2px solid rgba(255,255,255,.35)}
+.wmt .btn.g:hover{background:rgba(255,255,255,.1)}
+.wmt /* chrome */
+.wmt-top{position:absolute;left:0;right:0;top:0;height:46px;display:flex;align-items:center;gap:10px;padding:0 14px;background:rgba(8,10,15,.92);z-index:5;border-bottom:1px solid rgba(255,255,255,.07)}
+.wmt-top .ttl{font-size:13px;font-weight:700;color:#C9CFDB;margin-left:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wmt-top .ttl b{color:#fff}
+.wmt-top .sp{flex:1}
+.wmt-ib{border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:#fff;border-radius:9px;height:30px;min-width:30px;padding:0 10px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px}
+.wmt-ib:hover{background:rgba(255,255,255,.16)}
+.wmt-ib.on{background:#B21616;border-color:#B21616}
+.wmt-bot{position:absolute;left:0;right:0;bottom:0;height:46px;display:flex;align-items:center;gap:12px;padding:0 14px;background:rgba(8,10,15,.92);z-index:5;border-top:1px solid rgba(255,255,255,.07)}
+.wmt-prog{flex:1;height:5px;border-radius:5px;background:rgba(255,255,255,.12);overflow:hidden;cursor:pointer}
+.wmt-prog i{display:block;height:100%;background:linear-gradient(90deg,#B21616,#FF6B5E);width:0;transition:width .4s}
+.wmt-cnt{font-size:12px;color:#A9B0BE;min-width:70px;text-align:center}
+.wmt-view{position:absolute;left:0;right:0;top:46px;bottom:46px;overflow:hidden}
+.wmt-drawer{position:absolute;left:0;top:46px;bottom:46px;width:340px;background:#0F131B;border-right:1px solid rgba(255,255,255,.1);z-index:6;transform:translateX(-102%);transition:transform .3s;overflow:auto;padding:12px 10px}
+.wmt-drawer.open{transform:none}
+.wmt-drawer h4{margin:12px 6px 4px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#FF8A80}
+.wmt-drawer a{display:block;padding:7px 10px;border-radius:8px;font-size:13px;color:#C9CFDB;cursor:pointer}
+.wmt-drawer a:hover{background:rgba(255,255,255,.08);color:#fff}
+.wmt-drawer a.cur{background:rgba(178,22,22,.35);color:#fff}
+.wmt /* mock application */
+.mock{position:relative;background:#fff;color:#1F2933;border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.5);overflow:hidden;font-size:12px;width:100%;height:100%}
+.wmt .mk-bar{height:28px;background:#EEF0F3;display:flex;align-items:center;gap:6px;padding:0 12px;font-size:11px;color:#5A6472;font-weight:700}
+.wmt .mk-bar i{width:9px;height:9px;border-radius:50%;background:#C9CED6;display:block}
+.wmt .mk-bar i:first-child{background:#E5584C}
+.wmt .mk-bar span{margin-left:10px}
+.wmt .mk-body{display:flex;height:calc(100% - 28px)}
+.wmt .mk-side{width:118px;background:#1B1F29;padding:10px 8px;flex:none}
+.wmt .mk-side b{display:block;color:#fff;font-size:11px;margin:0 4px 10px}
+.wmt .mk-side div{height:20px;border-radius:5px;margin-bottom:5px;background:rgba(255,255,255,.07);color:#A9B0BE;font-size:10px;line-height:20px;padding:0 7px;white-space:nowrap;overflow:hidden}
+.wmt .mk-side div.act{background:#B21616;color:#fff}
+.wmt .mk-main{flex:1;padding:14px 16px;position:relative;overflow:hidden}
+.wmt .mk-h{font-size:15px;font-weight:800;margin-bottom:10px;display:flex;align-items:center;gap:10px}
+.wmt .mk-h u{margin-left:auto;text-decoration:none;background:#B21616;color:#fff;border-radius:7px;padding:6px 12px;font-size:11px;font-weight:700;transition:transform .15s,background .2s}
+.wmt .mk-h u.hit,.wmt .hit{transform:scale(.93)}
+.wmt .mk-t{width:100%;border-collapse:collapse}
+.wmt .mk-t th{text-align:left;font-size:10px;text-transform:uppercase;color:#7B8794;padding:5px 7px;border-bottom:2px solid #E4E7EB}
+.wmt .mk-t td{padding:7px;border-bottom:1px solid #EEF0F3;font-size:11.5px}
+.wmt .mk-t tr.nr{opacity:0;transform:translateX(-14px);transition:.6s;background:#FFF4E0}
+.wmt .mk-t tr.nr.show{opacity:1;transform:none}
+.wmt .pill{display:inline-block;border-radius:99px;padding:2px 9px;font-size:10px;font-weight:700;color:#fff;background:#6B7785}
+.wmt .pill.r{background:#D32F2F}
+.wmt .pill.o{background:#EF7B00}
+.wmt .pill.g{background:#2E9E5B}
+.wmt .pill.b{background:#2F6FDE}
+.wmt .mk-panel{position:absolute;right:0;top:0;bottom:0;width:58%;background:#fff;box-shadow:-12px 0 30px rgba(0,0,0,.18);padding:14px 16px;transform:translateX(105%);transition:transform .5s cubic-bezier(.2,.8,.2,1);z-index:2}
+.wmt .mk-panel.open{transform:none}
+.wmt .mk-f{margin-bottom:9px}
+.wmt .mk-f label{display:block;font-size:9.5px;font-weight:700;text-transform:uppercase;color:#7B8794;margin-bottom:3px}
+.wmt .mk-f .in{height:26px;border:1px solid #CBD2D9;border-radius:6px;padding:0 8px;line-height:24px;font-size:11.5px;background:#fff;overflow:hidden;white-space:nowrap}
+.wmt .mk-f .in span{display:inline-block;clip-path:inset(0 100% 0 0)}
+.wmt .mk-f .in span.typed{animation:wmtType var(--d,1.1s) steps(var(--n,16)) forwards}
+@keyframes wmtType{to{clip-path:inset(0 0 0 0)}}
+.wmt .mk-f.gate{transition:opacity .5s,filter .5s}
+.wmt .mk-panel.locked .mk-f.gate{opacity:.18;filter:blur(1.2px)}
+.wmt .mk-f .in.cat{border-color:#B21616;box-shadow:0 0 0 3px rgba(178,22,22,.14)}
+.wmt .mk-btn{display:inline-block;background:#B21616;color:#fff;border-radius:7px;padding:7px 14px;font-weight:700;font-size:11px;transition:transform .15s}
+.wmt .cur{position:absolute;left:0;top:0;width:22px;height:22px;z-index:9;pointer-events:none;transition:transform .9s cubic-bezier(.4,.1,.2,1);filter:drop-shadow(0 2px 3px rgba(0,0,0,.4))}
+.wmt .cur svg{width:22px;height:22px}
+.wmt .cur::after{content:"";position:absolute;left:-8px;top:-8px;width:30px;height:30px;border-radius:50%;border:2px solid #B21616;opacity:0;transform:scale(.3)}
+.wmt .cur.ck::after{animation:wmtRip .55s ease-out}
+@keyframes wmtRip{from{opacity:.9;transform:scale(.3)}to{opacity:0;transform:scale(1.4)}}
+.wmt .tile{background:#F5F6F8;border-radius:10px;padding:10px 12px}
+.wmt .tile b{display:block;font-size:24px;line-height:1.1}
+.wmt .tile small{font-size:10px;color:#7B8794;text-transform:uppercase;font-weight:700}
+.wmt .bars{display:flex;align-items:flex-end;gap:10px;height:130px;padding:6px 4px;border-bottom:2px solid #E4E7EB}
+.wmt .bars i{flex:1;background:linear-gradient(#FF6B5E,#B21616);border-radius:5px 5px 0 0;height:3%;transition:height 1.1s cubic-bezier(.2,.8,.2,1)}
+.wmt .stg{display:flex;gap:8px;align-items:stretch}
+.wmt .stg>div{flex:1;border:2px solid #E4E7EB;border-radius:10px;padding:10px 8px;text-align:center;font-size:11px;font-weight:700;color:#7B8794;transition:.5s;position:relative}
+.wmt .stg>div.lit{border-color:#B21616;color:#B21616;background:#FFF1F0;transform:translateY(-4px)}
+.wmt .stg>div.done{border-color:#2E9E5B;color:#2E9E5B;background:#EDF8F2}
+.wmt .stg>div small{display:block;font-weight:400;color:inherit;margin-top:4px;font-size:10px}
+.wmt .ck-i{display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid #EEF0F3;font-size:11.5px}
+.wmt .ck-i .bx{width:16px;height:16px;border-radius:4px;border:2px solid #CBD2D9;transition:.3s;flex:none;position:relative}
+.wmt .ck-i.t .bx{background:#2E9E5B;border-color:#2E9E5B}
+.wmt .ck-i.t .bx::after{content:"";position:absolute;left:4px;top:0;width:4px;height:9px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(40deg)}
+.wmt .ck-i.f .bx{background:#D32F2F;border-color:#D32F2F}
+.wmt .ring{width:96px;height:96px;border-radius:50%;background:conic-gradient(#2E9E5B calc(var(--p,0)*1%),#E4E7EB 0);display:flex;align-items:center;justify-content:center;transition:.3s}
+.wmt .ring b{width:74px;height:74px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:20px}
+.wmt .tl-i{display:flex;align-items:center;gap:10px;padding:8px 10px;margin-bottom:6px;border:1px solid #E4E7EB;border-radius:9px;opacity:0;transform:translateY(10px);transition:.5s}
+.wmt .tl-i.show{opacity:1;transform:none}
+.wmt .tl-i.warn{border-color:#EF7B00;background:#FFF6E8}
+.wmt .tl-i .d{width:60px;font-weight:800;font-size:11px;color:#7B8794}
+.wmt .toast-m{position:absolute;right:14px;bottom:14px;background:#1B1F29;color:#fff;border-radius:10px;padding:10px 14px;font-size:11.5px;font-weight:700;transform:translateY(80px);opacity:0;transition:.5s;z-index:3;max-width:60%}
+.wmt .toast-m.show{transform:none;opacity:1}
+.wmt .mx{display:grid;gap:4px}
+.wmt .mx div{height:26px;border-radius:5px;background:#EEF0F3;transition:.4s;font-size:10px;line-height:26px;text-align:center;color:#fff;font-weight:700;overflow:hidden;white-space:nowrap}
+.wmt .mx div.h{background:transparent;color:#7B8794;text-align:left;padding-left:2px}
+.wmt .mx div.g{background:#2E9E5B}
+.wmt .mx div.a{background:#EF7B00}
+.wmt .mx div.r{background:#D32F2F}
+.wmt .docc{display:flex;align-items:center;gap:10px;padding:9px 10px;margin-bottom:7px;border:1px solid #E4E7EB;border-radius:9px;opacity:0;transform:translateX(-12px);transition:.5s}
+.wmt .docc.show{opacity:1;transform:none}
+.wmt .docc b{font-size:11.5px}
+.wmt .docc small{display:block;color:#7B8794;font-size:10px}
+.wmt .kb{position:relative;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;height:215px}
+.wmt .kb>.kcol{background:#F5F6F8;border-radius:9px;padding:7px;position:relative}
+.wmt .kb>.kcol>small{display:block;font-size:10px;font-weight:800;text-transform:uppercase;color:#7B8794;margin-bottom:6px}
+.wmt .kc{position:absolute;width:calc(25% - 12px);background:#fff;border:1px solid #E4E7EB;border-radius:8px;padding:7px;font-size:10.5px;font-weight:700;box-shadow:0 2px 6px rgba(0,0,0,.08);transition:left .8s cubic-bezier(.4,.1,.2,1),top .8s}
+.wmt .kc small{display:block;font-weight:400;color:#7B8794}
+.wmt .org{position:relative;height:250px}
+.wmt .org .n{position:absolute;background:#fff;border:2px solid #E4E7EB;border-radius:9px;padding:6px 10px;font-size:10.5px;font-weight:700;text-align:center;opacity:0;transform:scale(.8);transition:.5s;min-width:100px}
+.wmt .org .n.show{opacity:1;transform:none}
+.wmt .org .n small{display:block;font-weight:400;color:#7B8794}
+.wmt .org svg{position:absolute;inset:0;width:100%;height:100%}
+.wmt .org svg path{stroke:#B7BEC8;stroke-width:2;fill:none;stroke-dasharray:300;stroke-dashoffset:300;transition:stroke-dashoffset .8s}
+.wmt .org svg path.show{stroke-dashoffset:0}
+.wmt .cg{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+.wmt .cg div{border-radius:8px;padding:9px 8px;background:#F0F2F5;font-size:10.5px;font-weight:700;color:#7B8794;transition:.5s;min-height:48px}
+.wmt .cg div.on{background:#E6F6EC;color:#1D7A44}
+.wmt .cg div.part{background:#FFF1DC;color:#B35A00}
+.wmt .capbar{margin-top:14px;font-size:17px;color:#fff;font-weight:700;min-height:26px;transition:opacity .3s}
+.wmt .steps{list-style:none;margin:0;padding:0}
+.wmt .steps li{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;margin-bottom:10px;border-radius:14px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);font-size:15.5px;line-height:1.4;color:#B8BFCC;transition:.4s}
+.wmt .steps li b{width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex:none;font-size:13px}
+.wmt .steps li.act{background:rgba(178,22,22,.28);border-color:#FF6B5E;color:#fff;transform:translateX(6px)}
+.wmt .steps li.act b{background:#B21616}
+.wmt svg.wmz{width:100%;height:100%}
+.wmt .wmz .wmz-ring{transform-box:view-box;transform-origin:16px 16px;animation:wmzSpin 14s linear infinite}
+.wmt .wmz .wmz-eye{transform-box:fill-box;transform-origin:center;animation:wmzBlink 4.4s infinite}
+@media (prefers-reduced-motion:reduce){.wmt-slide.on [data-i]{animation:none;opacity:1}.wmt *{transition:none !important}}
+.wm-tut-btn{display:inline-flex;align-items:center;gap:8px;border:0;cursor:pointer;background:#2F4B66;color:#fff;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:12.5px;padding:4px 14px 4px 5px;border-radius:999px;box-shadow:0 3px 10px rgba(47,75,102,.35);white-space:nowrap;margin-right:8px}
+.wm-tut-btn:hover{background:#1F3347}
+.wm-tut-btn .ico svg.wmz{width:30px !important;height:30px !important}
+.wm-tut-btn .ico{width:30px;height:30px;border-radius:50%;background:rgba(0,0,0,.22);display:flex;align-items:center;justify-content:center}
+@media (max-width:640px){.wm-tut-btn .lbl{display:none}.wm-tut-btn{padding:4px}}
+.wmt .hid{display:none}`;
+  document.head.appendChild(css);
+})();
+(function(){
+'use strict';
+const CHAPTERS = [
+ ['dash','Dashboards and Oversight','See the whole business at a glance'],
+ ['ctl','Control and Improvement','Find it, fix it, prove it'],
+ ['doc','Documents and Templates','Controlled, numbered and ready to use'],
+ ['perf','Processes and Performance','Measure what matters'],
+ ['ppl','People and Competence','Competent people, appointed and trained'],
+ ['scs','Suppliers, Customers and Sites','Control the supply chain and grow the account'],
+ ['leg','Legal and Governance','Stay compliant and above reproach'],
+ ['sec','Information Security','Protect the information that runs the business'],
+ ['ops','Assets and Specialist Modules','Equipment, condition and welding'],
+ ['adm','Administration and Trust','Access, audit trail and set-up']
+];
+const MODS = [
+{id:'overview',ch:'dash',n:'Overview',ic:'home',tag:'Your daily starting point: what needs attention today.',
+ feat:['One home screen with a tile for every module you use','Reminders pop-up for actions, expiries and reviews that are due','Badges show open items without opening each module','Search and quick links to the registers you use most'],
+ iso:['ISO 9001 cl 5.1 leadership','ISO 45001 cl 5.4 consultation'],link:['compliance','tasks'],
+ steps:['Sign in and land on the Overview','Read the reminders pop-up','Open any tile to go straight to that module','Use the Templates button inside a module for ready-made documents'],
+ d:{a:'dash',tiles:[['Open actions','12'],['Due this week','5'],['Expiring in 30 days','3'],['Open alerts','4']],bars:[40,65,50,80,60,35]}},
+{id:'compliance',ch:'dash',n:'Compliance Dashboard',ic:'chart',tag:'A live compliance health score instead of a year-end surprise.',
+ feat:['One health score built from every register you keep','Trends over time, so improvement is visible','Status of each register: current, due or overdue','Drill from the score to the item behind it'],
+ iso:['ISO 9001 cl 9.1 monitoring','ISO 45001 cl 9.1 evaluation','ISO 14001 cl 9.1'],link:['management_review','business_health'],
+ steps:['Open the dashboard','Read the overall score','See which registers pull it down','Click through and fix the cause'],
+ d:{a:'dash',tiles:[['Health score','86%'],['Registers current','21'],['Overdue items','4'],['Trend','+6']],bars:[55,60,62,70,78,86]}},
+{id:'business_health',ch:'dash',n:'Business Health Validation',ic:'shield',tag:'One view of how healthy the business is across every discipline.',
+ feat:['Governance, excellence, quality, health and safety, environment','Information security, POPIA and welding in the same view','Each area validated against what is actually recorded','Gaps become actions for management'],
+ iso:['ISO 9001 cl 9.3','ISO 37000 governance','ISO 45001 cl 9.3'],link:['compliance','management_review'],
+ steps:['Open Business Health Validation','Review each discipline card','Open any weak area','Assign actions to close the gaps'],
+ d:{a:'ctl',tiles:[['Governance','on'],['Quality','on'],['Health and safety','part'],['Environment','on'],['Info security','part'],['POPIA','on'],['Welding','on'],['Excellence','part']]}},
+{id:'nonconformances',ch:'ctl',n:'Nonconformances',ic:'alert',tag:'Every Opportunity for Improvement captured once, owned, and closed with proof.',
+ feat:['Category first: the details open only after a category is chosen, so every record can be counted and trended','Severity, owner, target close date and immediate action recorded','Root cause and corrective action, with evidence attached','Send an email link so a client, supplier or third party completes their response and uploads files','Linked to tasks, audits, risks and management review'],
+ iso:['ISO 9001 cl 10.2','ISO 14001 cl 10.2','ISO 45001 cl 10.2'],link:['audits','tasks','risks','suppliers'],
+ steps:['Click New and choose the category first','Add the description, severity and owner','Investigate root cause and agree corrective action','Verify effectiveness and close with evidence'],
+ d:{a:'reg',cols:['Ref','Category','Severity','Owner','Status'],rows:[['NC-0041','Housekeeping','Minor','T. Mokoena','Open'],['NC-0042','Customer complaint','Major','P. Naidoo','Investigating']],gate:'Spill or emission',f:['Description','Owner'],nr:['NC-0043','Spill or emission','Major','S. Dlamini','Open']}},
+{id:'incidents',ch:'ctl',n:'Incidents, Accidents and Near Miss',ic:'alert',tag:'Report it in minutes, investigate it properly, and learn from the trend.',
+ feat:['Permanent categories chosen first, for clean statistics','Near miss, incident and accident in one register','Injury details, days lost and authority reporting recorded','Statistics and trends per category and per period','Shares the improvement workflow with Nonconformances'],
+ iso:['ISO 45001 cl 10.2','OHS Act s24 reporting','COIDA'],link:['nonconformances','tasks','training'],
+ steps:['Choose what happened, then the category','Describe it, who was involved and what was done','Investigate to root cause','Review the category trends each month'],
+ d:{a:'reg',cols:['Ref','Type','Category','Severity','Status'],rows:[['IAN-0102','Near miss','Vehicle or plant','Minor','Closed'],['IAN-0103','Incident','Property damage','Major','Open']],gate:'Slip, trip or fall',f:['What happened','Immediate action'],nr:['IAN-0104','Near miss','Slip, trip or fall','Minor','Open']}},
+{id:'raga',ch:'ctl',n:'RAGA Alerts',ic:'flag',tag:'Red, Orange and Green alerts: fix the risks and celebrate the good.',
+ feat:['Red: serious or high risk. Orange: minor or low risk','Green: positive recognition of good practice','Category first, then details, so alerts can be trended','Owners, dates and closure for Red and Orange','Green alerts build a positive safety culture'],
+ iso:['ISO 45001 cl 5.4, 10.2','ISO 9001 cl 7.3 awareness'],link:['nonconformances','bulletins'],
+ steps:['Pick Red, Orange or Green','Choose the category first','Describe what happened or what was done well','Track Red and Orange to closure; recognise Green'],
+ d:{a:'reg',cols:['Ref','Alert','Category','Owner','Status'],rows:[['RA-0031','Red','Working at height','T. Mokoena','Open'],['RA-0032','Green','Housekeeping','P. Naidoo','Recognised']],gate:'PPE not worn or not suitable',f:['Description','Owner'],nr:['RA-0033','Orange','PPE not worn or not suitable','S. Dlamini','Open']}},
+{id:'tasks',ch:'ctl',n:'Task Management',ic:'check',tag:'Every action has an owner, a date and a source.',
+ feat:['Actions created from nonconformances, audits, reviews and more','Owner, due date, status and progress notes','Overdue actions flagged and reminders sent','Click back to the source record to see why the task exists'],
+ iso:['ISO 9001 cl 10.2','ISO 45001 cl 10.2'],link:['nonconformances','audits','management_review'],
+ steps:['An action is created from its source','Assign owner and due date','Owner updates progress','Verify completion and close'],
+ d:{a:'flow',st:[['Created','from source'],['Assigned','owner + date'],['In progress','updates'],['Verified','by manager'],['Closed','with evidence']]}},
+{id:'audits',ch:'ctl',n:'Audits',ic:'search',tag:'Plan the audit, record the findings, promote them to action.',
+ feat:['Audit plan and programme with departments, processes and suppliers','Checklists applied from the template library','Findings recorded with evidence','Promote a finding to a nonconformance in one click','Audit report ready to print'],
+ iso:['ISO 9001 cl 9.2','ISO 14001 cl 9.2','ISO 45001 cl 9.2','ISO 19011'],link:['nonconformances','checklists','management_review'],
+ steps:['Plan the audit and select the team','Run the checklist and record findings','Promote findings to nonconformances','Report results to management review'],
+ d:{a:'chk',title:'Internal audit checklist',items:['Policy displayed and understood','Legal register reviewed this year','Training records current','Calibration certificates in date','Corrective actions closed on time'],fail:[3]}},
+{id:'risks',ch:'ctl',n:'Risk and Opportunity',ic:'target',tag:'Risks and opportunities scored, treated and reviewed.',
+ feat:['One scoring method across the organisation','Treatment plans with owners and dates','Linked to nonconformances and objectives','Heat view of what matters most','Review dates so the register stays alive'],
+ iso:['ISO 9001 cl 6.1','ISO 14001 cl 6.1','ISO 45001 cl 6.1','ISO 31000'],link:['nonconformances','objectives'],
+ steps:['Add the risk or opportunity','Score likelihood and impact','Agree treatment, owner and date','Review and re-score'],
+ d:{a:'reg',cols:['Ref','Risk','Score','Owner','Status'],rows:[['R-012','Loss of key supplier','15','P. Naidoo','Treating'],['R-013','Cyber attack','20','IT Lead','Treating']],gate:null,f:['Risk description','Score'],nr:['R-014','Contractor injury on site','12','S. Dlamini','Open']}},
+{id:'objectives',ch:'ctl',n:'Objectives and Targets',ic:'target',tag:'SMART objectives that people can actually see progressing.',
+ feat:['Objectives with measures, targets and dates','Progress recorded over time','Linked to processes, risks and policy','Reported at management review'],
+ iso:['ISO 9001 cl 6.2','ISO 14001 cl 6.2','ISO 45001 cl 6.2'],link:['processes','risks','management_review'],
+ steps:['Set the objective and target','Link it to a process or risk','Record progress each period','Review at management review'],
+ d:{a:'dash',tiles:[['On track','7'],['At risk','2'],['Achieved','4'],['Average progress','68%']],bars:[30,42,50,58,63,68]}},
+{id:'management_review',ch:'ctl',n:'Management Review',ic:'users',tag:'Quarterly management review with the data already on the agenda.',
+ feat:['Agenda built from every module: audits, incidents, objectives, customers','Aligned to ISO 9.3 and Section 19 of the OHS Act','Minutes, decisions and actions recorded','Decisions flow into the Task module'],
+ iso:['ISO 9001 cl 9.3','ISO 14001 cl 9.3','ISO 45001 cl 9.3','OHS Act s19'],link:['tasks','compliance','audits'],
+ steps:['Open the review and pull in the data','Walk through the agenda','Record decisions','Actions become tracked tasks'],
+ d:{a:'chk',title:'Management review agenda',items:['Previous actions','Audit results','Incident and nonconformance trends','Customer satisfaction','Objectives and risks','Resources and decisions'],fail:[]}},
+{id:'documents',ch:'doc',n:'Document Management',ic:'doc',tag:'Create, number, approve and revise documents in one place.',
+ feat:['Numbered by department and document type','Create from a template or upload your own','Revision control and approval workflow','Approved documents appear automatically in All Documents','Electronic signature where required'],
+ iso:['ISO 9001 cl 7.5','ISO 14001 cl 7.5','ISO 45001 cl 7.5','ISO 27001 cl 7.5'],link:['all_documents','policies','master_register'],
+ steps:['Name the document and pick department and type','Choose a template or start blank','Write, review and approve','Revise with full history'],
+ d:{a:'docs',docs:[['QHSE-POL-001','Occupational Health and Safety Policy','Rev 2'],['QHSE-PRO-014','Incident Reporting Procedure','Rev 1'],['QHSE-FRM-022','Toolbox Talk Record','Rev 3']]}},
+{id:'all_documents',ch:'doc',n:'All Documents',ic:'search',tag:'Find any document in seconds, controlled or legacy.',
+ feat:['Filed by department and type','Search across every document at once','Controlled and legacy documents together','Open or download with one click'],
+ iso:['ISO 9001 cl 7.5.3'],link:['documents','master_register'],
+ steps:['Open All Documents','Search or browse by department','Open the document','Check its revision status'],
+ d:{a:'docs',docs:[['HR-POL-004','Leave Policy','Rev 1'],['OPS-PRO-007','Equipment Pre-Use Procedure','Rev 4'],['SHE-FRM-009','Visitor Declaration','Rev 2']]}},
+{id:'master_register',ch:'doc',n:'Master Documents Register',ic:'list',tag:'Every controlled document number in one auditable list.',
+ feat:['All numbers, titles, revisions and owners','Review dates highlight what is due','Maintained centrally by administrators','Printable for auditors'],
+ iso:['ISO 9001 cl 7.5'],link:['documents','all_documents'],
+ steps:['Open the register','Filter by department','Check revision and review date','Export for the auditor'],
+ d:{a:'reg',cols:['Number','Title','Rev','Owner','Review'],rows:[['QHSE-POL-001','OHS Policy','2','MD','Mar 2027'],['QHSE-PRO-014','Incident Procedure','1','SHE','Jun 2027']],gate:null,f:['Title','Owner'],nr:['QHSE-FRM-023','Hot Work Permit','1','SHE','Oct 2027']}},
+{id:'policies',ch:'doc',n:'Template Library',ic:'doc',tag:'More than 500 audit-ready templates, ready to adapt.',
+ feat:['Policies, procedures, forms, registers, checklists and flowcharts','Letters of appointment for statutory roles','Linked to the modules that use them: a Templates button in each module','Every template carries a reference number for traceability','Yours to adapt, then controlled in Document Management'],
+ iso:['ISO 9001','ISO 14001','ISO 45001','ISO/IEC 27001','Construction Regulations 2014'],link:['documents','checklists','orgchart'],
+ steps:['Click Templates in any module','Search and preview a template','Create or apply it','Adapt, approve and control it'],
+ d:{a:'docs',docs:[['POL-001','Occupational Health and Safety Policy','Policy'],['FRM-014','Hazard Report','Form'],['CHK-007','Scaffold Inspection Checklist','Checklist'],['FLW-012','Permit to Work Process','Flowchart']]}},
+{id:'checklists',ch:'doc',n:'Checklists',ic:'check',tag:'Run inspections the same way, every time.',
+ feat:['Pass or fail and weighted-score checklists','Applied from the template library','Run as often as needed on any device','Failed items raise actions','Scores trend over time'],
+ iso:['ISO 45001 cl 9.1','ISO 9001 cl 8.6'],link:['audits','tasks','assets'],
+ steps:['Pick a checklist','Answer each item','See the score','Raise actions for failures'],
+ d:{a:'chk',title:'Workplace safety inspection',items:['Fire extinguishers in date','Walkways clear','First aid box stocked','PPE available','Machine guards fitted'],fail:[1]}},
+{id:'processes',ch:'perf',n:'Processes and KPIs',ic:'flow',tag:'Every process with its flowchart, KPIs and reviews.',
+ feat:['Process register with owners','Flowcharts built or applied from templates','Weighted KPIs measured over time','Linked to objectives and nonconformances','Linked policies and procedures'],
+ iso:['ISO 9001 cl 4.4, 9.1','ISO 14001 cl 4.4'],link:['objectives','nonconformances','documents'],
+ steps:['Register the process and owner','Draw or apply the flowchart','Set KPIs and weights','Record readings and review'],
+ d:{a:'flow',st:[['Order received','input'],['Contract review','check'],['Production','do'],['Inspection','check'],['Delivery','output']]}},
+{id:'five_s',ch:'perf',n:'5S Inspections',ic:'check',tag:'Open participation inspections that keep the workplace in order.',
+ feat:['Sort, set in order, shine, standardise, sustain','Inspections across health, safety, environment, quality and more','Scores and photos per area','Actions raised from findings'],
+ iso:['ISO 45001 cl 8.1','ISO 9001 cl 7.1.4'],link:['tasks','checklists'],
+ steps:['Select the area','Score the five S','Add photos and notes','Raise actions and publish the scores'],
+ d:{a:'chk',title:'5S inspection: Workshop',items:['Sort: unneeded items removed','Set in order: places labelled','Shine: area clean','Standardise: standards visible','Sustain: audited weekly'],fail:[2]}},
+{id:'appraisals',ch:'perf',n:'KPIs and Appraisals',ic:'star',tag:'Position KPIs, self-assessment and manager review.',
+ feat:['KPIs for every position','Employee self-assessment','Manager review and rating','Development needs feed Training'],
+ iso:['ISO 9001 cl 7.2','ISO 45001 cl 7.2'],link:['personnel','training'],
+ steps:['Set position KPIs','Employee completes self-assessment','Manager reviews and rates','Agree development actions'],
+ d:{a:'flow',st:[['Set KPIs','start of year'],['Self-assess','employee'],['Review','manager'],['Agree','development'],['Train','needs fed on']]}},
+{id:'personnel',ch:'ppl',n:'Personnel and Competence',ic:'users',tag:'Know who is competent to do what.',
+ feat:['Personnel register with positions and line managers','Competence matrix by position','Qualifications, certificates and expiry','Medical fitness and validity dates','Gaps feed Training'],
+ iso:['ISO 9001 cl 7.2','ISO 45001 cl 7.2','ISO 14001 cl 7.2'],link:['training','orgchart','appraisals'],
+ steps:['Add the person and position','Record qualifications and certificates','See the competence matrix','Raise training for gaps'],
+ d:{a:'mx',cols:['Welding','First aid','Working at height','Fire marshal'],rows:[['T. Mokoena','g,g,a,g'],['P. Naidoo','g,r,g,a'],['S. Dlamini','a,g,g,g']]}},
+{id:'orgchart',ch:'ppl',n:'Organisation Charts and Appointments',ic:'org',tag:'Who does what, appointed in writing and signed.',
+ feat:['Master and appointments organisation charts','Legal letters of appointment with electronic signature','Appointments register with renewal notices','Charts generated from job titles and reporting lines'],
+ iso:['ISO 9001 cl 5.3','ISO 45001 cl 5.3','OHS Act s16(2)'],link:['personnel','training','legal'],
+ steps:['Set up departments and positions','Appoint a person to a role','They sign electronically','Renewal notice before it lapses'],
+ d:{a:'org',root:['Managing Director','Section 16(1)'],kids:[['SHE Officer','Appointed'],['Quality Manager','Appointed'],['Operations Manager','Appointed']]}},
+{id:'training',ch:'ppl',n:'Training',ic:'cap',tag:'Needs, plans, completion and certificates in one place.',
+ feat:['Training needs from gaps and appraisals','Planning and scheduling','Attendance and completion','Certificates stored with expiry','Effectiveness review'],
+ iso:['ISO 9001 cl 7.2','ISO 45001 cl 7.2','ISO 14001 cl 7.2'],link:['personnel','appraisals','incidents'],
+ steps:['Identify the need','Plan the course and date','Record attendance and results','Store the certificate and review effectiveness'],
+ d:{a:'tl',items:[['12 Nov','First aid level 1: 6 people'],['03 Dec','Working at height: 4 people'],['15 Jan','Fire marshal refresher: 3 people']],warn:2,toast:'Reminder: certificate expires in 30 days'}},
+{id:'bulletins',ch:'ppl',n:'Bulletins and Toolbox Talks',ic:'bell',tag:'Safety messages that reach everyone, with proof.',
+ feat:['Notices and bulletins with downloadable material','Toolbox talk records and attendance','Pop-up for new bulletins','Flash notices after incidents'],
+ iso:['ISO 45001 cl 7.4','ISO 9001 cl 7.4'],link:['incidents','raga','training'],
+ steps:['Write the bulletin or toolbox talk','Attach material','Publish to staff','Record who has read it'],
+ d:{a:'docs',docs:[['BUL-041','Safe use of ladders','Toolbox talk'],['BUL-042','Flash notice: forklift near miss','Bulletin'],['BUL-043','Winter driving','Bulletin']]}},
+{id:'hr',ch:'ppl',n:'HR: Attendance and Leave',ic:'clock',tag:'GPS clock-in, attendance and leave, from the employee phone.',
+ feat:['GPS clock-in and clock-out from a mobile link','Attendance register','Leave applications and approvals','Useful for sites and contractors'],
+ iso:['ISO 45001 cl 8.1 (who is on site)'],link:['personnel','site_files'],
+ steps:['Employee opens the mobile link','Clocks in on site','Manager sees live attendance','Leave requested and approved'],
+ d:{a:'tl',items:[['07:02','T. Mokoena clocked in: Site A'],['07:05','P. Naidoo clocked in: Site A'],['07:31','S. Dlamini clocked in: Site B']],warn:-1,toast:'Attendance register updated'}},
+{id:'suppliers',ch:'scs',n:'Suppliers and Subcontractors',ic:'truck',tag:'Approve, monitor and control the people who work for you.',
+ feat:['Risk-classified register of suppliers and subcontractors','Documents with expiry dates and tasks before they lapse','Email link: the subcontractor uploads their SHERQ File and templates','Scoring and approval','Nonconformances and external responses linked'],
+ iso:['ISO 9001 cl 8.4','ISO 45001 cl 8.1.4','OHS Act s37(2)'],link:['site_files','nonconformances','legal_certs'],
+ steps:['Add the supplier or subcontractor','Send the SHERQ File link','Review and approve each document','Monitor expiry and performance'],
+ d:{a:'chk',title:'Subcontractor SHERQ File',items:['Company profile','COIDA letter of good standing','Public liability insurance','Health and safety plan','Section 37(2) agreement'],fail:[]}},
+{id:'site_files',ch:'scs',n:'Site SHERQ Files',ic:'folder',tag:'One controlled, audit-ready SHERQ file per client site.',
+ feat:['A file for every site, with its sections','Readiness check against what is required','Linked live to your registers','Print the whole file for the client','Subcontractor files included'],
+ iso:['Construction Regulations 2014','OHS Act','ISO 45001 cl 8.1'],link:['suppliers','orgchart','training'],
+ steps:['Open a file for the site','Add the sections and documents','Check readiness','Print or share the file'],
+ d:{a:'ctl',tiles:[['Project','on'],['Appointments','on'],['Risk assessments','on'],['Method statements','part'],['Training','on'],['Equipment','part'],['Permits','on'],['Incidents','on']]}},
+{id:'customers',ch:'scs',n:'Customers',ic:'building',tag:'The central customer register: who they are and who looks after them.',
+ feat:['Account manager and sales representative per customer','Products or services you supply','Tier, industry and contacts','Feeds complaints, surveys and the CRM'],
+ iso:['ISO 9001 cl 8.2','ISO 9001 cl 9.1.2'],link:['crm','nonconformances'],
+ steps:['Add the customer','Assign the account manager','Record what you supply','Link complaints and surveys'],
+ d:{a:'reg',cols:['Ref','Customer','Tier','Account manager','Status'],rows:[['CUS-001','Rand Water','Strategic','D. Elliott','Active'],['CUS-002','Eskom','Key','J. Elliott','Active']],gate:null,f:['Name','Account manager'],nr:['CUS-003','Sasol','Key','D. Elliott','Active']}},
+{id:'crm',ch:'scs',n:'Customer Relationship Management',ic:'handshake',tag:'Pipeline, activities, account plans and satisfaction.',
+ feat:['Sales pipeline from lead to won or lost','Scheduled calls, meetings and visits','Account plans and sales targets','Customer satisfaction surveys and results','Reports by person, product line and reason for loss'],
+ iso:['ISO 9001 cl 8.2','ISO 9001 cl 9.1.2'],link:['customers','nonconformances'],
+ steps:['Add the opportunity','Move it through the stages','Schedule activities','Review the forecast and satisfaction'],
+ d:{a:'kan',cols:['Lead','Proposal','Negotiation','Won'],cards:[['Seal programme','R 250 000',0,2],['Pump repair','R 80 000',1,3],['Service contract','R 420 000',0,1]]}},
+{id:'legal',ch:'leg',n:'Legal Compliance',ic:'scale',tag:'Know the law that applies, and show you comply.',
+ feat:['Legal register of requirements','Compliance reviews with evidence','AI-assisted suggestions of applicable legislation','Linked to internal audits','Non-compliance becomes an action'],
+ iso:['ISO 45001 cl 6.1.3, 9.1.2','ISO 14001 cl 6.1.3, 9.1.2'],link:['audits','legal_certs','tasks'],
+ steps:['Add the legal requirement','Assess compliance','Record evidence','Raise an action if not compliant'],
+ d:{a:'reg',cols:['Requirement','Applies to','Reviewed','Owner','Compliant'],rows:[['OHS Act 85 of 1993','All sites','Aug 2026','SHE','Yes'],['NEMA','Waste','Aug 2026','SHE','Partly']],gate:null,f:['Requirement','Owner'],nr:['COIDA','All staff','Oct 2026','HR','Yes']}},
+{id:'legal_certs',ch:'leg',n:'Legal Documents and Certificates',ic:'cert',tag:'Registrations and certificates that never silently expire.',
+ feat:['Registration, tax, B-BBEE, membership and accreditation certificates','Expiry dates recorded','Reminder 30 days before each lapses','One repository to hand to a client or auditor'],
+ iso:['ISO 9001 cl 7.5','ISO 45001 cl 9.1.2'],link:['legal','suppliers'],
+ steps:['Upload the certificate','Record the expiry date','Receive the 30 day reminder','Renew and replace'],
+ d:{a:'tl',items:[['30 Nov','COIDA letter of good standing'],['14 Jan','B-BBEE certificate'],['28 Feb','Public liability insurance']],warn:0,toast:'Reminder sent: COIDA expires in 30 days'}},
+{id:'governance',ch:'leg',n:'Governance and Ethics',ic:'scale',tag:'Evidence of good governance, ready for scrutiny.',
+ feat:['ISO 37000 principles assessment','Resolutions and delegations of authority','Conflicts of interest','Gifts and hospitality register','Stakeholders'],
+ iso:['ISO 37000','ISO 37001 anti-bribery'],link:['business_health','management_review'],
+ steps:['Record the resolution or delegation','Declare conflicts and gifts','Review stakeholders','Assess against the principles'],
+ d:{a:'reg',cols:['Ref','Resolution','Date','Owner','Status'],rows:[['RES-007','Approve OHS Policy','12 Aug','MD','Passed'],['RES-008','Appoint SHE Officer','02 Sep','MD','Passed']],gate:null,f:['Resolution','Date'],nr:['RES-009','Approve budget','05 Oct','MD','Passed']}},
+{id:'privacy',ch:'leg',n:'Privacy (POPIA)',ic:'lock',tag:'POPIA readiness you can demonstrate.',
+ feat:['Readiness against the eight conditions','Register of processing activities','Data subject requests tracked','Operator agreements','Breach notifications tracked'],
+ iso:['POPIA','ISO/IEC 27701'],link:['info_assets','retention'],
+ steps:['Assess against the eight conditions','Record processing activities','Handle data subject requests','Track breaches and operator agreements'],
+ d:{a:'ctl',tiles:[['Accountability','on'],['Processing limitation','on'],['Purpose specification','on'],['Further processing','part'],['Information quality','on'],['Openness','part'],['Security safeguards','on'],['Data subject participation','on']]}},
+{id:'retention',ch:'leg',n:'Records Retention',ic:'archive',tag:'Keep records as long as needed, and no longer.',
+ feat:['Retention period per type of record','Reason and legal basis','Proof of proper disposal','Linked to POPIA'],
+ iso:['ISO 9001 cl 7.5.3','POPIA s14'],link:['privacy','documents'],
+ steps:['List the record types','Set the retention period and reason','Review what is past its period','Record the disposal'],
+ d:{a:'reg',cols:['Record type','Retention','Basis','Owner','Next review'],rows:[['Employee files','5 years','BCEA','HR','Mar 2027'],['Incident records','40 years','OHS','SHE','Mar 2027']],gate:null,f:['Record type','Period'],nr:['Tax records','5 years','Tax Act','Finance','Mar 2027']}},
+{id:'infosec',ch:'sec',n:'Information Security',ic:'lock',tag:'ISO/IEC 27001 controls, assets and threats under control.',
+ feat:['Statement of Applicability for every ISO/IEC 27002:2022 control','Information asset register with owner and classification','Threat intelligence briefings reviewed by a person','Controls tied to evidence'],
+ iso:['ISO/IEC 27001','ISO/IEC 27002:2022'],link:['privacy','retention','change_log'],
+ steps:['Mark each control applicable or not, and why','Register information assets and owners','Review threat briefings','Attach evidence to controls'],
+ d:{a:'ctl',tiles:[['Organisational','on'],['People','on'],['Physical','part'],['Technological','on'],['Assets','on'],['Threats','part'],['Suppliers','on'],['Incidents','on']]}},
+{id:'assets',ch:'ops',n:'Assets and Maintenance',ic:'tool',tag:'Register, inspect and certify the equipment people rely on.',
+ feat:['Asset register with owner and location','Inspection checklists','Certificates and calibration expiry','Maintenance schedules and job cards'],
+ iso:['ISO 9001 cl 7.1.3','ISO 45001 cl 8.1','General Machinery Regulations'],link:['checklists','tasks','asset_watchman'],
+ steps:['Register the asset','Set the inspection checklist','Record inspections and certificates','Raise maintenance when needed'],
+ d:{a:'tl',items:[['05 Nov','Crane inspection due'],['19 Nov','Fire extinguishers service'],['02 Dec','Calibration: torque wrench']],warn:0,toast:'Inspection reminder created as a task'}},
+{id:'asset_watchman',ch:'ops',n:'Asset Watchman',ic:'gauge',tag:'Condition and performance monitoring for your clients\' equipment.',
+ feat:['Asset condition and performance database','Components and readings tracked over time','Built for service providers monitoring client equipment','Reports to support decisions'],
+ iso:['ISO 55001 asset management'],link:['assets','tasks'],
+ steps:['Register the client asset and components','Record readings','See condition trends','Report and recommend'],
+ d:{a:'dash',tiles:[['Assets monitored','48'],['In alert','3'],['Readings this month','212'],['Availability','97%']],bars:[90,88,92,85,80,78]}},
+{id:'welding',ch:'ops',n:'Welding Management',ic:'tool',tag:'ISO 3834 welding quality, from procedure to inspection.',
+ feat:['Welding procedures and welder qualifications','Equipment and consumables','Jobs, inspections and reviews','Readiness check against ISO 3834'],
+ iso:['ISO 3834','ISO 9606','ISO 15614'],link:['assets','documents','nonconformances'],
+ steps:['Record the welding procedure','Qualify the welders','Release the job and inspect','Review against ISO 3834'],
+ d:{a:'flow',st:[['Contract review','ISO 3834'],['WPS + welders','qualified'],['Weld','monitored'],['Inspect / NDT','recorded'],['Release','approved']]}},
+{id:'security',ch:'adm',n:'Audit Trail and Account Security',ic:'lock',tag:'Know who did what and when, and protect every sign-in.',
+ feat:['Change log of creates, changes and deletes on key records','Append-only: nothing can be quietly rewritten','Authenticator app protection for sign-in','Data separated per organisation'],
+ iso:['ISO/IEC 27001 Annex A 8.15','ISO 9001 cl 7.5.3'],link:['administration','infosec'],
+ steps:['Turn on the authenticator app','Open the Change Log','Filter by record or person','Hand the trail to the auditor'],
+ d:{a:'reg',cols:['When','Who','Record','Action','Detail'],rows:[['09:14','T. Mokoena','NC-0043','Created','New nonconformance'],['09:40','P. Naidoo','NC-0043','Changed','Owner updated']],gate:null,f:['Record','Action'],nr:['10:05','S. Dlamini','NC-0043','Closed','Evidence attached']}},
+{id:'administration',ch:'adm',n:'Administration',ic:'cog',tag:'One control centre for departments, people and access.',
+ feat:['Departments and branches','People and team access by module','Naming conventions and document types','Modules switched on per client','Branding for your organisation'],
+ iso:['ISO 9001 cl 5.3','ISO 45001 cl 5.3'],link:['personnel','orgchart','security'],
+ steps:['Set up departments and branches','Add people and roles','Choose which modules each person sees','Apply your branding'],
+ d:{a:'ctl',tiles:[['Departments','on'],['People','on'],['Access','on'],['Modules','on'],['Naming','part'],['Branding','on'],['Reminders','on'],['Templates','on']]}}
+];
+
+const E = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const IC = {
+ home:'<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>', chart:'<path d="M4 20V4"/><path d="M4 20h16"/><path d="M8 16v-5M12 16V7M16 16v-8"/>', shield:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
+ alert:'<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.01"/>', flag:'<path d="M5 21V4"/><path d="M5 4h12l-2 4 2 4H5"/>', check:'<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>',
+ search:'<circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5"/>', target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>', users:'<circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14c3 0 5 1.5 5 5"/>',
+ doc:'<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>', list:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>', flow:'<rect x="3" y="3" width="7" height="5" rx="1"/><rect x="14" y="10" width="7" height="5" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/><path d="M10 5.5h2a2 2 0 012 2V10M14 12.5h-2a2 2 0 00-2 2V16"/>',
+ star:'<path d="M12 2l3 7h7l-5.5 4.5L18.5 21 12 16.5 5.5 21l2-7.5L2 9h7z"/>', org:'<rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-4h12v4"/>',
+ cap:'<path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c3 2 9 2 12 0v-5"/>', bell:'<path d="M6 16V11a6 6 0 0112 0v5l2 2H4z"/><path d="M10 21h4"/>', clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+ truck:'<path d="M2 6h12v10H2zM14 9h4l4 4v3h-8"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>', folder:'<path d="M3 6h7l2 2h9v11H3z"/>', building:'<path d="M4 21V5l8-2v18M12 9h8v12M7 9h2M7 13h2M7 17h2M15 13h2M15 17h2"/>',
+ handshake:'<path d="M2 12l5-4 4 2 3-2 6 4-6 6-3-1-2 2-4-3z"/>', scale:'<path d="M12 3v18M5 7h14M5 7l-3 7a3.5 3.5 0 007 0zM19 7l-3 7a3.5 3.5 0 007 0zM8 21h8"/>', cert:'<rect x="3" y="4" width="18" height="13" rx="1"/><circle cx="12" cy="10" r="3"/><path d="M9 17l-1 4 4-2 4 2-1-4"/>',
+ lock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/>', archive:'<rect x="3" y="4" width="18" height="5"/><path d="M5 9v11h14V9M10 13h4"/>', tool:'<path d="M14 6a4 4 0 005 5l-9 9a2.5 2.5 0 01-4-4l9-9z"/><path d="M14 6l-1-3"/>',
+ gauge:'<path d="M4 17a8 8 0 1116 0"/><path d="M12 17l4-6"/><circle cx="12" cy="17" r="1"/>', cog:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>', play:'<path d="M7 4l13 8-13 8z"/>', link:'<path d="M10 14a4 4 0 005.5 0l3-3a4 4 0 00-5.5-5.5l-1 1M14 10a4 4 0 00-5.5 0l-3 3A4 4 0 0011 18.5l1-1"/>'
+};
+const ico = n => `<span class="ico"><svg viewBox="0 0 24 24">${IC[n] || IC.check}</svg></span>`;
+const FACE = k => (window.wmAndroidSvg ? window.wmAndroidSvg(k || 'help') : '');
+const RING = `<svg viewBox="0 0 40 40" fill="none" stroke-width="2.6"><circle cx="20" cy="20" r="17" stroke="#545454"/><circle cx="20" cy="20" r="17" stroke="#A6A6A6" stroke-dasharray="60 46" transform="rotate(-40 20 20)"/><circle cx="20" cy="20" r="17" stroke="#B21616" stroke-dasharray="80 46" transform="rotate(140 20 20)"/></svg>`;
+const byId = id => MODS.find(m => m.id === id);
+const MSTYLE = i => `style="--i:${i}"`;
+
+/* ---------- mock application and demo archetypes ---------- */
+const SIDE = ['Overview','Nonconformances','Tasks','Documents','Audits','Training','Suppliers'];
+function mock(title, main){
+  return `<div class="mock"><div class="mk-bar"><i></i><i></i><i></i><span>QaSHE Watchman</span></div><div class="mk-body"><aside class="mk-side"><b>Watchman</b><div class="act">${E(title)}</div>${SIDE.map(s => `<div>${s}</div>`).join('')}</aside><section class="mk-main">${main}</section></div><div class="cur"><svg viewBox="0 0 24 24"><path d="M4 2l15 9-7 1.5L8.5 20z" fill="#1F2933" stroke="#fff" stroke-width="1.5"/></svg></div></div>`;
+}
+const SAMPLES = ['Pallet fell from racking in goods-in','Reviewed and agreed with the supervisor','Completed in full','Corrective action agreed'];
+const isNum = v => /^\d+(\.\d+)?/.test(v);
+function build(m){
+  const d = m.d, T = m.n; let main = '', sc = [];
+  if(d.a === 'reg'){
+    const th = d.cols.map(c => `<th>${E(c)}</th>`).join(''), tr = r => r.map((c, i) => `<td>${/^(Open|Investigating|Treating)$/.test(c) ? `<span class="pill o">${c}</span>` : /^(Closed|Passed|Active|Yes|Recognised)$/.test(c) ? `<span class="pill g">${c}</span>` : /^(Major|Red|Partly)$/.test(c) ? `<span class="pill r">${c}</span>` : E(c)}</td>`).join('');
+    const fields = d.f.map((f, k) => `<div class="mk-f ${d.gate ? 'gate' : ''}"><label>${E(f)}</label><div class="in" id="ff${k}"><span style="--n:${SAMPLES[k % 4].length};--d:1.1s">${SAMPLES[k % 4]}</span></div></div>`).join('');
+    const cat = d.gate ? `<div class="mk-f"><label>Category (choose first)</label><div class="in" id="fc"><em class="ph" style="color:#9AA5B1;font-style:normal">— choose a category first —</em><span style="--n:${d.gate.length};--d:.8s">${E(d.gate)}</span></div></div>` : '';
+    main = `<div class="mk-h">${E(T)}<u id="nb">+ New</u></div><table class="mk-t"><tr>${th}</tr>${d.rows.map(r => `<tr>${tr(r)}</tr>`).join('')}<tr class="nr" id="nrow">${tr(d.nr)}</tr></table>
+      <div class="mk-panel ${d.gate ? 'locked' : ''}" id="pn"><div class="mk-h" style="font-size:13px">New record</div>${cat}${fields}<span class="mk-btn" id="sv">Save</span></div><div class="toast-m" id="tm">Saved: numbered, owned and counted</div>`;
+    sc = [[0,'st',0],[600,'mv','#nb'],[1500,'ck','#nb'],[1800,'cls','#pn','open'],
+      [2700,'st',1],...(d.gate ? [[2800,'mv','#fc'],[3600,'ck','#fc'],[3800,'cls','#fc .ph','hid'],[3800,'ty','#fc span'],[4900,'uncls','#pn','locked']] : []),
+      [5200,'st',2],[5300,'mv','#ff0'],[6000,'ty','#ff0 span'],...(d.f[1] ? [[7300,'mv','#ff1'],[7700,'ty','#ff1 span']] : []),
+      [9000,'st',3],[9100,'mv','#sv'],[9900,'ck','#sv'],[10200,'uncls','#pn','open'],[10500,'cls','#nrow','show'],[10600,'cls','#tm','show']];
+    return {main: mock(T, main), sc, total: 13000};
+  }
+  if(d.a === 'dash'){
+    main = `<div class="mk-h">${E(T)}</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">${d.tiles.map((t, i) => `<div class="tile" id="t${i}"><small>${E(t[0])}</small><b id="tv${i}">${isNum(t[1]) ? '0' : E(t[1])}</b></div>`).join('')}</div><div class="bars" id="bars">${d.bars.map(() => '<i></i>').join('')}</div><div class="toast-m" id="tm">Click any tile to open the records behind it</div>`;
+    sc = [[0,'st',0],...d.tiles.map((t, i) => isNum(t[1]) ? [500 + i * 250,'num','#tv' + i, t[1]] : [500 + i * 250,'cls','#t' + i,'hit']),[2600,'st',1],[2700,'mv','#t0'],[3300,'ck','#t0'],[4800,'st',2],[4900,'bars',d.bars],[5000,'mv','#bars'],[7600,'st',3],[7700,'mv','#t1'],[8300,'ck','#t1'],[8500,'cls','#tm','show']];
+    return {main: mock(T, main), sc, total: 11000};
+  }
+  if(d.a === 'flow'){
+    const n = d.st.length; main = `<div class="mk-h">${E(T)}</div><div class="stg" style="margin-top:26px">${d.st.map((s, i) => `<div id="s${i}">${E(s[0])}<small>${E(s[1])}</small></div>`).join('')}</div><div class="toast-m" id="tm">Every step is recorded and visible</div>`;
+    sc = [[0,'st',0]]; for(let i = 0; i < n; i++){ const t = 1200 + i * 1700; sc.push([t,'mv','#s' + i],[t + 200,'ck','#s' + i],[t + 300,'cls','#s' + i,'lit']); if(i) sc.push([t + 300,'swap','#s' + (i - 1),'lit','done']); if(i < 4) sc.push([t,'st',i]); }
+    sc.push([1200 + n * 1700,'swap','#s' + (n - 1),'lit','done'],[1300 + n * 1700,'cls','#tm','show']);
+    return {main: mock(T, main), sc, total: 1800 + n * 1700};
+  }
+  if(d.a === 'chk'){
+    const n = d.items.length; main = `<div class="mk-h">${E(d.title)}</div><div style="display:flex;gap:20px"><div style="flex:1">${d.items.map((t, i) => `<div class="ck-i" id="c${i}"><span class="bx"></span>${E(t)}</div>`).join('')}</div><div style="text-align:center"><div class="ring" id="rg"><b id="rgv">0%</b></div><small style="color:#7B8794">Score</small></div></div><div class="toast-m" id="tm">${d.fail.length ? 'Failed item: action raised automatically' : 'Complete: recorded with date and signature'}</div>`;
+    sc = [[0,'st',0]]; let pass = 0; for(let i = 0; i < n; i++){ const t = 900 + i * 1300, f = d.fail.includes(i); if(!f) pass++; sc.push([t,'mv','#c' + i],[t + 500,'ck','#c' + i],[t + 600,'cls','#c' + i,f ? 'f' : 't'],[t + 700,'ring',Math.round(pass / n * 100)]); if(i === Math.floor(n * .3)) sc.push([t,'st',1]); if(i === Math.floor(n * .6)) sc.push([t,'st',2]); }
+    sc.push([900 + n * 1300,'st',3],[1000 + n * 1300,'cls','#tm','show']);
+    return {main: mock(T, main), sc, total: 1800 + n * 1300};
+  }
+  if(d.a === 'tl'){
+    main = `<div class="mk-h">${E(T)}</div>${d.items.map((t, i) => `<div class="tl-i" id="l${i}"><span class="d">${E(t[0])}</span><span>${E(t[1])}</span></div>`).join('')}<div class="toast-m" id="tm">${E(d.toast)}</div>`;
+    sc = [[0,'st',0]]; d.items.forEach((t, i) => sc.push([800 + i * 1100,'cls','#l' + i,'show'])); const e = 800 + d.items.length * 1100;
+    sc.push([e,'st',1],[e + 1200,'st',2]); if(d.warn >= 0) sc.push([e + 1300,'mv','#l' + d.warn],[e + 2100,'cls','#l' + d.warn,'warn'],[e + 2300,'cls','#tm','show']); else sc.push([e + 1500,'cls','#tm','show']);
+    sc.push([e + 3800,'st',3]);
+    return {main: mock(T, main), sc, total: e + 5200};
+  }
+  if(d.a === 'mx'){
+    const nc = d.cols.length; main = `<div class="mk-h">${E(T)}</div><div class="mx" style="grid-template-columns:110px repeat(${nc},1fr)"><div class="h"></div>${d.cols.map(c => `<div class="h">${E(c)}</div>`).join('')}${d.rows.map((r, i) => `<div class="h" style="color:#1F2933">${E(r[0])}</div>` + r[1].split(',').map((c, j) => `<div id="x${i}_${j}" data-c="${c}"></div>`).join('')).join('')}</div><div class="toast-m" id="tm">Gap found: training need raised</div>`;
+    sc = [[0,'st',0]]; let k = 0; d.rows.forEach((r, i) => r[1].split(',').forEach((c, j) => { sc.push([700 + k * 330,'fillc','#x' + i + '_' + j, c]); k++; }));
+    const e = 700 + k * 330; sc.push([e,'st',1],[e + 600,'st',2],[e + 700,'cls','#tm','show'],[e + 2200,'st',3]);
+    return {main: mock(T, main), sc, total: e + 3600};
+  }
+  if(d.a === 'docs'){
+    main = `<div class="mk-h">${E(T)}</div>${d.docs.map((t, i) => `<div class="docc" id="d${i}"><span class="ico" style="width:28px;height:28px;border-radius:8px"><svg viewBox="0 0 24 24" style="width:16px;height:16px">${IC.doc}</svg></span><div style="flex:1"><b>${E(t[1])}</b><small>${E(t[0])} · ${E(t[2])}</small></div><span class="pill" id="p${i}">Draft</span></div>`).join('')}<div class="toast-m" id="tm">Approved: visible in All Documents</div>`;
+    sc = [[0,'st',0]]; d.docs.forEach((t, i) => sc.push([700 + i * 900,'cls','#d' + i,'show'])); const e = 700 + d.docs.length * 900;
+    sc.push([e,'st',1],[e + 600,'mv','#p0'],[e + 1400,'st',2],[e + 1500,'ck','#p0'],[e + 1600,'pill','#p0','Approved'],...(d.docs[1] ? [[e + 2100,'pill','#p1','Approved']] : []),[e + 2500,'st',3],[e + 2600,'cls','#tm','show']);
+    return {main: mock(T, main), sc, total: e + 4500};
+  }
+  if(d.a === 'kan'){
+    main = `<div class="mk-h">${E(T)}</div><div class="kb">${d.cols.map(c => `<div class="kcol"><small>${E(c)}</small></div>`).join('')}${d.cards.map((c, i) => `<div class="kc" id="k${i}" style="left:calc(${c[2] * 25}% + 6px);top:${30 + i * 54}px">${E(c[0])}<small>${E(c[1])}</small></div>`).join('')}</div><div class="toast-m" id="tm">Forecast updates as deals move</div>`;
+    sc = [[0,'st',0]]; d.cards.forEach((c, i) => { const t = 1200 + i * 2200; sc.push([t,'mv','#k' + i],[t + 700,'ck','#k' + i],[t + 800,'move','#k' + i, c[3]]); if(i < 3) sc.push([t,'st',Math.min(i + 1, 3)]); });
+    const e = 1200 + d.cards.length * 2200; sc.push([e,'st',3],[e + 100,'cls','#tm','show']);
+    return {main: mock(T, main), sc, total: e + 2500};
+  }
+  if(d.a === 'org'){
+    const n = d.kids.length, W = 540; main = `<div class="mk-h">${E(T)}</div><div class="org" style="width:${W}px;margin:0 auto"><svg viewBox="0 0 ${W} 250">${d.kids.map((k, i) => { const x = (i + .5) * W / n; return `<path id="o${i}" d="M${W / 2} 62 C${W / 2} 110 ${x} 90 ${x} 138"/>`; }).join('')}</svg><div class="n" id="n0" style="left:${W / 2 - 60}px;top:8px;width:120px">${E(d.root[0])}<small>${E(d.root[1])}</small></div>${d.kids.map((k, i) => `<div class="n" id="n${i + 1}" style="left:${(i + .5) * W / n - 60}px;top:140px;width:120px">${E(k[0])}<small>${E(k[1])}</small></div>`).join('')}</div><div class="toast-m" id="tm">Letter signed electronically and filed</div>`;
+    sc = [[0,'st',0],[600,'cls','#n0','show']]; d.kids.forEach((k, i) => sc.push([1400 + i * 900,'cls','#o' + i,'show'],[1700 + i * 900,'cls','#n' + (i + 1),'show']));
+    const e = 1400 + n * 900; sc.push([e,'st',1],[e + 1200,'st',2],[e + 1300,'mv','#n1'],[e + 2100,'ck','#n1'],[e + 2300,'cls','#tm','show'],[e + 3600,'st',3]);
+    return {main: mock(T, main), sc, total: e + 5000};
+  }
+  /* ctl */
+  main = `<div class="mk-h">${E(T)}</div><div class="cg">${d.tiles.map((t, i) => `<div id="g${i}" data-s="${t[1]}">${E(t[0])}</div>`).join('')}</div><div class="toast-m" id="tm">Coverage visible at a glance</div>`;
+  sc = [[0,'st',0]]; d.tiles.forEach((t, i) => sc.push([700 + i * 500,'cls','#g' + i, t[1] === 'on' ? 'on' : 'part']));
+  const e = 700 + d.tiles.length * 500; sc.push([e,'st',1],[e + 1300,'mv','#g' + d.tiles.findIndex(t => t[1] === 'part'),],[e + 1400,'st',2],[e + 2200,'cls','#tm','show'],[e + 3400,'st',3]);
+  return {main: mock(T, main), sc, total: e + 4800};
+}
+function runDemo(root, m, spec){
+  const mock = root.querySelector('.mock'); if(!mock) return () => {};
+  const init = mock.innerHTML; let timers = [], dead = false;
+  const q = s => mock.querySelector(s), curEl = () => q('.cur');
+  const lis = [...root.querySelectorAll('.steps li')], cap = root.querySelector('.capbar');
+  const sk = () => { const w = mock.offsetWidth; return w ? mock.getBoundingClientRect().width / w : 1; };
+  const ops = {
+    st: k => { lis.forEach((l, i) => l.classList.toggle('act', i === k)); if(cap) cap.textContent = m.steps[k] || ''; },
+    mv: s => { const el = q(s); if(!el) return; const r = el.getBoundingClientRect(), b = mock.getBoundingClientRect(), k = sk(); curEl().style.transform = `translate(${(r.left - b.left + Math.min(r.width * .5, 60)) / k}px,${(r.top - b.top + r.height * .6) / k}px)`; },
+    ck: s => { const c = curEl(); c.classList.remove('ck'); void c.offsetWidth; c.classList.add('ck'); const el = q(s); if(el){ el.classList.add('hit'); setTimeout(() => el.classList.remove('hit'), 220); } },
+    cls: (s, c) => { const el = q(s); if(el) el.classList.add(c); },
+    uncls: (s, c) => { const el = q(s); if(el) el.classList.remove(c); },
+    swap: (s, a, b) => { const el = q(s); if(el){ el.classList.remove(a); el.classList.add(b); } },
+    ty: s => { const el = q(s); if(el){ el.classList.add('typed'); const p = el.closest('.in'); if(p) p.classList.add('cat'); } },
+    num: (s, v) => { const el = q(s); if(!el) return; const t = parseFloat(v), suf = String(v).replace(/^[\d.]+/, ''); let n = 0; const iv = setInterval(() => { n += Math.max(1, Math.ceil(t / 18)); if(n >= t){ n = t; clearInterval(iv); } el.textContent = Math.round(n) + suf; }, 45); timers.push(iv); },
+    bars: h => { [...mock.querySelectorAll('#bars i')].forEach((b, i) => b.style.height = (h[i] || 20) + '%'); },
+    ring: p => { const r = q('#rg'); if(r){ r.style.setProperty('--p', p); q('#rgv').textContent = p + '%'; } },
+    fillc: (s, c) => { const el = q(s); if(el){ el.classList.add(c); el.textContent = c === 'g' ? 'Competent' : c === 'a' ? 'Expiring' : 'Gap'; } },
+    pill: (s, t) => { const el = q(s); if(el){ el.textContent = t; el.classList.add('g'); } },
+    move: (s, col) => { const el = q(s); if(el) el.style.left = `calc(${col * 25}% + 6px)`; }
+  };
+  function play(){
+    if(dead) return; mock.innerHTML = init; lis.forEach(l => l.classList.remove('act')); if(cap) cap.textContent = '';
+    spec.sc.forEach(a => { timers.push(setTimeout(() => { if(!dead && ops[a[1]]) ops[a[1]](a[2], a[3]); }, a[0])); });
+    timers.push(setTimeout(play, spec.total + 2500));
+  }
+  setTimeout(() => { if(!dead) play(); }, 700);
+  return () => { dead = true; timers.forEach(t => { clearTimeout(t); clearInterval(t); }); };
+}
+
+/* ---------- slide builders ---------- */
+const H = (kick, title, sub) => `<div data-i="0" class="kick">${E(kick)}</div><h2 data-i="1">${title}</h2>${sub ? `<p data-i="2" class="lede" style="font-size:19px;margin-top:10px">${sub}</p>` : ''}`;
+const wrapS = body => body;
+const chapterOf = id => CHAPTERS.find(c => c[0] === id);
+
+function modSlides(m){
+  const ch = chapterOf(m.ch);
+  const s1 = { id:m.id, ch:m.ch, t:m.n, steps:0, html: () => `
+    <div style="display:flex;gap:18px;align-items:center" data-i="0">${ico(m.ic)}<div><div class="kick" style="margin:0">${E(ch[1])}</div></div></div>
+    <h2 data-i="1" style="margin-top:14px;font-size:44px">${E(m.n)}</h2>
+    <p data-i="2" class="lede" style="font-size:22px;margin-top:8px">${E(m.tag)}</p>
+    <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:34px;margin-top:30px">
+      <div class="grid" style="gap:11px">${m.feat.map((f, i) => `<div class="card" data-i="${3 + i}" style="padding:13px 18px;display:flex;gap:12px;align-items:flex-start"><span style="color:#FF6B5E;font-weight:800">✓</span><p style="color:#E6E9F0;font-size:16px">${E(f)}</p></div>`).join('')}</div>
+      <div>
+        <div data-i="4"><h3 style="color:#FF8A80;font-size:13px;letter-spacing:.14em;text-transform:uppercase">Supports</h3><div style="margin-top:8px">${m.iso.map(x => `<span class="chip red">${E(x)}</span>`).join('')}</div></div>
+        <div data-i="6" style="margin-top:20px"><h3 style="color:#FF8A80;font-size:13px;letter-spacing:.14em;text-transform:uppercase">Connects to</h3><div style="margin-top:8px">${m.link.map(l => { const t = byId(l); return t ? `<span class="chip go" data-act="mod" data-m="${l}">${E(t.n)}</span>` : ''; }).join('')}</div></div>
+      </div>
+    </div>` };
+  const spec = build(m);
+  const s2 = { id:m.id + '__demo', mod:m.id, ch:m.ch, t:m.n + ': see it work', steps:0, dur: spec.total + 1500, html: () => `
+    <div class="kick" data-i="0">${E(m.n)}: in practice</div>
+    <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:32px;margin-top:6px">
+      <div data-i="1"><div style="height:470px">${spec.main}</div><div class="capbar" data-i="2"></div></div>
+      <div data-i="2"><h3 style="margin-bottom:12px;font-size:17px;color:#FF8A80;letter-spacing:.1em;text-transform:uppercase">How to use it</h3><ul class="steps">${m.steps.map((s, i) => `<li><b>${i + 1}</b><span>${E(s)}</span></li>`).join('')}</ul></div>
+    </div>`, run: root => runDemo(root, m, spec) };
+  return [s1, s2];
+}
+function chapterSlide(c){
+  const mods = MODS.filter(m => m.ch === c[0]); const num = CHAPTERS.findIndex(x => x[0] === c[0]) + 1;
+  return { id:'ch_' + c[0], ch:c[0], t:'Chapter ' + num + ': ' + c[1], steps:0, html: () => `
+    <div style="display:flex;height:100%;flex-direction:column;justify-content:center">
+    <div class="kick" data-i="0">Chapter ${num} of ${CHAPTERS.length}</div><h1 data-i="1" style="font-size:56px">${E(c[1])}</h1><p class="lede" data-i="2">${E(c[2])}</p>
+    <div style="margin-top:34px" data-i="3">${mods.map((m, i) => `<span class="chip go" style="font-size:15px;padding:9px 16px" data-act="mod" data-m="${m.id}">${E(m.n)}</span>`).join('')}</div></div>` };
+}
+
+const FRAMEWORKS = [
+ ['ISO 9001','Quality','Context and interested parties, leadership, risk and opportunity, objectives, competence, documented information, supplier and customer control, audit, management review and improvement.',['risks','objectives','documents','suppliers','crm','audits','management_review','nonconformances']],
+ ['ISO 14001','Environment','Aspects and impacts, legal requirements, operational control, emergency preparedness, monitoring, internal audit and improvement.',['legal','processes','audits','nonconformances','management_review','incidents']],
+ ['ISO 45001','Health and safety','Hazards and risks, worker participation, competence, contractor control, incident investigation, legal compliance, emergency readiness and Section 19 reviews.',['risks','incidents','raga','suppliers','site_files','training','bulletins','legal']],
+ ['ISO/IEC 27001','Information security','Statement of Applicability, information assets, threat intelligence, supplier security, incident response, records retention and the audit trail.',['infosec','security','retention','privacy']],
+ ['ISO 3834','Welding quality','Welding procedures, welder qualification, equipment, consumables, jobs and inspection, with a readiness check.',['welding','assets']],
+ ['Governance and legal','Law and ethics','OHS Act, COIDA, POPIA, resolutions, delegations, conflicts and gifts, and certificates that never silently expire.',['legal','legal_certs','governance','privacy']]
+];
+function introSlides(){
+  const nm = MODS.length;
+  const title = { id:'title', ch:'intro', t:'Welcome', steps:0, html: () => `
+    <div style="position:absolute;right:90px;top:120px;width:380px;height:380px" data-i="1"><div style="position:absolute;inset:0;animation:wmzSpin 22s linear infinite">${RING.replace('stroke-width="2.6"','stroke-width="1.4"')}</div><div style="position:absolute;inset:78px">${FACE('help')}</div></div>
+    <div style="margin-top:96px;max-width:660px"><div class="kick" data-i="0">Product tutorial</div><h1 data-i="1">QaSHE <span class="hl">Watchman</span></h1>
+    <p class="lede" data-i="2" style="font-size:26px;color:#fff;margin-top:20px">One system, always watching.</p>
+    <p class="lede" data-i="3">How Watchman turns quality, safety, environment, information security and governance into one live, audit-ready system.</p>
+    <div style="margin-top:34px;display:flex;gap:14px" data-i="4"><button class="btn p" data-act="next">Start the tutorial</button><button class="btn g" data-act="index">Choose what to watch</button></div>
+    <p data-i="5" style="margin-top:22px;font-size:13px;color:#8B93A3">Use the arrow keys or click Next. Press I for the index, F for full screen, A for auto-play.</p></div>` };
+  const index = { id:'index', ch:'intro', t:'Index: choose what to watch', steps:0, html: () => `
+    <div class="kick" data-i="0">Index</div><h2 data-i="1" style="font-size:32px">Watch it all, or choose the modules that matter to you</h2>
+    <div style="display:flex;gap:10px;margin:12px 0 10px" data-i="2"><button class="btn p" data-act="all-play" style="padding:10px 20px">Play the full tutorial</button><button class="btn g" data-act="sel-play" id="selbtn" style="padding:10px 20px">Play my selection</button><button class="btn g" data-act="sel-all" style="padding:10px 16px">Select all</button><button class="btn g" data-act="sel-none" style="padding:10px 16px">Clear</button></div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px 26px;height:488px;overflow:auto;padding-right:6px" data-i="3" id="idxgrid">${CHAPTERS.map((c, ci) => `<div><h3 style="font-size:13px;color:#FF8A80;letter-spacing:.12em;text-transform:uppercase;margin:6px 0 6px;display:flex;justify-content:space-between"><span>${ci + 1}. ${E(c[1])}</span><span style="cursor:pointer;color:#C9CFDB;text-transform:none;letter-spacing:0" data-act="chap" data-c="${c[0]}">play chapter ▸</span></h3>${MODS.filter(m => m.ch === c[0]).map(m => `<span class="chip go${SEL.has(m.id) ? ' red' : ''}" data-act="pick" data-m="${m.id}" style="font-size:12px;padding:4px 9px;margin-bottom:5px">${SEL.has(m.id) ? '✓ ' : ''}${E(m.n)}</span>`).join('')}</div>`).join('')}</div>` };
+  const what = { id:'what', ch:'intro', t:'What is Watchman', steps:3, html: () => `
+    ${H('Introduction', 'One platform for every <span class="hl">SHERQ</span> requirement', 'Quality, health and safety, environment, risk, legal and information security, managed in one place, evidenced as you work.')}
+    <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-top:34px">
+     <div class="card bld" data-st="1" style="text-align:center;padding:30px"><div style="font-size:64px;font-weight:800;color:#FF6B5E">${nm}+</div><h3>Modules</h3><p>Registers, workflows, dashboards and tools that talk to each other.</p></div>
+     <div class="card bld" data-st="2" style="text-align:center;padding:30px"><div style="font-size:64px;font-weight:800;color:#FF6B5E">500+</div><h3>Ready templates</h3><p>Policies, procedures, forms, registers, checklists and flowcharts, each with a reference.</p></div>
+     <div class="card bld" data-st="3" style="text-align:center;padding:30px"><div style="font-size:64px;font-weight:800;color:#FF6B5E">1</div><h3>Source of truth</h3><p>One live record for management, staff, clients and auditors.</p></div>
+    </div>` };
+  const value = { id:'value', ch:'intro', t:'Value to your business', steps:6, html: () => {
+    const V = [['shield','Control','Every requirement, owner and due date in one place.'],['chart','Visibility','A live health score instead of a year-end surprise.'],['clock','Time saved','Templates, reminders and email links remove repeat admin.'],['check','Accountability','Every action has an owner, a date and a source.'],['search','Audit-ready','Evidence, traceability and an append-only audit trail.'],['users','Culture','Green alerts, toolbox talks and participation build ownership.']];
+    return `${H('Value to the business', 'From paperwork to <span class="hl">proof</span>')}
+    <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-top:30px">${V.map((v, i) => `<div class="card bld" data-st="${i + 1}" style="padding:22px"><div style="display:flex;gap:14px;align-items:center;margin-bottom:10px">${ico(v[0])}<h3 style="margin:0;font-size:22px">${v[1]}</h3></div><p style="font-size:16px">${v[2]}</p></div>`).join('')}</div>`; } };
+  const before = { id:'before', ch:'intro', t:'Before and after', steps:2, html: () => `
+    ${H('The difference', 'Scattered files <span class="hl">or</span> one watchful system')}
+    <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:30px;gap:26px">
+     <div class="card bld" data-st="1" style="padding:26px;border-color:rgba(255,255,255,.18)"><h3 style="color:#B8BFCC">Without a system</h3>${['Spreadsheets nobody trusts','Evidence in email and on desks','Certificates that lapse unnoticed','Audits that start with a scramble','Repeat incidents, unseen trends'].map(t => `<p style="padding:9px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:17px;color:#8B93A3">✕&nbsp;&nbsp;${t}</p>`).join('')}</div>
+     <div class="card bld" data-st="2" style="padding:26px;border-color:#FF6B5E;background:rgba(178,22,22,.14)"><h3 style="color:#FFD7D2">With Watchman</h3>${['One register per requirement, linked','Evidence attached where the work happens','Reminders 30 days before expiry','Audit packs in a few clicks','Category trends that prevent repeats'].map(t => `<p style="padding:9px 0;border-bottom:1px solid rgba(255,255,255,.1);font-size:17px;color:#fff">✓&nbsp;&nbsp;${t}</p>`).join('')}</div>
+    </div>` };
+  const iso = { id:'iso', ch:'intro', t:'Contribution to certification', steps:FRAMEWORKS.length, html: () => `
+    ${H('Contribution to ISO certification', 'Evidence for the standards you are working towards', 'Watchman supports your certification. It does not replace your certification body or competent assessment.')}
+    <div style="display:grid;grid-template-columns:230px 1fr;gap:26px;margin-top:20px">
+     <div>${FRAMEWORKS.map((f, i) => `<div class="card bld" data-st="${i + 1}" style="padding:12px 16px;margin-bottom:9px"><b style="font-size:16px">${f[0]}</b><div style="font-size:12px;color:#A9B0BE">${f[1]}</div></div>`).join('')}</div>
+     <div style="position:relative;height:420px">${FRAMEWORKS.map((f, i) => `<div class="bld ${i ? '' : ''}" data-only="${i + 1}" style="position:absolute;inset:0"><div class="card" style="padding:24px"><h3 style="font-size:26px;color:#FF6B5E">${f[0]}: ${f[1]}</h3><p style="font-size:17px;margin:10px 0 18px;color:#E6E9F0">${f[2]}</p><h3 style="font-size:13px;color:#FF8A80;letter-spacing:.14em;text-transform:uppercase">Modules that provide the evidence</h3><div style="margin-top:8px">${f[3].map(x => { const t = byId(x); return t ? `<span class="chip go red" data-act="mod" data-m="${x}">${E(t.n)}</span>` : ''; }).join('')}</div></div></div>`).join('')}</div>
+    </div>` };
+  const pdca = { id:'pdca', ch:'intro', t:'How Watchman works', steps:4, html: () => {
+    const P = [['Plan','Context, risks and opportunities, objectives, legal requirements',['risks','objectives','legal']],['Do','Operate the processes, train people, control suppliers and sites',['processes','training','suppliers']],['Check','Inspect, audit, measure and monitor',['audits','checklists','compliance']],['Act','Fix, improve and review at the top',['nonconformances','tasks','management_review']]];
+    return `${H('How it works', 'Plan, Do, Check, Act, in one <span class="hl">continuous loop</span>')}
+    <div class="grid" style="grid-template-columns:repeat(4,1fr);margin-top:34px">${P.map((p, i) => `<div class="card bld" data-st="${i + 1}" style="padding:22px;min-height:290px"><div style="font-size:48px;font-weight:800;color:#FF6B5E">${p[0][0]}</div><h3 style="font-size:24px">${p[0]}</h3><p style="margin-bottom:14px">${p[1]}</p>${p[2].map(x => `<span class="chip go" data-act="mod" data-m="${x}">${E(byId(x).n)}</span>`).join('')}</div>`).join('')}</div>
+    <p data-i="3" style="text-align:center;margin-top:22px;color:#A9B0BE;font-size:15px">What is found while you Check becomes an Opportunity for Improvement, and the improvement is reviewed at the top.</p>`; } };
+  const overview = { id:'overview_map', ch:'intro', t:'Platform overview', steps:0, html: () => `
+    ${H('Platform overview', `${nm} modules in ${CHAPTERS.length} chapters`, 'Click any module to jump straight to it.')}
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px 16px;margin-top:10px">${CHAPTERS.map((c, ci) => `<div data-i="${3 + ci}"><h3 style="font-size:11.5px;color:#FF8A80;letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px">${c[1]}</h3>${MODS.filter(m => m.ch === c[0]).map(m => `<div class="card go" data-act="mod" data-m="${m.id}" style="padding:6px 10px;margin-bottom:5px;font-size:12px;cursor:pointer;color:#E6E9F0;font-weight:700">${E(m.n)}</div>`).join('')}</div>`).join('')}</div>` };
+  const conn = { id:'connect', ch:'intro', t:'How the modules connect', steps:0, dur:16000, html: () => {
+    const N = [['Incidents',120,70,'incidents'],['RAGA',120,200,'raga'],['Audits',120,330,'audits'],['Suppliers',120,460,'suppliers'],['Nonconformances',470,265,'nonconformances'],['Tasks',790,130,'tasks'],['Risks',790,265,'risks'],['Objectives',790,400,'objectives'],['Management Review',1060,265,'management_review']];
+    const L = [[0,4],[1,4],[2,4],[3,4],[4,5],[4,6],[6,7],[5,8],[6,8],[7,8]];
+    const pos = i => [N[i][1] + 62, N[i][2] + 20];
+    return `${H('How it all connects', 'Findings become actions, and actions reach the <span class="hl">boardroom</span>')}
+    <svg viewBox="0 0 1280 520" style="position:absolute;left:0;top:150px;width:1280px;height:520px"><g stroke="#FF6B5E" stroke-width="2.2" fill="none" stroke-linecap="round">${L.map((l, i) => { const a = pos(l[0]), b = pos(l[1]); return `<path d="M${a[0]} ${a[1]} C${(a[0] + b[0]) / 2} ${a[1]} ${(a[0] + b[0]) / 2} ${b[1]} ${b[0]} ${b[1]}" stroke-dasharray="500" stroke-dashoffset="500" style="animation:wmtDraw 1.2s ${.8 + i * .45}s forwards"/>`; }).join('')}</g>
+    ${N.map((n, i) => `<g data-act="mod" data-m="${n[3]}" style="cursor:pointer;opacity:0;animation:wmtIn .6s ${.2 + i * .2}s forwards"><rect x="${n[1]}" y="${n[2]}" width="124" height="40" rx="12" fill="#1c212d" stroke="${i === 4 || i === 8 ? '#FF6B5E' : 'rgba(255,255,255,.28)'}" stroke-width="1.6"/><text x="${n[1] + 62}" y="${n[2] + 25}" text-anchor="middle" fill="#fff" font-size="12.5" font-weight="700" font-family="Arial">${n[0]}</text></g>`).join('')}</svg>
+    <style>@keyframes wmtDraw{to{stroke-dashoffset:0}}</style>
+    <p data-i="3" style="position:absolute;left:72px;right:72px;bottom:46px;color:#A9B0BE;font-size:15px;text-align:center">Incidents, alerts, audits and suppliers all feed the same improvement register. Actions, risks and objectives roll up into management review.</p>`; } };
+  const roles = { id:'trust', ch:'intro', t:'Access, security and trust', steps:4, html: () => `
+    ${H('Security and trust', 'Your data, your people, <span class="hl">your rules</span>')}
+    <div class="grid" style="grid-template-columns:repeat(2,1fr);margin-top:30px">${[['users','Role-based access','Administrators decide who sees which module.'],['lock','Authenticator app','Protect every sign-in with a second factor.'],['archive','Separated per organisation','Each client sees only its own records.'],['search','Append-only audit trail','Creates, changes and deletes on key records, with who and when.']].map((t, i) => `<div class="card bld" data-st="${i + 1}" style="display:flex;gap:16px;align-items:center;padding:22px">${ico(t[0])}<div><h3>${t[1]}</h3><p style="font-size:16px">${t[2]}</p></div></div>`).join('')}</div>` };
+  const helpers = { id:'helpers', ch:'intro', t:'Your helpers', steps:3, html: () => `
+    ${H('Help is always one click away', 'Meet your <span class="hl">Watchman helpers</span>')}
+    <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-top:34px">${[['help','Ask me for help','A friendly guide that answers how-to questions about Watchman.'],['bug','Report a bug or problem','Tell us when something is not right. Your report reaches the team.'],['chg','Request a change','Suggest an improvement. An administrator reviews every request.']].map((t, i) => `<div class="card bld" data-st="${i + 1}" style="text-align:center;padding:28px"><div style="width:120px;height:120px;margin:0 auto 14px">${FACE(t[0])}</div><h3 style="font-size:21px">${t[1]}</h3><p style="font-size:16px">${t[2]}</p></div>`).join('')}</div>` };
+  const start = { id:'start', ch:'intro', t:'Getting started', steps:5, html: () => `
+    ${H('Getting started', 'Five steps from sign-in to <span class="hl">live</span>')}
+    <ul class="steps" style="margin-top:30px">${[['Set up the organisation','Departments, branches, people and who sees which module.'],['Choose your modules','Switch on what you need today; add more as you grow.'],['Apply templates','Policies, procedures, forms, registers and checklists from the library.'],['Load your registers','Capture or import what you already have: suppliers, customers, assets, people.'],['Switch on reminders and invite the team','Expiries, due actions and reviews now watch themselves.']].map((t, i) => `<li class="bld" data-st="${i + 1}" style="font-size:20px"><b>${i + 1}</b><span><strong style="color:#fff">${t[0]}.</strong> ${t[1]}</span></li>`).join('')}</ul>` };
+  const close = { id:'close', ch:'end', t:'Thank you', steps:0, html: () => `
+    <div style="display:flex;height:100%;flex-direction:column;justify-content:center;max-width:760px"><div style="width:120px;height:120px" data-i="0">${FACE('help')}</div>
+    <h1 data-i="1" style="margin-top:16px">Ready when <span class="hl">you</span> are</h1><p class="lede" data-i="2">QaSHE Watchman keeps watch so your people can get on with the work.</p>
+    <p data-i="3" style="margin-top:12px;color:#A9B0BE;font-size:16px">Speak to your Group QaSHE CG consultant to set up your organisation, or revisit any chapter from the index.</p>
+    <div style="margin-top:30px;display:flex;gap:14px" data-i="4"><button class="btn p" data-act="index">Back to the index</button><button class="btn g" data-act="restart">Watch again</button></div></div>` };
+  return { title, index, what, value, before, iso, pdca, overview, conn, roles, helpers, start, close };
+}
+const SEL = new Set();
+function playlist(mode){
+  const I = introSlides(); let L;
+  if(mode === 'full'){
+    L = [I.title, I.index, I.what, I.value, I.before, I.iso, I.pdca, I.overview, I.conn];
+    CHAPTERS.forEach(c => { L.push(chapterSlide(c)); MODS.filter(m => m.ch === c[0]).forEach(m => L.push(...modSlides(m))); });
+    L.push(I.roles, I.helpers, I.start, I.close);
+  } else {
+    L = [I.title, I.index, I.what, I.iso];
+    CHAPTERS.forEach(c => { const ms = MODS.filter(m => m.ch === c[0] && (mode.has(m.id))); if(!ms.length) return; L.push(chapterSlide(c)); ms.forEach(m => L.push(...modSlides(m))); });
+    L.push(I.start, I.close);
+  }
+  return L;
+}
+/* ---------- engine ---------- */
+let T = null;
+function open(o){
+  o = o || {}; if(T) T.close();
+  const emb = !!o.embedded, root = document.createElement('div'); root.className = 'wmt' + (emb ? ' emb' : ''); root.setAttribute('role', 'dialog'); root.setAttribute('aria-label', 'QaSHE Watchman tutorial');
+  root.innerHTML = `<div class="wmt-top"><span style="width:26px;height:26px;display:inline-block">${RING}</span><span class="ttl"><b>QaSHE Watchman</b> · Tutorial · <span id="wmt-ch"></span></span><span class="sp"></span><button class="wmt-ib" id="wmt-ix" title="Index (I)">☰ Index</button><button class="wmt-ib" id="wmt-ap" title="Auto-play (A)">▶ Auto-play</button><button class="wmt-ib" id="wmt-fs" title="Full screen (F)">⛶ Present</button>${emb ? '' : '<button class="wmt-ib" id="wmt-x" title="Close (Esc)">✕ Close</button>'}</div>
+  <div class="wmt-view" id="wmt-view"><div class="wmt-stage" id="wmt-stage"></div></div><div class="wmt-drawer" id="wmt-dr"></div>
+  <div class="wmt-bot"><button class="wmt-ib" id="wmt-pv">◀ Back</button><div class="wmt-prog" id="wmt-pg"><i></i></div><span class="wmt-cnt" id="wmt-ct"></span><button class="wmt-ib on" id="wmt-nx">Next ▶</button></div>`;
+  (o.host || document.body).appendChild(root);
+  const $ = s => root.querySelector(s), stage = $('#wmt-stage'), view = $('#wmt-view');
+  let PL = playlist('full'), cur = -1, step = 0, cleanup = null, auto = false, aT = null, mode = 'full';
+  const fit = () => { const w = view.clientWidth, h = view.clientHeight, k = Math.min(w / 1280, h / 720); stage.style.transform = `scale(${k}) translate(-50%,-50%)`; stage.style.left = '50%'; stage.style.top = '50%'; stage.style.transformOrigin = '0 0'; stage.style.marginLeft = '0'; stage.style.transform = `translate(${(w - 1280 * k) / 2}px,${(h - 720 * k) / 2}px) scale(${k})`; stage.style.left = '0'; stage.style.top = '0'; };
+  const ro = new ResizeObserver(fit); ro.observe(view); fit();
+  function applyStep(el, n){ el.querySelectorAll('.bld').forEach(b => { const s = +b.dataset.st; if(s) b.classList.toggle('show', s <= n); }); el.querySelectorAll('[data-only]').forEach(b => { b.style.opacity = (+b.dataset.only === n) ? 1 : 0; b.style.transform = (+b.dataset.only === n) ? 'none' : 'translateY(12px)'; b.style.pointerEvents = (+b.dataset.only === n) ? 'auto' : 'none'; b.classList.add('show'); }); }
+  function go(i, st){
+    if(i < 0 || i >= PL.length) return; if(cleanup){ cleanup(); cleanup = null; }
+    cur = i; const s = PL[i]; step = st || 0; stage.innerHTML = '';
+    const el = document.createElement('div'); el.className = 'wmt-slide'; el.innerHTML = s.html(); stage.appendChild(el);
+    applyStep(el, step); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('on')));
+    if(s.run) cleanup = s.run(el);
+    const c = chapterOf(s.ch); $('#wmt-ch').textContent = s.t || (c ? c[1] : ''); $('#wmt-ct').textContent = (i + 1) + ' / ' + PL.length; $('#wmt-pg i').style.width = ((i + 1) / PL.length * 100) + '%';
+    root.querySelectorAll('.wmt-drawer a').forEach(a => a.classList.toggle('cur', a.dataset.id === s.id));
+    $('#wmt-nx').textContent = i === PL.length - 1 ? 'Finish' : 'Next ▶';
+    if(auto) schedule();
+  }
+  const max = () => PL[cur].steps || 0;
+  function next(){ const el = stage.querySelector('.wmt-slide'); if(step < max()){ step++; applyStep(el, step); if(auto) schedule(); } else if(cur < PL.length - 1) go(cur + 1); else { auto = false; setAuto(); } }
+  function prev(){ const el = stage.querySelector('.wmt-slide'); if(step > 0){ step--; applyStep(el, step); } else if(cur > 0) go(cur - 1, PL[cur - 1].steps || 0); }
+  function schedule(){ clearTimeout(aT); const s = PL[cur]; const wait = s.dur || (s.steps ? 2600 : 6500); aT = setTimeout(() => { if(auto) next(); }, wait); }
+  function setAuto(){ $('#wmt-ap').classList.toggle('on', auto); $('#wmt-ap').textContent = auto ? '❚❚ Pause' : '▶ Auto-play'; clearTimeout(aT); if(auto) schedule(); }
+  function drawer(){ let h = ''; let last = ''; PL.forEach((s, i) => { const c = chapterOf(s.ch); const g = s.ch === 'intro' ? 'Introduction' : s.ch === 'end' ? 'Close' : (c ? c[1] : ''); if(g !== last){ h += `<h4>${E(g)}</h4>`; last = g; } h += `<a data-id="${E(s.id)}" data-i="${i}">${E(s.t)}</a>`; }); $('#wmt-dr').innerHTML = h; }
+  function setList(m){ mode = m; PL = playlist(m); drawer(); }
+  function jumpTo(id){ let i = PL.findIndex(s => s.id === id); if(i < 0){ setList('full'); i = PL.findIndex(s => s.id === id); } if(i >= 0) go(i); }
+  function close(){ if(cleanup) cleanup(); clearTimeout(aT); ro.disconnect(); document.removeEventListener('keydown', key, true); if(document.fullscreenElement) document.exitFullscreen().catch(() => {}); root.remove(); T = null; if(o.onClose) o.onClose(); }
+  function fs(){ if(document.fullscreenElement) document.exitFullscreen(); else (emb ? document.documentElement : root).requestFullscreen && (emb ? document.documentElement : root).requestFullscreen().catch(() => {}); }
+  function key(e){
+    if(!root.isConnected) return; const k = e.key;
+    if(['ArrowRight','PageDown',' ','Enter'].includes(k) && !(e.target && /BUTTON|INPUT/.test(e.target.tagName) && k === 'Enter')){ e.preventDefault(); e.stopPropagation(); next(); }
+    else if(['ArrowLeft','PageUp','Backspace'].includes(k)){ e.preventDefault(); e.stopPropagation(); prev(); }
+    else if(k === 'Home'){ go(0); } else if(k === 'End'){ go(PL.length - 1); }
+    else if(k === 'Escape'){ if(document.fullscreenElement) return; if($('#wmt-dr').classList.contains('open')) $('#wmt-dr').classList.remove('open'); else if(!emb) close(); e.stopPropagation(); }
+    else if(/^[iI]$/.test(k)) $('#wmt-ix').click(); else if(/^[fF]$/.test(k)) fs(); else if(/^[aA]$/.test(k)) $('#wmt-ap').click();
+  }
+  document.addEventListener('keydown', key, true);
+  $('#wmt-nx').onclick = next; $('#wmt-pv').onclick = prev; $('#wmt-fs').onclick = fs; if($('#wmt-x')) $('#wmt-x').onclick = close;
+  $('#wmt-ap').onclick = () => { auto = !auto; setAuto(); };
+  $('#wmt-ix').onclick = () => $('#wmt-dr').classList.toggle('open');
+  $('#wmt-pg').onclick = e => { const r = e.currentTarget.getBoundingClientRect(); go(Math.max(0, Math.min(PL.length - 1, Math.floor((e.clientX - r.left) / r.width * PL.length)))); };
+  $('#wmt-dr').onclick = e => { const a = e.target.closest('a'); if(a){ go(+a.dataset.i); $('#wmt-dr').classList.remove('open'); } };
+  stage.addEventListener('click', e => {
+    const a = e.target.closest('[data-act]'); if(!a) return; const act = a.dataset.act;
+    if(act === 'next') next(); else if(act === 'index') jumpTo('index'); else if(act === 'restart'){ setList('full'); go(0); }
+    else if(act === 'mod') jumpTo(a.dataset.m);
+    else if(act === 'all-play'){ setList('full'); jumpTo('what'); }
+    else if(act === 'pick'){ const id = a.dataset.m; SEL.has(id) ? SEL.delete(id) : SEL.add(id); const sc = stage.querySelector('[data-i="3"]').scrollTop; go(cur); stage.querySelector('[data-i="3"]').scrollTop = sc; }
+    else if(act === 'sel-all'){ MODS.forEach(m => SEL.add(m.id)); go(cur); } else if(act === 'sel-none'){ SEL.clear(); go(cur); }
+    else if(act === 'sel-play'){ if(!SEL.size){ SEL.add('nonconformances'); } setList(new Set(SEL)); jumpTo('what'); }
+    else if(act === 'chap'){ const c = a.dataset.c; setList(new Set(MODS.filter(m => m.ch === c).map(m => m.id))); jumpTo('ch_' + c); }
+  });
+  let tx = null; stage.addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive:true }); stage.addEventListener('touchend', e => { if(tx == null) return; const dx = e.changedTouches[0].clientX - tx; tx = null; if(Math.abs(dx) > 50){ dx < 0 ? next() : prev(); } }, { passive:true });
+  drawer(); let start = 0;
+  if(o.module){ const id = o.module; start = Math.max(0, PL.findIndex(s => s.id === id)); }
+  go(start);
+  T = { close, go, next, prev, jumpTo, el: root };
+  return T;
+}
+window.WMTutorial = { open, current: () => T, modules: () => MODS.map(m => m.id) };
+})();
+
+(function(){
+  function ensure(){
+    const anchor = document.getElementById('wm-chg-btn') || document.getElementById('report-problem-fab');
+    let b = document.getElementById('wm-tut-btn');
+    if(!anchor && !b) return;
+    if(!b){
+      b = document.createElement('button'); b.id = 'wm-tut-btn'; b.className = 'wm-tut-btn'; b.title = 'Watch the QaSHE Watchman tutorial';
+      b.innerHTML = '<span class="ico" data-wmx="tut"></span><span class="lbl">Tutorial</span>';
+      b.onclick = () => WMTutorial.open();
+      anchor.parentNode.insertBefore(b, anchor);
+    }
+    b.style.display = (typeof STATE !== 'undefined' && STATE.user) ? 'inline-flex' : 'none';
+  }
+  ensure(); setInterval(ensure, 1500);
+  window.openTutorial = m => WMTutorial.open({ module:m || null });
+  document.addEventListener('DOMContentLoaded', () => {
+    const q = new URLSearchParams(location.search);
+    if(q.has('tutorial')) WMTutorial.open({ module:q.get('tutorial') || null });
+  });
+})();
+
 </script>
 </body>
 </html>
