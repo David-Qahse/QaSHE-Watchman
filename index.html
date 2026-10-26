@@ -3384,6 +3384,7 @@ const RENDERERS = {
       <div class="form-grid">
 
         ${renderTitleCategoryPicker('f', '')}
+        <div class="field"><label>Your own reference number (optional)</label><input id="f-client-ref" placeholder="e.g. 20260802" maxlength="60"></div>
         <div class="field span3">
           <label>Description</label>
           <p style="font-size:11.5px; color:var(--text-faint); margin:-2px 0 6px;">Complete a full description of what occurred including date, time, whoever was involved, and references to any associated documentation for traceability.</p>
@@ -4545,6 +4546,7 @@ window.submitNC = async function(){
     estimated_cost: costVal ? parseFloat(costVal) : null,
     supplier_impact_severity: severityVal ? parseInt(severityVal, 10) : null,
   };
+  { const cr = ((document.getElementById('f-client-ref')||{}).value||'').trim(); if(cr) payload.client_ref = cr; }
   const { error } = await STATE.supabase.from('nonconformances').insert(payload);
   if(error){ toast('Could not raise nonconformance: ' + error.message, 'error'); return; }
   if(payload.supplier_id){ // prompt a supplier re-assessment (the database trigger does the same for imports and edits)
@@ -4703,6 +4705,7 @@ async function openNCDetail(id){
           <option value="critical" ${n.severity==='critical'?'selected':''}>Critical</option>
         </select></div></div>
         <div class="dm-item"><div class="l">Owner</div><div class="v"><select id="d-owner">${memberOptions(n.owner_id)}</select></div></div>
+        <div class="dm-item"><div class="l">Your reference</div><div class="v"><input id="d-client-ref" value="${escapeHtml(n.client_ref||'')}" placeholder="e.g. 20260802" maxlength="60" style="font-size:12.5px; padding:3px 6px; width:130px;"></div></div>
         <div class="dm-item"><div class="l">Raised</div><div class="v">${fmtDate(n.raised_date)} by ${memberName(n.raised_by)}</div></div>
         <div class="dm-item"><div class="l">Target close</div><div class="v"><input type="date" id="d-target-close" value="${n.target_close_date||''}" style="font-size:12.5px; padding:3px 6px;"></div></div>
       </div>
@@ -5377,6 +5380,7 @@ window.saveNCDetail = async function(id){
     preventive_action: document.getElementById('d-preventive').value.trim(),
     preventive_action_effectiveness: document.getElementById('d-effectiveness').value.trim(),
     is_repeated: isRepeated,
+    ...(('client_ref' in (ncById(id)||{})) ? { client_ref: ((document.getElementById('d-client-ref')||{}).value||'').trim() || null } : {}),
     repeated_count: isRepeated ? (parseInt(document.getElementById('d-repeated-count').value, 10) || null) : null,
     could_identify_earlier: identifyEarlierVal === '' ? null : identifyEarlierVal === 'true',
     earlier_stage: identifyEarlierVal === 'true' ? document.getElementById('d-earlier-stage').value.trim() : null,
@@ -23421,7 +23425,7 @@ function getModuleExportConfig(moduleKey){
   const orgSlug = (STATE.org.name || 'export').replace(/[^a-zA-Z0-9]+/g,'-').toLowerCase();
   const configs = {
     nonconformances: { rows: STATE.ncs, filename: `nonconformances-${orgSlug}.xlsx`, columns: [
-      {header:'Ref', get:r=>r.ref_code}, {header:'Type', get:r=>r.title}, {header:'Description', get:r=>r.description},
+      {header:'Ref', get:r=>r.ref_code}, {header:'Client Ref', get:r=>r.client_ref||''}, {header:'Type', get:r=>r.title}, {header:'Description', get:r=>r.description},
       {header:'Immediate Action Taken', get:r=>r.immediate_action_taken}, {header:'Contact Details', get:r=>r.contact_details},
       {header:'Severity', get:r=>r.severity},
       {header:'Status', get:r=>r.status}, {header:'Raised Date', get:r=>r.raised_date}, {header:'Target Close', get:r=>r.target_close_date},
@@ -41036,6 +41040,48 @@ window.WMTutorial = { open, script: () => playlist('full').map(s => ({ id:s.id, 
     const sv=d.querySelector('.wm-hf-svg'); try{ sv.innerHTML=window.wmAndroidSvg('help'); sv.dataset.wmz='help'; }catch(e){}
   }
   put();
+})();
+
+/* ===== b66: header fits every screen width (buttons scale down, the sign-out menu stays on screen) ===== */
+(function(){
+  const css=document.createElement('style'); css.id='b66-css';
+  css.textContent=`
+  .main{min-width:0}
+  .topbar{gap:14px;padding-left:22px;padding-right:22px}
+  .topbar-left{flex:1 1 0;min-width:0}
+  .topbar-left>div:nth-child(2){min-width:0}
+  #mod-title,#mod-sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+  .topbar>div:last-child{flex:0 0 auto;gap:8px!important}
+  .toolbar{flex-wrap:wrap;gap:8px}
+  @media(max-width:1560px){.account-hint{display:none!important}}
+  @media(max-width:1440px){
+    .wm-tut-btn,.wm-chg-btn,.wm-bug-btn{padding-left:6px!important;padding-right:12px!important;font-size:12px!important}
+    .wm-tut-btn .lbl,.wm-chg-btn .lbl,.wm-bug-btn .wm-lbl{font-size:12px!important}
+    .topbar>div:last-child{gap:6px!important}
+  }
+  @media(max-width:1320px){
+    .wm-tut-btn .lbl,.wm-chg-btn .lbl,.wm-bug-btn .wm-lbl{display:none!important}
+    .wm-tut-btn,.wm-chg-btn,.wm-bug-btn{padding:4px!important}
+  }
+  @media(max-width:900px){.topbar{padding:12px 14px}.topbar-left{gap:10px!important}.client-logo-slot{display:none}}
+  `;
+  document.head.appendChild(css);
+})();
+
+/* ===== b66b: Client reference column next to the nonconformance number ===== */
+(function(){
+  function addCol(){
+    const t=document.querySelector('#nc-table-wrap table'); if(!t) return;
+    const hr=t.querySelector('tr'); if(!hr||hr.querySelector('.ncx-cref')) return;
+    const th=document.createElement('th'); th.className='ncx-cref'; th.textContent='Client ref'; hr.children[0].after(th);
+    t.querySelectorAll('tr.clickable').forEach(tr=>{
+      const m=(tr.getAttribute('onclick')||'').match(/'([^']+)'/); const n=m&&ncById(m[1]);
+      const td=document.createElement('td'); td.className='mono-cell ncx-cref'; td.textContent=(n&&n.client_ref)||''; td.style.whiteSpace='nowrap';
+      tr.children[0].after(td);
+    });
+  }
+  const _r=renderNCTable;
+  renderNCTable=window.renderNCTable=function(){ const r=_r.apply(this,arguments); try{ addCol(); }catch(e){} return r; };
 })();
 </script>
 </body>
