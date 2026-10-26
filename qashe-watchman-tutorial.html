@@ -160,7 +160,19 @@
 .wm-tut-btn .ico svg.wmz{width:30px !important;height:30px !important}
 .wm-tut-btn .ico{width:30px;height:30px;border-radius:50%;background:rgba(0,0,0,.22);display:flex;align-items:center;justify-content:center}
 @media (max-width:640px){.wm-tut-btn .lbl{display:none}.wm-tut-btn{padding:4px}}
-.wmt .hid{display:none}</style></head>
+.wmt .hid{display:none}
+.wmt-vp{position:absolute;right:12px;top:52px;width:290px;background:#0F131B;border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:14px;z-index:8;display:none;font-size:13px;color:#C9CFDB}
+.wmt-vp.open{display:block}
+.wmt-vp b{display:block;color:#fff;margin-bottom:8px;font-size:14px}
+.wmt-vp label{display:block;margin-bottom:10px;font-weight:700;font-size:12px}
+.wmt-vp select,.wmt-vp input[type=range]{width:100%;margin-top:4px;background:#1B2030;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:7px;padding:5px;font-family:inherit}
+.wmt-vp label.ck{display:flex;align-items:center;gap:8px}
+.wmt-vp small{display:block;margin-top:10px;color:#8B93A3;line-height:1.35}
+.wmt-cap{position:absolute;left:50%;transform:translateX(-50%);bottom:62px;max-width:86%;background:rgba(5,7,11,.82);color:#fff;font-size:19px;line-height:1.4;padding:10px 20px;border-radius:12px;z-index:7;text-align:center;opacity:0;transition:opacity .25s;pointer-events:none}
+.wmt.vid .wmt-top,.wmt.vid .wmt-bot{display:none}
+.wmt.vid .wmt-view{top:0;bottom:0}
+.wmt.vid .wmt-cap{bottom:34px;font-size:22px}
+@media (max-width:760px){.wmt-top .ttl{display:none}.wmt-cap{font-size:15px}}</style></head>
 <body><div id="host"></div>
 <script>
 /* ===== b63a: Watchman face mascot (ring, no antenna): smile = Ask me, grin = Report a bug, neutral = Request a change ===== */
@@ -520,14 +532,15 @@ function build(m){
   const e = 700 + d.tiles.length * 500; sc.push([e,'st',1],[e + 1300,'mv','#g' + d.tiles.findIndex(t => t[1] === 'part'),],[e + 1400,'st',2],[e + 2200,'cls','#tm','show'],[e + 3400,'st',3]);
   return {main: mock(T, main), sc, total: e + 4800};
 }
-function runDemo(root, m, spec){
+function runDemo(root, m, spec, cb){
+  cb = cb || {}; let loopNo = -1;
   const mock = root.querySelector('.mock'); if(!mock) return () => {};
   const init = mock.innerHTML; let timers = [], dead = false;
   const q = s => mock.querySelector(s), curEl = () => q('.cur');
   const lis = [...root.querySelectorAll('.steps li')], cap = root.querySelector('.capbar');
   const sk = () => { const w = mock.offsetWidth; return w ? mock.getBoundingClientRect().width / w : 1; };
   const ops = {
-    st: k => { lis.forEach((l, i) => l.classList.toggle('act', i === k)); if(cap) cap.textContent = m.steps[k] || ''; },
+    st: k => { if(cb.beat) cb.beat(k, loopNo); lis.forEach((l, i) => l.classList.toggle('act', i === k)); if(cap) cap.textContent = m.steps[k] || ''; },
     mv: s => { const el = q(s); if(!el) return; const r = el.getBoundingClientRect(), b = mock.getBoundingClientRect(), k = sk(); curEl().style.transform = `translate(${(r.left - b.left + Math.min(r.width * .5, 60)) / k}px,${(r.top - b.top + r.height * .6) / k}px)`; },
     ck: s => { const c = curEl(); c.classList.remove('ck'); void c.offsetWidth; c.classList.add('ck'); const el = q(s); if(el){ el.classList.add('hit'); setTimeout(() => el.classList.remove('hit'), 220); } },
     cls: (s, c) => { const el = q(s); if(el) el.classList.add(c); },
@@ -542,8 +555,9 @@ function runDemo(root, m, spec){
     move: (s, col) => { const el = q(s); if(el) el.style.left = `calc(${col * 25}% + 6px)`; }
   };
   function play(){
-    if(dead) return; mock.innerHTML = init; lis.forEach(l => l.classList.remove('act')); if(cap) cap.textContent = '';
+    if(dead) return; loopNo++; mock.innerHTML = init; lis.forEach(l => l.classList.remove('act')); if(cap) cap.textContent = '';
     spec.sc.forEach(a => { timers.push(setTimeout(() => { if(!dead && ops[a[1]]) ops[a[1]](a[2], a[3]); }, a[0])); });
+    timers.push(setTimeout(() => { if(cb.done) cb.done(loopNo); }, spec.total));
     timers.push(setTimeout(play, spec.total + 2500));
   }
   setTimeout(() => { if(!dead) play(); }, 700);
@@ -557,7 +571,8 @@ const chapterOf = id => CHAPTERS.find(c => c[0] === id);
 
 function modSlides(m){
   const ch = chapterOf(m.ch);
-  const s1 = { id:m.id, ch:m.ch, t:m.n, steps:0, html: () => `
+  const s1 = { id:m.id, ch:m.ch, t:m.n, steps:0, narr: [m.n + '. ' + m.tag, ...m.feat.map(f => f.replace(/\.$/, '') + '.'), 'It supports ' + m.iso.join(', ') + '.', 'It connects to ' + m.link.map(l => (byId(l) || {n:l}).n).join(', ') + '.'],
+    html: () => `
     <div style="display:flex;gap:18px;align-items:center" data-i="0">${ico(m.ic)}<div><div class="kick" style="margin:0">${E(ch[1])}</div></div></div>
     <h2 data-i="1" style="margin-top:14px;font-size:44px">${E(m.n)}</h2>
     <p data-i="2" class="lede" style="font-size:22px;margin-top:8px">${E(m.tag)}</p>
@@ -569,17 +584,17 @@ function modSlides(m){
       </div>
     </div>` };
   const spec = build(m);
-  const s2 = { id:m.id + '__demo', mod:m.id, ch:m.ch, t:m.n + ': see it work', steps:0, dur: spec.total + 1500, html: () => `
+  const s2 = { id:m.id + '__demo', mod:m.id, ch:m.ch, t:m.n + ': see it work', steps:0, dur: spec.total + 1500, narr: ['Let us see ' + m.n + ' in practice.'], beats: m.steps.map((t, i) => ['First, ', 'Next, ', 'Then, ', 'Finally, '][i] + (/^[A-Z][a-z]/.test(t) ? t[0].toLowerCase() + t.slice(1) : t) + '.'), html: () => `
     <div class="kick" data-i="0">${E(m.n)}: in practice</div>
     <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:32px;margin-top:6px">
       <div data-i="1"><div style="height:470px">${spec.main}</div><div class="capbar" data-i="2"></div></div>
       <div data-i="2"><h3 style="margin-bottom:12px;font-size:17px;color:#FF8A80;letter-spacing:.1em;text-transform:uppercase">How to use it</h3><ul class="steps">${m.steps.map((s, i) => `<li><b>${i + 1}</b><span>${E(s)}</span></li>`).join('')}</ul></div>
-    </div>`, run: root => runDemo(root, m, spec) };
+    </div>`, run: (root, cb) => runDemo(root, m, spec, cb) };
   return [s1, s2];
 }
 function chapterSlide(c){
   const mods = MODS.filter(m => m.ch === c[0]); const num = CHAPTERS.findIndex(x => x[0] === c[0]) + 1;
-  return { id:'ch_' + c[0], ch:c[0], t:'Chapter ' + num + ': ' + c[1], steps:0, html: () => `
+  return { id:'ch_' + c[0], ch:c[0], t:'Chapter ' + num + ': ' + c[1], steps:0, narr:['Chapter ' + num + ': ' + c[1] + '. ' + c[2] + '.', 'In this chapter: ' + mods.map(m => m.n).join(', ') + '.'], html: () => `
     <div style="display:flex;height:100%;flex-direction:column;justify-content:center">
     <div class="kick" data-i="0">Chapter ${num} of ${CHAPTERS.length}</div><h1 data-i="1" style="font-size:56px">${E(c[1])}</h1><p class="lede" data-i="2">${E(c[2])}</p>
     <div style="margin-top:34px" data-i="3">${mods.map((m, i) => `<span class="chip go" style="font-size:15px;padding:9px 16px" data-act="mod" data-m="${m.id}">${E(m.n)}</span>`).join('')}</div></div>` };
@@ -663,6 +678,21 @@ function introSlides(){
   return { title, index, what, value, before, iso, pdca, overview, conn, roles, helpers, start, close };
 }
 const SEL = new Set();
+const NARR = {
+ title:['Welcome to the QaSHE Watchman tutorial. One system, always watching.','In the next few minutes you will see how Watchman turns quality, safety, environment, information security and governance into one live, audit ready system.','You can watch everything from start to finish, or use the index to choose only the modules that matter to you.'],
+ index:['This is the index. You can play the full tutorial, play a single chapter, or tick the modules you are interested in and play only those.','Open the index at any time, using the button at the top, to jump to a different part of the tutorial.'],
+ what:['Watchman is one platform for every SHERQ requirement: quality, health and safety, environment, risk, legal and information security.','It brings together dozens of modules that talk to each other.','More than five hundred ready made templates, each with a reference number, so you never start from a blank page.','And one source of truth for management, staff, clients and auditors.'],
+ value:['What does this mean for the business?','Control. Every requirement, owner and due date in one place.','Visibility. A live health score instead of a year end surprise.','Time saved. Templates, reminders and email links remove repeat admin.','Accountability. Every action has an owner, a date and a source.','Audit readiness. Evidence, traceability and an append only audit trail.','And culture. Green alerts, toolbox talks and participation build ownership.'],
+ before:['The difference is simple.','Without a system, you have spreadsheets nobody trusts, evidence in email and on desks, certificates that lapse unnoticed, audits that start with a scramble, and repeat incidents with unseen trends.','With Watchman, every register is linked, evidence is attached where the work happens, reminders arrive thirty days before expiry, audit packs take a few clicks, and category trends prevent repeats.'],
+ iso:['Watchman supports your certification. It does not replace your certification body or competent assessment.','ISO 9001, quality. Context, leadership, risk and opportunity, objectives, competence, documented information, supplier and customer control, audit, management review and improvement.','ISO 14001, environment. Aspects and impacts, legal requirements, operational control, emergency preparedness, monitoring and internal audit.','ISO 45001, health and safety. Hazards and risks, worker participation, competence, contractor control, incident investigation, legal compliance and Section 19 reviews.','ISO IEC 27001, information security. The Statement of Applicability, information assets, threat intelligence, incident response, records retention and the audit trail.','ISO 3834, welding quality. Procedures, welder qualification, equipment, consumables, jobs and inspection.','And governance and legal. The OHS Act, COIDA, POPIA, resolutions, delegations, conflicts and gifts, and certificates that never silently expire.'],
+ pdca:['Watchman works as one continuous loop.','Plan. Context, risks and opportunities, objectives and legal requirements.','Do. Operate the processes, train people, and control suppliers and sites.','Check. Inspect, audit, measure and monitor.','Act. Fix, improve and review at the top. What is found while you check becomes an Opportunity for Improvement.'],
+ overview_map:['Here is the whole platform: ten chapters and dozens of modules. Click any module to jump straight to it.'],
+ connect:['This is how the modules connect. Incidents, alerts, audits and suppliers all feed the same improvement register. Actions, risks and objectives then roll up into management review.'],
+ trust:['Security and trust.','Role based access: administrators decide who sees which module.','An authenticator app protects every sign in.','Each organisation is separated: clients see only their own records.','And an append only audit trail records every create, change and delete on key records, with who and when.'],
+ helpers:['Help is always one click away.','Ask me for help answers how to questions about Watchman.','Report a bug or problem sends your report straight to the team.','And Request a change lets you suggest improvements, which an administrator reviews.'],
+ start:['Getting started takes five steps.','Set up the organisation: departments, branches, people and who sees which module.','Choose your modules. Switch on what you need today and add more as you grow.','Apply templates: policies, procedures, forms, registers and checklists from the library.','Load your registers. Capture or import what you already have.','Finally, switch on reminders and invite the team. Expiries, due actions and reviews now watch themselves.'],
+ close:['Thank you. QaSHE Watchman keeps watch so your people can get on with the work.','Speak to your Group QaSHE CG consultant to set up your organisation, or revisit any chapter from the index.']
+};
 function playlist(mode){
   const I = introSlides(); let L;
   if(mode === 'full'){
@@ -674,6 +704,7 @@ function playlist(mode){
     CHAPTERS.forEach(c => { const ms = MODS.filter(m => m.ch === c[0] && (mode.has(m.id))); if(!ms.length) return; L.push(chapterSlide(c)); ms.forEach(m => L.push(...modSlides(m))); });
     L.push(I.start, I.close);
   }
+  L.forEach(s => { if(!s.narr && NARR[s.id]) s.narr = NARR[s.id]; if(s.id === 'index') s.hold = true; });
   return L;
 }
 /* ---------- engine ---------- */
@@ -681,8 +712,8 @@ let T = null;
 function open(o){
   o = o || {}; if(T) T.close();
   const emb = !!o.embedded, root = document.createElement('div'); root.className = 'wmt' + (emb ? ' emb' : ''); root.setAttribute('role', 'dialog'); root.setAttribute('aria-label', 'QaSHE Watchman tutorial');
-  root.innerHTML = `<div class="wmt-top"><span style="width:26px;height:26px;display:inline-block">${RING}</span><span class="ttl"><b>QaSHE Watchman</b> · Tutorial · <span id="wmt-ch"></span></span><span class="sp"></span><button class="wmt-ib" id="wmt-ix" title="Index (I)">☰ Index</button><button class="wmt-ib" id="wmt-ap" title="Auto-play (A)">▶ Auto-play</button><button class="wmt-ib" id="wmt-fs" title="Full screen (F)">⛶ Present</button>${emb ? '' : '<button class="wmt-ib" id="wmt-x" title="Close (Esc)">✕ Close</button>'}</div>
-  <div class="wmt-view" id="wmt-view"><div class="wmt-stage" id="wmt-stage"></div></div><div class="wmt-drawer" id="wmt-dr"></div>
+  root.innerHTML = `<div class="wmt-top"><span style="width:26px;height:26px;display:inline-block">${RING}</span><span class="ttl"><b>QaSHE Watchman</b> · Tutorial · <span id="wmt-ch"></span></span><span class="sp"></span><button class="wmt-ib" id="wmt-ix" title="Index (I)">☰ Index</button><button class="wmt-ib" id="wmt-nr" title="Narrate (N)">🔊 Narrate</button><button class="wmt-ib" id="wmt-vb" title="Voice and captions settings">⚙ Voice</button><button class="wmt-ib" id="wmt-ap" title="Auto-play (A)">▶ Auto-play</button><button class="wmt-ib" id="wmt-fs" title="Full screen (F)">⛶ Present</button>${emb ? '' : '<button class="wmt-ib" id="wmt-x" title="Close (Esc)">✕ Close</button>'}</div>
+  <div class="wmt-view" id="wmt-view"><div class="wmt-stage" id="wmt-stage"></div></div><div class="wmt-drawer" id="wmt-dr"></div><div class="wmt-vp" id="wmt-vp"><b>Voiceover</b><label>Voice<select id="wmt-vs"></select></label><label>Speed<input type="range" id="wmt-vr" min="0.7" max="1.3" step="0.05"></label><label class="ck"><input type="checkbox" id="wmt-vc"> Show captions</label><button class="wmt-ib" id="wmt-vt">Test voice</button><small>The voice list comes from your device. Windows and Android include South African English voices.</small></div><div class="wmt-cap" id="wmt-cap"></div>
   <div class="wmt-bot"><button class="wmt-ib" id="wmt-pv">◀ Back</button><div class="wmt-prog" id="wmt-pg"><i></i></div><span class="wmt-cnt" id="wmt-ct"></span><button class="wmt-ib on" id="wmt-nx">Next ▶</button></div>`;
   (o.host || document.body).appendChild(root);
   const $ = s => root.querySelector(s), stage = $('#wmt-stage'), view = $('#wmt-view');
@@ -690,16 +721,58 @@ function open(o){
   const fit = () => { const w = view.clientWidth, h = view.clientHeight, k = Math.min(w / 1280, h / 720); stage.style.transform = `scale(${k}) translate(-50%,-50%)`; stage.style.left = '50%'; stage.style.top = '50%'; stage.style.transformOrigin = '0 0'; stage.style.marginLeft = '0'; stage.style.transform = `translate(${(w - 1280 * k) / 2}px,${(h - 720 * k) / 2}px) scale(${k})`; stage.style.left = '0'; stage.style.top = '0'; };
   const ro = new ResizeObserver(fit); ro.observe(view); fit();
   function applyStep(el, n){ el.querySelectorAll('.bld').forEach(b => { const s = +b.dataset.st; if(s) b.classList.toggle('show', s <= n); }); el.querySelectorAll('[data-only]').forEach(b => { b.style.opacity = (+b.dataset.only === n) ? 1 : 0; b.style.transform = (+b.dataset.only === n) ? 'none' : 'translateY(12px)'; b.style.pointerEvents = (+b.dataset.only === n) ? 'auto' : 'none'; b.classList.add('show'); }); }
+  /* ---------- narration ---------- */
+  const NS = { on:false, caps:true, rate:.95, voice:'', video:!!o.video }, LOG = (window.__wmtLog = []), T0 = performance.now();
+  try{ const sv = JSON.parse(localStorage.getItem('wmt-narr') || '{}'); NS.caps = sv.caps !== false; NS.rate = sv.rate || .95; NS.voice = sv.voice || ''; }catch(e){}
+  const saveNS = () => { try{ localStorage.setItem('wmt-narr', JSON.stringify({ caps:NS.caps, rate:NS.rate, voice:NS.voice })); }catch(e){} };
+  const sleep = ms => new Promise(r => setTimeout(r, ms)), wc = t => String(t).split(/\s+/).length, SS = window.speechSynthesis;
+  window.__wmtT0 = T0;
+  const fixSpeech = t => String(t).replace(/\bcl\b/g, 'clause').replace(/\bs(\d+)/g, 'section $1').replace(/ISO\/IEC/g, 'ISO IEC').replace(/\bSHERQ\b/g, 'sherk').replace(/\bPOPIA\b/g, 'Popia').replace(/\bCOIDA\b/g, 'Coida').replace(/\bOHS\b/g, 'O H S').replace(/\bKPIs\b/g, 'K P Is').replace(/\bNC\b/g, 'N C');
+  let nTok = 0, hooks = {}, Q = Promise.resolve();
+  const showCap = t => { const c = $('#wmt-cap'); if(!c) return; c.textContent = t || ''; c.style.opacity = (t && (NS.caps || NS.video)) ? 1 : 0; };
+  function pickVoice(){ if(!SS) return null; const vs = SS.getVoices(); return vs.find(v => v.name === NS.voice) || vs.find(v => /en[-_]ZA/i.test(v.lang)) || vs.find(v => /en[-_]GB/i.test(v.lang)) || vs.find(v => /^en/i.test(v.lang)) || null; }
+  function say(t, tok){
+    Q = Q.then(() => new Promise(res => {
+      if(tok !== nTok) return res();
+      const dur = wc(t) / 2.5 * 1000 + 450; LOG.push({ ms: Math.round(performance.now() - T0), text: t, dur });
+      showCap(t);
+      if(NS.video || !SS){ setTimeout(res, dur); return; }
+      const u = new SpeechSynthesisUtterance(fixSpeech(t)), v = pickVoice(); if(v){ u.voice = v; u.lang = v.lang; } u.rate = NS.rate;
+      let done = false; const fin = () => { if(!done){ done = true; res(); } };
+      u.onend = u.onerror = fin; setTimeout(fin, dur / NS.rate * 2 + 4000); SS.speak(u);
+    }));
+    return Q;
+  }
+  async function narrate(i){
+    const tok = ++nTok; Q = Promise.resolve(); if(SS) SS.cancel(); showCap(''); hooks = {};
+    if(!NS.on) return; const s = PL[i], el = stage.querySelector('.wmt-slide'); if(!s || !el) return;
+    let chain = Promise.resolve(), demoDone = Promise.resolve();
+    if(s.beats){ demoDone = new Promise(r => { hooks = { beat:(k, l) => { if(l === 0 && tok === nTok && s.beats[k]) chain = chain.then(() => say(s.beats[k], tok)); }, done:l => { if(l === 0) r(); } }; }); }
+    for(let j = 0; j < (s.narr || []).length; j++){
+      if(tok !== nTok) return;
+      if(s.steps){ step = Math.min(j, s.steps); applyStep(el, step); }
+      await say(s.narr[j], tok); await sleep(NS.video ? 150 : 250);
+    }
+    if(tok !== nTok) return; await demoDone; await chain; await Q;
+    if(tok !== nTok) return; showCap('');
+    if(s.hold && !NS.video){ NS.on = false; refreshNS(); return; }
+    await sleep(NS.video ? 900 : 700); if(tok !== nTok) return;
+    if(cur < PL.length - 1) go(cur + 1); else { NS.on = false; refreshNS(); window.__wmtDone = true; }
+  }
+  function refreshNS(){ $('#wmt-nr').classList.toggle('on', NS.on); $('#wmt-nr').textContent = NS.on ? '⏸ Pause narration' : '🔊 Narrate'; if(!NS.on){ nTok++; if(SS) SS.cancel(); showCap(''); } }
+  function fillVoices(){ const sel = $('#wmt-vs'); if(!sel || !SS) return; const vs = SS.getVoices().filter(v => /^en/i.test(v.lang)); const cv = pickVoice(); sel.innerHTML = vs.map(v => `<option value="${E(v.name)}" ${cv && cv.name === v.name ? 'selected' : ''}>${E(v.name)} (${E(v.lang)})</option>`).join('') || '<option>Default device voice</option>'; }
+  if(SS){ SS.onvoiceschanged = fillVoices; }
+  function setNarrate(on){ NS.on = on; if(on){ auto = false; setAuto(); } refreshNS(); if(on) narrate(cur); }
   function go(i, st){
     if(i < 0 || i >= PL.length) return; if(cleanup){ cleanup(); cleanup = null; }
     cur = i; const s = PL[i]; step = st || 0; stage.innerHTML = '';
     const el = document.createElement('div'); el.className = 'wmt-slide'; el.innerHTML = s.html(); stage.appendChild(el);
     applyStep(el, step); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('on')));
-    if(s.run) cleanup = s.run(el);
+    if(s.run) cleanup = s.run(el, { beat:(k, l) => hooks.beat && hooks.beat(k, l), done:l => hooks.done && hooks.done(l) });
     const c = chapterOf(s.ch); $('#wmt-ch').textContent = s.t || (c ? c[1] : ''); $('#wmt-ct').textContent = (i + 1) + ' / ' + PL.length; $('#wmt-pg i').style.width = ((i + 1) / PL.length * 100) + '%';
     root.querySelectorAll('.wmt-drawer a').forEach(a => a.classList.toggle('cur', a.dataset.id === s.id));
     $('#wmt-nx').textContent = i === PL.length - 1 ? 'Finish' : 'Next ▶';
-    if(auto) schedule();
+    if(NS.on) narrate(i); else if(auto) schedule();
   }
   const max = () => PL[cur].steps || 0;
   function next(){ const el = stage.querySelector('.wmt-slide'); if(step < max()){ step++; applyStep(el, step); if(auto) schedule(); } else if(cur < PL.length - 1) go(cur + 1); else { auto = false; setAuto(); } }
@@ -709,7 +782,7 @@ function open(o){
   function drawer(){ let h = ''; let last = ''; PL.forEach((s, i) => { const c = chapterOf(s.ch); const g = s.ch === 'intro' ? 'Introduction' : s.ch === 'end' ? 'Close' : (c ? c[1] : ''); if(g !== last){ h += `<h4>${E(g)}</h4>`; last = g; } h += `<a data-id="${E(s.id)}" data-i="${i}">${E(s.t)}</a>`; }); $('#wmt-dr').innerHTML = h; }
   function setList(m){ mode = m; PL = playlist(m); drawer(); }
   function jumpTo(id){ let i = PL.findIndex(s => s.id === id); if(i < 0){ setList('full'); i = PL.findIndex(s => s.id === id); } if(i >= 0) go(i); }
-  function close(){ if(cleanup) cleanup(); clearTimeout(aT); ro.disconnect(); document.removeEventListener('keydown', key, true); if(document.fullscreenElement) document.exitFullscreen().catch(() => {}); root.remove(); T = null; if(o.onClose) o.onClose(); }
+  function close(){ nTok++; if(SS) SS.cancel(); if(cleanup) cleanup(); clearTimeout(aT); ro.disconnect(); document.removeEventListener('keydown', key, true); if(document.fullscreenElement) document.exitFullscreen().catch(() => {}); root.remove(); T = null; if(o.onClose) o.onClose(); }
   function fs(){ if(document.fullscreenElement) document.exitFullscreen(); else (emb ? document.documentElement : root).requestFullscreen && (emb ? document.documentElement : root).requestFullscreen().catch(() => {}); }
   function key(e){
     if(!root.isConnected) return; const k = e.key;
@@ -717,11 +790,18 @@ function open(o){
     else if(['ArrowLeft','PageUp','Backspace'].includes(k)){ e.preventDefault(); e.stopPropagation(); prev(); }
     else if(k === 'Home'){ go(0); } else if(k === 'End'){ go(PL.length - 1); }
     else if(k === 'Escape'){ if(document.fullscreenElement) return; if($('#wmt-dr').classList.contains('open')) $('#wmt-dr').classList.remove('open'); else if(!emb) close(); e.stopPropagation(); }
-    else if(/^[iI]$/.test(k)) $('#wmt-ix').click(); else if(/^[fF]$/.test(k)) fs(); else if(/^[aA]$/.test(k)) $('#wmt-ap').click();
+    else if(/^[iI]$/.test(k)) $('#wmt-ix').click(); else if(/^[fF]$/.test(k)) fs(); else if(/^[aA]$/.test(k)) $('#wmt-ap').click(); else if(/^[nN]$/.test(k)) $('#wmt-nr').click();
   }
   document.addEventListener('keydown', key, true);
   $('#wmt-nx').onclick = next; $('#wmt-pv').onclick = prev; $('#wmt-fs').onclick = fs; if($('#wmt-x')) $('#wmt-x').onclick = close;
-  $('#wmt-ap').onclick = () => { auto = !auto; setAuto(); };
+  $('#wmt-ap').onclick = () => { auto = !auto; if(auto && NS.on){ NS.on = false; refreshNS(); } setAuto(); };
+  $('#wmt-nr').onclick = () => setNarrate(!NS.on);
+  $('#wmt-vb').onclick = () => { fillVoices(); $('#wmt-vp').classList.toggle('open'); };
+  $('#wmt-vr').value = NS.rate; $('#wmt-vc').checked = NS.caps;
+  $('#wmt-vs').onchange = e => { NS.voice = e.target.value; saveNS(); };
+  $('#wmt-vr').oninput = e => { NS.rate = +e.target.value; saveNS(); };
+  $('#wmt-vc').onchange = e => { NS.caps = e.target.checked; saveNS(); if(!NS.caps) showCap(''); };
+  $('#wmt-vt').onclick = () => { if(!SS) return; SS.cancel(); const u = new SpeechSynthesisUtterance('Welcome to QaSHE Watchman. One system, always watching.'), v = pickVoice(); if(v){ u.voice = v; u.lang = v.lang; } u.rate = NS.rate; SS.speak(u); };
   $('#wmt-ix').onclick = () => $('#wmt-dr').classList.toggle('open');
   $('#wmt-pg').onclick = e => { const r = e.currentTarget.getBoundingClientRect(); go(Math.max(0, Math.min(PL.length - 1, Math.floor((e.clientX - r.left) / r.width * PL.length)))); };
   $('#wmt-dr').onclick = e => { const a = e.target.closest('a'); if(a){ go(+a.dataset.i); $('#wmt-dr').classList.remove('open'); } };
@@ -739,16 +819,17 @@ function open(o){
   drawer(); let start = 0;
   if(o.module){ const id = o.module; start = Math.max(0, PL.findIndex(s => s.id === id)); }
   go(start);
-  T = { close, go, next, prev, jumpTo, el: root };
+  if(NS.video){ root.classList.add('vid'); setNarrate(true); }
+  T = { close, go, next, prev, jumpTo, el: root, narrate:setNarrate };
   return T;
 }
-window.WMTutorial = { open, current: () => T, modules: () => MODS.map(m => m.id) };
+window.WMTutorial = { open, script: () => playlist('full').map(s => ({ id:s.id, t:s.t, ch:s.ch, narr:s.narr || [], beats:s.beats || [] })), current: () => T, modules: () => MODS.map(m => m.id) };
 })();
 </script>
 <script>
 (function(){
   var h = (location.hash||'').replace('#','').replace(/^m=/,'');
-  function launch(){ WMTutorial.open({embedded:true, host:document.getElementById('host'), module:h||null}); }
+  function launch(){ var vid = h==='video'; WMTutorial.open({embedded:true, video:vid, host:document.getElementById('host'), module:(vid?null:h)||null}); }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', launch); else launch();
 })();
 </script></body></html>
