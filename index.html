@@ -1578,7 +1578,7 @@ const COMPETENCE_LEVEL_LABELS = {
   C: 'C: Developing competence',
   D: 'D: Unskilled',
 };
-const EMPLOYMENT_TYPES = ["full_time","contract"];
+const EMPLOYMENT_TYPES = ["full_time","contract","terminated"];
 const TRAINING_STATUSES = ["required","planned","completed","cancelled"];
 const TRAINING_DELIVERY = ["internal","external"];
 const APPRAISAL_STATUSES = ["draft","awaiting_self_assessment","self_assessment_done","finalized"];
@@ -1700,7 +1700,8 @@ const SUPABASE_URL = "https://uzywxhptwavnvpfzbhkb.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_8XxT0I-Qdmswhd2I-TT_jg_CuI8a24f";
 
 function initSupabase(url, key){
-  STATE.supabase = (typeof wrapSupabaseForNotify === 'function') ? wrapSupabaseForNotify(supabaseLib.createClient(url, key)) : supabaseLib.createClient(url, key);
+  const _wmOpts = window.wmOfflineFetch ? { global: { fetch: window.wmOfflineFetch } } : undefined;
+  STATE.supabase = (typeof wrapSupabaseForNotify === 'function') ? wrapSupabaseForNotify(supabaseLib.createClient(url, key, _wmOpts)) : supabaseLib.createClient(url, key, _wmOpts);
   // Fires when someone lands here via the emailed password reset link —
   // Supabase signs them into a special "recovery" session automatically;
   // this catches that moment and shows the set-new-password screen
@@ -3241,11 +3242,11 @@ function renderTitleCategoryPicker(idPrefix, currentTitle){
   const isOther = currentTitle && !matchingType;
   return `
     <div class="field span2">
-      <label>Title (category)</label>
+      <label>Title (Category) <a style="font-weight:400;cursor:pointer;color:var(--red)" onclick="toggleNCTypesPanel()" title="Add to or edit your organisation's list">+ add or edit list</a></label>
       <select id="${idPrefix}-title-select" onchange="toggleTitleOtherField('${idPrefix}')">
         <option value="">— choose —</option>
         ${STATE.ncTypes.filter(t=>t.is_active).map(t=>`<option value="${t.name}" ${t.name===currentTitle?'selected':''}>${t.name}</option>`).join('')}
-        <option value="__other__" ${isOther?'selected':''}>Other (specify)</option>
+        ${isOther?`<option value="__other__" selected>${currentTitle.replace(/</g,'&lt;')} (not in the master list)</option>`:''}
       </select>
     </div>
     <div class="field" id="${idPrefix}-title-other-field" style="display:${isOther?'block':'none'};">
@@ -3362,7 +3363,7 @@ const RENDERERS = {
           ${STATE.ncTypes.map(t=>`<option value="${t.id}">${t.name}</option>`).join('')}
         </select>
       </div>
-      <button class="btn-small" onclick="toggleNCTypesPanel()">Manage Types</button>
+      <button class="btn-small" onclick="toggleNCTypesPanel()">Manage Title (Category) List</button>
       <button class="btn-small" onclick="openImportModal('nonconformances')">Import Excel</button>
       <button class="btn-small" onclick="exportModuleExcel('nonconformances')">Export Excel</button>
       <button class="btn-small" onclick="printCurrentRegister('nonconformances','Nonconformances Register')">Print Register</button>
@@ -3370,11 +3371,11 @@ const RENDERERS = {
     </div>
 
     <div class="form-panel" id="nc-types-panel">
-      <h3 style="font-family:Arial,Helvetica,sans-serif; font-size:15.5px; font-weight:600; margin-bottom:6px;">Nonconformance Types</h3>
-      <p style="font-size:12px; color:var(--text-faint); margin-bottom:14px;">Keep the full standard list and switch off what's not relevant to this client, or add your own.</p>
+      <h3 style="font-family:Arial,Helvetica,sans-serif; font-size:15.5px; font-weight:600; margin-bottom:6px;">Title (Category) Master List</h3>
+      <p style="font-size:12px; color:var(--text-faint); margin-bottom:14px;">Every client starts with the same standard master list. Keep it, switch off what is not relevant to this client, edit the wording, or add your own categories. These appear in the Title (Category) drop down when raising a nonconformance.</p>
       <div id="nc-types-list" style="margin-bottom:12px; max-height:260px; overflow-y:auto;"></div>
       <div class="form-grid">
-        <div class="field span3"><label>New type</label><input id="nc-type-new-name" placeholder="e.g. Housekeeping observation"></div>
+        <div class="field span3"><label>New category</label><input id="nc-type-new-name" placeholder="e.g. Housekeeping observation"></div>
       </div>
       <button class="btn-small primary" onclick="addNcType()">Add type</button>
     </div>
@@ -4002,7 +4003,7 @@ const RENDERERS = {
       <div class="form-grid">
         <div class="field span2"><label>Full name</label><input id="pf-name" placeholder="Full name"></div>
         <div class="field"><label>Company number</label><input id="pf-company-number"></div>
-        <div class="field"><label>Full time / Contract</label><select id="pf-employment">${optionList(EMPLOYMENT_TYPES)}</select></div>
+        <div class="field"><label>Type (Full time / Contract / Terminated)</label><select id="pf-employment">${optionList(EMPLOYMENT_TYPES)}</select></div>
         <div class="field"><label>Date started</label><input type="date" id="pf-date-started" value="${todayISO()}"></div>
         <div class="field"><label>Email (needed for every notification)</label><input type="email" id="pf-email" placeholder="name@company.com"></div>
         <div class="field"><label>Mobile number</label><input id="pf-mobile"></div>
@@ -4648,7 +4649,7 @@ function renderNCTable(){
       <td>${memberName(n.owner_id)}</td>
       <td>${fmtDate(n.target_close_date)} ${dateStatusBadge(n.target_close_date, n.status==='closed')}</td>
       <td>${pill(n.status)}</td>
-      <td style="text-align:right;white-space:nowrap;"><button class="btn-small nc-view-btn" title="View ${n.ref_code}" onclick="event.stopPropagation(); openNCDetail('${n.id}')">View Nonconformance</button></td>
+      <td style="text-align:right;white-space:nowrap;"><button class="btn-small nc-view-btn" title="Edit ${n.ref_code}" onclick="event.stopPropagation(); openNCDetail('${n.id}')">Edit Nonconformance</button> <button class="btn-small nc-pdfview-btn" title="View ${n.ref_code} as a PDF before printing" onclick="event.stopPropagation(); viewNC('${n.id}')">View Nonconformance</button></td>
     </tr>`).join('')}
   </table>`;
 }
@@ -5108,7 +5109,7 @@ async function buildAndPrintRaga(id, sections){
 
   if(sections.risks && riskLinks && riskLinks.length){
     body += printSectionTitle('Linked Risks & Opportunities');
-    body += '<ul>' + riskLinks.map(l=>`<li>${l.risk_register.ref_code}: ${l.risk_register.title}</li>`).join('') + '</ul>';
+    body += '<ul>' + riskLinks.filter(l=>l.risk_register).map(l=>`<li>${l.risk_register.ref_code}: ${l.risk_register.title}</li>`).join('') + '</ul>';
   }
 
   if(sections.tasks && linkedTasks.length){
@@ -5316,7 +5317,7 @@ async function buildAndPrintNC(id, sections){
 
   if(sections.risks && riskLinks && riskLinks.length){
     body += printSectionTitle('Linked Risks & Opportunities');
-    body += '<ul>' + riskLinks.map(l=>`<li>${l.risk_register.ref_code}: ${l.risk_register.title}</li>`).join('') + '</ul>';
+    body += '<ul>' + riskLinks.filter(l=>l.risk_register).map(l=>`<li>${l.risk_register.ref_code}: ${l.risk_register.title}</li>`).join('') + '</ul>';
   }
 
   if(sections.tasks && linkedTasks.length){
@@ -11525,7 +11526,7 @@ const IMPORT_SPECS = {
     columns: [
       {key:'full_name', label:'Full Name', required:true, type:'text', example:'Jane Ndlovu', aliases:['Name','Employee Name','Full names','Surname and Name','Employee']},
       {key:'company_number', label:'Company Number', required:false, type:'text', example:'EMP-0142', aliases:['Employee Number','Employee No','Clock Number','Payroll Number','Staff Number','Company No']},
-      {key:'employment_type', label:'Full time / Contract', required:true, type:'enum', values:EMPLOYMENT_TYPES, example:'Full time', aliases:['Employment Type','Type','Contract Type','Employment']},
+      {key:'employment_type', label:'Full time / Contract / Terminated', required:true, type:'enum', values:EMPLOYMENT_TYPES, example:'Full time', aliases:['Employment Type','Type','Contract Type','Employment']},
       {key:'date_started', label:'Date Started', required:false, type:'date', example:'2024-03-01', aliases:['Start Date','Date Employed','Date of Employment','Date Joined']},
       {key:'email', label:'Email', required:false, type:'text', example:'jane@company.co.za', aliases:['Email Address','E-mail']},
       {key:'mobile_number', label:'Mobile Number', required:false, type:'text', example:'082 555 1234', aliases:['Mobile','Cell','Cell Number','Phone','Contact Number']},
@@ -11655,7 +11656,7 @@ function impCellText(v, isDate){
 }
 const IMP_ENUM_SYNONYMS = {
   employment_type: { permanent:'full_time', fulltime:'full_time', ft:'full_time', employee:'full_time', employed:'full_time',
-    contractor:'contract', contracted:'contract', temporary:'contract', temp:'contract', fixedterm:'contract', parttime:'contract', casual:'contract', pt:'contract' },
+    terminated:'terminated', dismissed:'terminated', resigned:'terminated', exited:'terminated', contractor:'contract', contracted:'contract', temporary:'contract', temp:'contract', fixedterm:'contract', parttime:'contract', casual:'contract', pt:'contract' },
   severity: { low:'minor', moderate:'major', medium:'major', high:'major', severe:'critical' },
   risk_classification: { medium:'low', moderate:'low', critical:'high' },
   entry_type: { risks:'risk', opportunities:'opportunity' },
@@ -12962,7 +12963,7 @@ function renderPersonnelTable(){
         <td>${p.company_number || '—'}</td>
         <td>${pos ? pos.title : '—'}</td>
         <td>${prim ? `<span class="sev-badge ${prim.level==='A'?'minor':(prim.level==='D'?'critical':'major')}">${prim.level}</span>` : '—'}</td>
-        <td style="text-transform:capitalize">${p.employment_type.replace('_',' ')}</td>
+        <td style="text-transform:capitalize">${p.employment_type === 'terminated' ? '<span class="sev-badge critical">Terminated</span>' : p.employment_type.replace('_',' ')}</td>
         <td>${pill(p.status)}</td>
       </tr>`;
     }).join('')}
@@ -13088,6 +13089,7 @@ async function openPersonDetail(id){
         <div class="field"><label>Type</label><select id="pd-employment-type">
           <option value="full_time" ${p.employment_type==='full_time'?'selected':''}>Full Time</option>
           <option value="contract" ${p.employment_type==='contract'?'selected':''}>Contract</option>
+          <option value="terminated" ${p.employment_type==='terminated'?'selected':''}>Terminated</option>
         </select></div>
         <div class="field"><label>Date started</label><input type="date" id="pd-date-started" value="${p.date_started||''}"></div>
         <div class="field"><label>Email (needed for every notification)</label><input type="email" id="pd-email" value="${(p.email||'').replace(/"/g,'&quot;')}" placeholder="name@company.com"></div>
@@ -13115,7 +13117,7 @@ async function openPersonDetail(id){
           <option value="">None: reports to nobody in this system</option>
           ${STATE.personnel.filter(x=>x.id!==p.id).map(x=>`<option value="${x.id}" ${p.line_manager_id===x.id?'selected':''}>${x.full_name}</option>`).join('')}
         </select>
-        <button class="btn-small primary" onclick="savePersonLineManager('${p.id}')">Save</button>
+        <button class="btn-small primary" onclick="savePersonLineManager('${p.id}')">Save line manager</button>
       </div>
 
       <div class="status-row" style="flex-direction:column; align-items:flex-start;">
@@ -13412,6 +13414,7 @@ window.savePersonDetails = async function(personId){
     full_name: fullName,
     company_number: document.getElementById('pd-company-number').value.trim(),
     employment_type: document.getElementById('pd-employment-type').value,
+    ...(function(){ const t = document.getElementById('pd-employment-type').value, st = document.getElementById('pd-status'); return t === 'terminated' ? { status:'inactive' } : (st ? { status: st.value } : {}); })(),
     date_started: document.getElementById('pd-date-started').value || null,
     email: document.getElementById('pd-email').value.trim(),
     mobile_number: document.getElementById('pd-mobile').value.trim(),
@@ -13470,11 +13473,13 @@ window.deletePerson = async function(personId){
 
 window.savePersonStatus = async function(personId){
   const newStatus = document.getElementById('pd-status').value;
-  const { error } = await STATE.supabase.from('personnel').update({ status:newStatus }).eq('id', personId);
-  if(error){ toast('Could not update status: ' + error.message, 'error'); return; }
+  const r = await STATE.supabase.from('personnel').update({ status:newStatus }).eq('id', personId).select('id, status');
+  if(r.error){ toast('Could not update status: ' + r.error.message, 'error'); return; }
+  if(!r.data || !r.data.length){ toast('The status was not changed: you may not have permission to change this person.', 'error'); return; }
   await loadPersonnel();
   openPersonDetail(personId);
   renderPersonnelView();
+  toast('Status updated to ' + (newStatus === 'inactive' ? 'Inactive' : 'Active') + '.', 'success');
 };
 
 window.setPersonnelPin = async function(personId){
@@ -32333,6 +32338,7 @@ window.brandFromLogo = function(){
     <div class="field span3"><label>Lessons learned</label><textarea id="${p}-less" placeholder="What will change so this does not recur?">${E(s.lessons_learned||'')}</textarea></div>
     <div class="field span3"><label>Controls that failed or need strengthening (Statement of Applicability)</label>${checkboxMultiSelect(p+'-ctl',SOA_CONTROLS.map(c=>({id:c.ref,label:c.ref+' '+E(c.title)})),s.soa_control_refs||[])}</div>
     </div>`; };
+  window.__wmIncFields=incFields;
   window.secPiiToggle=function(p){ document.getElementById(p+'-popia').style.display=document.getElementById(p+'-pii').checked?'grid':'none'; };
   const iso=v=>v?new Date(v).toISOString():null;
   const readInc=p=>({incident_type:document.getElementById(p+'-type').value,confidentiality:document.getElementById(p+'-conf').checked,integrity:document.getElementById(p+'-integ').checked,availability:document.getElementById(p+'-avail').checked,
@@ -32341,11 +32347,12 @@ window.brandFromLogo = function(){
     record_count:parseInt(document.getElementById(p+'-cnt').value,10)||null,regulator_notified_at:iso(document.getElementById(p+'-reg').value),subjects_notified_at:iso(document.getElementById(p+'-sub').value),
     lessons_learned:document.getElementById(p+'-less').value.trim(),soa_control_refs:getCheckedValues(p+'-ctl')});
 
+  window.__wmReadInc=readInc;
   // raise form: optional security-incident section
   const _rn=RENDERERS.nonconformances;
   RENDERERS.nonconformances=function(){ let h=_rn.apply(this,arguments);
     const slot=`<div class="field span3" id="f-sec-wrap"><label style="display:flex;gap:8px;align-items:center;font-weight:700;"><input type="checkbox" id="f-sec-on" style="width:auto;" onchange="document.getElementById('f-sec-body').style.display=this.checked?'block':'none'"> This is an information security incident</label><div id="f-sec-body" style="display:none;margin-top:10px;padding:12px;border:1px solid var(--border);border-radius:10px;">${incFields('fsec')}</div></div>`;
-    return h.replace(/(<div class="field" id="f-supplier-severity-field")/,slot+'$1'); };
+    return h; /* b68: information security is now its own module */ };
   const _sub=window.submitNC;
   window.submitNC=submitNC=async function(){
     const on=document.getElementById('f-sec-on')&&document.getElementById('f-sec-on').checked;
@@ -32363,7 +32370,7 @@ window.brandFromLogo = function(){
   window.openNCDetail=openNCDetail=async function(id){
     await _ond.apply(this,arguments);
     try{ await loadSecIncidents(); }catch(e){}
-    const panel=document.querySelector('#nc-detail-slot .detail-panel'); if(!panel) return;
+    const panel=document.querySelector('#nc-detail-slot .detail-panel'); if(!panel || true) return; /* b68: moved to the Information Security Incidents module */
     const s=(STATE.secIncidents||[]).find(x=>x.nonconformance_id===id);
     const card=document.createElement('div'); card.className='detail-card'; card.id='sec-inc-card';
     const clock=s&&s.personal_info_involved&&(!s.regulator_notified_at||!s.subjects_notified_at)?`<div style="padding:10px 12px;border-radius:8px;background:#fdeceb;color:#8a1b17;font-size:12.5px;margin-bottom:12px;"><b>POPIA notification outstanding:</b> ${!s.regulator_notified_at?'the Information Regulator has not been notified. ':''}${!s.subjects_notified_at?'The affected data subjects have not been notified. ':''}Notify as soon as reasonably possible and record the date below.</div>`:'';
@@ -33127,7 +33134,8 @@ window.brandFromLogo = function(){
   let prev=anchor;
   NAV.forEach(n=>{ if(prev&&!document.querySelector('.nav-item[data-mod="'+n[0]+'"]')) prev.insertAdjacentHTML('afterend',`<div class="nav-item" data-mod="${n[0]}" onclick="showModule('${n[0]}')"><svg viewBox="0 0 24 24">${n[2]}</svg> ${n[1]}</div>`);
     prev=document.querySelector('.nav-item[data-mod="'+n[0]+'"]')||prev; MODULE_META[n[0]]={title:n[1],sub:()=>n[3]}; RENDERERS[n[0]]=()=>'<div id="ent-root"></div>'; });
-  const syncNav=()=>{ const cl=document.querySelector('.nav-item[data-mod="change_log"]'); if(cl) cl.style.display=isAdmin()?'':'none';
+  const swOff=k=>!!(STATE.org&&STATE.org._modOff&&STATE.org._modOff.has(k));
+  const syncNav=()=>{ const cl=document.querySelector('.nav-item[data-mod="change_log"]'); if(cl) cl.style.display=(isAdmin()&&!swOff('change_log'))?'':'none'; const asx=document.querySelector('.nav-item[data-mod="account_security"]'); if(asx) asx.style.display=swOff('account_security')?'none':'';
     const gv=document.querySelector('.nav-item[data-mod="group_view"]'); if(gv) gv.style.display=((STATE.memberships||[]).filter(m=>['admin','manager'].includes(m.role)).length>=2||(STATE.profile&&STATE.profile.is_platform_staff&&(STATE.memberships||[]).length>=2))?'':'none'; };
   const _sm6=showModule; showModule=function(mod){ syncNav(); const r=_sm6.apply(this,arguments);
     if(mod==='change_log') renderLog(); if(mod==='group_view') renderGroup(); if(mod==='account_security') renderSecurity(); return r; };
@@ -34439,26 +34447,28 @@ window.brandFromLogo = function(){
           <div class="field"><label>Document type</label><select id="oa-d-type" onchange="oaDocTypeChanged()">${PD_TYPES.filter(t => !t[2] || canConf()).map(t => `<option value="${t[0]}">${esc(t[1])}</option>`).join('')}</select></div>
           <div class="field"><label>Title or description</label><input id="oa-d-title"></div>
           <div class="field"><label>Issuer or institution</label><input id="oa-d-issuer"></div>
-          <div class="field"><label>Issue date</label><input type="date" id="oa-d-issue"></div>
-          <div class="field"><label>Expiry date (if any)</label><input type="date" id="oa-d-exp"></div>
+          <div class="field"><label>Issue date <span id="oa-d-issue-hint" style="font-weight:400;color:var(--text-faint)"></span></label><input type="date" id="oa-d-issue"></div>
+          <div class="field"><label>Expiry date (if any) <span id="oa-d-exp-hint" style="font-weight:400;color:var(--text-faint)"></span></label><input type="date" id="oa-d-exp"></div>
           <div class="field"><label>Evidences competency</label><select id="oa-d-comp"><option value="">None</option>${SF_COMPETENCIES.map(c => `<option value="${c[0]}">${esc(c[1])}</option>`).join('')}</select></div>
           <div class="field span2"><label>File</label><input type="file" id="oa-d-file"></div>
           <div class="field"><label class="sf-inline"><input type="checkbox" id="oa-d-conf" ${canConf() ? '' : 'disabled'}> Confidential</label></div>
-        </div><button class="btn-small primary" onclick="oaDocUpload('${pid}')">Upload document</button><div style="height:8px"></div>` : ''}
+        </div><button class="btn-small primary" onclick="oaDocUpload('${pid}')">Save and upload document</button><div style="height:8px"></div>` : ''}
         ${docs.length ? docs.map(d => `<div class="oa-row"><span><b>${esc(d.title || (PD_BY_KEY[d.doc_type] || [])[1] || d.doc_type)}</b> <span style="font-size:10.5px;color:var(--text-faint)">${esc((PD_BY_KEY[d.doc_type] || [])[1] || '')}${d.confidential ? ' · confidential' : ''}</span><br><span style="font-size:11px;color:var(--text-faint)">${esc([d.issuer, d.issue_date ? 'issued ' + fmtDate(d.issue_date) : '', d.competency_tag ? SF_COMPETENCY_LABELS[d.competency_tag] : ''].filter(Boolean).join(' · '))}</span></span>
-          <span style="display:flex;gap:6px;align-items:center">${d.expiry_date ? sfExpiryBadge(d.expiry_date) : ''}${d.storage_path ? `<button class="btn-small" onclick="downloadFromBucket('documents','${esc(d.storage_path)}')">Open</button>` : ''}${canConf() ? `<button class="btn-small" onclick="oaDocDel('${d.id}','${pid}')">Delete</button>` : ''}</span></div>`).join('') : '<p style="font-size:12.5px;color:var(--text-faint)">No documents uploaded yet.</p>'}
+          <span style="display:flex;gap:6px;align-items:center">${d.expiry_date ? sfExpiryBadge(d.expiry_date) : ''}${d.storage_path ? `<button class="btn-small" onclick="downloadFromBucket('documents','${esc(d.storage_path)}')">Open</button>` : ''}${canEdit() ? `<button class="btn-small" onclick="oaDocEdit('${d.id}','${pid}')">Edit dates</button>` : ''}${canConf() ? `<button class="btn-small" onclick="oaDocDel('${d.id}','${pid}')">Delete</button>` : ''}</span></div><div id="oa-de-${d.id}"></div>`).join('') : '<p style="font-size:12.5px;color:var(--text-faint)">No documents uploaded yet.</p>'}
       </div>`;
   }
   window.oaDocTypeChanged = function(){
     const t = PD_BY_KEY[document.getElementById('oa-d-type').value]; if(!t) return;
     const cb = document.getElementById('oa-d-conf'); if(cb && !cb.disabled) cb.checked = !!t[2];
     if(t[3]) { /* certificate types: prompt for competency */ }
+    { const c = document.getElementById('oa-d-type').value === 'contract'; const h1 = document.getElementById('oa-d-issue-hint'), h2 = document.getElementById('oa-d-exp-hint'); if(h1) h1.textContent = c ? '(contract start)' : ''; if(h2) h2.textContent = c ? '(end of a fixed term, leave empty if permanent)' : ''; }
   };
   window.oaDocUpload = async function(pid){
     const file = document.getElementById('oa-d-file').files[0];
     if(!file){ toast('Choose a file to upload.', 'error'); return; }
     const type = document.getElementById('oa-d-type').value;
     const t = PD_BY_KEY[type];
+    if(type === 'contract' && !document.getElementById('oa-d-issue').value){ toast('Enter the issue date of the contract (the start date). Add an expiry date if it is a fixed term contract.', 'error'); return; }
     let f = file; if(f.type && f.type.startsWith('image/')){ try{ const r = await resizeImageFile(f); if(r.ok) f = r.file; }catch(e){} }
     const path = `${STATE.org.id}/personnel/${pid}/${Date.now()}-${sanitizeFileName(f.name)}`;
     const up = await STATE.supabase.storage.from('documents').upload(path, f, evidenceUploadOpts(f));
@@ -34469,6 +34479,27 @@ window.brandFromLogo = function(){
       issue_date: g('oa-d-issue'), expiry_date: g('oa-d-exp'), competency_tag: g('oa-d-comp') || null, confidential: conf, storage_path: path, file_name: f.name, file_type: evidenceMime(f), file_size: f.size, uploaded_by: STATE.user.id });
     if(error){ await STATE.supabase.storage.from('documents').remove([path]); toast('Could not save the record: ' + error.message, 'error'); return; }
     await loadOA(); toast('Document uploaded.', 'success'); renderPersonExtra(pid);
+  };
+  window.oaDocEdit = function(id, pid){
+    const slot = document.getElementById('oa-de-' + id); if(!slot) return;
+    if(slot.innerHTML.trim()){ slot.innerHTML = ''; return; }
+    const d = STATE.persDocs.find(x => x.id === id); if(!d) return;
+    const isC = d.doc_type === 'contract';
+    slot.innerHTML = `<div class="form-grid" style="margin:6px 0 10px;padding:10px;border:1px solid var(--border);border-radius:8px">
+      <div class="field span2"><label>Title or description</label><input id="oa-de-t-${id}" value="${esc(d.title || '')}"></div>
+      <div class="field"><label>Issuer or institution</label><input id="oa-de-i-${id}" value="${esc(d.issuer || '')}"></div>
+      <div class="field"><label>${isC ? 'Issue date (contract start)' : 'Issue date'}</label><input type="date" id="oa-de-is-${id}" value="${esc(d.issue_date || '')}"></div>
+      <div class="field"><label>${isC ? 'Expiry date (end of a fixed term contract, leave empty if permanent)' : 'Expiry date (if any)'}</label><input type="date" id="oa-de-ex-${id}" value="${esc(d.expiry_date || '')}"></div>
+      <div class="field span3"><button class="btn-small primary" onclick="oaDocEditSave('${id}','${pid}')">Save</button> <button class="btn-small" onclick="document.getElementById('oa-de-${id}').innerHTML=''">Cancel</button></div></div>`;
+  };
+  window.oaDocEditSave = async function(id, pid){
+    const v = k => document.getElementById('oa-de-' + k + '-' + id).value || null;
+    const patch = { title: v('t'), issuer: v('i'), issue_date: v('is'), expiry_date: v('ex') };
+    if(patch.issue_date && patch.expiry_date && patch.expiry_date < patch.issue_date){ toast('The expiry date is before the issue date.', 'error'); return; }
+    const r = await STATE.supabase.from('personnel_documents').update(patch).eq('id', id).select();
+    if(r.error){ toast('Could not save: ' + r.error.message, 'error'); return; }
+    if(!r.data || !r.data.length){ toast('Nothing was saved: you may not have permission to change this document.', 'error'); return; }
+    await loadOA(); toast('Document dates saved.', 'success'); renderPersonExtra(pid);
   };
   window.oaDocDel = async function(id, pid){
     const d = STATE.persDocs.find(x => x.id === id); if(!d || !confirm('Delete this document? This cannot be undone.')) return;
@@ -35953,8 +35984,8 @@ window.brandFromLogo = function(){
     ['Documents and records', ['document_control_enabled', 'all_documents_enabled', 'legal_certs_enabled']],
     ['People and sites', ['hr_enabled', 'site_files_enabled']],
     ['Operations', ['process_flowcharts_enabled', 'asset_watchman_enabled']],
-    ['Disciplines: switch on only where they apply to the client', ['welding_enabled', 'infosec_enabled']],
-    ['Platform', ['administration_enabled']],
+    ['Disciplines: switch on only where they apply to the client', ['welding_enabled', 'infosec_enabled', 'infosec_incidents_module_enabled']],
+    ['Platform', ['administration_enabled', 'change_log_module_enabled', 'account_security_module_enabled']],
   ];
   const INCLUDED = [
     ['Overview and Compliance Dashboard', 'Always on for every client. They cannot be switched off.'],
@@ -36382,7 +36413,10 @@ function fmtRev(rev){
     ['governance','Governance and Ethics','ISO 37000 assessment, resolutions, delegations, conflicts of interest, gifts and hospitality, stakeholders.'],
     ['master_register','Master Documents Register','Sequence check across Document Control and All Documents.'],
     ['privacy','Privacy (POPIA)','POPIA readiness, processing activities, data subject requests and operator agreements.'],
-    ['retention','Records Retention','Retention schedule and disposal register.']
+    ['retention','Records Retention','Retention schedule and disposal register.'],
+    ['infosec_incidents','Information Security Incidents','Register and workflow for information security incidents under Incidents, Accidents and Near Miss. For clients that run an information security programme. Also needs the Information Security discipline on.'],
+    ['change_log','Change Log','Append-only trail of every create, change and delete on key records. Administrators only.'],
+    ['account_security','Account Security','Authenticator app protection for each user sign-in.']
   ];
   const KEY = k => k + '_module_enabled';
   const off = mod => !!(STATE.org && STATE.org['_modOff'] && STATE.org['_modOff'].has(mod));
@@ -41083,6 +41117,590 @@ window.WMTutorial = { open, script: () => playlist('full').map(s => ({ id:s.id, 
   const _r=renderNCTable;
   renderNCTable=window.renderNCTable=function(){ const r=_r.apply(this,arguments); try{ addCol(); }catch(e){} return r; };
 })();
+
+/* ===== b67: Offline mode: work on site with no signal, upload on reconnect ===== */
+(function(){
+  if(window.WMOffline) return;
+  const NATIVE = window.fetch.bind(window);
+  const DAY = 86400000, MAX_OFFLINE_DAYS = 7, TIMEOUT = 15000;
+  const SB = () => (typeof SUPABASE_URL !== 'undefined' ? SUPABASE_URL : '');
+  const NET = { offline: false, since: 0, syncing: false, lastCache: 0 };
+  const LS = { get(k, d){ try{ const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); }catch(e){ return d; } }, set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} } };
+  let Q = [];            // pending records (mirror of IndexedDB 'queue')
+  const RECENT = [];     // recently uploaded, this session
+  /* ---------- IndexedDB ---------- */
+  let dbp = null;
+  function db(){
+    if(dbp) return dbp;
+    dbp = new Promise((res, rej) => {
+      if(!window.indexedDB){ rej(new Error('no indexedDB')); return; }
+      const r = indexedDB.open('wm-offline', 1);
+      r.onupgradeneeded = () => { const d = r.result; d.createObjectStore('cache', { keyPath:'k' }); d.createObjectStore('queue', { keyPath:'id', autoIncrement:true }); };
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    });
+    dbp.catch(() => {}); return dbp;
+  }
+  const idb = (store, mode, fn) => db().then(d => new Promise((res, rej) => { const t = d.transaction(store, mode), s = t.objectStore(store); const rq = fn(s); t.oncomplete = () => res(rq && rq.result); t.onerror = t.onabort = () => rej(t.error); }));
+  const cachePut = rec => idb('cache', 'readwrite', s => s.put(rec)).catch(() => {});
+  const cacheGet = k => idb('cache', 'readonly', s => s.get(k)).catch(() => null);
+  const qAll = () => idb('queue', 'readonly', s => s.getAll()).catch(() => []);
+  const qPut = rec => idb('queue', 'readwrite', s => s.put(rec));
+  const qDel = id => idb('queue', 'readwrite', s => s.delete(id)).catch(() => {});
+  const ready = qAll().then(a => { Q = (a || []).sort((x, y) => x.id - y.id); paint(); });
+
+  /* ---------- helpers ---------- */
+  const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); }));
+  const norm = u => u.replace(/\d{4}-\d{2}-\d{2}(?:T[\d:.+Zz%A-Fa-f-]*)?/g, 'D');
+  const hash = s => { let h = 5381; for(let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return String(h); };
+  const tableOf = path => { const m = path.match(/\/rest\/v1\/([^?/]+)/); return m ? m[1] : ''; };
+  const DENY = /^(nc_types|documents?|document_.*|master_.*|organisations?|organisation_members|org_modules|profiles|invites|platform_.*|nc_type_defaults|ian_categories|usage_events|admin_.*|rpc)$/;
+  const deviceName = () => { const u = navigator.userAgent; const os = /Android/.test(u) ? 'Android' : /iPhone|iPad/.test(u) ? 'iOS' : /Windows/.test(u) ? 'Windows' : /Mac/.test(u) ? 'Mac' : /Linux/.test(u) ? 'Linux' : 'Device'; const br = /Edg\//.test(u) ? 'Edge' : /Chrome\//.test(u) ? 'Chrome' : /Safari\//.test(u) ? 'Safari' : /Firefox\//.test(u) ? 'Firefox' : 'Browser'; return os + ' ' + br; };
+  const json = (obj, status, extra) => new Response(obj == null ? null : JSON.stringify(obj), { status: status || 200, headers: Object.assign({ 'content-type': 'application/json' }, extra || {}) });
+  const offlineErr = msg => json({ code: 'OFFLINE', message: msg || 'You are offline and this information has not been saved on this device yet.', details: null, hint: null }, 503);
+  const cols = () => LS.get('wm-cols', {});
+  function noteCols(table, rows){
+    if(!table || !Array.isArray(rows) || !rows.length || !rows[0] || typeof rows[0] !== 'object') return;
+    const c = cols(); const k = Object.keys(rows[0]); if(!c[table] || c[table].length !== k.length){ c[table] = k; LS.set('wm-cols', c); }
+  }
+  const hasCol = (table, col) => { const c = cols()[table]; return !!(c && c.indexOf(col) >= 0); };
+  function sessionFromStorage(){
+    try{ for(let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if(/^sb-.+-auth-token$/.test(k)){ const s = JSON.parse(localStorage.getItem(k)); if(s && s.refresh_token) return s; } } }catch(e){}
+    return null;
+  }
+  function markOnline(){ NET.lastOk = Date.now(); LS.set('wm-last-ok', NET.lastOk); if(NET.offline){ NET.offline = false; paint(); realRefresh(); kick(); } }
+  let rr = null; function realRefresh(){ if(rr) return rr; rr = Promise.resolve().then(() => (typeof STATE !== 'undefined' && STATE.supabase) ? STATE.supabase.auth.refreshSession() : null).catch(() => {}).finally(() => { rr = null; }); return rr; }
+  function markOffline(){ if(!NET.offline){ NET.offline = true; NET.since = Date.now(); paint(); schedProbe(); } }
+  const isOffline = () => NET.offline || navigator.onLine === false;
+  function withTimeout(url, init){
+    const ac = new AbortController(); const t = setTimeout(() => ac.abort(), TIMEOUT);
+    if(init && init.signal){ if(init.signal.aborted) ac.abort(); else init.signal.addEventListener('abort', () => ac.abort()); }
+    return NATIVE(url, Object.assign({}, init || {}, { signal: ac.signal })).finally(() => clearTimeout(t));
+  }
+  const isNetErr = e => e && (e.name === 'TypeError' || e.name === 'AbortError' || /Failed to fetch|NetworkError|Load failed|network/i.test(String(e.message || '')));
+
+  /* ---------- cached reads with queued records laid over them ---------- */
+  function filtersOf(url){
+    const out = []; try{ new URL(url).searchParams.forEach((v, k) => { if(/^(select|order|limit|offset|on_conflict|columns)$/.test(k)) return; const m = v.match(/^eq\.(.*)$/); if(m) out.push([k, m[1]]); }); }catch(e){} return out;
+  }
+  function overlay(table, url, list){
+    const pend = Q.filter(q => q.table === table && q.status !== 'done');
+    if(!pend.length) return list;
+    const f = filtersOf(url);
+    pend.forEach(q => {
+      let body = q.body; try{ body = JSON.parse(q.body); }catch(e){ return; }
+      if(q.action === 'insert'){
+        (Array.isArray(body) ? body : [body]).forEach(r => {
+          if(list.some(x => x && x.id && x.id === r.id)) return;
+          if(f.every(([k, v]) => String(r[k]) === v)) list.push(Object.assign({ ref_code: 'PENDING' }, r, { _offline: true }));
+        });
+      } else if(q.action === 'update'){
+        const ids = (q.ids || []);
+        list = list.map(x => (x && x.id && ids.indexOf(x.id) >= 0) ? Object.assign({}, x, body, { _offline: true }) : x);
+      }
+    });
+    return list;
+  }
+  async function readOffline(method, url, init, table){
+    await ready;
+    const hdr = new Headers((init && init.headers) || {}); const single = /pgrst\.object/.test(hdr.get('accept') || '');
+    const isRpc = /\/rpc\//.test(url); const key = (method === 'POST' ? 'P:' + hash(String((init && init.body) || '')) + ':' : '') + norm(url);
+    const hit = await cacheGet(key);
+    if(!hit){ return offlineErr(isRpc ? 'This action needs an internet connection.' : null); }
+    let body = hit.body;
+    if(table && !isRpc && method === 'GET'){
+      try{ const rows = JSON.parse(hit.body); const isArr = Array.isArray(rows); const list = overlay(table, url, isArr ? rows : (rows ? [rows] : [])); body = JSON.stringify(isArr ? list : (list[0] || null)); }catch(e){}
+    }
+    return new Response(method === 'HEAD' ? null : body, { status: hit.status || 200, headers: hit.headers || { 'content-type': 'application/json' } });
+  }
+  function remember(method, url, init, res, table){
+    if(!res.ok) return; const hdrs = {}; ['content-type', 'content-range'].forEach(h => { const v = res.headers.get(h); if(v) hdrs[h] = v; });
+    res.clone().text().then(text => {
+      if(text.length > 6e6) return;
+      const key = (method === 'POST' ? 'P:' + hash(String((init && init.body) || '')) + ':' : '') + norm(url);
+      cachePut({ k: key, status: res.status, headers: hdrs, body: text, t: Date.now() });
+      NET.lastCache = Date.now(); LS.set('wm-last-cache', NET.lastCache);
+      if(table && method === 'GET'){ try{ noteCols(table, JSON.parse(text)); }catch(e){} }
+    }).catch(() => {});
+  }
+
+  /* ---------- queued writes ---------- */
+  function rowSummary(b){ const r = Array.isArray(b) ? b[0] : b; if(!r || typeof r !== 'object') return ''; return String(r.title || r.name || r.description || r.finding || r.notes || r.comment || r.file_name || r.storage_path || r.result || '').slice(0, 90); }
+  const LABEL = { nonconformances: 'Nonconformance / incident', audit_findings: 'Audit finding', audits: 'Audit', evidence_files: 'Evidence file', tasks: 'Task', nonconformance_history: 'History entry', five_s_inspections: '5S inspection', assessment_records: 'Inspection record' };
+  const labelOf = (t, a) => (LABEL[t] || t.replace(/_/g, ' ')) + (a === 'update' ? ' (change)' : '');
+  function injectDefaults(table, row, stamp){
+    const added = [];
+    if(!row || typeof row !== 'object') return added;
+    if(!row.id){ row.id = uuid(); added.push('id'); }
+    if(hasCol(table, 'created_at') && !row.created_at){ row.created_at = stamp; added.push('created_at'); }
+    if(hasCol(table, 'raised_date') && !row.raised_date){ const d = new Date(); row.raised_date = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); added.push('raised_date'); }
+    if(hasCol(table, 'uploaded_at') && !row.uploaded_at){ row.uploaded_at = stamp; added.push('uploaded_at'); }
+    return added;
+  }
+  let lastToast = 0;
+  function saidSaved(){ if(Date.now() - lastToast > 5000){ lastToast = Date.now(); try{ toast('Saved on this device. It will upload when you are back online.', 'success'); }catch(e){} } }
+  async function enqueueRest(method, url, init, table){
+    await ready;
+    const hdr = new Headers((init && init.headers) || {}); const prefer = hdr.get('prefer') || ''; const single = /pgrst\.object/.test(hdr.get('accept') || '');
+    const stamp = new Date().toISOString();
+    let action = method === 'PATCH' ? 'update' : 'insert', body = (init && init.body) || '', added = [], rows = [];
+    if(typeof body === 'string' && body){
+      let parsed; try{ parsed = JSON.parse(body); }catch(e){ return offlineErr('This change needs an internet connection.'); }
+      if(action === 'insert'){ (Array.isArray(parsed) ? parsed : [parsed]).forEach(r => { injectDefaults(table, r, stamp).forEach(k => { if(added.indexOf(k) < 0) added.push(k); }); rows.push(r); }); body = JSON.stringify(parsed); }
+      else rows = [parsed];
+    }
+    let ids = []; if(action === 'update'){ const m = url.match(/[?&]id=eq\.([^&]+)/); if(m) ids = [decodeURIComponent(m[1])]; const m2 = url.match(/[?&]id=in\.\(([^)]*)\)/); if(m2) ids = m2[1].split(',').map(s => decodeURIComponent(s.replace(/"/g, ''))); }
+    const sess = (typeof STATE !== 'undefined') ? STATE : {};
+    const rec = { method, url, headers: { 'content-type': 'application/json', prefer: prefer.replace(/return=\w+/, 'return=minimal').replace(/^,|,$/g, '') || 'return=minimal', apikey: hdr.get('apikey') || '', 'accept-profile': hdr.get('accept-profile') || '', 'content-profile': hdr.get('content-profile') || '' }, body, kind: 'rest', table, action, ids, added, summary: rowSummary(rows), captured: stamp, device: deviceName(), orgId: sess.org && sess.org.id, userId: sess.user && sess.user.id, status: 'pending', error: '' };
+    Object.keys(rec.headers).forEach(k => { if(!rec.headers[k]) delete rec.headers[k]; });
+    rec.id = await qPut(rec); Q.push(rec); paint(); saidSaved();
+    const want = /return=representation/.test(prefer);
+    if(action === 'insert' && want){ const out = rows.map(r => Object.assign({ ref_code: 'PENDING' }, r, { _offline: true })); return json(single ? out[0] : out, 201); }
+    if(action === 'update' && want){ return json(single ? Object.assign({ id: ids[0] }, rows[0]) : ids.map(i => Object.assign({ id: i }, rows[0])), 200); }
+    return new Response(null, { status: action === 'insert' ? 201 : 204 });
+  }
+  async function enqueueStorage(method, url, init){
+    await ready;
+    const b = init && init.body; let kind = 'storage', entries = null, blob = null;
+    if(typeof FormData !== 'undefined' && b instanceof FormData){ entries = []; b.forEach((v, k) => entries.push([k, v])); }
+    else if(b instanceof Blob || b instanceof ArrayBuffer){ blob = b; }
+    else return offlineErr('This upload needs an internet connection.');
+    const hdr = new Headers((init && init.headers) || {}); const headers = {}; ['x-upsert', 'content-type', 'cache-control', 'apikey'].forEach(h => { const v = hdr.get(h); if(v && !(entries && h === 'content-type')) headers[h] = v; });
+    const file = entries ? (entries.find(e => e[1] instanceof Blob) || [])[1] : blob;
+    const rec = { method, url, headers, entries, blob, kind, table: 'storage', action: 'upload', ids: [], summary: ((file && file.name) || decodeURIComponent(url.split('/object/')[1] || '')).slice(0, 90), captured: new Date().toISOString(), device: deviceName(), orgId: (typeof STATE !== 'undefined' && STATE.org) ? STATE.org.id : null, userId: (typeof STATE !== 'undefined' && STATE.user) ? STATE.user.id : null, status: 'pending', error: '' };
+    rec.id = await qPut(rec); Q.push(rec); paint(); saidSaved();
+    return json({ Key: decodeURIComponent((url.split('/object/')[1] || '').split('?')[0]), Id: uuid() }, 200);
+  }
+
+  async function withJwtRetry(input, init){
+    let r = await withTimeout(input, init);
+    if(r.status === 401){
+      let t = ''; try{ t = await r.clone().text(); }catch(e){}
+      if(/JWT expired|expired/i.test(t) && typeof STATE !== 'undefined' && STATE.supabase){
+        try{ await realRefresh(); const tk = await token(); if(tk){ const h = new Headers((init && init.headers) || {}); h.set('Authorization', 'Bearer ' + tk); r = await withTimeout(input, Object.assign({}, init, { headers: h })); } }catch(e){}
+      }
+    }
+    return r;
+  }
+  /* ---------- the fetch the database client uses ---------- */
+  async function wmFetch(input, init){
+    const url = typeof input === 'string' ? input : (input && input.url) || String(input);
+    if(!SB() || url.indexOf(SB()) !== 0) return NATIVE(input, init);
+    const method = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+    const path = url.slice(SB().length);
+    if(!init && input && typeof input !== 'string') init = { method, headers: input.headers };
+    /* sign-in token refresh: keep the person signed in on site */
+    if(/^\/auth\/v1\/token\?grant_type=refresh_token/.test(path)){
+      if(!isOffline()){ try{ const r = await withTimeout(input, init); if(r.ok) markOnline(); return r; }catch(e){ if(!isNetErr(e)) throw e; markOffline(); } }
+      const s = sessionFromStorage(); const last = NET.lastOk || LS.get('wm-last-ok', 0);
+      if(s && last && Date.now() - last < MAX_OFFLINE_DAYS * DAY){
+        const exp = Math.floor(Date.now() / 1000) + 3 * 24 * 3600;
+        return json({ access_token: s.access_token, token_type: 'bearer', expires_in: 3 * 24 * 3600, expires_at: exp, refresh_token: s.refresh_token, user: s.user });
+      }
+      throw new TypeError('Failed to fetch');
+    }
+    if(path.indexOf('/auth/v1/') === 0){
+      if(method === 'GET' && /^\/auth\/v1\/user/.test(path)){
+        if(!isOffline()){ try{ const r = await withTimeout(input, init); markOnline(); remember('GET', url, init, r, ''); return r; }catch(e){ if(!isNetErr(e)) throw e; markOffline(); } }
+        return readOffline('GET', url, init, '');
+      }
+      if(isOffline()) throw new TypeError('Failed to fetch');
+      try{ const r = await withTimeout(input, init); return r; }catch(e){ if(isNetErr(e)) markOffline(); throw e; }
+    }
+    if(path.indexOf('/rest/v1/') === 0){
+      const table = tableOf(path), read = method === 'GET' || method === 'HEAD';
+      const isRpc = table === 'rpc' || /^\/rest\/v1\/rpc\//.test(path);
+      if(read || isRpc){
+        if(!isOffline()){
+          try{ const r = await withJwtRetry(input, init); markOnline(); remember(method, url, init, r, table); return r; }
+          catch(e){ if(!isNetErr(e)) throw e; markOffline(); }
+        }
+        return readOffline(method, url, init, table);
+      }
+      /* writes */
+      const denied = DENY.test(table);
+      if(!isOffline()){
+        try{ const r = await withJwtRetry(input, init); markOnline(); return r; }
+        catch(e){ if(!isNetErr(e)) throw e; markOffline(); }
+      }
+      if(denied || method === 'DELETE' || method === 'PUT') return offlineErr(method === 'DELETE' ? 'Deleting needs an internet connection.' : 'This change needs an internet connection.');
+      return enqueueRest(method, url, init, table);
+    }
+    if(path.indexOf('/storage/v1/object/') === 0 && (method === 'POST' || method === 'PUT') && !/\/sign\//.test(path)){
+      if(!isOffline()){
+        try{ const r = await withTimeout(input, Object.assign({}, init, {})); markOnline(); return r; }
+        catch(e){ if(!isNetErr(e)) throw e; markOffline(); }
+      }
+      return enqueueStorage(method, url, init);
+    }
+    if(isOffline()) return offlineErr('This needs an internet connection.');
+    try{ return await NATIVE(input, init); }catch(e){ if(isNetErr(e)) markOffline(); throw e; }
+  }
+  window.wmOfflineFetch = wmFetch;
+  /* the database library is loaded from the app's own folder when it is there, so it also starts with no signal */
+  function loadLocalLib(){ return new Promise((res, rej) => { if(window.supabase && window.supabase.createClient) return res(); const sc = document.createElement('script'); sc.src = 'supabase-js.umd.js'; sc.onload = () => res(); sc.onerror = () => rej(new Error('no local library')); document.head.appendChild(sc); }); }
+  try{ const _e = ensureSupabaseLib; ensureSupabaseLib = async function(){ if(supabaseLib) return; try{ await loadLocalLib(); if(window.supabase && window.supabase.createClient){ supabaseLib = window.supabase; return; } }catch(e){} return _e(); }; }catch(e){}
+
+  /* ---------- upload on reconnect ---------- */
+  async function token(){ try{ const { data } = await STATE.supabase.auth.getSession(); return data && data.session && data.session.access_token; }catch(e){ return null; } }
+  function bodyFor(q){
+    if(q.kind === 'storage'){ if(q.entries){ const fd = new FormData(); q.entries.forEach(([k, v]) => fd.append(k, v)); return fd; } return q.blob; }
+    return q.body;
+  }
+  async function replayOne(q, tok){
+    const headers = Object.assign({}, q.headers, { Authorization: 'Bearer ' + tok });
+    if(q.kind === 'storage' && q.entries) delete headers['content-type'];
+    const r = await withTimeout(q.url, { method: q.method, headers, body: bodyFor(q) });
+    return r;
+  }
+  async function logSync(items){
+    try{
+      const tok = await token(); if(!tok || !items.length) return;
+      const rows = items.filter(q => q.kind === 'rest' && q.orgId).map(q => ({ organisation_id: q.orgId, user_id: q.userId, table_name: q.table, record_id: (q.ids && q.ids[0]) || ((() => { try{ const b = JSON.parse(q.body); return (Array.isArray(b) ? b[0] : b).id; }catch(e){ return null; } })()), action: q.action, summary: q.summary || '', captured_at: q.captured, device: q.device }));
+      if(!rows.length) return;
+      await withTimeout(SB() + '/rest/v1/offline_sync_log', { method: 'POST', headers: { 'content-type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + tok, prefer: 'return=minimal' }, body: JSON.stringify(rows) });
+    }catch(e){}
+  }
+  async function sync(){
+    if(NET.syncing) return; await ready;
+    if(!Q.some(q => q.status !== 'done')) return;
+    if(isOffline()){ paint(); return; }
+    NET.syncing = true; paint();
+    let ok = 0; const done = [];
+    try{
+      try{ await STATE.supabase.auth.refreshSession(); }catch(e){}
+      let tok = await token();
+      if(!tok){ NET.syncing = false; paint(); return; }
+      for(const q of Q.slice()){
+        if(q.status === 'done' || q.status === 'skip') continue;
+        let r;
+        try{ r = await replayOne(q, tok); }
+        catch(e){ if(isNetErr(e)){ markOffline(); break; } q.status = 'failed'; q.error = String(e.message || e); await qPut(q); continue; }
+        let txt = ''; if(!r.ok){ try{ txt = await r.clone().text(); }catch(e){} }
+        if(r.ok || (r.status === 409 && /23505|duplicate/i.test(txt) && q.action === 'insert')){
+          q.status = 'done'; await qDel(q.id); Q = Q.filter(x => x.id !== q.id); ok++; done.push(q); RECENT.unshift({ summary: q.summary, table: q.table, action: q.action, at: Date.now() }); continue;
+        }
+        if(r.status === 401){ try{ await STATE.supabase.auth.refreshSession(); tok = await token(); }catch(e){} q.status = 'pending'; q.error = 'Sign in again to finish uploading.'; await qPut(q); break; }
+        /* retry once without the fields this device added, if the table does not have them */
+        if(r.status === 400 && q.added && q.added.length && q.kind === 'rest' && /column|PGRST204|schema cache/i.test(txt)){
+          try{ let b = JSON.parse(q.body); const strip = o => { q.added.forEach(k => delete o[k]); }; Array.isArray(b) ? b.forEach(strip) : strip(b); q.body = JSON.stringify(b); q.added = []; await qPut(q); const r2 = await replayOne(q, tok); if(r2.ok){ q.status = 'done'; await qDel(q.id); Q = Q.filter(x => x.id !== q.id); ok++; done.push(q); continue; } txt = await r2.text(); }catch(e){}
+        }
+        q.status = (r.status >= 500) ? 'pending' : 'failed'; let msg = txt; try{ msg = JSON.parse(txt).message || txt; }catch(e){} q.error = String(msg || ('Error ' + r.status)).slice(0, 220); await qPut(q);
+        if(r.status >= 500) break;
+      }
+    } finally { NET.syncing = false; }
+    paint();
+    if(ok){
+      logSync(done);
+      try{ toast(ok + ' offline record' + (ok === 1 ? '' : 's') + ' uploaded.', 'success'); }catch(e){}
+      refreshApp();
+    }
+  }
+  async function refreshApp(){
+    const fns = ['loadNCs', 'loadAudits', 'loadAuditChecklistItems', 'loadFiveSInspections', 'loadAssessmentRecords', 'loadTasks', 'loadRagaAlerts'];
+    try{ await Promise.allSettled(fns.map(n => typeof window[n] === 'function' ? window[n]() : null)); }catch(e){}
+    try{ if(typeof showModule === 'function' && STATE.currentModule) showModule(STATE.currentModule); }catch(e){}
+  }
+  let kT = null; function kick(){ clearTimeout(kT); kT = setTimeout(sync, 800); }
+  let pT = null;
+  function schedProbe(){
+    clearTimeout(pT);
+    pT = setTimeout(async () => {
+      if(!NET.offline && !Q.some(q => q.status === 'pending')) return;
+      try{ const r = await withTimeout(SB() + '/auth/v1/health', { headers: { apikey: (typeof SUPABASE_ANON_KEY !== 'undefined' ? SUPABASE_ANON_KEY : '') } }); if(r) markOnline(); }catch(e){ if(!NET.offline) markOffline(); }
+      if(NET.offline || Q.some(q => q.status === 'pending')) schedProbe();
+    }, 15000);
+  }
+  setInterval(() => { if(!isOffline() && !NET.syncing && Q.some(q => q.status === 'pending')) sync(); }, 30000);
+  window.addEventListener('online', () => { NET.offline = false; paint(); kick(); schedProbe(); });
+  window.addEventListener('offline', () => { markOffline(); });
+  document.addEventListener('visibilitychange', () => { if(!document.hidden && Q.some(q => q.status === 'pending')) kick(); });
+
+  /* ---------- on-screen status and review panel ---------- */
+  function ago(ms){ if(!ms) return 'not yet'; return new Date(ms).toLocaleString('en-ZA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+  function css(){
+    if(document.getElementById('wmo-css')) return; const s = document.createElement('style'); s.id = 'wmo-css';
+    s.textContent = `#wmo-chip{position:fixed;left:14px;bottom:14px;z-index:9990;display:none;align-items:center;gap:8px;padding:9px 14px;border-radius:999px;font:700 12.5px Arial,Helvetica,sans-serif;color:#fff;cursor:pointer;box-shadow:0 8px 26px rgba(0,0,0,.28);border:0}
+    #wmo-chip i{width:9px;height:9px;border-radius:50%;background:#fff;display:inline-block}
+    #wmo-chip.off{background:#C25A00}#wmo-chip.up{background:#1E5FA8}#wmo-chip.bad{background:#B21616}#wmo-chip.ok{background:#2E7D32}
+    #wmo-panel{position:fixed;left:14px;bottom:62px;z-index:9991;width:min(420px,calc(100vw - 28px));max-height:70vh;overflow:auto;background:#fff;color:#14171F;border-radius:14px;box-shadow:0 18px 60px rgba(0,0,0,.35);display:none;font:13px Arial,Helvetica,sans-serif}
+    #wmo-panel.open{display:block}#wmo-panel h4{margin:0;padding:14px 16px 4px;font-size:15px}
+    #wmo-panel .st{padding:0 16px 10px;color:#5B6270;line-height:1.5}
+    #wmo-panel .it{padding:9px 16px;border-top:1px solid #ECE9E4}#wmo-panel .it b{display:block}#wmo-panel .it span{color:#5B6270;font-size:12px}
+    #wmo-panel .it.f{background:#FFF1F0}#wmo-panel .it .e{color:#B21616;font-size:12px;margin-top:2px}
+    #wmo-panel .bar{display:flex;gap:8px;flex-wrap:wrap;padding:10px 16px;border-top:1px solid #ECE9E4}
+    #wmo-panel button{font:700 12.5px Arial,Helvetica,sans-serif;border-radius:999px;padding:8px 14px;border:1px solid #14171F;background:#fff;color:#14171F;cursor:pointer}
+    #wmo-panel button.p{background:#B21616;border-color:#B21616;color:#fff}`;
+    document.head.appendChild(s);
+  }
+  let chip = null, panel = null;
+  function ensureUI(){
+    if(chip || !document.body) return; css();
+    chip = document.createElement('button'); chip.id = 'wmo-chip'; chip.type = 'button'; chip.onclick = () => { panel.classList.toggle('open'); drawPanel(); };
+    panel = document.createElement('div'); panel.id = 'wmo-panel';
+    document.body.appendChild(chip); document.body.appendChild(panel);
+  }
+  function counts(){ const p = Q.filter(q => q.status === 'pending').length, f = Q.filter(q => q.status === 'failed').length; return { p, f, n: p + f }; }
+  function paint(){
+    if(!document.body){ document.addEventListener('DOMContentLoaded', paint, { once: true }); return; }
+    ensureUI(); const c = counts(), off = isOffline();
+    let cls = '', txt = '';
+    if(c.f){ cls = 'bad'; txt = c.f + ' need' + (c.f === 1 ? 's' : '') + ' attention'; }
+    else if(off){ cls = 'off'; txt = 'Offline: saving on this device' + (c.p ? ' (' + c.p + ' waiting)' : ''); }
+    else if(NET.syncing){ cls = 'up'; txt = 'Uploading ' + c.p + '…'; }
+    else if(c.p){ cls = 'up'; txt = c.p + ' waiting to upload'; }
+    if(!txt){ chip.style.display = 'none'; if(panel.classList.contains('open')) drawPanel(); return; }
+    chip.className = cls; chip.innerHTML = '<i></i>' + txt; chip.style.display = 'inline-flex';
+    if(panel.classList.contains('open')) drawPanel();
+  }
+  function drawPanel(){
+    if(!panel) return; const c = counts(), off = isOffline();
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+    panel.innerHTML = `<h4>${c.f ? 'Needs attention' : off ? 'You are offline' : (c.n ? 'Waiting to upload' : 'Offline mode')}</h4>
+      <div class="st">${off ? 'Keep working. Everything you capture is saved on this device and uploads by itself when you are back online.' : (c.n ? 'These records are saved on this device and upload in the order they were captured.' : 'Nothing is waiting.')}<br>Data saved on this device: ${esc(ago(NET.lastCache || LS.get('wm-last-cache', 0)))}</div>
+      ${Q.map(q => `<div class="it ${q.status === 'failed' ? 'f' : ''}"><b>${esc(labelOf(q.table === 'storage' ? 'evidence file' : q.table, q.action))}${q.summary ? ': ' + esc(q.summary) : ''}</b><span>Captured ${esc(ago(Date.parse(q.captured)))} on ${esc(q.device)}${q.status === 'failed' ? '' : ' · waiting'}</span>${q.error ? '<div class="e">' + esc(q.error) + '</div>' : ''}${q.status === 'failed' ? '<div style="margin-top:6px"><button data-r="' + q.id + '">Try again</button> <button data-d="' + q.id + '">Discard</button></div>' : ''}</div>`).join('')}
+      ${RECENT.slice(0, 4).map(r => `<div class="it"><b>Uploaded: ${esc(r.summary || labelOf(r.table, r.action))}</b><span>${esc(ago(r.at))}</span></div>`).join('')}
+      <div class="bar"><button class="p" data-a="sync" ${off ? 'disabled style="opacity:.5"' : ''}>Upload now</button><button data-a="prep" ${off ? 'disabled style="opacity:.5"' : ''}>Refresh data for offline use</button><button data-a="close">Close</button></div>`;
+    panel.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { const a = b.dataset.a; if(a === 'close') panel.classList.remove('open'); else if(a === 'sync'){ Q.filter(q => q.status === 'failed').forEach(q => { q.status = 'pending'; q.error = ''; qPut(q); }); sync(); } else if(a === 'prep'){ prepare(); } });
+    panel.querySelectorAll('[data-r]').forEach(b => b.onclick = async () => { const q = Q.find(x => x.id == b.dataset.r); if(q){ q.status = 'pending'; q.error = ''; await qPut(q); sync(); } });
+    panel.querySelectorAll('[data-d]').forEach(b => b.onclick = async () => { const id = +b.dataset.d; if(confirm('Discard this record? It will not be uploaded.')){ await qDel(id); Q = Q.filter(x => x.id !== id); paint(); } });
+  }
+  async function prepare(){
+    try{ if(typeof STATE !== 'undefined' && STATE.org){ toast('Saving the latest data on this device…'); await selectOrg(STATE.org.id); toast('Done. This organisation is ready to use offline.', 'success'); } }catch(e){}
+    paint();
+  }
+
+  /* ---------- installable app + offline shell ---------- */
+  function setupApp(){
+    try{
+      if(!document.querySelector('link[rel=manifest]')){ const l = document.createElement('link'); l.rel = 'manifest'; l.href = 'manifest.webmanifest'; document.head.appendChild(l); }
+      if(!document.querySelector('meta[name=theme-color]')){ const m = document.createElement('meta'); m.name = 'theme-color'; m.content = '#14171F'; document.head.appendChild(m); }
+      if(!document.querySelector('link[rel=apple-touch-icon]')){ const a = document.createElement('link'); a.rel = 'apple-touch-icon'; a.href = 'icon-192.png'; document.head.appendChild(a); }
+      if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => {});
+    }catch(e){}
+  }
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); window.__wmInstall = e; });
+
+  /* menu entry: offline help and install */
+  function addMenu(){
+    const m = document.getElementById('avatar-menu'); if(!m || document.getElementById('wmo-menu')) return;
+    const a = document.createElement('a'); a.id = 'wmo-menu'; a.innerHTML = '<svg viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0114.08 0"/><path d="M1.42 9a16 16 0 0121.16 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg> Offline mode and install';
+    a.onclick = () => { try{ document.getElementById('avatar-menu').classList.remove('open'); }catch(e){} ensureUI(); panel.classList.add('open'); drawPanel(); if(window.__wmInstall){ if(confirm('Install QaSHE Watchman on this device so it opens like an app and works with no signal?')) window.__wmInstall.prompt(); } else if(/iPhone|iPad/.test(navigator.userAgent)){ alert('To install on an iPhone or iPad: tap the Share button, then Add to Home Screen.'); } };
+    m.insertBefore(a, m.lastElementChild);
+  }
+  addMenu(); document.addEventListener('DOMContentLoaded', addMenu); setTimeout(addMenu, 2500);
+  window.WMOffline = { queue: () => Q.slice(), sync, isOffline, state: NET, prepare, ready: () => ready, install: () => window.__wmInstall && window.__wmInstall.prompt() };
+  setupApp();
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', paint, { once: true }); else paint();
+  if(navigator.onLine === false) markOffline();
+  kick();
+})();
+
+/* ===== b68a: View Nonconformance, PDF preview before print ===== */
+(function(){
+  const css=document.createElement('style'); css.id='b68a-css'; css.textContent=`
+  #wm-view-ov{position:fixed;inset:0;background:rgba(30,28,27,.6);z-index:9000;display:none;flex-direction:column;align-items:center}
+  #wm-view-ov.on{display:flex}
+  #wm-view-ov .vbar{width:100%;background:#1E1C1B;color:#fff;padding:10px 18px;display:flex;gap:10px;align-items:center;font:600 13px Arial,Helvetica,sans-serif}
+  #wm-view-ov .vbar .sp{flex:1}
+  #wm-view-ov .vbar button{border:0;border-radius:6px;padding:8px 16px;font:600 13px Arial,Helvetica,sans-serif;cursor:pointer}
+  #wm-view-ov .vbar .vp{background:#B21616;color:#fff}
+  #wm-view-ov .vbar .vc{background:#fff;color:#1E1C1B}
+  #wm-view-ov .vpage{background:#fff;width:210mm;max-width:100%;margin:18px auto;padding:16mm;box-shadow:0 4px 24px rgba(0,0,0,.35);overflow:auto;flex:1;box-sizing:border-box;font-family:Arial,Helvetica,sans-serif}
+  #wm-view-ov .vscroll{flex:1;overflow:auto;width:100%;padding:0 10px}
+  #wm-view-ov .print-header{border-bottom:2.5px solid #B21616;padding-bottom:14px;margin-bottom:18px;display:flex;align-items:center;gap:14px}
+  #wm-view-ov .print-logo{max-height:50px;max-width:130px;object-fit:contain}
+  #wm-view-ov .print-header-text{flex:1}
+  #wm-view-ov .print-brand{font-weight:700;font-size:15px;color:#B21616}
+  #wm-view-ov .print-doc-title{font-weight:700;font-size:21px;color:#1E1C1B;margin-top:4px}
+  #wm-view-ov .print-ref{font-size:11px;color:#615C59;margin-top:3px}
+  #wm-view-ov .print-meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;font-size:12px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid #E3E1DF}
+  #wm-view-ov .print-meta-grid b{color:#615C59}
+  #wm-view-ov .print-section-title{font-weight:700;font-size:13px;margin:16px 0 8px;border-bottom:1px solid #EDEBE9;padding-bottom:4px}
+  #wm-view-ov .print-body{font-size:12.5px;line-height:1.6;color:#1E1C1B}
+  #wm-view-ov .print-table{width:100%;border-collapse:collapse;font-size:11px;margin-top:8px}
+  #wm-view-ov .print-table th{text-align:left;padding:6px 8px;background:#F0F0EF;border:1px solid #E3E1DF;text-transform:uppercase;font-size:9.5px;color:#615C59}
+  #wm-view-ov .print-table td{padding:6px 8px;border:1px solid #E3E1DF}
+  #wm-view-ov .print-footer-fixed{display:flex;justify-content:space-between;gap:12px;padding-top:6px;margin-top:18px;border-top:1px solid #E3E1DF;font-size:9px;color:#9C9895}
+  #wm-view-ov .print-closing-note{margin-top:20px;padding-top:10px;border-top:1px solid #E3E1DF;font-size:10px;color:#9C9895}
+  #wm-view-ov img{max-width:100%}
+  @media print{#wm-view-ov{display:none !important}}`;
+  document.head.appendChild(css);
+  let ov=null;
+  function mk(){ if(ov) return ov; ov=document.createElement('div'); ov.id='wm-view-ov';
+    ov.innerHTML='<div class="vbar"><span id="wm-view-t">Nonconformance</span><span class="sp"></span><button class="vp" onclick="wmViewPrint()">Print / Save as PDF</button><button class="vc" onclick="wmViewClose()">Close</button></div><div class="vscroll"><div class="vpage" id="wm-view-page"></div></div>';
+    document.body.appendChild(ov); return ov; }
+  window.wmViewClose=function(){ if(ov) ov.classList.remove('on'); };
+  window.wmViewPrint=function(){ const p=window.__wmRealPrint||window.print; p.call(window); };
+  window.__wmRealPrint=window.print.bind(window);
+  let capture=false;
+  const real=window.print.bind(window);
+  window.print=function(){
+    if(capture){ capture=false;
+      const c=document.getElementById('print-container'); mk();
+      document.getElementById('wm-view-page').innerHTML=c?c.innerHTML:'';
+      const t=document.querySelector('#wm-view-page .print-doc-title'); document.getElementById('wm-view-t').textContent=t?t.textContent:'Nonconformance';
+      ov.classList.add('on'); return; }
+    return real();
+  };
+  window.viewNC=async function(id){
+    try{
+      const sections={}; (typeof NC_PRINT_SECTIONS!=='undefined'?NC_PRINT_SECTIONS:[]).forEach(s=>sections[s.key]=true);
+      capture=true;
+      await buildAndPrintNC(id,sections);
+    }catch(e){ capture=false; console.error(e); toast('Could not open the preview.','error'); }
+    capture=false;
+  };
+  /* PDF view button also on the edit page header */
+  const _o=window.openNCDetail;
+  window.openNCDetail=openNCDetail=async function(id){
+    const r=await _o.apply(this,arguments);
+    try{ const slot=document.getElementById('nc-detail-slot');
+      if(slot && !slot.querySelector('.nc-pdfview-top')){ const pb=slot.querySelector('button[onclick*="printNC"]');
+        if(pb){ const b=document.createElement('button'); b.className=pb.className+' nc-pdfview-top'; b.textContent='View PDF'; b.onclick=()=>viewNC(id); pb.parentNode.insertBefore(b,pb); } } }catch(e){}
+    return r;
+  };
+})();
+
+/* ===== b68b: Information Security Incidents as its own switchable module ===== */
+(function(){
+  const E=s=>escapeHtml(s==null?'':String(s));
+  const ICON='<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+  MODULE_META.infosec_incidents={title:'Information Security Incidents',sub:()=>'Record, classify and close information security incidents, with POPIA notification dates and the controls that failed. Each incident is also a nonconformance, so it follows the normal investigation and closure route.'};
+  RENDERERS.infosec_incidents=()=>'<div id="isi-root"></div>';
+  const anchor=document.querySelector('.nav-item[data-mod="incidents"]')||document.querySelector('.nav-item[data-mod="nonconformances"]');
+  if(anchor && !document.querySelector('.nav-item[data-mod="infosec_incidents"]')) anchor.insertAdjacentHTML('afterend',`<div class="nav-item" data-mod="infosec_incidents" onclick="showModule('infosec_incidents')">${ICON} Information Security Incidents</div>`);
+  const visible=()=>!!STATE.org && STATE.org.infosec_enabled!==false;
+  { const _c=canAccessModule; canAccessModule=window.canAccessModule=function(mod){ if(mod==='infosec_incidents'){ if(!visible()) return false; if(STATE.org._modOff&&STATE.org._modOff.has('infosec_incidents')) return false; return _c('nonconformances')||STATE.myRole==='admin'||!!(STATE.profile&&STATE.profile.is_platform_staff); } return _c.apply(this,arguments); }; }
+  { const _a=applyModuleAccessToNav; applyModuleAccessToNav=window.applyModuleAccessToNav=function(){ const r=_a.apply(this,arguments);
+      const el=document.querySelector('.nav-item[data-mod="infosec_incidents"]'); if(el) el.style.display=canAccessModule('infosec_incidents')?'':'none'; return r; }; }
+  const incFieldsFn=()=>window.__wmIncFields, readIncFn=()=>window.__wmReadInc;
+  async function load(){
+    if(window.loadNCs) await window.loadNCs();
+    const r=await STATE.supabase.from('security_incidents').select('*').eq('organisation_id',STATE.org.id);
+    STATE.secIncidents=r.error?[]:(r.data||[]);
+    STATE._isiMissing=!!(r.error&&/relation|does not exist|schema cache/i.test(r.error.message||''));
+  }
+  window.renderIsiPage=async function(){
+    const root=document.getElementById('isi-root'); if(!root) return;
+    root.innerHTML='<p style="color:var(--text-faint)">Loading…</p>';
+    try{ await load(); }catch(e){}
+    const rows=(STATE.secIncidents||[]).map(s=>({s,n:(STATE.ncs||[]).find(x=>x.id===s.nonconformance_id)})).filter(x=>x.n)
+      .sort((a,b)=>String(b.s.detected_at||b.n.created_at||'').localeCompare(String(a.s.detected_at||a.n.created_at||'')));
+    const open=rows.filter(x=>x.n.status!=='closed').length;
+    const popia=rows.filter(x=>x.s.personal_info_involved&&(!x.s.regulator_notified_at||!x.s.subjects_notified_at)&&x.n.status!=='closed').length;
+    root.innerHTML=`${STATE._isiMissing?'<div class="detail-card"><p style="color:#8a1b17;font-size:13px">Run qashe-watchman-schema-isms.sql first: the security incident table is missing.</p></div>':''}
+    <div class="toolbar"><div class="filters"><span style="font-size:13px"><b>${rows.length}</b> incidents · <b>${open}</b> open${popia?` · <b style="color:#8a1b17">${popia} with POPIA notification outstanding</b>`:''}</span></div>
+      <button class="btn-primary" onclick="isiNew()">Record information security incident</button></div>
+    <div id="isi-form"></div>
+    <div class="panel"><div id="isi-table">${rows.length?`<table><tr><th>Ref</th><th>Incident</th><th>Type</th><th>Detected</th><th>Severity</th><th>Status</th><th>POPIA</th><th></th></tr>${rows.map(({s,n})=>`<tr class="clickable" onclick="isiOpen('${n.id}')"><td class="mono-cell">${E(n.ref_code)}</td><td class="strong">${E(n.description?String(n.description).slice(0,80):n.title)}</td><td>${E(s.incident_type)}</td><td>${s.detected_at?fmtDate(String(s.detected_at).slice(0,10)):'-'}</td><td>${sevBadge(n.severity)}</td><td>${pill(n.status)}</td><td>${s.personal_info_involved?((s.regulator_notified_at&&s.subjects_notified_at)?'Notified':'<b style="color:#8a1b17">Outstanding</b>'):'-'}</td><td style="text-align:right"><button class="btn-small" onclick="event.stopPropagation();isiOpen('${n.id}')">Edit Incident</button></td></tr>`).join('')}</table>`:'<div class="empty-state"><p>No information security incidents recorded.</p></div>'}</div></div>`;
+  };
+  function ownerOpts(sel){ return (STATE.members||[]).filter(m=>m.status!=='removed').map(m=>`<option value="${m.user_id}" ${m.user_id===sel?'selected':''}>${E((m.profiles&&m.profiles.name)||m.email||m.user_id)}</option>`).join(''); }
+  window.isiNew=function(){
+    const slot=document.getElementById('isi-form'); if(!slot) return;
+    const d=new Date(); d.setDate(d.getDate()+14);
+    slot.innerHTML=`<div class="detail-card"><div class="panel-head"><h3>Record information security incident</h3></div>
+      <div class="form-grid">
+        <div class="field span3"><label>What happened</label><textarea id="isi-desc" placeholder="Describe the incident"></textarea></div>
+        <div class="field"><label>Severity</label><select id="isi-sev"><option value="minor">Minor</option><option value="major">Major</option><option value="critical">Critical</option></select></div>
+        <div class="field"><label>Owner</label><select id="isi-owner">${ownerOpts(STATE.user&&STATE.user.id)}</select></div>
+        <div class="field"><label>Target close date</label><input type="date" id="isi-target" value="${d.toISOString().slice(0,10)}"></div>
+      </div>${window.__wmIncFields('isin',{})}
+      <div class="form-actions"><button class="btn-cancel" onclick="document.getElementById('isi-form').innerHTML=''">Cancel</button><button class="btn-primary" onclick="isiSave()">Record incident</button></div></div>`;
+    slot.scrollIntoView({behavior:'smooth',block:'start'});
+  };
+  window.isiSave=async function(){
+    const desc=document.getElementById('isi-desc').value.trim();
+    if(!desc){ toast('Describe the incident first.','error'); return; }
+    const t=(STATE.ncTypes||[]).find(x=>/^information security/i.test(x.name));
+    const payload={organisation_id:STATE.org.id,title:t?t.name:'Information security incident',nc_type_id:t?t.id:null,description:desc,
+      severity:document.getElementById('isi-sev').value,raised_by:STATE.user.id,owner_id:document.getElementById('isi-owner').value,
+      target_close_date:document.getElementById('isi-target').value};
+    if(!payload.target_close_date){ toast('Target close date is required.','error'); return; }
+    const r=await STATE.supabase.from('nonconformances').insert(payload).select().single();
+    if(r.error||!r.data){ toast('Could not record: '+((r.error&&r.error.message)||'no record returned'),'error'); return; }
+    const inc=window.__wmReadInc('isin');
+    const e=await STATE.supabase.from('security_incidents').insert(Object.assign({organisation_id:STATE.org.id,nonconformance_id:r.data.id},inc));
+    if(e.error){ toast('The incident was raised as a nonconformance, but the security details were not saved: '+e.error.message,'error'); }
+    else toast('Information security incident recorded.','success');
+    renderIsiPage();
+  };
+  window.isiOpen=async function(ncId){
+    const slot=document.getElementById('isi-form'); if(!slot) return;
+    const n=(STATE.ncs||[]).find(x=>x.id===ncId); const s=(STATE.secIncidents||[]).find(x=>x.nonconformance_id===ncId); if(!n||!s) return;
+    const clock=s.personal_info_involved&&(!s.regulator_notified_at||!s.subjects_notified_at)?`<div style="padding:10px 12px;border-radius:8px;background:#fdeceb;color:#8a1b17;font-size:12.5px;margin-bottom:12px;"><b>POPIA notification outstanding:</b> ${!s.regulator_notified_at?'the Information Regulator has not been notified. ':''}${!s.subjects_notified_at?'The affected data subjects have not been notified.':''}</div>`:'';
+    slot.innerHTML=`<div class="detail-card"><div class="panel-head"><h3>${E(n.ref_code)}: ${E(n.title)}</h3><span>${pill(n.status)}</span></div>${clock}
+      <p style="font-size:12.5px;margin-bottom:10px">${E(n.description||'')}</p>
+      ${window.__wmIncFields('isie',Object.assign({},s))}
+      <div class="form-actions"><button class="btn-primary" onclick="isiUpdate('${ncId}')">Save incident details</button>
+      <button class="btn-small" style="margin-left:8px" onclick="showModule('nonconformances');setTimeout(()=>openNCDetail('${ncId}'),300)">Open the nonconformance (investigation, actions, closure)</button>
+      <button class="btn-small" style="margin-left:8px" onclick="viewNC('${ncId}')">View PDF</button>
+      <button class="btn-cancel" onclick="document.getElementById('isi-form').innerHTML=''">Close</button></div></div>`;
+    slot.scrollIntoView({behavior:'smooth',block:'start'});
+  };
+  window.isiUpdate=async function(ncId){
+    const row=Object.assign({organisation_id:STATE.org.id,nonconformance_id:ncId},window.__wmReadInc('isie'));
+    const { error }=await STATE.supabase.from('security_incidents').upsert(row,{onConflict:'nonconformance_id'});
+    if(error){ toast('Could not save: '+error.message,'error'); return; }
+    toast('Incident details saved.','success'); renderIsiPage();
+  };
+  { const _s=showModule; showModule=window.showModule=function(mod){ const r=_s.apply(this,arguments); if(mod==='infosec_incidents') renderIsiPage(); return r; }; }
+  setTimeout(()=>{ try{ applyModuleAccessToNav(); }catch(e){} },0);
+})();
+
+/* ===== b68c: every risk or opportunity shows where it was raised from (NC, incident, accident, near miss, information security, RAGA) ===== */
+(function(){
+  const E=s=>escapeHtml(s==null?'':String(s));
+  const CLS={nonconformance:'Nonconformance',incident:'Incident',accident:'Accident',near_miss:'Near miss'};
+  STATE.riskSources={};
+  async function loadSources(){
+    const map={};
+    try{
+      const a=await STATE.supabase.from('nc_risk_links').select('risk_id, nonconformance_id, nonconformances(id, ref_code, title, record_class)').eq('organisation_id',STATE.org.id);
+      (a.data||[]).forEach(l=>{ const n=l.nonconformances; if(!n) return;
+        const sec=(STATE.secIncidents||[]).some(s=>s.nonconformance_id===n.id);
+        (map[l.risk_id]=map[l.risk_id]||[]).push({kind:'nc',id:n.id,ref:n.ref_code,title:n.title,type:sec?'Information security incident':(CLS[n.record_class]||'Nonconformance')}); });
+    }catch(e){}
+    try{
+      const b=await STATE.supabase.from('raga_risk_links').select('risk_id, raga_alert_id, raga_alerts(id, ref_code, title)').eq('organisation_id',STATE.org.id);
+      (b.data||[]).forEach(l=>{ const r=l.raga_alerts; if(!r) return;
+        (map[l.risk_id]=map[l.risk_id]||[]).push({kind:'raga',id:r.id,ref:r.ref_code,title:r.title,type:'RAGA'}); });
+    }catch(e){}
+    STATE.riskSources=map;
+  }
+  window.wmRiskSources=loadSources;
+  const open=s=>s.kind==='raga'?`showModule('raga');setTimeout(()=>openRagaDetail('${s.id}'),300)`:(s.type==='Information security incident'&&canAccessModule('infosec_incidents')?`showModule('infosec_incidents');setTimeout(()=>isiOpen('${s.id}'),500)`:`showModule('nonconformances');setTimeout(()=>openNCDetail('${s.id}'),300)`);
+  const chips=(rid,small)=>{ const l=STATE.riskSources[rid]||[]; if(!l.length) return small?'<span style="color:var(--text-faint)">Raised directly</span>':'';
+    return l.map(s=>`<a class="sf-a" style="cursor:pointer;white-space:nowrap" title="${E(s.type+': '+(s.title||''))}" onclick="event.stopPropagation();${open(s)}">${E(s.ref)}</a>`).join(' '); };
+  const _lr=loadRisks;
+  loadRisks=window.loadRisks=async function(){ const r=await _lr.apply(this,arguments); try{ await loadSources(); }catch(e){} return r; };
+  function decorate(){
+    const wrap=document.getElementById('risk-table-wrap'); if(!wrap) return;
+    const t=wrap.querySelector('table');
+    if(t && !t.querySelector('.rsrc-h')){ const h=t.querySelector('tr'); if(h) h.insertAdjacentHTML('beforeend','<th class="rsrc-h">Raised from</th>');
+      t.querySelectorAll('tr.clickable').forEach(tr=>{ const m=(tr.getAttribute('onclick')||'').match(/'([^']+)'/); tr.insertAdjacentHTML('beforeend',`<td class="rsrc-c">${m?chips(m[1],true):''}</td>`); }); }
+    wrap.querySelectorAll('.rf-row').forEach(row=>{ if(row.querySelector('.rsrc-c')) return; const m=(row.getAttribute('onclick')||'').match(/'([^']+)'/); const c=m?chips(m[1],false):''; if(c) row.querySelector('.rf-t')&&row.querySelector('.rf-t').insertAdjacentHTML('beforeend',` <span class="rsrc-c rf-basis">Raised from ${c}</span>`); });
+  }
+  const _rt=renderRisksTable;
+  renderRisksTable=window.renderRisksTable=function(){ const r=_rt.apply(this,arguments); try{ decorate(); }catch(e){} return r; };
+  if(typeof rfRenderView==='function'){ const _rv=rfRenderView; rfRenderView=window.rfRenderView=function(){ const r=_rv.apply(this,arguments); try{ decorate(); }catch(e){} return r; }; }
+  const _od=openRiskDetail;
+  openRiskDetail=window.openRiskDetail=async function(id){
+    try{ await loadSources(); }catch(e){}
+    const r=await _od.apply(this,arguments);
+    try{ const slot=document.getElementById('risk-detail-slot'); const meta=slot&&slot.querySelector('.detail-meta'); const l=STATE.riskSources[id]||[];
+      if(meta&&!meta.querySelector('.rsrc-m')) meta.insertAdjacentHTML('beforeend',`<div class="dm-item rsrc-m"><div class="l">Raised from</div><div class="v">${l.length?l.map(s=>`<a class="sf-a" style="cursor:pointer" onclick="${open(s)}">${E(s.ref)}</a> <span style="font-size:11px;color:var(--text-faint)">${E(s.type)}</span>`).join('<br>'):'Raised directly'}</div></div>`); }catch(e){}
+    return r; };
+  const _pr=printRisk;
+  printRisk=window.printRisk=async function(id){
+    try{ await loadSources(); }catch(e){}
+    const l=STATE.riskSources[id]||[]; const _pRec=window.printRecord;
+    window.printRecord=function(t,ref,meta,body){ window.printRecord=_pRec; meta=(meta||[]).concat([['Raised from', l.length?l.map(s=>E(s.ref)+' ('+E(s.type)+')').join(', '):'Raised directly']]); return _pRec.apply(this,[t,ref,meta].concat([].slice.call(arguments,3))); };
+    try{ return await _pr.apply(this,arguments); } finally { setTimeout(()=>{ if(window.printRecord!==_pRec) window.printRecord=_pRec; },5000); } };
+  /* make the register reflect a link made moments ago */
+  for(const nm of ['confirmRiskLink','confirmRagaRiskLink']){ const f=window[nm]; if(typeof f!=='function') continue;
+    window[nm]=async function(){ const r=await f.apply(this,arguments); try{ await loadSources(); if(document.getElementById('risk-table-wrap')) renderRisksTable(); }catch(e){} return r; }; }
+})();
+
 </script>
 </body>
 </html>
