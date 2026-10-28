@@ -3441,6 +3441,8 @@ const RENDERERS = {
           <option value="closed">Closed</option>
         </select>
       </div>
+      <button class="btn-small" onclick="openImportModal('raga')">Import Excel</button>
+      <button class="btn-small" onclick="exportModuleExcel('raga')">Export Excel</button>
       <button class="btn-small" onclick="printCurrentRegister('raga','RAGA Register')">Print Register</button>
       <button class="btn-primary btn-add" onclick="toggleRagaForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Raise Alert</button>
     </div>
@@ -3457,11 +3459,16 @@ const RENDERERS = {
           </select>
         </div>
         ${renderTitleCategoryPicker('raga', '')}
+        <div class="field"><label>Your reference</label><input id="raga-client-ref" placeholder="e.g. 20260802"></div>
         <div class="field span3"><label>Description</label><textarea id="raga-description" placeholder="For Red/Orange: what happened. For Green: what was done well, or what the compliment was."></textarea></div>
       </div>
       <div id="raga-issue-fields" class="form-grid" style="margin-bottom:0;">
         <div class="field"><label>Owner</label><select id="raga-owner">${memberOptions()}</select></div>
         <div class="field"><label>Target close date</label><input type="date" id="raga-target-close"></div>
+        <div class="field"><label>Department</label><select id="raga-department"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}</select></div>
+        <div class="field"><label>Personnel this concerns</label><select id="raga-personnel"><option value="">None</option>${STATE.personnel.map(p=>`<option value="${p.id}">${p.full_name}</option>`).join('')}</select></div>
+        <div class="field span3"><label>Immediate action taken</label><textarea id="raga-immediate-action" placeholder="What was done right away"></textarea></div>
+        <div class="field span3"><label>Contact details of involved parties</label><textarea id="raga-contact-details" placeholder="Who was involved, and how to reach them"></textarea></div>
       </div>
       <div id="raga-green-fields" class="form-grid" style="display:none; margin-bottom:0;">
         <div class="field span2"><label>Who is being recognised?</label><select id="raga-recognised-person">${personnelOptions()}</select></div>
@@ -4820,13 +4827,15 @@ function renderRagaTable(){
   }
   const typeBadge = { red: '🔴 Red', orange: '🟠 Orange', green: '🟢 Green' };
   wrap.innerHTML = `<div class="panel" style="padding:0; overflow:hidden;"><table>
-    <tr><th>Ref</th><th>Alert</th><th>Title</th><th>Raised</th><th>Status</th></tr>
+    <tr><th>Ref</th><th>Your ref</th><th>Alert</th><th>Title</th><th>Raised</th><th>Status</th><th></th></tr>
     ${rows.map(r=>`<tr class="clickable" onclick="openRagaDetail('${r.id}')">
       <td class="mono-cell">${r.ref_code}</td>
+      <td class="mono-cell">${escapeHtml(r.client_ref||'')}</td>
       <td>${typeBadge[r.alert_type]}</td>
       <td class="strong">${r.title}</td>
       <td>${fmtDate(r.raised_date)} by ${memberName(r.raised_by)}</td>
       <td>${r.alert_type === 'green' ? pill(r.status) : pill(r.status)}</td>
+      <td style="text-align:right;white-space:nowrap;"><button class="btn-small" onclick="event.stopPropagation(); openRagaDetail('${r.id}')">Edit RAGA</button> <button class="btn-small" onclick="event.stopPropagation(); viewRaga('${r.id}')">View RAGA</button></td>
     </tr>`).join('')}
   </table></div>`;
 }
@@ -4866,6 +4875,14 @@ window.createRagaAlert = async function(){
     organisation_id: STATE.org.id, alert_type: alertType, title, description,
     raised_by: STATE.user.id,
   };
+  { const cr = (document.getElementById('raga-client-ref')||{}).value; if(cr && cr.trim()) payload.client_ref = cr.trim(); }
+  if(alertType !== 'green'){
+    const g = id => ((document.getElementById(id)||{}).value||'').trim();
+    if(g('raga-immediate-action')) payload.immediate_action_taken = g('raga-immediate-action');
+    if(g('raga-contact-details')) payload.contact_details = g('raga-contact-details');
+    if(g('raga-department')) payload.department_id = g('raga-department');
+    if(g('raga-personnel')) payload.personnel_id = g('raga-personnel');
+  }
   if(alertType === 'green'){
     payload.recognised_person_id = document.getElementById('raga-recognised-person').value || null;
     payload.recognised_by = STATE.user.id;
@@ -4876,7 +4893,12 @@ window.createRagaAlert = async function(){
     if(!payload.target_close_date){ alert('Set a target close date for a Red or Orange alert.'); return; }
   }
 
-  const { error } = await STATE.supabase.from('raga_alerts').insert(payload);
+  let { error } = await STATE.supabase.from('raga_alerts').insert(payload);
+  if(error && /column|schema cache/i.test(error.message||'')){
+    ['client_ref','immediate_action_taken','contact_details','department_id','personnel_id'].forEach(k => delete payload[k]);
+    ({ error } = await STATE.supabase.from('raga_alerts').insert(payload));
+    if(!error) toast('Raised, but the extra fields were not saved: run qashe-watchman-schema-raga-parity.sql first.', 'error');
+  }
   if(error){ toast('Could not raise alert: ' + error.message, 'error'); return; }
   await loadRagaAlerts();
   renderRagaTable();
@@ -4900,12 +4922,21 @@ async function openRagaDetail(id){
   const linkedRisks = riskLinks || [];
   const typeLabel = { red: '🔴 Red Alert', orange: '🟠 Orange Alert', green: '🟢 Green Alert' };
   const isGreen = r.alert_type === 'green';
+  let rcaR = null, rcaParts = [], ragaHist = [];
+  try{
+    const q1 = await STATE.supabase.from('root_cause_analyses').select('*').eq('raga_alert_id', id);
+    rcaR = (q1.data && q1.data[0]) || null;
+    if(rcaR){ const q2 = await STATE.supabase.from('rca_participants').select('id, user_id').eq('rca_id', rcaR.id); rcaParts = q2.data || []; }
+    const q3 = await STATE.supabase.from('raga_alert_history').select('*').eq('raga_alert_id', id).order('changed_at', {ascending:false});
+    ragaHist = q3.data || [];
+  }catch(e){}
 
   document.getElementById('raga-detail-slot').innerHTML = `
     <div class="detail-panel">
       <div class="detail-head">
         <div><span class="ref">${r.ref_code}</span><h3>${r.title}</h3></div>
         <div style="display:flex; gap:8px;">
+          <button class="btn-small" onclick="viewRaga('${r.id}')">View PDF</button>
           <button class="btn-small" onclick="printRaga('${r.id}')">Print / PDF</button>
           <button class="close-btn" onclick="closeRagaDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
@@ -4916,6 +4947,7 @@ async function openRagaDetail(id){
           <option value="orange" ${r.alert_type==='orange'?'selected':''}>🟠 Orange Alert</option>
           <option value="green" ${r.alert_type==='green'?'selected':''}>🟢 Green Alert</option>
         </select></div></div>
+        <div class="dm-item"><div class="l">Your reference</div><div class="v"><input id="raga-d-client-ref" value="${escapeHtml(r.client_ref||'')}" placeholder="e.g. 20260802" style="font-size:12.5px;"></div></div>
         <div class="dm-item"><div class="l">Raised</div><div class="v">${fmtDate(r.raised_date)} by ${memberName(r.raised_by)}</div></div>
       </div>
       <div class="form-grid" style="margin-bottom:16px;">
@@ -4936,8 +4968,21 @@ async function openRagaDetail(id){
 
       <div id="raga-d-investigation-section" style="display:${isGreen?'none':'block'};">
         <div class="form-grid" style="margin-bottom:10px;">
+          <div class="field span3"><label>Immediate action taken</label><textarea id="raga-d-immediate-action" placeholder="What was done right away">${r.immediate_action_taken||''}</textarea></div>
+          <div class="field span3"><label>Contact details of involved parties</label><textarea id="raga-d-contact-details" placeholder="Who was involved, and how to reach them">${r.contact_details||''}</textarea></div>
+          <div class="field"><label>Department</label><select id="raga-d-department"><option value="">None</option>${STATE.docDepartments.filter(x=>x.is_active).map(x=>`<option value="${x.id}" ${r.department_id===x.id?'selected':''}>${x.name}</option>`).join('')}</select></div>
+          <div class="field"><label>Personnel this concerns</label><select id="raga-d-personnel"><option value="">None</option>${STATE.personnel.map(p=>`<option value="${p.id}" ${r.personnel_id===p.id?'selected':''}>${p.full_name}</option>`).join('')}</select></div>
+        </div>
+        ${renderRCASection(r, rcaR, rcaParts)}
+        <div class="form-grid" style="margin-bottom:10px;">
           <div class="field span3"><label>Root cause</label><textarea id="raga-d-rootcause" placeholder="Why this happened">${r.root_cause||''}</textarea></div>
           <div class="field span3"><label>Correction / corrective action</label><textarea id="raga-d-correction" placeholder="The fix">${r.correction||''}</textarea></div>
+          <div class="field span3"><label>Preventive action</label><textarea id="raga-d-preventive" placeholder="What stops this recurring elsewhere">${r.preventive_action||''}</textarea></div>
+          <div class="field span3"><label>Effectiveness of preventive action</label><textarea id="raga-d-effectiveness" placeholder="Reviewed later: did it work?">${r.effectiveness||''}</textarea></div>
+          <div class="field"><label>Is this a repeated issue?</label><select id="raga-d-repeated"><option value="">Not answered</option><option value="yes" ${r.is_repeated===true?'selected':''}>Yes</option><option value="no" ${r.is_repeated===false?'selected':''}>No</option></select></div>
+          <div class="field"><label>How many times before?</label><input type="number" min="0" id="raga-d-repeated-count" value="${r.repeated_count||''}"></div>
+          <div class="field"><label>Could this have been identified earlier?</label><select id="raga-d-earlier"><option value="">Not answered</option><option value="yes" ${r.could_identify_earlier===true?'selected':''}>Yes</option><option value="no" ${r.could_identify_earlier===false?'selected':''}>No</option></select></div>
+          <div class="field span3"><label>At what stage?</label><input id="raga-d-earlier-stage" value="${escapeHtml(r.earlier_stage||'')}"></div>
         </div>
         <div class="status-row">
           <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase;">Status</label>
@@ -4980,6 +5025,9 @@ async function openRagaDetail(id){
       </div>
 
       ${renderEvidenceSection('raga_alert', r.id, evidenceFiles)}
+
+      <div class="l" style="font-family:Arial,Helvetica,sans-serif; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">History</div>
+      <div class="history-log">${ragaHist.length ? ragaHist.map(h=>`<div class="history-item"><span class="h-dot"></span><div><div><b>${escapeHtml(h.field_name)}</b>: ${escapeHtml(h.old_value||'—')} → ${escapeHtml(h.new_value||'—')}</div><div style="font-size:11px;color:var(--text-faint)">${new Date(h.changed_at).toLocaleString('en-GB')}${h.changed_by?' by '+escapeHtml(memberName(h.changed_by)):''}</div></div></div>`).join('') : '<p style="font-size:12.5px;color:var(--text-faint);">No changes recorded yet.</p>'}</div>
     </div>
   `;
   if(typeof sfAppendBacklinks === 'function') sfAppendBacklinks('raga-detail-slot','raga',id);
@@ -5023,8 +5071,22 @@ window.saveRagaDetail = async function(id){
     patch.closure_signature_name = closureSignature || null;
     patch.recognised_person_id = null;
   }
-
-  const { error } = await STATE.supabase.from('raga_alerts').update(patch).eq('id', id);
+  const extra = {};
+  { const g = i => { const e = document.getElementById(i); return e ? e.value : undefined; };
+    const yn = v => v === 'yes' ? true : (v === 'no' ? false : null);
+    extra.client_ref = (g('raga-d-client-ref')||'').trim() || null;
+    if(!isGreen){
+      extra.immediate_action_taken = g('raga-d-immediate-action'); extra.contact_details = g('raga-d-contact-details');
+      extra.department_id = g('raga-d-department') || null; extra.personnel_id = g('raga-d-personnel') || null;
+      extra.preventive_action = g('raga-d-preventive'); extra.effectiveness = g('raga-d-effectiveness');
+      extra.is_repeated = yn(g('raga-d-repeated')); extra.repeated_count = g('raga-d-repeated-count') ? parseInt(g('raga-d-repeated-count'),10) : null;
+      extra.could_identify_earlier = yn(g('raga-d-earlier')); extra.earlier_stage = (g('raga-d-earlier-stage')||'').trim() || null;
+    } }
+  let { error } = await STATE.supabase.from('raga_alerts').update(Object.assign({}, patch, extra)).eq('id', id);
+  if(error && /column|schema cache/i.test(error.message||'')){
+    ({ error } = await STATE.supabase.from('raga_alerts').update(patch).eq('id', id));
+    if(!error) toast('Saved, but the extra fields were not: run qashe-watchman-schema-raga-parity.sql first.', 'error');
+  }
   if(error){ toast('Could not save: ' + error.message, 'error'); return; }
   await loadRagaAlerts();
   renderRagaTable();
@@ -5102,9 +5164,18 @@ async function buildAndPrintRaga(id, sections){
   let body = `<p><b>Description</b><br>${r.description || 'No description recorded.'}</p>`;
   body += photoBlock;
 
+  if(r.client_ref) meta.splice(1, 0, ['Your reference', escapeHtml(r.client_ref)]);
   if(!isGreen){
+    if(r.immediate_action_taken) body += printSectionTitle('Immediate Action Taken') + `<p>${r.immediate_action_taken}</p>`;
+    if(r.contact_details) body += printSectionTitle('Contact Details of Involved Parties') + `<p>${r.contact_details}</p>`;
+    if(r.department_id){ const d = (STATE.docDepartments||[]).find(x=>x.id===r.department_id); if(d) meta.push(['Department', d.name]); }
+    if(r.personnel_id){ const pp = personById(r.personnel_id); if(pp) meta.push(['Personnel concerned', pp.full_name]); }
+    try{ const q = await STATE.supabase.from('root_cause_analyses').select('*').eq('raga_alert_id', id); const ra = q.data && q.data[0];
+      if(ra && sections.rootcause){ const w = [ra.why_1,ra.why_2,ra.why_3,ra.why_4,ra.why_5].filter(Boolean); if(w.length) body += printSectionTitle('Root Cause Analysis (5-Why)') + '<ol>' + w.map(x=>`<li>${x}</li>`).join('') + '</ol>' + (ra.concluded_root_cause ? `<p><b>Concluded root cause:</b> ${ra.concluded_root_cause}</p>` : ''); } }catch(e){}
     if(sections.rootcause && r.root_cause) body += printSectionTitle('Root Cause') + `<p>${r.root_cause}</p>`;
     if(sections.correction && r.correction) body += printSectionTitle('Correction / Corrective Action') + `<p>${r.correction}</p>`;
+    if(sections.correction && r.preventive_action) body += printSectionTitle('Preventive Action') + `<p>${r.preventive_action}</p>`;
+    if(sections.correction && r.effectiveness) body += printSectionTitle('Effectiveness of Preventive Action') + `<p>${r.effectiveness}</p>`;
   }
 
   if(sections.risks && riskLinks && riskLinks.length){
@@ -11409,6 +11480,27 @@ const IMPORT_SPECS = {
       };
     }
   },
+  raga: {
+    label: 'RAGA alerts',
+    table: 'raga_alerts',
+    columns: [
+      {key:'alert_type', label:'Alert type (red, orange or green)', required:true, type:'enum', values:['red','orange','green'], example:'orange'},
+      {key:'type', label:'Title (Category): exact name from the list', required:true, type:'nc_type', example:'Housekeeping'},
+      {key:'description', label:'Description', required:false, type:'text', example:'Walkways blocked by pallets'},
+      {key:'immediate_action_taken', label:'Immediate Action Taken', required:false, type:'text', example:'Pallets moved'},
+      {key:'contact_details', label:'Contact Details of Involved Parties', required:false, type:'text', example:'J Smith, 082 555 1234'},
+      {key:'owner', label:'Owner (exact member name, red and orange)', required:false, type:'member', example:'David Elliott'},
+      {key:'target_close_date', label:'Target Close Date (red and orange)', required:false, type:'date', example:'2026-09-01'},
+    ],
+    buildPayload(row, resolved){
+      const selectedType = STATE.ncTypes.find(t=>t.id===resolved.type);
+      const green = row.alert_type === 'green';
+      const p = { organisation_id: STATE.org.id, alert_type: row.alert_type, title: selectedType ? selectedType.name : row.type, description: row.description || '', raised_by: STATE.user.id };
+      if(green){ p.status = 'closed'; p.recognised_by = STATE.user.id; }
+      else { p.owner_id = resolved.owner || null; p.target_close_date = row.target_close_date || null; p.immediate_action_taken = row.immediate_action_taken || ''; p.contact_details = row.contact_details || ''; }
+      return p;
+    }
+  },
   risks: {
     label: 'Risk & Opportunity',
     table: 'risk_register',
@@ -11965,6 +12057,7 @@ window.commitImport = async function(){
   // Refresh whichever register was just imported into.
   const m = currentImportModule;
   if(m === 'nonconformances'){ await loadNCs(); renderNCTable(); }
+  if(m === 'raga'){ await loadRagaAlerts(); renderRagaTable(); }
   if(m === 'risks'){ await loadRisks(); renderRisksTable(); }
   if(m === 'suppliers'){ await loadSuppliers(); renderSuppliersTable(); }
   if(m === 'customers'){ await loadCustomers(); renderCustomersTable(); }
@@ -23437,7 +23530,8 @@ function getModuleExportConfig(moduleKey){
       {header:'Owner', get:r=>memberName(r.owner_id)},
     ]},
     raga: { rows: STATE.ragaAlerts||[], filename: `raga-${orgSlug}.xlsx`, columns: [
-      {header:'Ref', get:r=>r.ref_code}, {header:'Alert Type', get:r=>r.alert_type}, {header:'Title', get:r=>r.title}, {header:'Description', get:r=>r.description},
+      {header:'Ref', get:r=>r.ref_code}, {header:'Client Ref', get:r=>r.client_ref||''}, {header:'Alert Type', get:r=>r.alert_type}, {header:'Title', get:r=>r.title}, {header:'Description', get:r=>r.description},
+      {header:'Immediate Action Taken', get:r=>r.immediate_action_taken||''}, {header:'Contact Details', get:r=>r.contact_details||''},
       {header:'Status', get:r=>r.status}, {header:'Raised Date', get:r=>r.raised_date}, {header:'Raised By', get:r=>memberName(r.raised_by)},
       {header:'Owner', get:r=>r.owner_id?memberName(r.owner_id):''}, {header:'Target Close', get:r=>r.target_close_date||''},
     ]},
@@ -37653,7 +37747,7 @@ function fmtRev(rev){
   .sb-brand .wm-helper-wrap:hover .wm-helper-cap{text-decoration:underline}
   .sb-brand .wm-helper-wrap .watchman-chat-fab{margin-left:0 !important}`;
   document.head.appendChild(css);
-  function wrap(){
+  function wrap(){ return; /* b69: Ask me for Help now lives in the header */
     const fab = document.getElementById('watchman-chat-fab'), brand = document.querySelector('.sidebar .sb-brand');
     if(!fab || !brand) return;
     let w = brand.querySelector('.wm-helper-wrap');
@@ -41542,6 +41636,7 @@ window.WMTutorial = { open, script: () => playlist('full').map(s => ({ id:s.id, 
       ov.classList.add('on'); return; }
     return real();
   };
+  window.__wmCaptureNext=function(){ capture=true; };
   window.viewNC=async function(id){
     try{
       const sections={}; (typeof NC_PRINT_SECTIONS!=='undefined'?NC_PRINT_SECTIONS:[]).forEach(s=>sections[s.key]=true);
@@ -41592,7 +41687,8 @@ window.WMTutorial = { open, script: () => playlist('full').map(s => ({ id:s.id, 
     <div class="toolbar"><div class="filters"><span style="font-size:13px"><b>${rows.length}</b> incidents · <b>${open}</b> open${popia?` · <b style="color:#8a1b17">${popia} with POPIA notification outstanding</b>`:''}</span></div>
       <button class="btn-primary" onclick="isiNew()">Record information security incident</button></div>
     <div id="isi-form"></div>
-    <div class="panel"><div id="isi-table">${rows.length?`<table><tr><th>Ref</th><th>Incident</th><th>Type</th><th>Detected</th><th>Severity</th><th>Status</th><th>POPIA</th><th></th></tr>${rows.map(({s,n})=>`<tr class="clickable" onclick="isiOpen('${n.id}')"><td class="mono-cell">${E(n.ref_code)}</td><td class="strong">${E(n.description?String(n.description).slice(0,80):n.title)}</td><td>${E(s.incident_type)}</td><td>${s.detected_at?fmtDate(String(s.detected_at).slice(0,10)):'-'}</td><td>${sevBadge(n.severity)}</td><td>${pill(n.status)}</td><td>${s.personal_info_involved?((s.regulator_notified_at&&s.subjects_notified_at)?'Notified':'<b style="color:#8a1b17">Outstanding</b>'):'-'}</td><td style="text-align:right"><button class="btn-small" onclick="event.stopPropagation();isiOpen('${n.id}')">Edit Incident</button></td></tr>`).join('')}</table>`:'<div class="empty-state"><p>No information security incidents recorded.</p></div>'}</div></div>`;
+    <div id="nc-detail-slot"></div>
+    <div class="panel"><div id="isi-table">${rows.length?`<table><tr><th>Ref</th><th>Your ref</th><th>Incident</th><th>Type</th><th>Detected</th><th>Severity</th><th>Status</th><th>POPIA</th><th></th></tr>${rows.map(({s,n})=>`<tr class="clickable" onclick="isiOpen('${n.id}')"><td class="mono-cell">${E(n.ref_code)}</td><td class="mono-cell">${E(n.client_ref||'')}</td><td class="strong">${E(n.description?String(n.description).slice(0,80):n.title)}</td><td>${E(s.incident_type)}</td><td>${s.detected_at?fmtDate(String(s.detected_at).slice(0,10)):'-'}</td><td>${sevBadge(n.severity)}</td><td>${pill(n.status)}</td><td>${s.personal_info_involved?((s.regulator_notified_at&&s.subjects_notified_at)?'Notified':'<b style="color:#8a1b17">Outstanding</b>'):'-'}</td><td style="text-align:right"><button class="btn-small" onclick="event.stopPropagation();isiOpen('${n.id}')">Edit Incident</button> <button class="btn-small" onclick="event.stopPropagation();viewNC('${n.id}')">View Incident</button></td></tr>`).join('')}</table>`:'<div class="empty-state"><p>No information security incidents recorded.</p></div>'}</div></div>`;
   };
   function ownerOpts(sel){ return (STATE.members||[]).filter(m=>m.status!=='removed').map(m=>`<option value="${m.user_id}" ${m.user_id===sel?'selected':''}>${E((m.profiles&&m.profiles.name)||m.email||m.user_id)}</option>`).join(''); }
   window.isiNew=function(){
@@ -41604,6 +41700,8 @@ window.WMTutorial = { open, script: () => playlist('full').map(s => ({ id:s.id, 
         <div class="field"><label>Severity</label><select id="isi-sev"><option value="minor">Minor</option><option value="major">Major</option><option value="critical">Critical</option></select></div>
         <div class="field"><label>Owner</label><select id="isi-owner">${ownerOpts(STATE.user&&STATE.user.id)}</select></div>
         <div class="field"><label>Target close date</label><input type="date" id="isi-target" value="${d.toISOString().slice(0,10)}"></div>
+        <div class="field"><label>Your reference</label><input id="isi-client-ref" placeholder="e.g. 20260802"></div>
+        <div class="field span3"><label>Immediate action taken</label><textarea id="isi-imm" placeholder="What was done right away"></textarea></div>
       </div>${window.__wmIncFields('isin',{})}
       <div class="form-actions"><button class="btn-cancel" onclick="document.getElementById('isi-form').innerHTML=''">Cancel</button><button class="btn-primary" onclick="isiSave()">Record incident</button></div></div>`;
     slot.scrollIntoView({behavior:'smooth',block:'start'});
@@ -41614,7 +41712,8 @@ window.WMTutorial = { open, script: () => playlist('full').map(s => ({ id:s.id, 
     const t=(STATE.ncTypes||[]).find(x=>/^information security/i.test(x.name));
     const payload={organisation_id:STATE.org.id,title:t?t.name:'Information security incident',nc_type_id:t?t.id:null,description:desc,
       severity:document.getElementById('isi-sev').value,raised_by:STATE.user.id,owner_id:document.getElementById('isi-owner').value,
-      target_close_date:document.getElementById('isi-target').value};
+      target_close_date:document.getElementById('isi-target').value,immediate_action_taken:document.getElementById('isi-imm').value.trim()};
+    { const cr=document.getElementById('isi-client-ref').value.trim(); if(cr) payload.client_ref=cr; }
     if(!payload.target_close_date){ toast('Target close date is required.','error'); return; }
     const r=await STATE.supabase.from('nonconformances').insert(payload).select().single();
     if(r.error||!r.data){ toast('Could not record: '+((r.error&&r.error.message)||'no record returned'),'error'); return; }
@@ -41625,23 +41724,23 @@ window.WMTutorial = { open, script: () => playlist('full').map(s => ({ id:s.id, 
     renderIsiPage();
   };
   window.isiOpen=async function(ncId){
-    const slot=document.getElementById('isi-form'); if(!slot) return;
     const n=(STATE.ncs||[]).find(x=>x.id===ncId); const s=(STATE.secIncidents||[]).find(x=>x.nonconformance_id===ncId); if(!n||!s) return;
+    document.getElementById('isi-form').innerHTML='';
+    const slot=document.getElementById('nc-detail-slot'); if(!slot) return;
+    await openNCDetail(ncId);   /* the same full record as a nonconformance: investigation, 5-Why, actions, risks, tasks, evidence, closure */
+    const panel=slot.querySelector('.detail-panel'); if(!panel) return;
     const clock=s.personal_info_involved&&(!s.regulator_notified_at||!s.subjects_notified_at)?`<div style="padding:10px 12px;border-radius:8px;background:#fdeceb;color:#8a1b17;font-size:12.5px;margin-bottom:12px;"><b>POPIA notification outstanding:</b> ${!s.regulator_notified_at?'the Information Regulator has not been notified. ':''}${!s.subjects_notified_at?'The affected data subjects have not been notified.':''}</div>`:'';
-    slot.innerHTML=`<div class="detail-card"><div class="panel-head"><h3>${E(n.ref_code)}: ${E(n.title)}</h3><span>${pill(n.status)}</span></div>${clock}
-      <p style="font-size:12.5px;margin-bottom:10px">${E(n.description||'')}</p>
-      ${window.__wmIncFields('isie',Object.assign({},s))}
-      <div class="form-actions"><button class="btn-primary" onclick="isiUpdate('${ncId}')">Save incident details</button>
-      <button class="btn-small" style="margin-left:8px" onclick="showModule('nonconformances');setTimeout(()=>openNCDetail('${ncId}'),300)">Open the nonconformance (investigation, actions, closure)</button>
-      <button class="btn-small" style="margin-left:8px" onclick="viewNC('${ncId}')">View PDF</button>
-      <button class="btn-cancel" onclick="document.getElementById('isi-form').innerHTML=''">Close</button></div></div>`;
+    const card=document.createElement('div'); card.className='detail-card'; card.id='isi-sec-card';
+    card.innerHTML=`<div class="panel-head"><h3>Information security incident details</h3></div>${clock}${window.__wmIncFields('isie',Object.assign({},s))}
+      <div class="form-actions"><button class="btn-primary" onclick="isiUpdate('${ncId}')">Save incident details</button></div>`;
+    const first=panel.querySelector('.detail-meta'); if(first&&first.nextSibling) panel.insertBefore(card,first.nextSibling); else panel.appendChild(card);
     slot.scrollIntoView({behavior:'smooth',block:'start'});
   };
   window.isiUpdate=async function(ncId){
     const row=Object.assign({organisation_id:STATE.org.id,nonconformance_id:ncId},window.__wmReadInc('isie'));
     const { error }=await STATE.supabase.from('security_incidents').upsert(row,{onConflict:'nonconformance_id'});
     if(error){ toast('Could not save: '+error.message,'error'); return; }
-    toast('Incident details saved.','success'); renderIsiPage();
+    toast('Incident details saved.','success'); await load(); const sl=document.getElementById('nc-detail-slot'); if(sl&&sl.firstElementChild){ isiOpen(ncId); } else renderIsiPage();
   };
   { const _s=showModule; showModule=window.showModule=function(mod){ const r=_s.apply(this,arguments); if(mod==='infosec_incidents') renderIsiPage(); return r; }; }
   setTimeout(()=>{ try{ applyModuleAccessToNav(); }catch(e){} },0);
@@ -41699,6 +41798,278 @@ window.WMTutorial = { open, script: () => playlist('full').map(s => ({ id:s.id, 
   /* make the register reflect a link made moments ago */
   for(const nm of ['confirmRiskLink','confirmRagaRiskLink']){ const f=window[nm]; if(typeof f!=='function') continue;
     window[nm]=async function(){ const r=await f.apply(this,arguments); try{ await loadSources(); if(document.getElementById('risk-table-wrap')) renderRisksTable(); }catch(e){} return r; }; }
+})();
+
+/* ===== b69a: Ask me for Help and Report a Bug or Change Request are permanent; the old Report a Bug button becomes an admin switch ===== */
+(function(){
+  const E=s=>escapeHtml(s==null?'':String(s));
+  const css=document.createElement('style'); css.id='b69a-css'; css.textContent=`
+  #watchman-chat-fab.wm-in-header{position:static !important;bottom:auto !important;right:auto !important;width:auto !important;height:auto !important;padding:4px 14px 4px 5px !important;gap:8px !important;font-size:12.5px !important;box-shadow:0 3px 10px rgba(178,22,22,.35) !important;z-index:auto !important;flex:0 0 auto;white-space:nowrap}
+  #watchman-chat-fab.wm-in-header .wm-pill-head{width:30px !important;height:30px !important}
+  #watchman-chat-fab.wm-in-header svg{max-width:30px}
+  @media (max-width:640px){#watchman-chat-fab.wm-in-header .wm-lbl{display:none}#watchman-chat-fab.wm-in-header{padding:4px !important}}`;
+  document.head.appendChild(css);
+  /* the bug button is a switch: default off, stored in org_modules (module_key bug_button, enabled true = on) */
+  const bugOn=()=>!!(STATE.org && STATE.org._bugBtn);
+  async function loadBug(){
+    if(!STATE.org) return; STATE.org._bugBtn=false;
+    try{ const r=await STATE.supabase.from('org_modules').select('enabled').eq('organisation_id',STATE.org.id).eq('module_key','bug_button').maybeSingle(); if(r&&!r.error&&r.data) STATE.org._bugBtn=r.data.enabled===true; }catch(e){}
+    STATE.org.bug_button_module_enabled=STATE.org._bugBtn;
+    try{ wmApplyHelper(); }catch(e){}
+  }
+  { const _lc=loadCompetence; loadCompetence=window.loadCompetence=async function(){ const r=await _lc.apply(this,arguments); await loadBug(); return r; }; }
+  ADMIN_CONSOLE_TOGGLES.push({field:'bug_button_module_enabled',label:'Report a Bug or Problem button',note:'Optional header button that sends a bug report straight to Group QaSHE CG. "Report a Bug or Change Request" and "Ask me for Help" are always on. Off by default.'});
+  { const _t=toggleOrgModule; toggleOrgModule=window.toggleOrgModule=async function(field,value){
+      if(field!=='bug_button_module_enabled') return _t.apply(this,arguments);
+      const { error }=await STATE.supabase.from('org_modules').upsert({organisation_id:STATE.org.id,module_key:'bug_button',enabled:!!value,updated_at:new Date().toISOString()},{onConflict:'organisation_id,module_key'});
+      if(error){ toast('Could not update: '+error.message,'error'); return; }
+      STATE.org._bugBtn=!!value; STATE.org.bug_button_module_enabled=!!value; wmApplyHelper();
+      toast('Report a Bug or Problem button is '+(value?'ON':'OFF')+'.','success');
+      if(typeof renderAdminSubtabContent==='function'&&STATE._adminSubtab) try{ renderAdminSubtabContent(STATE._adminSubtab); }catch(e){}
+    }; }
+  window.wmSetBugBtn=function(on){ return toggleOrgModule('bug_button_module_enabled',!!on); };
+  /* place the buttons */
+  function place(){
+    const fab=document.getElementById('watchman-chat-fab'), bug=document.getElementById('report-problem-fab'); if(!fab||!bug) return;
+    const wrap=fab.closest('.wm-helper-wrap'); if(wrap){ wrap.remove(); }
+    if(fab.parentNode!==bug.parentNode || fab.nextElementSibling!==bug){ bug.parentNode.insertBefore(fab,bug); }
+    fab.classList.add('wm-in-header');
+    const chg=document.getElementById('wm-chg-btn');
+    if(chg){ const l=chg.querySelector('.lbl'); if(l&&l.textContent!=='Report a Bug or Change Request') l.textContent='Report a Bug or Change Request'; chg.title='Report a bug or send a change request'; if(chg.nextElementSibling!==fab) bug.parentNode.insertBefore(chg,fab); }
+  }
+  const _a=window.wmApplyHelper;
+  window.wmApplyHelper=function(){ const r=_a&&_a.apply(this,arguments);
+    try{ place(); const fab=document.getElementById('watchman-chat-fab'), bug=document.getElementById('report-problem-fab');
+      if(fab) fab.style.display=STATE.user?'flex':'none';
+      if(bug) bug.style.display=(STATE.user&&bugOn())?'inline-flex':'none'; }catch(e){}
+    return r; };
+  /* combined dialog */
+  const _rq=window.wmRequestChange;
+  window.wmRequestChange=function(ctx){
+    _rq.apply(this,arguments);
+    try{ const ov=document.querySelector('#wmcr-about'); if(!ov) return;
+      const h=ov.closest('div').parentNode.querySelector('h3'); if(h) h.textContent='Report a Bug or Change Request';
+      const p=h&&h.nextElementSibling; if(p&&p.tagName==='P') p.innerHTML='Report a bug or problem (it goes to Group QaSHE CG), or ask for something to be changed (it goes to your organisation admin). Describe it below.';
+      if(!document.getElementById('wmcr-kind')){ ov.closest('.field').insertAdjacentHTML('beforebegin','<div class="field" style="margin-bottom:12px"><label>This is a</label><select id="wmcr-kind"><option value="change">Change request</option><option value="bug">Bug or problem</option></select></div>');
+        const ta=document.getElementById('wmcr-msg'); if(ta) ta.previousElementSibling.textContent='Describe it: what happened or what needs to change, and why?'; }
+      const send=document.getElementById('wmcr-send'); if(send) send.textContent='Send';
+    }catch(e){}
+  };
+  const _sc=window.wmSendChange;
+  window.wmSendChange=async function(type,id){
+    const kind=(document.getElementById('wmcr-kind')||{}).value;
+    if(kind!=='bug') return _sc.apply(this,arguments);
+    const about=document.getElementById('wmcr-about').value.trim(), msg=document.getElementById('wmcr-msg').value.trim();
+    if(!msg){ toast('Describe the problem first.','error'); return; }
+    const btn=document.getElementById('wmcr-send'); btn.disabled=true; btn.textContent='Sending…';
+    const description=(about?('['+about+'] '):'')+msg;
+    try{
+      const { error }=await STATE.supabase.from('problem_reports').insert({organisation_id:STATE.org?STATE.org.id:null,reported_by:STATE.user?STATE.user.id:null,reporter_name:STATE.profile?STATE.profile.name:null,reporter_email:STATE.user?STATE.user.email:null,description,page_context:about||null});
+      if(error) throw new Error(error.message);
+      try{ await sendEmailToAddress('david@groupqashecg.com','Watchman problem report: '+(STATE.org?STATE.org.name:'Unknown organisation'),(STATE.profile?STATE.profile.name:'A user')+' ('+(STATE.user?STATE.user.email:'unknown email')+') reported a problem in QaSHE Watchman:\n\n"'+description+'"\n\nOrganisation: '+(STATE.org?STATE.org.name:'')); }catch(e){}
+      kpiCloseOverlay(); toast('Thank you: this has been reported to Group QaSHE CG.','success');
+    }catch(e){ btn.disabled=false; btn.textContent='Send'; toast('Could not send: '+e.message,'error'); }
+  };
+  /* Communications card: the helper switch is replaced by the bug button switch */
+  const _rc=renderAdminCommunications;
+  renderAdminCommunications=async function(){
+    await _rc.apply(this,arguments); window.renderAdminCommunications=renderAdminCommunications;
+    document.querySelectorAll('#admin-subtab-content .detail-card').forEach(c=>{ if(/Ask Me for Help and Report a Bug/.test(c.textContent)){
+      const on=bugOn(); const isAdm=STATE.myRole==='admin'||(STATE.profile&&STATE.profile.is_platform_staff);
+      c.innerHTML=`<div style="flex:1;min-width:240px"><div class="panel-head" style="margin:0 0 4px"><h3>Help and reporting buttons</h3></div>
+        <p style="font-size:13px;color:var(--text-dim);margin:0 0 6px"><b>Ask me for Help</b> and <b>Report a Bug or Change Request</b> are always on for every user.</p>
+        <p style="font-size:13px;color:var(--text-dim);margin:0">The extra <b>Report a Bug or Problem</b> button is <b>${on?'ON':'OFF'}</b> for ${E(STATE.org.name)}.</p></div>
+        ${isAdm?`<button class="btn-primary" style="background:${on?'#6b6b6b':'var(--red,#D50000)'}" onclick="wmSetBugBtn(${on?'false':'true'})">${on?'Switch it off':'Switch it on'}</button>`:''}`; } });
+  };
+  window.renderAdminCommunications=renderAdminCommunications;
+  setTimeout(()=>{ try{ wmApplyHelper(); }catch(e){} },300);
+})();
+
+/* ===== b69b: RAGA, Incidents and Information Security work like Nonconformances ===== */
+(function(){
+  const E=s=>escapeHtml(s==null?'':String(s));
+  const isRaga=id=>(STATE.ragaAlerts||[]).some(r=>r.id===id);
+  const reopen=id=>openRagaDetail(id);
+  /* ---- View RAGA as PDF before printing ---- */
+  window.viewRaga=async function(id){
+    try{ const sections={}; (typeof RAGA_PRINT_SECTIONS!=='undefined'?RAGA_PRINT_SECTIONS:[]).forEach(s=>sections[s.key]=true);
+      window.__wmCaptureNext(); await buildAndPrintRaga(id,sections);
+    }catch(e){ console.error(e); toast('Could not open the preview.','error'); }
+  };
+  /* ---- 5-Why root cause analysis for RAGA alerts ---- */
+  const w=(n,fn)=>{ const o=window[n]; if(typeof o!=='function') return; window[n]=fn(o); };
+  w('startRCA',o=>async function(id){ if(!isRaga(id)) return o.apply(this,arguments);
+    const { error }=await STATE.supabase.from('root_cause_analyses').insert({organisation_id:STATE.org.id,raga_alert_id:id,created_by:STATE.user.id});
+    if(error){ toast('Could not start analysis: '+error.message+' (run qashe-watchman-schema-raga-parity.sql first)','error'); return; } await reopen(id); });
+  w('saveWhyStep',o=>async function(id,n,mode){ if(!isRaga(id)) return o.apply(this,arguments);
+    const text=document.getElementById('rca-why-input-'+id).value.trim(); if(!text){ alert('Enter an answer before continuing.'); return; }
+    const patch={}; patch['why_'+n]=text;
+    const { error }=await STATE.supabase.from('root_cause_analyses').update(patch).eq('raga_alert_id',id);
+    if(error){ toast('Could not save: '+error.message,'error'); return; } await reopen(id); if(mode==='conclude') promptConclude(id); });
+  w('promptConclude',o=>async function(id){ if(!isRaga(id)) return o.apply(this,arguments);
+    const { data:rows }=await STATE.supabase.from('root_cause_analyses').select('*').eq('raga_alert_id',id); const rca=rows&&rows[0]; if(!rca) return;
+    const whys=[rca.why_1,rca.why_2,rca.why_3,rca.why_4,rca.why_5].filter(Boolean); const slot=document.getElementById('rca-conclude-slot-'+id); if(!slot) return;
+    slot.innerHTML=`<div class="field span3" style="margin-top:12px;"><label>Concluded root cause</label><textarea id="rca-conclusion-${id}">${E(whys.length?whys[whys.length-1]:'')}</textarea></div>
+      <div class="form-actions" style="justify-content:flex-start;"><button class="btn-cancel" onclick="document.getElementById('rca-conclude-slot-${id}').innerHTML=''">Cancel</button><button class="btn-small primary" onclick="completeRCA('${id}')">Complete analysis</button></div>`; });
+  w('completeRCA',o=>async function(id){ if(!isRaga(id)) return o.apply(this,arguments);
+    const text=document.getElementById('rca-conclusion-'+id).value.trim(); if(!text){ alert('Enter the concluded root cause.'); return; }
+    const { error }=await STATE.supabase.from('root_cause_analyses').update({concluded_root_cause:text,completed_by:STATE.user.id,completed_at:new Date().toISOString()}).eq('raga_alert_id',id);
+    if(error){ toast('Could not save conclusion: '+error.message,'error'); return; }
+    await STATE.supabase.from('raga_alerts').update({root_cause:text}).eq('id',id);
+    await loadRagaAlerts(); await reopen(id); toast('Root cause analysis completed.','success'); });
+  w('reopenRCA',o=>async function(id){ if(!isRaga(id)) return o.apply(this,arguments);
+    const { error }=await STATE.supabase.from('root_cause_analyses').update({concluded_root_cause:null,completed_by:null,completed_at:null}).eq('raga_alert_id',id);
+    if(error){ toast('Could not reopen analysis: '+error.message,'error'); return; } await reopen(id); });
+  w('addRCAParticipant',o=>async function(rcaId,id){ if(!isRaga(id)) return o.apply(this,arguments);
+    const sel=document.getElementById('rca-add-participant-'+rcaId); if(!sel||!sel.value) return;
+    const { error }=await STATE.supabase.from('rca_participants').insert({organisation_id:STATE.org.id,rca_id:rcaId,user_id:sel.value,added_by:STATE.user.id});
+    if(error){ toast('Could not add participant: '+error.message,'error'); return; } await reopen(id); });
+  w('removeRCAParticipant',o=>async function(linkId,id){ if(!isRaga(id)) return o.apply(this,arguments);
+    const { error }=await STATE.supabase.from('rca_participants').delete().eq('id',linkId);
+    if(error){ toast('Could not remove participant: '+error.message,'error'); return; } await reopen(id); });
+  /* ---- Incidents, Accidents and Near Miss register: same buttons and Your reference column as Nonconformances ---- */
+  const _ri=window.renderIan;
+  const decorateIan=()=>{ try{
+    const body=document.getElementById('ian-body'); if(!body) return; const t=body.querySelector('table'); if(!t||t.dataset.b69) return; t.dataset.b69=1;
+    const h=t.querySelector('tr'); if(h && h.children.length>1) h.children[0].insertAdjacentHTML('afterend','<th>Your ref</th>');
+    t.querySelectorAll('tr.clickable').forEach(tr=>{ const m=(tr.getAttribute('onclick')||'').match(/'([^']+)'/); const n=m&&(STATE.ncs||[]).find(x=>x.id===m[1]);
+      if(tr.children[0]) tr.children[0].insertAdjacentHTML('afterend',`<td class="mono-cell">${E(n&&n.client_ref||'')}</td>`);
+      const last=tr.lastElementChild; if(last&&m){ last.innerHTML=`<button class="btn-small" onclick="event.stopPropagation();openNCDetail('${m[1]}')">Edit Incident</button> <button class="btn-small" onclick="event.stopPropagation();viewNC('${m[1]}')">View Incident</button>`; } }); }catch(e){} };
+  if(typeof _ri==='function'){ window.renderIan=renderIan=function(){ const r=_ri.apply(this,arguments); setTimeout(decorateIan,0); return r; }; }
+  new MutationObserver(()=>{ if(document.getElementById('ian-body')) decorateIan(); }).observe(document.body,{childList:true,subtree:true});
+  /* client reference on the incident form */
+  const _fh=document.getElementById('ian-form');
+  const addRef=()=>{ const f=document.getElementById('ian-title'); if(f&&!document.getElementById('ian-client-ref')){ f.closest('.field').insertAdjacentHTML('afterend','<div class="field span3"><label>Your reference</label><input id="ian-client-ref" placeholder="e.g. 20260802"></div>'); } };
+  new MutationObserver(addRef).observe(document.body,{childList:true,subtree:true});
+  const _is=window.ianSubmit;
+  if(typeof _is==='function') window.ianSubmit=async function(){
+    const cr=((document.getElementById('ian-client-ref')||{}).value||'').trim(); const before=new Set((STATE.ncs||[]).map(n=>n.id));
+    const r=await _is.apply(this,arguments);
+    if(cr){ const f=(STATE.ncs||[]).find(n=>!before.has(n.id)); if(f){ await STATE.supabase.from('nonconformances').update({client_ref:cr}).eq('id',f.id); await loadNCs(); if(document.getElementById('ian-body')) renderIan(); } }
+    return r; };
+})();
+
+/* ===== b69c: Compliance Dashboard for EXCO: every module feeds it, and it is linked to Management Review ===== */
+(function(){
+  const E=s=>escapeHtml(s==null?'':String(s));
+  const today=()=>todayISO();
+  const IAN=['incident','accident','near_miss'];
+  const ianRecs=()=>(STATE.ncs||[]).filter(n=>IAN.includes(n.record_class));
+  const odNc=n=>n.status!=='closed'&&n.target_close_date&&n.target_close_date<today();
+  const soaRowsLive=()=>{ const ctl=(window.SOA_CONTROLS||[]); return ctl.map(c=>{ const r=(STATE.soa||[]).find(x=>x.control_ref===c.ref)||{}; return {ref:c.ref,applicable:r.applicable!==false,status:r.status||'not_started'}; }); };
+  const infosecOn=()=>!(STATE.org&&STATE.org.infosec_enabled===false);
+  /* generic due-date health from the shared registry (every module that registers dates) */
+  function dueByModule(){
+    const out={}; const t=today(); const soon=new Date(Date.now()+30*864e5).toISOString().slice(0,10);
+    (typeof DATE_TRACKED_MODULES!=='undefined'?DATE_TRACKED_MODULES:[]).forEach(m=>{
+      let list=[]; try{ list=m.list()||[]; }catch(e){}
+      const o=out[m.key]=out[m.key]||{ok:0,soon:0,over:0,rows:[]};
+      list.forEach(x=>{ const d=x[m.dateField]; if(!d) return; if(m.isResolved(x)) return;
+        if(d<t){ o.over++; o.rows.push({label:m.label,x,d}); } else if(d<=soon) o.soon++; else o.ok++; }); });
+    return out;
+  }
+  const modTitle=k=>(MODULE_META[k]&&MODULE_META[k].title)||k;
+  const SKIP_GENERIC=['nonconformances','audits','risks','legal','training','objectives','suppliers','customers','legal_certs','site_files','process_flowcharts','management_review','checklists','policies'];
+  /* ---- 1. health score: more components, all live ---- */
+  const _hs=computeComplianceHealthScore;
+  computeComplianceHealthScore=window.computeComplianceHealthScore=function(){
+    const base=_hs.apply(this,arguments); const comps=base.components.slice();
+    const ian=ianRecs(); if(ian.length){ const closed=ian.filter(n=>n.status==='closed').length, od=ian.filter(odNc).length;
+      comps.push({label:'Incident, accident and near miss closure',value:Math.max(0,Math.min(100,closed/ian.length*100-Math.min(20,od*5)))}); }
+    const rg=STATE.ragaAlerts||[]; const rgi=rg.filter(r=>r.alert_type!=='green'); if(rgi.length){ const closed=rgi.filter(r=>r.status==='closed').length, od=rgi.filter(r=>r.status!=='closed'&&r.target_close_date&&r.target_close_date<today()).length;
+      comps.push({label:'RAGA alert closure',value:Math.max(0,Math.min(100,closed/rgi.length*100-Math.min(20,od*5)))}); }
+    if(infosecOn()&&(window.SOA_CONTROLS||[]).length){ const ap=soaRowsLive().filter(r=>r.applicable); if(ap.length&&(STATE.soa||[]).length){ const done=ap.filter(r=>['implemented','effective'].includes(r.status)).length; comps.push({label:'Information security controls',value:done/ap.length*100}); } }
+    const due=dueByModule(); let ok=0,tot=0; Object.keys(due).forEach(k=>{ if(SKIP_GENERIC.includes(k)) return; const o=due[k]; ok+=o.ok+o.soon; tot+=o.ok+o.soon+o.over; });
+    if(tot>=3) comps.push({label:'Other obligations on time (tasks, documents, assets, appointments, privacy, governance)',value:ok/tot*100});
+    const raw=comps.reduce((s,c)=>s+(Number.isFinite(c.value)?c.value:0),0)/(comps.length||1);
+    const score=comps.length?Math.round(Math.max(0,Math.min(100,raw))):null;
+    return {score,color:score==null?'grey':score>=85?'green':score>=60?'amber':'red',components:comps};
+  };
+  /* ---- 2. attention list: more sources ---- */
+  const _ai=wdAttentionItems;
+  wdAttentionItems=window.wdAttentionItems=function(){
+    const out=_ai.apply(this,arguments); const add=(l,c,m)=>{ if(c>0) out.push({label:l,count:c,mod:m}); };
+    const ian=ianRecs(); add('Overdue incidents, accidents and near misses',ian.filter(odNc).length,'incidents');
+    add('Open serious accidents (major or critical)',ian.filter(n=>n.record_class==='accident'&&n.status!=='closed'&&['major','critical'].includes(n.severity)).length,'incidents');
+    add('Overdue RAGA alerts',(STATE.ragaAlerts||[]).filter(r=>r.alert_type!=='green'&&r.status!=='closed'&&r.target_close_date&&r.target_close_date<today()).length,'raga');
+    if(infosecOn()){ add('Information security incidents open',(STATE.secIncidents||[]).filter(s=>{ const n=(STATE.ncs||[]).find(x=>x.id===s.nonconformance_id); return n&&n.status!=='closed'; }).length,'infosec_incidents');
+      add('POPIA notifications outstanding',(STATE.secIncidents||[]).filter(s=>s.personal_info_involved&&(!s.regulator_notified_at||!s.subjects_notified_at)).length,'infosec_incidents');
+      if((STATE.soa||[]).length){ const ap=soaRowsLive().filter(r=>r.applicable); add('Applicable security controls not implemented',ap.filter(r=>!['implemented','effective'].includes(r.status)).length,'soa'); } }
+    const due=dueByModule(); Object.keys(due).forEach(k=>{ if(SKIP_GENERIC.includes(k)) return; add('Overdue: '+modTitle(k),due[k].over,k); });
+    return out; };
+  /* ---- 3. dashboard body: extra tiles and executive panels, placed before Management Review ---- */
+  const tile=(title,mod,segs,foot)=>complianceCard(title,mod,segs,foot);
+  function extraTiles(){
+    const t=[]; const ian=ianRecs();
+    if(ian.length||canAccessModule('incidents')){ const od=ian.filter(odNc).length, cl=ian.filter(n=>n.status==='closed').length, op=ian.filter(n=>n.status!=='closed').length-od;
+      const lti=ian.filter(n=>n.record_class==='accident'&&(n.lost_time_days||0)>0).length;
+      t.push(tile('Incidents, Accidents and Near Miss','incidents',[{label:'Closed',count:cl,color:'green'},{label:'Open',count:Math.max(0,op),color:'amber'},{label:'Overdue',count:od,color:'red'}],lti?lti+' lost time injur'+(lti===1?'y':'ies'):null)); }
+    if(canAccessModule('raga')||(STATE.ragaAlerts||[]).length){ const r=(STATE.ragaAlerts||[]); const iss=r.filter(x=>x.alert_type!=='green');
+      const od=iss.filter(x=>x.status!=='closed'&&x.target_close_date&&x.target_close_date<today()).length;
+      t.push(tile('RAGA Alerts','raga',[{label:'Closed',count:iss.filter(x=>x.status==='closed').length,color:'green'},{label:'Open',count:Math.max(0,iss.filter(x=>x.status!=='closed').length-od),color:'amber'},{label:'Overdue',count:od,color:'red'},{label:'Green recognitions',count:r.filter(x=>x.alert_type==='green').length,color:'grey'}])); }
+    if(infosecOn()&&canAccessModule('soa')){ const ap=soaRowsLive().filter(x=>x.applicable); const done=ap.filter(x=>['implemented','effective'].includes(x.status)).length, part=ap.filter(x=>['partial','planned'].includes(x.status)).length, none=ap.length-done-part;
+      if(ap.length) t.push(tile('Information Security (controls)','soa',[{label:'Implemented',count:done,color:'green'},{label:'Planned or partial',count:part,color:'amber'},{label:'Not started',count:none,color:'red'}])); }
+    const due=dueByModule(); Object.keys(due).forEach(k=>{ if(SKIP_GENERIC.includes(k)) return; const o=due[k]; if(!(o.ok+o.soon+o.over)) return; if(!canAccessModule(k)) return;
+      t.push(tile(modTitle(k)+': dates',k,[{label:'On track',count:o.ok,color:'green'},{label:'Due in 30 days',count:o.soon,color:'amber'},{label:'Overdue',count:o.over,color:'red'}])); });
+    return t; }
+  function execPanels(){
+    let h=''; const ian=ianRecs();
+    if(ian.length){ const by=k=>ian.filter(n=>n.record_class===k).length; const lost=ian.reduce((s,n)=>s+(n.lost_time_days||0),0); const od=ian.filter(odNc).length;
+      const ratio=by('accident')?(by('near_miss')/by('accident')).toFixed(1):'—';
+      h+=mrSection('Incidents, Accidents and Near Miss','incidents',`<div class="mr-stat-row">${mrStatCard(by('accident'),'Accidents',null,by('accident')?'var(--red)':'var(--green)')}${mrStatCard(by('incident'),'Incidents',null,null)}${mrStatCard(by('near_miss'),'Near misses','Reporting near misses is a leading indicator',null)}${mrStatCard(ratio,'Near miss to accident ratio','Higher is healthier',null)}${mrStatCard(lost,'Days lost',null,lost?'var(--red)':'var(--green)')}${mrStatCard(od,'Overdue to close',null,od?'var(--red)':'var(--green)')}</div>`); }
+    const rg=STATE.ragaAlerts||[]; if(rg.length){ const c=k=>rg.filter(r=>r.alert_type===k).length; const op=rg.filter(r=>r.alert_type!=='green'&&r.status!=='closed').length;
+      h+=mrSection('RAGA Alerts','raga',`<div class="mr-stat-row">${mrStatCard(c('red'),'Red alerts',null,c('red')?'var(--red)':null)}${mrStatCard(c('orange'),'Orange alerts',null,c('orange')?'var(--amber)':null)}${mrStatCard(c('green'),'Green recognitions',null,'var(--green)')}${mrStatCard(op,'Open alerts',null,op?'var(--amber)':'var(--green)')}</div>`); }
+    if(infosecOn()&&((STATE.soa||[]).length||(STATE.secIncidents||[]).length||(STATE.infoAssets||[]).length)){
+      const ap=soaRowsLive().filter(x=>x.applicable); const done=ap.filter(x=>['implemented','effective'].includes(x.status)).length;
+      const inc=(STATE.secIncidents||[]); const openI=inc.filter(s=>{ const n=(STATE.ncs||[]).find(x=>x.id===s.nonconformance_id); return n&&n.status!=='closed'; }).length;
+      const popia=inc.filter(s=>s.personal_info_involved&&(!s.regulator_notified_at||!s.subjects_notified_at)).length;
+      const thr=(STATE.threats||[]).filter(x=>!['closed','accepted'].includes(x.status)).length;
+      h+=mrSection('Information Security','soa',`<div class="mr-stat-row">${mrStatCard(ap.length?Math.round(done/ap.length*100)+'%':'—','Applicable controls implemented',done+' of '+ap.length,null)}${mrStatCard(inc.length,'Security incidents recorded',openI+' open',openI?'var(--amber)':null)}${mrStatCard(popia,'POPIA notifications outstanding',null,popia?'var(--red)':'var(--green)')}${mrStatCard((STATE.infoAssets||[]).length,'Information assets registered',null,null)}${mrStatCard(thr,'Open threat actions',null,thr?'var(--amber)':'var(--green)')}</div>`); }
+    const due=dueByModule(); const rows=[]; Object.keys(due).forEach(k=>due[k].rows.forEach(r=>rows.push({k,...r}))); rows.sort((a,b)=>a.d.localeCompare(b.d));
+    if(rows.length){ h+=mrSection('Overdue obligations across all modules',null,`<table><tr><th>Module</th><th>Item</th><th>Was due</th></tr>${rows.slice(0,12).map(r=>`<tr class="clickable" onclick="showModule('${r.k}')"><td>${E(r.label)}</td><td class="strong">${E(r.x.title||r.x.name||r.x.description||r.x.ref_code||'')}</td><td>${fmtDate(r.d)}</td></tr>`).join('')}</table>${rows.length>12?`<p style="font-size:12px;color:var(--text-faint);margin:6px 0 0">Showing 12 of ${rows.length} overdue items. Open the module for the rest.</p>`:''}`); }
+    return h; }
+  const _rd=renderComplianceDashboard;
+  renderComplianceDashboard=window.renderComplianceDashboard=function(){
+    const r=_rd.apply(this,arguments);
+    try{ const wrap=document.getElementById('compliance-report'); if(!wrap) return r;
+      const grid=wrap.querySelector('.wd-grid'); if(grid&&!grid.dataset.b69){ grid.dataset.b69=1; grid.insertAdjacentHTML('beforeend',extraTiles().join('')); }
+      const mr=[...wrap.querySelectorAll('.mr-section')].find(s=>/Management Review/.test((s.querySelector('h3')||{}).textContent||''));
+      const extra=execPanels(); if(extra){ if(mr) mr.insertAdjacentHTML('beforebegin',extra); else wrap.insertAdjacentHTML('beforeend',extra); }
+      if(typeof wdAfterRender==='function') wdAfterRender(wrap);
+      const mrs=[...wrap.querySelectorAll('.mr-section')].find(s=>/Management Review/.test((s.querySelector('h3')||{}).textContent||''));
+      if(mrs&&!mrs.querySelector('.b69-mrlink')){ const open=(STATE.managementReviews||[]).find(x=>x.status!=='finalized');
+        mrs.insertAdjacentHTML('beforeend',`<div class="b69-mrlink" style="margin-top:10px;font-size:12.5px;color:var(--text-dim)">Every figure on this dashboard feeds the Management Review agenda. ${open?`A review is in progress (${E(open.ref_code||'')}): <a class="sf-a" style="cursor:pointer" onclick="showModule('management_review');setTimeout(()=>openMRDetail('${open.id}'),400)">open it</a>.`:'No review is open: start one in Management Review to carry these figures into the minutes.'}</div>`); }
+    }catch(e){ console.warn('b69c',e); }
+    return r; };
+  /* ---- 4. Management Review: new agenda items fed by the same figures, and a dashboard snapshot kept with the minutes ---- */
+  const A=window.MGMT_REVIEW_AGENDA||MGMT_REVIEW_AGENDA;
+  if(!A.some(a=>a.key==='ims_health')){
+    A.unshift({key:'ims_health',title:'Compliance Dashboard: Integrated Management System Health',iso:'ISO 9.3.2'});
+    const i=A.findIndex(a=>a.key==='nonconformances');
+    A.splice(i+1,0,{key:'incidents_performance',title:'Incidents, Accidents, Near Misses & RAGA Alerts',iso:'ISO 45001 9.3'},
+      {key:'information_security',title:'Information Security Performance, Incidents & Controls',iso:'ISO/IEC 27001 9.3.2'});
+  }
+  const _st=computeMRAgendaStats;
+  computeMRAgendaStats=window.computeMRAgendaStats=function(key){
+    if(key==='ims_health'){ const h=computeComplianceHealthScore(); const st=wdStatus(h.score);
+      return `<div class="mr-stat-row">${mrStatCard(h.score==null?'—':h.score+'%','Compliance Health Score',st.label,h.score==null?null:(h.score>=85?'var(--green)':h.score>=60?'var(--amber)':'var(--red)'))}${h.components.slice(0,6).map(c=>mrStatCard(Math.round(c.value)+'%',c.label,null,null)).join('')}</div>`; }
+    if(key==='incidents_performance'){ const ian=ianRecs(); const by=k=>ian.filter(n=>n.record_class===k).length; const rg=STATE.ragaAlerts||[];
+      return `<div class="mr-stat-row">${mrStatCard(by('accident'),'Accidents',null,by('accident')?'var(--red)':'var(--green)')}${mrStatCard(by('incident'),'Incidents',null,null)}${mrStatCard(by('near_miss'),'Near misses',null,null)}${mrStatCard(ian.filter(odNc).length,'Overdue to close',null,ian.filter(odNc).length?'var(--red)':'var(--green)')}${mrStatCard(rg.filter(r=>r.alert_type==='red').length,'Red alerts',null,null)}${mrStatCard(rg.filter(r=>r.alert_type==='green').length,'Green recognitions',null,'var(--green)')}</div>`; }
+    if(key==='information_security'){ if(!infosecOn()) return '<p style="font-size:12.5px;color:var(--text-faint)">Information security is not switched on for this organisation.</p>';
+      const ap=soaRowsLive().filter(x=>x.applicable); const done=ap.filter(x=>['implemented','effective'].includes(x.status)).length; const inc=STATE.secIncidents||[];
+      return `<div class="mr-stat-row">${mrStatCard(ap.length?Math.round(done/ap.length*100)+'%':'—','Applicable controls implemented',done+' of '+ap.length,null)}${mrStatCard(inc.length,'Security incidents',null,null)}${mrStatCard(inc.filter(s=>s.personal_info_involved&&(!s.regulator_notified_at||!s.subjects_notified_at)).length,'POPIA notifications outstanding',null,'var(--red)')}</div>`; }
+    return _st.apply(this,arguments); };
+  const _fin=window.finalizeMR;
+  window.finalizeMR=async function(id){
+    const rv=(STATE.managementReviews||[]).find(r=>r.id===id);
+    const ok=await _fin.apply(this,arguments);
+    try{ const after=(STATE.managementReviews||[]).find(r=>r.id===id); if(after&&after.status==='finalized'){
+      const h=computeComplianceHealthScore(); const att=wdAttentionItems().slice(0,10);
+      const snap='Dashboard snapshot at finalisation ('+new Date().toLocaleDateString('en-GB')+'): Compliance Health Score '+(h.score==null?'not available':h.score+' out of 100')+'. '+h.components.map(c=>c.label+' '+Math.round(c.value)+'%').join('; ')+'.'+(att.length?' Items needing attention: '+att.map(a=>a.label+' ('+a.count+')').join('; ')+'.':' Nothing overdue or non-compliant.');
+      const ex=await STATE.supabase.from('management_review_items').select('comments').eq('review_id',id).eq('agenda_key','ims_health').maybeSingle();
+      const cur=(ex&&ex.data&&ex.data.comments)||''; if(cur.indexOf('Dashboard snapshot at finalisation')<0){
+        await STATE.supabase.from('management_review_items').upsert({review_id:id,agenda_key:'ims_health',comments:(cur?cur+'\n\n':'')+snap},{onConflict:'review_id,agenda_key'}); } } }catch(e){}
+    return ok; };
 })();
 
 </script>
