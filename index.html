@@ -1054,6 +1054,9 @@
 
   /* Arial everywhere (house style) */
   html,body,button,input,select,textarea,table,th,td,svg text{font-family:Arial,Helvetica,sans-serif !important;}
+
+  /* b70: every title starts each word with a capital */
+  h1,h2,h3,h4,#mod-title,.panel-head h3,.wd-h h3,.wd-card-head h4,.wd-section-title,.dw-step,.nav-item,.detail-card h3,.mr-section h3,.modal h3,.pop-title,.wm-bub-t{text-transform:capitalize}
 </style>
 </head>
 <body>
@@ -1866,6 +1869,7 @@ async function afterSignIn(user){
     showGate('gate-auth');
     return;
   }
+  if(profile && profile.name) profile.name = wmCap(profile.name);
   STATE.profile = profile;
 
   const { data: memberships, error: memErr } = await STATE.supabase
@@ -1997,9 +2001,9 @@ window.selectOrg = async function(orgId){
 
   const { data: members, error: memErr } = membersResult.status === 'fulfilled' ? membersResult.value : { data: null, error: membersResult.reason };
   if(memErr){ toast('Could not load organisation members: ' + memErr.message, 'error'); return; }
-  STATE.members = members || [];
+  STATE.members = (members || []).map(m => { if(m && m.profiles && m.profiles.name) m.profiles.name = wmCap(m.profiles.name); return m; });
   STATE.memberMap = {};
-  STATE.members.forEach(m => { STATE.memberMap[m.user_id] = (m.profiles && m.profiles.name) || 'Unknown'; });
+  STATE.members.forEach(m => { STATE.memberMap[m.user_id] = wmCap((m.profiles && m.profiles.name) || 'Unknown'); });
 
   hideAllGates();
   document.getElementById('view-landing').classList.remove('active');
@@ -2205,7 +2209,7 @@ async function loadDivisions(){
 async function loadPersonnel(){
   const { data, error } = await STATE.supabase.from('personnel').select('*').eq('organisation_id', STATE.org.id).order('full_name', {ascending:true});
   if(error){ toast('Could not load personnel: ' + error.message, 'error'); return; }
-  STATE.personnel = data || [];
+  STATE.personnel = (data || []).map(p => { if(p && p.full_name) p.full_name = wmCap(p.full_name); return p; });
 }
 async function loadCompetence(){
   const { data, error } = await STATE.supabase.from('personnel_competence').select('*').eq('organisation_id', STATE.org.id);
@@ -2927,6 +2931,12 @@ function orgHasModule(mod, org){
 // One rule for everything: the client must HAVE the module (platform switch) AND the person must be
 // allowed it (Admins automatically; everyone else by their module-access tick). Administration is
 // Admin-role only; platform staff are exempt so the Admin Console can never lock itself out.
+function wmCap(n){ if(n==null) return n; const t=String(n); if(!/(^|[\s\-'’.(])[a-z]/.test(t)) return t;
+  return t.replace(/(^|[\s\-'’.(])([a-z])/g,(m,a,b)=>a+b.toUpperCase()); }
+window.wmCap=wmCap;
+const WM_CAL='cal_v1';
+function wmCal(list){ return [...new Set([...(list||[]), WM_CAL])]; }
+function wmModCount(m){ return (m.module_access||[]).filter(k=>k!==WM_CAL).length; }
 function canAccessModule(mod){
   if(!GATED_MODULES.includes(mod)) return true; // overview, compliance — always visible
   const isStaff = !!(STATE.profile && STATE.profile.is_platform_staff);
@@ -3385,7 +3395,7 @@ const RENDERERS = {
       <div class="form-grid">
 
         ${renderTitleCategoryPicker('f', '')}
-        <div class="field"><label>Your own reference number (optional)</label><input id="f-client-ref" placeholder="e.g. 20260802" maxlength="60"></div>
+        <div class="field"><label>Internal unique reference (optional)</label><input id="f-client-ref" placeholder="e.g. 20260802" maxlength="60"></div>
         <div class="field span3">
           <label>Description</label>
           <p style="font-size:11.5px; color:var(--text-faint); margin:-2px 0 6px;">Complete a full description of what occurred including date, time, whoever was involved, and references to any associated documentation for traceability.</p>
@@ -3459,7 +3469,7 @@ const RENDERERS = {
           </select>
         </div>
         ${renderTitleCategoryPicker('raga', '')}
-        <div class="field"><label>Your reference</label><input id="raga-client-ref" placeholder="e.g. 20260802"></div>
+        <div class="field"><label>Internal unique reference</label><input id="raga-client-ref" placeholder="e.g. 20260802"></div>
         <div class="field span3"><label>Description</label><textarea id="raga-description" placeholder="For Red/Orange: what happened. For Green: what was done well, or what the compliment was."></textarea></div>
       </div>
       <div id="raga-issue-fields" class="form-grid" style="margin-bottom:0;">
@@ -3658,8 +3668,8 @@ const RENDERERS = {
       <h3 style="font-family:Arial,Helvetica,sans-serif; font-size:15.5px; font-weight:600; margin-bottom:12px;">New document</h3>
       <div class="dw-steps">
         <div class="dw-step on" id="dw-step-1">1 · What is it?</div>
-        <div class="dw-step" id="dw-step-2">2 · Start from a template or an old document</div>
-        <div class="dw-step" id="dw-step-3">3 · Create &amp; edit</div>
+        <div class="dw-step" id="dw-step-2">2 · Your old document and/or a template</div>
+        <div class="dw-step" id="dw-step-3">3 · Choose how to create it</div>
       </div>
 
       <div id="dw-pane-1">
@@ -3674,19 +3684,22 @@ const RENDERERS = {
         <p id="df-next-number-preview" style="font-size:12px; color:var(--text-faint); margin:-4px 0 10px;"></p>
         <div class="form-actions">
           <button class="btn-cancel" onclick="toggleDocForm()">Cancel</button>
-          <button class="btn-primary" onclick="dwNext()">Next: pick a starting point</button>
+          <button class="btn-primary" onclick="dwNext()">Next: your old document and templates</button>
         </div>
       </div>
 
       <div id="dw-pane-2" style="display:none;">
-        <p style="font-size:12.5px; color:var(--text-dim); margin-bottom:10px;"><b>Search the Template Library first.</b> Pick a generic policy, procedure, form or register and it is adapted to your company's scope and needs. If nothing fits, continue without one and the AI assistant will generate a new document for you. You can also upload an existing document so it matches your current wording and structure. All of this is optional.</p>
+        <p style="font-size:12.5px; color:var(--text-dim); margin-bottom:10px;"><b>Choose your starting point before drafting.</b> Upload your existing document, pick a template, or both, then choose how to create it on the next step. Pick a generic policy, procedure, form or register and it is adapted to your company's scope and needs. If nothing fits, continue without one and the AI assistant will generate a new document for you. You can also upload an existing document so it matches your current wording and structure. All of this is optional.</p>
+        <div style="border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px;background:var(--grey-tint)">
+          <div class="field" style="margin:0"><label>1. Do you already have this document? Upload your existing (historical) document: .docx or .pdf (optional)</label><input type="file" id="dw-ref-file" accept=".docx,.pdf" onchange="dwRefChosen()"></div>
+          <p id="dw-ref-status" style="font-size:12px; color:var(--text-faint); margin:6px 0 0;">The AI assistant reads it so the new draft matches your own wording, structure and requirements. It is kept with the record as reference.</p>
+        </div>
+        <div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">2. Search the Template Library (optional)</div>
         <div class="form-grid">
           <div class="field span2"><label>Search templates</label><input id="dw-tpl-search" placeholder="e.g. health and safety, quality, environmental…" oninput="dwRenderTemplates()"></div>
           <div class="field"><label>Kind</label><select id="dw-tpl-type" onchange="dwRenderTemplates()"><option value="">All document templates</option><option value="policy">Policies</option><option value="procedure">Procedures</option><option value="manual">Manuals</option><option value="form">Forms</option><option value="register">Registers</option><option value="other_document">Other documents</option></select></div>
         </div>
         <div id="dw-template-list" style="max-height:300px; overflow-y:auto; margin-bottom:14px;"></div>
-        <div class="field"><label>Upload an existing (historical) document for context: .docx or .pdf</label><input type="file" id="dw-ref-file" accept=".docx,.pdf" onchange="dwRefChosen()"></div>
-        <p id="dw-ref-status" style="font-size:12px; color:var(--text-faint); margin:4px 0 10px;"></p>
         <div class="form-actions">
           <button class="btn-cancel" onclick="dwShowStep(1)">Back</button>
           <button class="btn-primary" onclick="dwNext()">Next</button>
@@ -4713,7 +4726,7 @@ async function openNCDetail(id){
           <option value="critical" ${n.severity==='critical'?'selected':''}>Critical</option>
         </select></div></div>
         <div class="dm-item"><div class="l">Owner</div><div class="v"><select id="d-owner">${memberOptions(n.owner_id)}</select></div></div>
-        <div class="dm-item"><div class="l">Your reference</div><div class="v"><input id="d-client-ref" value="${escapeHtml(n.client_ref||'')}" placeholder="e.g. 20260802" maxlength="60" style="font-size:12.5px; padding:3px 6px; width:130px;"></div></div>
+        <div class="dm-item"><div class="l">Internal unique reference</div><div class="v"><input id="d-client-ref" value="${escapeHtml(n.client_ref||'')}" placeholder="e.g. 20260802" maxlength="60" style="font-size:12.5px; padding:3px 6px; width:130px;"></div></div>
         <div class="dm-item"><div class="l">Raised</div><div class="v">${fmtDate(n.raised_date)} by ${memberName(n.raised_by)}</div></div>
         <div class="dm-item"><div class="l">Target close</div><div class="v"><input type="date" id="d-target-close" value="${n.target_close_date||''}" style="font-size:12.5px; padding:3px 6px;"></div></div>
       </div>
@@ -4827,7 +4840,7 @@ function renderRagaTable(){
   }
   const typeBadge = { red: '🔴 Red', orange: '🟠 Orange', green: '🟢 Green' };
   wrap.innerHTML = `<div class="panel" style="padding:0; overflow:hidden;"><table>
-    <tr><th>Ref</th><th>Your ref</th><th>Alert</th><th>Title</th><th>Raised</th><th>Status</th><th></th></tr>
+    <tr><th>Ref</th><th>Internal unique ref</th><th>Alert</th><th>Title</th><th>Raised</th><th>Status</th><th></th></tr>
     ${rows.map(r=>`<tr class="clickable" onclick="openRagaDetail('${r.id}')">
       <td class="mono-cell">${r.ref_code}</td>
       <td class="mono-cell">${escapeHtml(r.client_ref||'')}</td>
@@ -4947,7 +4960,7 @@ async function openRagaDetail(id){
           <option value="orange" ${r.alert_type==='orange'?'selected':''}>🟠 Orange Alert</option>
           <option value="green" ${r.alert_type==='green'?'selected':''}>🟢 Green Alert</option>
         </select></div></div>
-        <div class="dm-item"><div class="l">Your reference</div><div class="v"><input id="raga-d-client-ref" value="${escapeHtml(r.client_ref||'')}" placeholder="e.g. 20260802" style="font-size:12.5px;"></div></div>
+        <div class="dm-item"><div class="l">Internal unique reference</div><div class="v"><input id="raga-d-client-ref" value="${escapeHtml(r.client_ref||'')}" placeholder="e.g. 20260802" style="font-size:12.5px;"></div></div>
         <div class="dm-item"><div class="l">Raised</div><div class="v">${fmtDate(r.raised_date)} by ${memberName(r.raised_by)}</div></div>
       </div>
       <div class="form-grid" style="margin-bottom:16px;">
@@ -5164,7 +5177,7 @@ async function buildAndPrintRaga(id, sections){
   let body = `<p><b>Description</b><br>${r.description || 'No description recorded.'}</p>`;
   body += photoBlock;
 
-  if(r.client_ref) meta.splice(1, 0, ['Your reference', escapeHtml(r.client_ref)]);
+  if(r.client_ref) meta.splice(1, 0, ['Internal unique reference', escapeHtml(r.client_ref)]);
   if(!isGreen){
     if(r.immediate_action_taken) body += printSectionTitle('Immediate Action Taken') + `<p>${r.immediate_action_taken}</p>`;
     if(r.contact_details) body += printSectionTitle('Contact Details of Involved Parties') + `<p>${r.contact_details}</p>`;
@@ -5333,6 +5346,7 @@ async function buildAndPrintNC(id, sections){
 
   const ncDept = n.department_id ? STATE.docDepartments.find(x=>x.id===n.department_id) : null;
   const meta = [
+    [({incident:'Incident number',accident:'Accident number',near_miss:'Near miss number'}[n.record_class] || 'Nonconformance number'), n.ref_code || '—'], ['Internal unique reference', n.client_ref || '—'],
     ['Type', n.title], ['Department', (ncDept ? ncDept.name : n.department) || '—'], ['Severity', label(n.severity)],
     ['Status', label(n.status)], ['Owner', memberName(n.owner_id)], ['Raised by', memberName(n.raised_by)],
     ['Raised date', fmtDate(n.raised_date)], ['Target close date', fmtDate(n.target_close_date)],
@@ -16867,7 +16881,7 @@ const FLOWCHART_STEP_KIND_LABEL = { start:'Start', step:'Step', decision:'Decisi
 const FLOWCHART_STEP_KIND_COLOR = { start:'var(--green)', step:'var(--blue,#3B6FA0)', decision:'var(--amber)', end:'var(--red)' };
 
 function flowchartById(id){ return STATE.orgFlowcharts.find(f=>f.id===id); }
-function canEditFlowchart(){ return STATE.myRole === 'admin' || STATE.myRole === 'manager' || (STATE.profile && STATE.profile.is_platform_staff); }
+function canEditFlowchart(){ return STATE.myRole === 'admin' || STATE.myRole === 'manager' || STATE.myRole === 'contributor' || (STATE.profile && STATE.profile.is_platform_staff); }
 
 function renderProcessFlowchartsList(){
   const root = document.getElementById('pf-root');
@@ -21391,7 +21405,7 @@ function renderAdminTeam(){
         ${STATE.members.map(m => `<tr>
           <td class="strong">${(m.profiles && m.profiles.name) || 'Unknown'}</td>
           <td style="text-transform:capitalize">${m.role}</td>
-          <td style="font-size:12px; color:var(--text-dim);">${m.role==='admin' ? 'All (Admin)' : ((m.module_access||[]).length + ' module' + ((m.module_access||[]).length===1?'':'s'))}</td>
+          <td style="font-size:12px; color:var(--text-dim);">${m.role==='admin' ? 'All (Admin)' : (wmModCount(m) + ' module' + (wmModCount(m)===1?'':'s'))}</td>
           <td style="font-size:12px; color:${m.is_approver?'var(--green)':'var(--text-faint)'};">${m.is_approver ? 'Yes' : '—'}</td>
           ${isAdmin ? `<td style="text-align:right; white-space:nowrap;"><button class="btn-small" onclick="toggleAdminMemberEdit('${m.user_id}')">Edit Access</button> ${m.user_id!==STATE.user.id ? `<button class="btn-small" onclick="removeAdminMember('${m.user_id}')">Remove</button>` : ''}</td>` : ''}
         </tr>
@@ -21416,7 +21430,7 @@ window.sendAdminInvite = async function(){
     return;
   }
   const { data: newInvite, error } = await STATE.supabase.from('invites').insert({
-    organisation_id: STATE.org.id, email: email.toLowerCase(), role, module_access: moduleAccess, invited_by: STATE.user.id,
+    organisation_id: STATE.org.id, email: email.toLowerCase(), role, module_access: wmCal(moduleAccess), invited_by: STATE.user.id,
   }).select().single();
   if(error){ toast('Invite failed: ' + error.message, 'error'); return; }
 
@@ -21479,7 +21493,7 @@ window.toggleAdminMemberEdit = function(userId){
         </select>
       </div>
       <div class="field">
-        <label>Module access <span style="text-transform:none; font-weight:400; color:var(--text-faint);">(ignored if role is Admin)</span></label>
+        <label>Module access <span style="text-transform:none; font-weight:400; color:var(--text-faint);">(Admins and Managers see every module; Managers cannot open Administration. Ticks apply to Contributors and Viewers.)</span></label>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 16px; margin-top:6px;">
           ${adminInviteModules().map(mod => `
             <div style="display:flex; align-items:center; gap:8px;">
@@ -21512,7 +21526,7 @@ window.saveAdminMemberAccess = async function(userId){
   const isApprover = document.getElementById('admin-edit-approver-'+userId).checked;
   // Ticks for modules the client doesn't currently have aren't shown — keep whatever they already had so switching a module back on restores it.
   const shown = new Set(adminInviteModules().map(x=>x.key));
-  const hidden = (m.module_access||[]).filter(k => !shown.has(k));
+  const hidden = (m.module_access||[]).filter(k => !shown.has(k) && k !== 'cal_v1');
   const moduleAccess = [...new Set([...ticked, ...hidden])];
   if(role !== 'admin' && !moduleAccess.length){
     toast('Tick at least one module: otherwise this person will have no modules to work in at all.', 'error');
@@ -21525,19 +21539,19 @@ window.saveAdminMemberAccess = async function(userId){
     }
     if(userId === STATE.user.id && !confirm('You are about to remove your own Admin rights. You will lose access to Administration straight away. Continue?')) return;
   }
-  const { error } = await STATE.supabase.from('organisation_members').update({ role, module_access: moduleAccess, can_download: canDownloadFlag, is_approver: isApprover }).eq('user_id', userId).eq('organisation_id', STATE.org.id);
+  const { error } = await STATE.supabase.from('organisation_members').update({ role, module_access: wmCal(moduleAccess), can_download: canDownloadFlag, is_approver: isApprover }).eq('user_id', userId).eq('organisation_id', STATE.org.id);
   if(error){ toast('Could not update access: ' + error.message, 'error'); return; }
   toast('Access updated.', 'success');
   await reloadAdminMembers();
-  if(userId === STATE.user.id){ STATE.myRole = role; STATE.myModuleAccess = moduleAccess; STATE.myCanDownload = canDownloadFlag; applyModuleAccessToNav(); if(!canAccessModule('administration')){ showModule('overview'); return; } }
+  if(userId === STATE.user.id){ STATE.myRole = role; STATE.myModuleAccess = wmCal(moduleAccess); STATE.myCanDownload = canDownloadFlag; applyModuleAccessToNav(); if(!canAccessModule('administration')){ showModule('overview'); return; } }
   renderAdminTeam();
 };
 
 async function reloadAdminMembers(){
   const { data: members } = await STATE.supabase.from('organisation_members').select('user_id, role, is_approver, module_access, can_download, profiles!organisation_members_user_id_fkey(name)').eq('organisation_id', STATE.org.id).eq('status','active');
-  STATE.members = members || [];
+  STATE.members = (members || []).map(m => { if(m && m.profiles && m.profiles.name) m.profiles.name = wmCap(m.profiles.name); return m; });
   STATE.memberMap = {};
-  STATE.members.forEach(x => { STATE.memberMap[x.user_id] = (x.profiles && x.profiles.name) || 'Unknown'; });
+  STATE.members.forEach(x => { STATE.memberMap[x.user_id] = wmCap((x.profiles && x.profiles.name) || 'Unknown'); });
 }
 
 // Offboarding: removes the person's access to this organisation completely (not just hides modules).
@@ -23523,14 +23537,14 @@ function getModuleExportConfig(moduleKey){
   const orgSlug = (STATE.org.name || 'export').replace(/[^a-zA-Z0-9]+/g,'-').toLowerCase();
   const configs = {
     nonconformances: { rows: STATE.ncs, filename: `nonconformances-${orgSlug}.xlsx`, columns: [
-      {header:'Ref', get:r=>r.ref_code}, {header:'Client Ref', get:r=>r.client_ref||''}, {header:'Type', get:r=>r.title}, {header:'Description', get:r=>r.description},
+      {header:'Ref', get:r=>r.ref_code}, {header:'Internal Unique Reference', get:r=>r.client_ref||''}, {header:'Type', get:r=>r.title}, {header:'Description', get:r=>r.description},
       {header:'Immediate Action Taken', get:r=>r.immediate_action_taken}, {header:'Contact Details', get:r=>r.contact_details},
       {header:'Severity', get:r=>r.severity},
       {header:'Status', get:r=>r.status}, {header:'Raised Date', get:r=>r.raised_date}, {header:'Target Close', get:r=>r.target_close_date},
       {header:'Owner', get:r=>memberName(r.owner_id)},
     ]},
     raga: { rows: STATE.ragaAlerts||[], filename: `raga-${orgSlug}.xlsx`, columns: [
-      {header:'Ref', get:r=>r.ref_code}, {header:'Client Ref', get:r=>r.client_ref||''}, {header:'Alert Type', get:r=>r.alert_type}, {header:'Title', get:r=>r.title}, {header:'Description', get:r=>r.description},
+      {header:'Ref', get:r=>r.ref_code}, {header:'Internal Unique Reference', get:r=>r.client_ref||''}, {header:'Alert Type', get:r=>r.alert_type}, {header:'Title', get:r=>r.title}, {header:'Description', get:r=>r.description},
       {header:'Immediate Action Taken', get:r=>r.immediate_action_taken||''}, {header:'Contact Details', get:r=>r.contact_details||''},
       {header:'Status', get:r=>r.status}, {header:'Raised Date', get:r=>r.raised_date}, {header:'Raised By', get:r=>memberName(r.raised_by)},
       {header:'Owner', get:r=>r.owner_id?memberName(r.owner_id):''}, {header:'Target Close', get:r=>r.target_close_date||''},
@@ -28562,8 +28576,8 @@ window.sendAdminInviteWhatsApp = async function(){
   if(mobile.length < 9){ toast('Enter their mobile number first.', 'error'); return; }
   if(!email || !EMAIL_RE.test(email)){ toast('The login still needs an email address to sign in with. Use theirs if they have one, otherwise an address you control for them.', 'error'); return; }
   if(role !== 'admin' && !moduleAccess.length){ toast('Tick at least one module for this person.', 'error'); return; }
-  let ins = await STATE.supabase.from('invites').insert({ organisation_id: STATE.org.id, email, role, module_access: moduleAccess, invited_by: STATE.user.id, mobile_number: mobile, channel: 'whatsapp' }).select().single();
-  if(ins.error) ins = await STATE.supabase.from('invites').insert({ organisation_id: STATE.org.id, email, role, module_access: moduleAccess, invited_by: STATE.user.id }).select().single();
+  let ins = await STATE.supabase.from('invites').insert({ organisation_id: STATE.org.id, email, role, module_access: wmCal(moduleAccess), invited_by: STATE.user.id, mobile_number: mobile, channel: 'whatsapp' }).select().single();
+  if(ins.error) ins = await STATE.supabase.from('invites').insert({ organisation_id: STATE.org.id, email, role, module_access: wmCal(moduleAccess), invited_by: STATE.user.id }).select().single();
   if(ins.error){ toast('Invite failed: ' + ins.error.message, 'error'); return; }
   const link = `${window.location.origin}${window.location.pathname.replace(/index\.html$/,'')}accept-invite.html?token=${ins.data.token}`;
   const text = `Hello, you have been invited to ${STATE.org.name} on QaSHE Watchman.\n\nTap this link to set up your login:\n${link}\n\nThe link works once and expires in 30 days.`;
@@ -29589,7 +29603,7 @@ window.rfCoverage = function(fw){
 /* ============================================================================
    MANAGEMENT REVIEW: magazine reader for the minutes + modern edit page (admin only)
    ============================================================================ */
-function mrCanEdit(){ return STATE.myRole === 'admin' || !!(STATE.profile && STATE.profile.is_platform_staff); }
+function mrCanEdit(){ return ['admin','manager'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff); }
 async function mrLoad(id){
   const [i, a, c] = await Promise.all([
     STATE.supabase.from('management_review_items').select('*').eq('review_id', id),
@@ -30548,7 +30562,7 @@ RENDERERS.overview = () => {
   const recent = [...(STATE.ncs||[])].sort((a,b)=> new Date(b.raised_date)-new Date(a.raised_date)).slice(0,5);
   const latestBulletins = (STATE.bulletins||[]).filter(b=>b.is_published).slice(0,3);
   const hour = new Date().getHours(), greet = hour<12 ? 'Good morning' : hour<18 ? 'Good afternoon' : 'Good evening';
-  const first = ((STATE.profile && STATE.profile.name) || '').split(' ')[0];
+  const first = wmCap(((STATE.profile && STATE.profile.name) || '').split(' ')[0]);
   const tile = (n,l,cls,mod) => `<div class="ovx-tile ${cls}" onclick="showModule('${mod}')"><b>${n}</b><span>${l}</span></div>`;
   const att = (n,t,sub,c,mod) => n ? `<div class="ovx-att" onclick="showModule('${mod}')"><div class="n" style="background:${c}">${n}</div><div class="t">${t}<i>${sub}</i></div><div class="go">›</div></div>` : '';
   const items = [
@@ -30974,7 +30988,7 @@ window.brandFromLogo = function(){
   };
   const DW_TIPS={
     1:['Step 1 of 3: describe the document','Give it a clear name and say why it exists: the requirement it satisfies and who it applies to. The better the purpose, the better my draft. Department and type set the document number automatically.'],
-    2:['Step 2 of 3: choose a starting point','Pick a ready-made template from the library, or upload your old document so I can match your wording. Both are optional. If unsure, pick a template that is closest and I will adapt it.'],
+    2:['Step 2 of 3: your old document and templates','Upload your old document first so I can match your wording, and pick a ready-made template from the library. Both are optional. If unsure, pick a template that is closest and I will adapt it.'],
     3:['Step 3 of 3: create and edit','Check the summary. "Create with the AI assistant" is the fastest route. On the next screen you edit, pick reviewers and an approver, and submit. Nothing is published until the approver signs off.']
   };
   const _dws=window.dwShowStep;
@@ -32027,7 +32041,7 @@ window.brandFromLogo = function(){
   }
   window.renderMasterRegisterPage=function(){
     const root=document.getElementById('mr2-root'); if(!root) return;
-    const rows=mrRows(); const isAdmin=STATE.myRole==='admin'||(STATE.profile&&STATE.profile.is_platform_staff);
+    const rows=mrRows(); const isAdmin=['admin','manager'].includes(STATE.myRole)||(STATE.profile&&STATE.profile.is_platform_staff);
     let seqs=[]; try{ seqs=masterDocRegistryData().sequences; }catch(e){}
     const gaps=seqs.reduce((s,g)=>s+g.gaps.length,0), dups=seqs.reduce((s,g)=>s+g.duplicates.length,0);
     const depts=[...new Set(rows.map(r=>r.dept))].sort();
@@ -32292,7 +32306,7 @@ window.brandFromLogo = function(){
     await loadSoa(); try{ await loadSecIncidents(); }catch(e){} try{ if(window.loadThreatsData) await window.loadThreatsData(); }catch(e){} try{ if(window.loadTasks) await loadTasks(); }catch(e){}
     try{ if(!(STATE.documents||[]).length) await loadDocuments(); }catch(e){}
     try{ if(!(STATE.risks||[]).length) await loadRisks(); }catch(e){}
-    const isAdmin=STATE.myRole==='admin'||(STATE.profile&&STATE.profile.is_platform_staff);
+    const isAdmin=['admin','manager'].includes(STATE.myRole)||(STATE.profile&&STATE.profile.is_platform_staff);
     const tiles=soaTiles();
     root.innerHTML=`
     ${STATE._soaMissing?'<div class="panel" style="padding:14px 18px;border-left:4px solid #f07a1a;margin-bottom:14px;font-size:13px;">The Statement of Applicability tables are not set up yet. Run <b>qashe-watchman-schema-isms.sql</b> in the Supabase SQL editor, then refresh.</div>':''}
@@ -32501,7 +32515,7 @@ window.brandFromLogo = function(){
 (function(){
   const E=s=>escapeHtml(String(s==null?'':s));
   const tableMissing=e=>e&&/does not exist|relation|schema cache|Could not find/i.test(e.message||'');
-  const isAdmin=()=>STATE.myRole==='admin'||(STATE.profile&&STATE.profile.is_platform_staff);
+  const isAdmin=()=>['admin','manager'].includes(STATE.myRole)||(STATE.profile&&STATE.profile.is_platform_staff);
   STATE.infoAssets=STATE.infoAssets||[]; STATE.threats=STATE.threats||[];
   const ICON_ASSET='<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="1"/><rect x="3" y="14" width="18" height="6" rx="1"/><path d="M7 7h.01M7 17h.01"/></svg>';
   const ICON_TI='<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>';
@@ -32869,7 +32883,7 @@ window.brandFromLogo = function(){
 (function(){
   const E=s=>escapeHtml(String(s==null?'':s));
   const tableMissing=e=>e&&/does not exist|relation|schema cache|Could not find/i.test(e.message||'');
-  const isAdmin=()=>STATE.myRole==='admin'||(STATE.profile&&STATE.profile.is_platform_staff);
+  const isAdmin=()=>['admin','manager'].includes(STATE.myRole)||(STATE.profile&&STATE.profile.is_platform_staff);
   STATE.govRecords=STATE.govRecords||[]; STATE.govAssess=STATE.govAssess||[];
   const ISO_P=[
     ['purpose','Purpose','The reason the organisation exists is clear, agreed by the governing body and used to guide decisions.'],
@@ -33129,7 +33143,7 @@ window.brandFromLogo = function(){
 (function(){
   const E=s=>escapeHtml(String(s==null?'':s));
   const tableMissing=e=>e&&/does not exist|relation|schema cache|Could not find|violates check/i.test(e.message||'');
-  const isAdmin=()=>STATE.myRole==='admin'||(STATE.profile&&STATE.profile.is_platform_staff);
+  const isAdmin=()=>['admin','manager'].includes(STATE.myRole)||(STATE.profile&&STATE.profile.is_platform_staff);
   const aud=()=>(STATE.govRecords||[]).filter(r=>r.kind==='auditor');
   const ST=[['competent','Competent'],['provisional','Provisional: under supervision'],['lapsed','Lapsed']];
   const yearAgo=()=>{ const d=new Date(); d.setFullYear(d.getFullYear()-1); return d.toISOString().slice(0,10); };
@@ -33219,7 +33233,7 @@ window.brandFromLogo = function(){
 (function(){
   const E=s=>escapeHtml(String(s==null?'':s));
   const tableMissing=e=>e&&/does not exist|relation|schema cache|Could not find/i.test(e.message||'');
-  const isAdmin=()=>STATE.myRole==='admin'||(STATE.profile&&STATE.profile.is_platform_staff);
+  const isAdmin=()=>['admin','manager'].includes(STATE.myRole)||(STATE.profile&&STATE.profile.is_platform_staff);
   const ICON={log:'<path d="M12 8v5l3 2"/><circle cx="12" cy="12" r="9"/>',group:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',lock:'<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/><path d="M12 15v2"/>'};
 
   /* ---------- navigation ---------- */
@@ -34648,7 +34662,7 @@ window.brandFromLogo = function(){
   STATE._wdMissing = false;
   const esc = s => escapeHtml(s == null ? '' : String(s));
   const daysTo = iso => Math.floor((new Date(iso + 'T00:00:00') - new Date(todayISO() + 'T00:00:00')) / 86400000);
-  const isAdminish = () => STATE.myRole === 'admin' || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const isAdminish = () => ['admin','manager'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
   const canEdit = () => ['admin','manager','contributor'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
   const canDelete = () => ['admin','manager'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
   const badge = (t, c) => `<span class="date-badge ${c}"><span class="dd"></span>${esc(t)}</span>`;
@@ -36533,8 +36547,7 @@ function fmtRev(rev){
       SW.forEach(([k]) => { const el = document.querySelector('.nav-item[data-mod="' + k + '"]'); if(!el) return;
         if(off(k)) el.style.display = 'none';
         else if(!GATED_MODULES.includes(k) && el.style.display === 'none') el.style.display = ''; /* switched back on */ });
-      const mr = document.querySelector('.nav-item[data-mod="master_register"]'); if(mr && STATE.org && STATE.org.document_control_enabled === false) mr.style.display = 'none';
-      return r; }; }
+            return r; }; }
   SW.forEach(([k, label, note]) => ADMIN_CONSOLE_TOGGLES.push({ field: KEY(k), label, note: note + ' Switching off hides it; nothing recorded is deleted.' }));
   { const _t = toggleOrgModule;
     toggleOrgModule = window.toggleOrgModule = async function(field, value){
@@ -36930,7 +36943,7 @@ function fmtRev(rev){
   const num = r => r.doc_number || r.ref_code || r.audit_ref || r.ref || (r.id||'').slice(0,8);
   const ttl = r => r.title || r.description || r.specific_statement || r.name || r.supplier_name || r.customer_name || r.requirement || '';
   const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-  const isAdm = () => STATE.myRole === 'admin' || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const isAdm = () => ['admin','manager'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
   const cfgOf = t => CFG.find(c => c.t === t);
 
   // Split voided rows out of every list the app uses.
@@ -41201,7 +41214,7 @@ window.WMTutorial = { open, script: () => playlist('full').map(s => ({ id:s.id, 
   function addCol(){
     const t=document.querySelector('#nc-table-wrap table'); if(!t) return;
     const hr=t.querySelector('tr'); if(!hr||hr.querySelector('.ncx-cref')) return;
-    const th=document.createElement('th'); th.className='ncx-cref'; th.textContent='Client ref'; hr.children[0].after(th);
+    const th=document.createElement('th'); th.className='ncx-cref'; th.textContent='Internal unique ref'; hr.children[0].after(th);
     t.querySelectorAll('tr.clickable').forEach(tr=>{
       const m=(tr.getAttribute('onclick')||'').match(/'([^']+)'/); const n=m&&ncById(m[1]);
       const td=document.createElement('td'); td.className='mono-cell ncx-cref'; td.textContent=(n&&n.client_ref)||''; td.style.whiteSpace='nowrap';
@@ -41688,7 +41701,7 @@ window.WMTutorial = { open, script: () => playlist('full').map(s => ({ id:s.id, 
       <button class="btn-primary" onclick="isiNew()">Record information security incident</button></div>
     <div id="isi-form"></div>
     <div id="nc-detail-slot"></div>
-    <div class="panel"><div id="isi-table">${rows.length?`<table><tr><th>Ref</th><th>Your ref</th><th>Incident</th><th>Type</th><th>Detected</th><th>Severity</th><th>Status</th><th>POPIA</th><th></th></tr>${rows.map(({s,n})=>`<tr class="clickable" onclick="isiOpen('${n.id}')"><td class="mono-cell">${E(n.ref_code)}</td><td class="mono-cell">${E(n.client_ref||'')}</td><td class="strong">${E(n.description?String(n.description).slice(0,80):n.title)}</td><td>${E(s.incident_type)}</td><td>${s.detected_at?fmtDate(String(s.detected_at).slice(0,10)):'-'}</td><td>${sevBadge(n.severity)}</td><td>${pill(n.status)}</td><td>${s.personal_info_involved?((s.regulator_notified_at&&s.subjects_notified_at)?'Notified':'<b style="color:#8a1b17">Outstanding</b>'):'-'}</td><td style="text-align:right"><button class="btn-small" onclick="event.stopPropagation();isiOpen('${n.id}')">Edit Incident</button> <button class="btn-small" onclick="event.stopPropagation();viewNC('${n.id}')">View Incident</button></td></tr>`).join('')}</table>`:'<div class="empty-state"><p>No information security incidents recorded.</p></div>'}</div></div>`;
+    <div class="panel"><div id="isi-table">${rows.length?`<table><tr><th>Ref</th><th>Internal unique ref</th><th>Incident</th><th>Type</th><th>Detected</th><th>Severity</th><th>Status</th><th>POPIA</th><th></th></tr>${rows.map(({s,n})=>`<tr class="clickable" onclick="isiOpen('${n.id}')"><td class="mono-cell">${E(n.ref_code)}</td><td class="mono-cell">${E(n.client_ref||'')}</td><td class="strong">${E(n.description?String(n.description).slice(0,80):n.title)}</td><td>${E(s.incident_type)}</td><td>${s.detected_at?fmtDate(String(s.detected_at).slice(0,10)):'-'}</td><td>${sevBadge(n.severity)}</td><td>${pill(n.status)}</td><td>${s.personal_info_involved?((s.regulator_notified_at&&s.subjects_notified_at)?'Notified':'<b style="color:#8a1b17">Outstanding</b>'):'-'}</td><td style="text-align:right"><button class="btn-small" onclick="event.stopPropagation();isiOpen('${n.id}')">Edit Incident</button> <button class="btn-small" onclick="event.stopPropagation();viewNC('${n.id}')">View Incident</button></td></tr>`).join('')}</table>`:'<div class="empty-state"><p>No information security incidents recorded.</p></div>'}</div></div>`;
   };
   function ownerOpts(sel){ return (STATE.members||[]).filter(m=>m.status!=='removed').map(m=>`<option value="${m.user_id}" ${m.user_id===sel?'selected':''}>${E((m.profiles&&m.profiles.name)||m.email||m.user_id)}</option>`).join(''); }
   window.isiNew=function(){
@@ -41700,7 +41713,7 @@ window.WMTutorial = { open, script: () => playlist('full').map(s => ({ id:s.id, 
         <div class="field"><label>Severity</label><select id="isi-sev"><option value="minor">Minor</option><option value="major">Major</option><option value="critical">Critical</option></select></div>
         <div class="field"><label>Owner</label><select id="isi-owner">${ownerOpts(STATE.user&&STATE.user.id)}</select></div>
         <div class="field"><label>Target close date</label><input type="date" id="isi-target" value="${d.toISOString().slice(0,10)}"></div>
-        <div class="field"><label>Your reference</label><input id="isi-client-ref" placeholder="e.g. 20260802"></div>
+        <div class="field"><label>Internal unique reference</label><input id="isi-client-ref" placeholder="e.g. 20260802"></div>
         <div class="field span3"><label>Immediate action taken</label><textarea id="isi-imm" placeholder="What was done right away"></textarea></div>
       </div>${window.__wmIncFields('isin',{})}
       <div class="form-actions"><button class="btn-cancel" onclick="document.getElementById('isi-form').innerHTML=''">Cancel</button><button class="btn-primary" onclick="isiSave()">Record incident</button></div></div>`;
@@ -41875,7 +41888,7 @@ window.WMTutorial = { open, script: () => playlist('full').map(s => ({ id:s.id, 
   renderAdminCommunications=async function(){
     await _rc.apply(this,arguments); window.renderAdminCommunications=renderAdminCommunications;
     document.querySelectorAll('#admin-subtab-content .detail-card').forEach(c=>{ if(/Ask Me for Help and Report a Bug/.test(c.textContent)){
-      const on=bugOn(); const isAdm=STATE.myRole==='admin'||(STATE.profile&&STATE.profile.is_platform_staff);
+      const on=bugOn(); const isAdm=['admin','manager'].includes(STATE.myRole)||(STATE.profile&&STATE.profile.is_platform_staff);
       c.innerHTML=`<div style="flex:1;min-width:240px"><div class="panel-head" style="margin:0 0 4px"><h3>Help and reporting buttons</h3></div>
         <p style="font-size:13px;color:var(--text-dim);margin:0 0 6px"><b>Ask me for Help</b> and <b>Report a Bug or Change Request</b> are always on for every user.</p>
         <p style="font-size:13px;color:var(--text-dim);margin:0">The extra <b>Report a Bug or Problem</b> button is <b>${on?'ON':'OFF'}</b> for ${E(STATE.org.name)}.</p></div>
@@ -41927,11 +41940,11 @@ window.WMTutorial = { open, script: () => playlist('full').map(s => ({ id:s.id, 
   w('removeRCAParticipant',o=>async function(linkId,id){ if(!isRaga(id)) return o.apply(this,arguments);
     const { error }=await STATE.supabase.from('rca_participants').delete().eq('id',linkId);
     if(error){ toast('Could not remove participant: '+error.message,'error'); return; } await reopen(id); });
-  /* ---- Incidents, Accidents and Near Miss register: same buttons and Your reference column as Nonconformances ---- */
+  /* ---- Incidents, Accidents and Near Miss register: same buttons and Internal unique reference column as Nonconformances ---- */
   const _ri=window.renderIan;
   const decorateIan=()=>{ try{
     const body=document.getElementById('ian-body'); if(!body) return; const t=body.querySelector('table'); if(!t||t.dataset.b69) return; t.dataset.b69=1;
-    const h=t.querySelector('tr'); if(h && h.children.length>1) h.children[0].insertAdjacentHTML('afterend','<th>Your ref</th>');
+    const h=t.querySelector('tr'); if(h && h.children.length>1) h.children[0].insertAdjacentHTML('afterend','<th>Internal unique ref</th>');
     t.querySelectorAll('tr.clickable').forEach(tr=>{ const m=(tr.getAttribute('onclick')||'').match(/'([^']+)'/); const n=m&&(STATE.ncs||[]).find(x=>x.id===m[1]);
       if(tr.children[0]) tr.children[0].insertAdjacentHTML('afterend',`<td class="mono-cell">${E(n&&n.client_ref||'')}</td>`);
       const last=tr.lastElementChild; if(last&&m){ last.innerHTML=`<button class="btn-small" onclick="event.stopPropagation();openNCDetail('${m[1]}')">Edit Incident</button> <button class="btn-small" onclick="event.stopPropagation();viewNC('${m[1]}')">View Incident</button>`; } }); }catch(e){} };
@@ -41939,7 +41952,7 @@ window.WMTutorial = { open, script: () => playlist('full').map(s => ({ id:s.id, 
   new MutationObserver(()=>{ if(document.getElementById('ian-body')) decorateIan(); }).observe(document.body,{childList:true,subtree:true});
   /* client reference on the incident form */
   const _fh=document.getElementById('ian-form');
-  const addRef=()=>{ const f=document.getElementById('ian-title'); if(f&&!document.getElementById('ian-client-ref')){ f.closest('.field').insertAdjacentHTML('afterend','<div class="field span3"><label>Your reference</label><input id="ian-client-ref" placeholder="e.g. 20260802"></div>'); } };
+  const addRef=()=>{ const f=document.getElementById('ian-title'); if(f&&!document.getElementById('ian-client-ref')){ f.closest('.field').insertAdjacentHTML('afterend','<div class="field span3"><label>Internal unique reference</label><input id="ian-client-ref" placeholder="e.g. 20260802"></div>'); } };
   new MutationObserver(addRef).observe(document.body,{childList:true,subtree:true});
   const _is=window.ianSubmit;
   if(typeof _is==='function') window.ianSubmit=async function(){
@@ -42070,6 +42083,218 @@ window.WMTutorial = { open, script: () => playlist('full').map(s => ({ id:s.id, 
       const cur=(ex&&ex.data&&ex.data.comments)||''; if(cur.indexOf('Dashboard snapshot at finalisation')<0){
         await STATE.supabase.from('management_review_items').upsert({review_id:id,agenda_key:'ims_health',comments:(cur?cur+'\n\n':'')+snap},{onConflict:'review_id,agenda_key'}); } } }catch(e){}
     return ok; };
+})();
+
+
+/* ===== b70a: Compliance Dashboard is module indicators only; click a module to see its KPIs ===== */
+(function(){
+  const E=s=>escapeHtml(s==null?'':String(s));
+  const arr=x=>Array.isArray(x)?x:[];
+  const td=()=>todayISO();
+  const soon=()=>new Date(Date.now()+30*864e5).toISOString().slice(0,10);
+  const gov=k=>arr(STATE.govRecords).filter(r=>r.kind===k);
+  const seg=(label,count,color)=>({label,count:Math.max(0,count),color});
+  /* extra tiles for every module that the original dashboard does not draw */
+  const EXTRA=[
+    ['personnel','Personnel and Competence',()=>{ const p=arr(STATE.personnel); if(!p.length) return null; return [seg('Active',p.filter(x=>x.status==='active').length,'green'),seg('Inactive',p.filter(x=>x.status!=='active').length,'grey')]; }],
+    ['orgchart','Organisation Charts and Appointments',()=>{ const a=arr(STATE.orgAppts); if(!a.length) return null; const ok=a.filter(x=>x.status==='accepted').length; return [seg('Accepted and in force',ok,'green'),seg('Awaiting acceptance',a.filter(x=>['pending','issued','sent','draft'].includes(x.status)).length,'amber'),seg('Other',a.length-ok-a.filter(x=>['pending','issued','sent','draft'].includes(x.status)).length,'grey')]; }],
+    ['legal_certs','Legal Documents and Certificates',()=>{ const c=arr(STATE.legalCerts).filter(x=>!x.archived); if(!c.length) return null; const t=td(),s=soon(); const ex=c.filter(x=>x.expiry_date&&x.expiry_date<t).length, sn=c.filter(x=>x.expiry_date&&x.expiry_date>=t&&x.expiry_date<=s).length; return [seg('Valid',c.length-ex-sn,'green'),seg('Expiring in 30 days',sn,'amber'),seg('Expired',ex,'red')]; }],
+    ['bulletins','Bulletins and Toolbox Talks',()=>{ const b=arr(STATE.bulletins); if(!b.length) return null; return [seg('Issued',b.length,'green')]; }],
+    ['hr','HR: Attendance and Leave',()=>{ const l=arr(STATE.leaveApplications); const x=arr(STATE.expenseClaims); if(!l.length&&!x.length) return null; return [seg('Leave approved',l.filter(a=>a.status==='approved').length,'green'),seg('Awaiting approval',l.filter(a=>a.status==='pending').length+x.filter(a=>a.status==='pending').length,'amber'),seg('Declined',l.filter(a=>a.status==='declined'||a.status==='rejected').length,'grey')]; }],
+    ['asset_watchman','Asset Watchman',()=>{ const a=arr(STATE.awAssets); if(!a.length) return null; return [seg('Assets monitored',a.length,'green')]; }],
+    ['five_s','5S Inspections',()=>{ const i=arr(STATE.fiveSInspections); if(!i.length) return null; const dn=i.filter(x=>['completed','closed','done'].includes(x.status)).length; return [seg('Completed',dn,'green'),seg('Scheduled or open',i.length-dn,'amber')]; }],
+    ['master_register','Master Documents Register',()=>{ const d=arr(STATE.documents).filter(x=>!['withdrawn','superseded'].includes(x.status)); if(!d.length) return null; const od=d.filter(x=>x.next_review_date&&x.next_review_date<td()).length; const ap=d.filter(x=>x.status==='approved').length; return [seg('Approved and current',Math.max(0,ap-od),'green'),seg('In draft or review',d.length-ap,'amber'),seg('Past review date',od,'red')]; }],
+    ['all_documents','All Documents',()=>{ const d=arr(STATE.bulkDocuments); if(!d.length) return null; return [seg('Filed',d.length,'green')]; }],
+    ['info_assets','Information Asset Register',()=>{ const a=arr(STATE.infoAssets); if(!a.length) return null; return [seg('With an owner',a.filter(x=>x.owner_id).length,'green'),seg('No owner',a.filter(x=>!x.owner_id).length,'red')]; }],
+    ['threat_intel','Threat Intelligence',()=>{ const t=arr(STATE.threats); if(!t.length) return null; const op=t.filter(x=>!['closed','accepted'].includes(x.status)); const crit=op.filter(x=>x.severity==='critical'||x.score>=8).length; return [seg('Closed or accepted',t.length-op.length,'green'),seg('Open',op.length-crit,'amber'),seg('Open, critical',crit,'red')]; }],
+    ['governance','Governance and Ethics',()=>{ const g=['coi','gift','delegation'].flatMap(gov); if(!g.length) return null; const pend=g.filter(x=>x.status==='pending').length; return [seg('Recorded',g.length-pend,'green'),seg('Awaiting approval',pend,'amber')]; }],
+    ['privacy','Privacy (POPIA)',()=>{ const g=['ropa','operator','dsar','breach'].flatMap(gov); if(!g.length) return null; const op=g.filter(x=>['open','pending','received'].includes(x.status)).length; return [seg('Recorded or closed',g.length-op,'green'),seg('Open',op,'amber')]; }],
+    ['retention','Records Retention',()=>{ const g=gov('retention'); if(!g.length) return null; return [seg('Schedules',g.length,'green')]; }],
+  ];
+  const ctxKey=k=>k;
+  function extraTiles(){
+    const out=[];
+    EXTRA.forEach(([k,title,fn])=>{ if(typeof canAccessModule==='function' && !canAccessModule(k)) return; let segs=null; try{ segs=fn(); }catch(e){} if(!segs) return; out.push(complianceCard(title,k,segs)); });
+    return out;
+  }
+  /* KPI list for a module */
+  function kpiRows(key){
+    const rows=[]; const reg=(STATE._cardReg||{})[key];
+    if(reg){ const tot=reg.segments.reduce((s,x)=>s+x.count,0);
+      reg.segments.forEach(s=>rows.push({label:s.label,status:s.color==='green'?(s.count?'pass':'nodata'):s.color==='amber'?(s.count?'partial':'pass'):s.color==='red'?(s.count?'fail':'pass'):'nodata',detail:s.count+(tot?' of '+tot+' ('+Math.round(s.count/tot*100)+'%)':'')}));
+      if(reg.footerText) rows.push({label:'Note',status:'nodata',detail:reg.footerText}); }
+    try{ if(typeof bhEvaluate==='function'){ bhEvaluate().forEach(ev=>ev.checks.forEach(c=>{ if(c.mod===key && c.status!=='na') rows.push({label:c.label,status:c.status,detail:c.detail||'',domain:ev.d.label}); })); }}catch(e){}
+    try{ (typeof DATE_TRACKED_MODULES!=='undefined'?DATE_TRACKED_MODULES:[]).filter(m=>m.key===key).forEach(m=>{ let l=[]; try{ l=m.list()||[]; }catch(e){}
+      let ok=0,sn=0,od=0; l.forEach(x=>{ const d=x[m.dateField]; if(!d||m.isResolved(x)) return; if(d<td()) od++; else if(d<=soon()) sn++; else ok++; });
+      if(ok+sn+od) rows.push({label:m.label+': dates',status:od?'fail':sn?'partial':'pass',detail:ok+' on track, '+sn+' due within 30 days, '+od+' overdue'}); }); }catch(e){}
+    return rows;
+  }
+  const ST={pass:['Met','green'],partial:['Watch','yellow'],fail:['Gap','red'],nodata:['Information','blue']};
+  window.wdKpi=function(key){
+    const box=document.getElementById('wd-kpi-panel'); if(!box) return;
+    if(STATE._wdKpiOpen===key){ STATE._wdKpiOpen=null; box.innerHTML=''; box.style.display='none'; document.querySelectorAll('#compliance-report .wd-card').forEach(c=>c.classList.remove('wd-sel')); return; }
+    STATE._wdKpiOpen=key;
+    const reg=(STATE._cardReg||{})[key]; const title=(reg&&reg.title)||(MODULE_META[key]&&MODULE_META[key].title)||key;
+    const rows=kpiRows(key);
+    box.style.display='';
+    box.innerHTML=`<div class="wd-h"><h3>${E(title)}: Key Performance Indicators</h3><span><button class="btn-small primary" onclick="showModule('${key}')">Open ${E(title)}</button> <button class="btn-small" onclick="wdKpi('${key}')">Close</button></span></div>`+
+      (rows.length?`<table><tr><th>Indicator</th><th>Status</th><th>Detail</th></tr>${rows.map(r=>`<tr><td class="strong">${E(r.label)}</td><td><span class="date-badge ${ST[r.status][1]}"><span class="dd"></span>${ST[r.status][0]}</span></td><td style="font-size:12.5px;color:var(--text-dim)">${E(r.detail)}</td></tr>`).join('')}</table>`:`<p style="font-size:13px;color:var(--text-dim)">Nothing recorded in this module yet, so there are no indicators to show.</p>`);
+    document.querySelectorAll('#compliance-report .wd-card').forEach(c=>c.classList.toggle('wd-sel',(c.getAttribute('onclick')||'').includes("wdKpi('"+key+"')")));
+    box.scrollIntoView({behavior:'smooth',block:'nearest'});
+  };
+  const css=document.createElement('style'); css.textContent='#compliance-report .wd-card.wd-sel{outline:2px solid var(--accent,#A52A22);outline-offset:2px}#wd-kpi-panel{margin:6px 0 22px;padding:16px 18px;border:1px solid var(--border,#ddd);border-radius:12px;background:var(--surface,#fff)}';
+  document.head.appendChild(css);
+  const _rd=renderComplianceDashboard;
+  renderComplianceDashboard=window.renderComplianceDashboard=function(){
+    const r=_rd.apply(this,arguments);
+    try{ const wrap=document.getElementById('compliance-report'); if(!wrap) return r;
+      const grid=wrap.querySelector('.wd-grid'); if(!grid) return r;
+      grid.insertAdjacentHTML('beforeend',extraTiles().join(''));
+      grid.querySelectorAll('.wd-card').forEach(c=>{ const oc=c.getAttribute('onclick')||''; const m=oc.match(/showModule\('([a-z_0-9]+)'\)/); if(!m) return; const k=m[1];
+        c.setAttribute('onclick',`wdKpi('${k}')`); c.setAttribute('onkeydown',`if(event.key==='Enter'){wdKpi('${k}');}`); c.setAttribute('aria-label',(c.getAttribute('aria-label')||'').replace('Open module.','Show indicators.')); });
+      const intro=`<div class="wd-section-title">Compliance Dashboard</div><div class="wd-section-sub">One indicator for every module. Click a module to see its key performance indicators, then open the module from there. Every figure also feeds the Management Review.</div>`;
+      const mrOpen=(STATE.managementReviews||[]).find(x=>x.status!=='finalized');
+      wrap.innerHTML=intro+grid.outerHTML+`<div id="wd-kpi-panel" style="display:none"></div><div style="font-size:12.5px;color:var(--text-dim)">${mrOpen?'A Management Review is in progress: ':''}<a href="#" onclick="showModule('management_review');return false">Open Management Review</a></div>`;
+      STATE._wdKpiOpen=null;
+      if(typeof wdAfterRender==='function') wdAfterRender(wrap);
+    }catch(e){ console.warn('b70a',e); }
+    return r; };
+})();
+
+
+/* ===== b70b: access calibration: every sidebar item can be ticked per person; Manager has full access except Administration ===== */
+(function(){
+  /* sidebar modules that were not in the per-person list before. People who were last saved before calibration keep what they see until an administrator saves their access. */
+  const NEWG=['master_register','incidents','infosec_incidents','soa','info_assets','threat_intel','governance','privacy','retention','crm'];
+  window.WM_NEWG=NEWG;
+  const hasMarker=()=>(STATE.myModuleAccess||[]).includes(WM_CAL);
+  { const _c=canAccessModule; canAccessModule=window.canAccessModule=function(mod){
+      const staff=!!(STATE.profile&&STATE.profile.is_platform_staff);
+      if(staff||STATE.myRole==='admin') return _c.apply(this,arguments);
+      if(STATE.myRole==='manager'){
+        if(mod==='administration') return _c.apply(this,arguments);
+        const r=STATE.myRole; STATE.myRole='admin'; try{ return _c.apply(this,arguments); } finally{ STATE.myRole=r; }
+      }
+      const base=_c.apply(this,arguments);
+      if(NEWG.includes(mod) && base && hasMarker()) return (STATE.myModuleAccess||[]).includes(mod);
+      return base;
+    }; }
+  { const _a=adminInviteModules; adminInviteModules=window.adminInviteModules=function(){
+      const out=_a.apply(this,arguments); const have=new Set(out.map(x=>x.key));
+      NEWG.forEach(k=>{ if(have.has(k)||!MODULE_META[k]) return; if(!orgHasModule(k)) return;
+        if((k==='soa'||k==='info_assets'||k==='threat_intel'||k==='infosec_incidents') && STATE.org && STATE.org.infosec_enabled===false) return;
+        out.push({key:k,label:MODULE_META[k].title}); });
+      return out; }; }
+  { const _n=applyModuleAccessToNav; applyModuleAccessToNav=window.applyModuleAccessToNav=function(){
+      const r=_n.apply(this,arguments);
+      NEWG.forEach(k=>{ const el=document.querySelector('.nav-item[data-mod="'+k+'"]'); if(el && !canAccessModule(k)) el.style.display='none'; });
+      return r; }; }
+  /* people not yet calibrated: show their current effective access as ticked in the edit box */
+  { const _t=toggleAdminMemberEdit; toggleAdminMemberEdit=window.toggleAdminMemberEdit=function(userId){
+      const r=_t.apply(this,arguments); const m=(STATE.members||[]).find(x=>x.user_id===userId);
+      if(m && !(m.module_access||[]).includes(WM_CAL) && m.role!=='admin'){
+        NEWG.forEach(k=>{ const cb=document.getElementById('admin-edit-mod-'+userId+'-'+k); if(cb) cb.checked=true; }); }
+      return r; }; }
+})();
+
+
+/* ===== b70c: People Involved: everyone registered on Watchman in one dropdown, with an email loop (needs qashe-watchman-schema-nc-people.sql) ===== */
+(function(){
+  const E=s=>escapeHtml(s==null?'':String(s));
+  const arr=x=>Array.isArray(x)?x:[];
+  const PURP={participate:'Take part in the investigation',comment:'Add comments',info:'Provide information',upload:'Upload documents or evidence'};
+  const appUrl=()=>location.origin+location.pathname;
+  const key=(t,id)=>t+':'+id;
+  async function load(rt,rid){
+    try{ const r=await STATE.supabase.from('record_people').select('*').eq('record_type',rt).eq('record_id',rid).order('created_at',{ascending:true});
+      if(r.error) return {rows:[],broken:true}; return {rows:r.data||[],broken:false}; }catch(e){ return {rows:[],broken:true}; }
+  }
+  async function everyone(){
+    const emails=await ensureMemberEmails().catch(()=>({}));
+    const out=[]; const seenMail=new Set(), seenUser=new Set();
+    arr(STATE.members).forEach(m=>{ const em=(emails[m.user_id]&&emails[m.user_id].email)||''; const nm=wmCap((m.profiles&&m.profiles.name)||(emails[m.user_id]&&emails[m.user_id].name)||'Unknown');
+      out.push({v:'m:'+m.user_id,kind:'member',user_id:m.user_id,name:nm,email:em,tag:'Watchman user'}); seenUser.add(m.user_id); if(em) seenMail.add(em.toLowerCase()); });
+    arr(STATE.personnel).filter(p=>p.status!=='terminated' && p.employment_type!=='terminated' && p.status!=='inactive').forEach(p=>{
+      if(p.linked_profile_id && seenUser.has(p.linked_profile_id)) return; const em=(p.email||'').trim(); if(em && seenMail.has(em.toLowerCase())) return;
+      out.push({v:'p:'+p.id,kind:'personnel',personnel_id:p.id,name:wmCap(p.full_name||'Unnamed'),email:em,tag:'People register'}); });
+    out.sort((a,b)=>a.name.localeCompare(b.name));
+    return out;
+  }
+  function recInfo(rt,rid){
+    if(rt==='raga'){ const r=arr(STATE.ragaAlerts).find(x=>x.id===rid)||{}; return {ref:r.ref_code||'RAGA alert',title:r.title||'',kind:'RAGA alert',target:r.target_close_date}; }
+    const n=ncById(rid)||{}; const kinds={incident:'Incident',accident:'Accident',near_miss:'Near miss'}; return {ref:n.ref_code||'',title:n.title||'',kind:kinds[n.record_class]||'Nonconformance',target:n.target_close_date,severity:n.severity};
+  }
+  async function emailPerson(p,rt,rid){
+    if(!p.person_email) return false; const i=recInfo(rt,rid); const me=(STATE.profile&&STATE.profile.name)||'A colleague';
+    const asks=(p.purposes||[]).map(k=>'  · '+(PURP[k]||k)).join('\n');
+    let link=''; let extra='';
+    if(p.person_kind==='personnel' && rt==='nonconformance'){
+      try{ const r=await STATE.supabase.from('nc_external_requests').insert({organisation_id:STATE.org.id,nonconformance_id:rid,party_type:'third_party',party_name:p.person_name,party_email:p.person_email,message:p.request_text||null,sent_by:STATE.user.id}).select().single();
+        if(r.data && r.data.token){ link=`${appUrl()}?nr=${r.data.token}`; extra=`\n\nYou do not need to sign in. Use this private link to give your response (root cause, corrective action and preventive action). Please keep it to yourself:\n${link}`; } }catch(e){}
+    }
+    if(!link) extra=`\n\nSign in to QaSHE Watchman at ${appUrl()} and open ${i.kind}s, ${i.ref}, to do this. If you cannot sign in, reply to the person who sent this email.`;
+    const body=`Hello ${p.person_name},\n\n${me} has asked for your input on a ${i.kind.toLowerCase()} at ${STATE.org.name}.\n\nReference: ${i.ref}\nSubject: ${i.title}${i.severity?'\nSeverity: '+String(i.severity).replace(/_/g,' '):''}${i.target?'\nTarget close date: '+fmtDate(i.target):''}\n\nWe need you to:\n${asks||'  · Take part'}${p.request_text?'\n\nMessage from '+me+':\n'+p.request_text:''}${extra}\n\nThank you.`;
+    return await sendEmailToAddress(p.person_email,`Your input is requested: ${i.ref}, ${i.title}`,body);
+  }
+  function cardHtml(rt,rid,rows,broken,people){
+    const taken=new Set(rows.map(r=>r.user_id?'m:'+r.user_id:r.personnel_id?'p:'+r.personnel_id:'x:'+r.person_name));
+    const avail=people.filter(x=>!taken.has(x.v));
+    const grp=(tag)=>{ const l=avail.filter(x=>x.tag===tag); return l.length?`<optgroup label="${tag}">${l.map(x=>`<option value="${x.v}">${E(x.name)}${x.email?'':' (no email address)'}</option>`).join('')}</optgroup>`:''; };
+    const dis=!['admin','manager','contributor'].includes(STATE.myRole);
+    return `<div class="detail-card" id="ppl-card" style="margin-bottom:16px;padding:18px">
+      <div class="panel-head" style="margin-bottom:6px"><h3 style="font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:600">People Involved and Communication</h3><span class="mono" style="font-size:11px;color:var(--text-faint)">${rows.length} ${rows.length===1?'person':'people'}</span></div>
+      <p style="font-size:12.5px;color:var(--text-faint);margin:0 0 10px">Choose anyone registered on Watchman, say what you need from them, and email them. They contribute, you are notified when the record is updated, and everything stays on this record.</p>
+      ${broken?`<p style="font-size:12.5px;color:var(--red)">Run qashe-watchman-schema-nc-people.sql in the Supabase SQL editor to switch this on.</p>`:''}
+      ${dis||broken?'':`<div class="form-grid">
+        <div class="field span2"><label>Person</label><select id="ppl-sel"><option value="">Select a person…</option>${grp('Watchman user')}${grp('People register')}</select></div>
+        <div class="field span3"><label>What do you need from them?</label><div style="display:flex;gap:14px;flex-wrap:wrap">${Object.keys(PURP).map(k=>`<label style="text-transform:none;font-size:12.5px;display:flex;gap:6px;align-items:center;font-family:Arial,Helvetica,sans-serif"><input type="checkbox" class="ppl-pu" value="${k}" ${k==='participate'?'checked':''} style="width:auto">${PURP[k]}</label>`).join('')}</div></div>
+        <div class="field span3"><label>Message (optional)</label><textarea id="ppl-msg" placeholder="e.g. Please add what you saw, and upload the photographs by Friday."></textarea></div></div>
+        <div class="form-actions" style="justify-content:flex-start"><button class="btn-small primary" onclick="pplAdd('${rt}','${rid}',true)">Add and email</button><button class="btn-small" onclick="pplAdd('${rt}','${rid}',false)">Add without email</button></div>`}
+      ${rows.length?`<table style="margin-top:10px"><tr><th>Person</th><th>Needed</th><th>Email</th><th></th></tr>${rows.map(r=>`<tr><td class="strong">${E(r.person_name)}<div style="font-size:11px;color:var(--text-faint)">${r.person_kind==='member'?'Watchman user':'People register'}</div></td>
+        <td style="font-size:12px">${arr(r.purposes).map(k=>E(PURP[k]||k)).join(', ')||'—'}</td>
+        <td style="font-size:12px">${r.notified_at?'Emailed '+E(fmtDate(String(r.notified_at).slice(0,10))):(r.person_email?'Not emailed':'No email address')}</td>
+        <td style="text-align:right;white-space:nowrap">${dis?'':`${r.person_email?`<button class="btn-small" onclick="pplResend('${r.id}','${rt}','${rid}')">${r.notified_at?'Email again':'Email now'}</button> `:''}<button class="btn-small" onclick="pplRemove('${r.id}','${rt}','${rid}')">Remove</button>`}</td></tr>`).join('')}</table>
+        ${rows.some(r=>r.person_email)&&!dis?`<div style="margin-top:8px"><button class="btn-small" onclick="pplAll('${rt}','${rid}')">Email an update to everyone involved</button></div>`:''}`:'<p style="font-size:12.5px;color:var(--text-faint);margin-top:10px">No one has been added yet.</p>'}
+    </div>`;
+  }
+  async function render(rt,rid,anchorEl){
+    if(!anchorEl) return; const old=document.getElementById('ppl-card'); if(old) old.remove();
+    const d=await load(rt,rid); const ppl=await everyone(); STATE._ppl={rt,rid,rows:d.rows};
+    anchorEl.insertAdjacentHTML('afterend',cardHtml(rt,rid,d.rows,d.broken,ppl));
+  }
+  window.pplAdd=async function(rt,rid,send){
+    const sel=document.getElementById('ppl-sel'); if(!sel||!sel.value){ toast('Choose a person first.','error'); return; }
+    const ppl=await everyone(); const x=ppl.find(p=>p.v===sel.value); if(!x) return;
+    const purposes=[...document.querySelectorAll('.ppl-pu:checked')].map(c=>c.value); if(!purposes.length){ toast('Tick at least one thing you need from them.','error'); return; }
+    const row={organisation_id:STATE.org.id,record_type:rt,record_id:rid,person_kind:x.kind,user_id:x.user_id||null,personnel_id:x.personnel_id||null,person_name:x.name,person_email:x.email||null,purposes,request_text:(document.getElementById('ppl-msg').value||'').trim()||null,added_by:STATE.user.id};
+    const r=await STATE.supabase.from('record_people').insert(row).select().single();
+    if(r.error){ toast('Could not add: '+r.error.message,'error'); return; }
+    let msg='Added.';
+    if(send){ if(!x.email) msg='Added. This person has no email address, so tell them directly.'; else { const ok=await emailPerson(r.data,rt,rid);
+      if(ok){ await STATE.supabase.from('record_people').update({notified_at:new Date().toISOString(),notified_by:STATE.user.id}).eq('id',r.data.id); msg='Added and emailed '+x.name+'.'; } else msg='Added, but the email could not be sent: '+(STATE._lastEmailError||'unknown reason'); } }
+    toast(msg,'success'); refresh(rt,rid);
+  };
+  window.pplResend=async function(id,rt,rid){ const p=(STATE._ppl&&STATE._ppl.rows||[]).find(x=>x.id===id); if(!p) return; const ok=await emailPerson(p,rt,rid);
+    if(ok) await STATE.supabase.from('record_people').update({notified_at:new Date().toISOString(),notified_by:STATE.user.id}).eq('id',id);
+    toast(ok?'Email sent to '+p.person_name+'.':'Could not send: '+(STATE._lastEmailError||''),ok?'success':'error'); refresh(rt,rid); };
+  window.pplRemove=async function(id,rt,rid){ if(!confirm('Remove this person from the record?')) return; await STATE.supabase.from('record_people').delete().eq('id',id); refresh(rt,rid); };
+  window.pplAll=async function(rt,rid){
+    const rows=(STATE._ppl&&STATE._ppl.rows||[]).filter(r=>r.person_email); const i=recInfo(rt,rid); let n=0;
+    for(const r of rows){ const body=`Hello ${r.person_name},\n\nThis is an update on ${i.ref}, ${i.title}, at ${STATE.org.name}.\n\nPlease sign in to QaSHE Watchman at ${appUrl()} and check whether anything is still needed from you: ${arr(r.purposes).map(k=>PURP[k]||k).join(', ')}.\n\nThank you.`;
+      if(await sendEmailToAddress(r.person_email,`Update: ${i.ref}, ${i.title}`,body)){ n++; await STATE.supabase.from('record_people').update({notified_at:new Date().toISOString(),notified_by:STATE.user.id}).eq('id',r.id); } }
+    toast(n+' of '+rows.length+' emailed.',n?'success':'error'); refresh(rt,rid); };
+  function refresh(rt,rid){ const a=rt==='raga'?document.getElementById('raga-detail-slot'):document.getElementById('nc-verify-warning'); if(rt==='raga'){ const t=document.querySelector('#raga-detail-slot .form-grid'); render(rt,rid,t&&t.parentNode?t:null); } else render(rt,rid,a); }
+  /* NC, incident, accident, near miss and information security incident detail */
+  { const _o=openNCDetail; openNCDetail=window.openNCDetail=async function(id){ const r=await _o.apply(this,arguments); try{ const a=document.getElementById('nc-verify-warning'); if(a) await render('nonconformance',id,a); }catch(e){ console.warn('ppl',e); } return r; }; }
+  /* RAGA detail */
+  { const _r=openRagaDetail; openRagaDetail=window.openRagaDetail=async function(id){ const r=await _r.apply(this,arguments); try{ const t=document.querySelector('#raga-detail-slot .status-row'); if(t) await render('raga',id,t); }catch(e){ console.warn('ppl raga',e); } return r; }; }
+  /* the loop back: when an involved person saves the record, the owner and the person who raised it are told */
+  { const _s=saveNCDetail; saveNCDetail=window.saveNCDetail=async function(id){
+      const r=await _s.apply(this,arguments);
+      try{ const rows=(STATE._ppl&&STATE._ppl.rt==='nonconformance'&&STATE._ppl.rid===id)?STATE._ppl.rows:[]; const me=rows.find(x=>x.user_id===STATE.user.id);
+        if(me){ const n=ncById(id)||{}; const i=recInfo('nonconformance',id); const body=`${(STATE.profile&&STATE.profile.name)||'A participant'} has added to ${i.ref}, ${i.title}, in QaSHE Watchman. Please sign in to review the update: ${appUrl()}`;
+          [...new Set([n.owner_id,n.raised_by].filter(u=>u&&u!==STATE.user.id))].forEach(u=>{ try{ sendNotificationEmail(u,`Update from a participant: ${i.ref}`,body); }catch(e){} }); } }catch(e){}
+      return r; }; }
 })();
 
 </script>
