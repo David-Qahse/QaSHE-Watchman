@@ -3547,6 +3547,7 @@ const RENDERERS = {
       <div class="filters">
         <button class="btn-small ${STATE._auditSubtab==='plan'||!STATE._auditSubtab?'primary':''}" onclick="switchAuditSubtab('plan')">Annual Audit Plan</button>
         <button class="btn-small ${STATE._auditSubtab==='board'?'primary':''}" onclick="switchAuditSubtab('board')">Internal Audits</button>
+        <button class="btn-small ${STATE._auditSubtab==='external'?'primary':''}" onclick="switchAuditSubtab('external')">External Audit Reports</button>
         <button class="btn-small ${STATE._auditSubtab==='checklists'?'primary':''}" onclick="switchAuditSubtab('checklists')">Checklists</button>
       </div>
       ${STATE._auditSubtab==='board'||!STATE._auditSubtab ? `
@@ -40912,6 +40913,85 @@ function chapterSlide(c){
     <div style="margin-top:34px" data-i="3">${mods.map((m, i) => `<span class="chip go" style="font-size:15px;padding:9px 16px" data-act="mod" data-m="${m.id}">${E(m.n)}</span>`).join('')}</div></div>` };
 }
 
+/* ---------- module lessons (bespoke, narrated, with sample pictures) ---------- */
+(function(){
+  if(document.getElementById('wml-css')) return;
+  const st = document.createElement('style'); st.id = 'wml-css';
+  st.textContent = `.wmt .pic{background:#fff;color:#1F2933;border-radius:14px;box-shadow:0 14px 40px rgba(0,0,0,.35);padding:14px 16px;font-size:13px;line-height:1.35;text-align:left}
+  .wmt .pic .pt{font-weight:800;font-size:12px;color:#0A0D14;letter-spacing:.02em;margin-bottom:9px;display:flex;justify-content:space-between;align-items:center}
+  .wmt .pic .pt u{text-decoration:none;background:#B21616;color:#fff;border-radius:7px;padding:3px 9px;font-size:11px}
+  .wmt .pic .fr{margin-bottom:7px}.wmt .pic .fr small{display:block;font-size:10px;font-weight:700;color:#7B8794;text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px}
+  .wmt .pic .fr div{border:1px solid #D3D9E0;border-radius:7px;padding:6px 9px;background:#F8FAFC;color:#1F2933}
+  .wmt .pic .fr.hl div{border-color:#B21616;background:#FFF3F1;box-shadow:0 0 0 3px rgba(178,22,22,.14);font-weight:600}
+  .wmt .pic .pl{display:inline-block;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:700;background:#E4E7EB;color:#3E4C59}
+  .wmt .pic .pl.g{background:#DFF5E8;color:#14753F}.wmt .pic .pl.o{background:#FFEFD0;color:#9A5B00}.wmt .pic .pl.r{background:#FFE0DC;color:#B21616}.wmt .pic .pl.b{background:#DCEBFF;color:#17508F}
+  .wmt .pic table{width:100%;border-collapse:collapse;font-size:12px}.wmt .pic th{text-align:left;font-size:10px;color:#7B8794;text-transform:uppercase;letter-spacing:.06em;padding:5px 6px;border-bottom:2px solid #E4E7EB}
+  .wmt .pic td{padding:6px;border-bottom:1px solid #EEF1F4}.wmt .pic tr.hl td{background:#FFF3F1;font-weight:600}
+  .wmt .pic .flow{display:flex;gap:0;margin:4px 0}.wmt .pic .flow span{flex:1;text-align:center;padding:9px 2px;font-size:10.5px;overflow:hidden;white-space:nowrap;font-weight:700;background:#E4E7EB;color:#52606D;position:relative;clip-path:polygon(0 0,calc(100% - 10px) 0,100% 50%,calc(100% - 10px) 100%,0 100%,10px 50%);margin-left:-6px}
+  .wmt .pic .flow span:first-child{margin-left:0;clip-path:polygon(0 0,calc(100% - 10px) 0,100% 50%,calc(100% - 10px) 100%,0 100%)}
+  .wmt .pic .flow span.done{background:#DFF5E8;color:#14753F}.wmt .pic .flow span.on{background:#B21616;color:#fff}
+  .wmt .pic .mail{border:1px solid #D3D9E0;border-radius:9px;overflow:hidden}.wmt .pic .mail .mh{background:#F1F4F8;padding:8px 11px;font-size:11px;color:#52606D}.wmt .pic .mail .mh b{color:#1F2933;display:block;font-size:12.5px;margin-top:2px}
+  .wmt .pic .mail .mb{padding:11px;font-size:12px}.wmt .pic .mail .bt{display:inline-block;margin-top:8px;background:#B21616;color:#fff;border-radius:7px;padding:6px 13px;font-weight:700;font-size:12px}
+  .wmt .pic .bars{display:flex;align-items:flex-end;gap:9px;height:110px;padding:4px 4px 0;border-bottom:2px solid #E4E7EB}.wmt .pic .bars i{flex:1;background:linear-gradient(#E8473B,#B21616);border-radius:5px 5px 0 0;display:block}
+  .wmt .pic .cap{font-size:11.5px;color:#52606D;margin-top:7px}
+  .wmt .pic .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(86px,1fr));gap:8px}.wmt .pic .tiles div{background:#F8FAFC;border:1px solid #E4E7EB;border-radius:10px;padding:9px 10px}
+  .wmt .pic .tiles small{display:block;font-size:10px;color:#7B8794;font-weight:700;text-transform:uppercase;letter-spacing:.05em}.wmt .pic .tiles b{font-size:21px;color:#0A0D14}.wmt .pic .tiles div.red b{color:#B21616}.wmt .pic .tiles div.grn b{color:#14753F}
+  .wmt .pic .ck{display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid #EEF1F4}.wmt .pic .ck i{flex:none;width:17px;height:17px;border-radius:5px;background:#DFF5E8;color:#14753F;font-style:normal;font-weight:800;font-size:12px;text-align:center;line-height:17px}.wmt .pic .ck.no i{background:#FFE0DC;color:#B21616}
+  .wmt .pic .cd{border:1px solid #E4E7EB;border-radius:10px;padding:9px 11px;margin-bottom:7px;background:#fff}.wmt .pic .cd b{display:block;font-size:12.5px}.wmt .pic .cd small{color:#7B8794;font-size:11px}.wmt .pic .cd .pl{float:right}
+  .wmt .pic .chain{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.wmt .pic .chain span{background:#F1F4F8;border:1px solid #D3D9E0;border-radius:9px;padding:7px 10px;font-weight:700;font-size:12px}.wmt .pic .chain em{font-style:normal;color:#B21616;font-weight:800}
+  .wmt .les-step{display:grid;grid-template-columns:1fr 1.15fr;gap:46px;align-items:center;height:560px}
+  .wmt .les-n{width:62px;height:62px;border-radius:18px;background:linear-gradient(135deg,#E8473B,#B21616);display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:800;color:#fff;box-shadow:0 10px 26px rgba(178,22,22,.45)}
+  .wmt .les-dots{display:flex;gap:7px;margin-top:26px}.wmt .les-dots i{width:34px;height:6px;border-radius:4px;background:rgba(255,255,255,.18)}.wmt .les-dots i.on{background:#FF6B5E}.wmt .les-dots i.dn{background:rgba(255,107,94,.5)}
+  .wmt .les-tour{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:20px}.wmt .les-tour h3{font-size:18px;margin:12px 0 5px;color:#fff}.wmt .les-tour p{font-size:14.5px;color:#C9CFDB;line-height:1.4}
+  .wmt .les-tour .tn{display:inline-flex;width:28px;height:28px;border-radius:50%;background:#B21616;color:#fff;font-weight:800;align-items:center;justify-content:center;margin-bottom:8px}
+  .wmt .les-q{border-left:4px solid #FF6B5E;padding:14px 20px;background:rgba(255,255,255,.06);border-radius:0 14px 14px 0;font-size:20px;line-height:1.4;color:#fff;font-style:italic}`;
+  document.head.appendChild(st);
+})();
+function PIC(p){
+  if(!p) return '';
+  const [k, a, b, c] = p;
+  const pl = t => { const s = String(t); const cl = /^(Closed|Passed|Approved|Active|Done|Complete|Completed|Current|Valid|Compliant|Competent|Accepted|Published|Met|Yes|Verified|Effective|On track|Signed|Green)$/i.test(s) ? 'g' : /^(Major|Critical|Overdue|Red|Expired|Failed|Gap|Non-compliant|Rejected|High|Lost|Declined)$/i.test(s) ? 'r' : /^(Open|Investigating|Treating|Due|Expiring|Pending|Amber|Draft|Partly|Review|Medium|Planned|In progress|Awaiting|Orange|Scheduled|Minor)$/i.test(s) ? 'o' : /^(New|Info|Issued|Sent|Assigned|Blue)$/i.test(s) ? 'b' : ''; return `<span class="pl ${cl}">${E(s)}</span>`; };
+  if(k === 'form') return `<div class="pic"><div class="pt">${E(a)}${c ? `<u>${E(c)}</u>` : ''}</div>${b.map(f => { const h = /^\*/.test(f[0]) || /^\*/.test(f[1]); return `<div class="fr ${h ? 'hl' : ''}"><small>${E(String(f[0]).replace(/^\*/, ''))}</small><div>${E(String(f[1]).replace(/^\*/, ''))}</div></div>`; }).join('')}</div>`;
+  if(k === 'flow') return `<div class="pic"><div class="pt">${E(a)}</div><div class="flow">${b.map((t, i) => `<span class="${i < c ? 'done' : i === c ? 'on' : ''}">${E(t)}</span>`).join('')}</div></div>`;
+  if(k === 'table') return `<div class="pic"><div class="pt">${E(a)}</div><table><tr>${b.map(h => `<th>${E(h)}</th>`).join('')}</tr>${c.map((r, ri) => { const hl = /^\*/.test(r[0]); return `<tr class="${hl ? 'hl' : ''}">${r.map((x, i) => `<td>${/^(Closed|Passed|Approved|Active|Done|Completed|Valid|Compliant|Competent|Accepted|Published|Met|Yes|Verified|Major|Critical|Overdue|Red|Expired|Failed|Gap|Open|Investigating|Treating|Due|Expiring|Pending|Amber|Draft|Partly|Review|Medium|Planned|In progress|Awaiting|Minor|High|Low|New|Issued|Sent|Scheduled)$/i.test(String(x).replace(/^\*/, '')) ? pl(String(x).replace(/^\*/, '')) : E(String(x).replace(/^\*/, ''))}</td>`).join('')}</tr>`; }).join('')}</table></div>`;
+  if(k === 'mail') return `<div class="pic"><div class="mail"><div class="mh">From: QaSHE Watchman · To: ${E(b[0])}<b>${E(a)}</b></div><div class="mb">${E(b[1])}${b[2] ? `<br><span class="bt">${E(b[2])}</span>` : ''}</div></div></div>`;
+  if(k === 'bars') return `<div class="pic"><div class="pt">${E(a)}</div><div class="bars">${b.map(h => `<i style="height:${h}%"></i>`).join('')}</div><div class="cap">${E(c || '')}</div></div>`;
+  if(k === 'stats') return `<div class="pic"><div class="pt">${E(a)}</div><div class="tiles">${b.map(t => `<div class="${t[2] || ''}"><small>${E(t[0])}</small><b>${E(t[1])}</b></div>`).join('')}</div>${c ? `<div class="cap">${E(c)}</div>` : ''}</div>`;
+  if(k === 'check') return `<div class="pic"><div class="pt">${E(a)}</div>${b.map(t => { const no = /^-/.test(t); return `<div class="ck ${no ? 'no' : ''}"><i>${no ? '!' : '✓'}</i><span>${E(t.replace(/^-/, ''))}</span></div>`; }).join('')}</div>`;
+  if(k === 'cards') return `<div class="pic"><div class="pt">${E(a)}</div>${b.map(t => `<div class="cd">${t[2] ? pl(t[2]) : ''}<b>${E(t[0])}</b><small>${E(t[1])}</small></div>`).join('')}</div>`;
+  if(k === 'chain') return `<div class="pic"><div class="pt">${E(a)}</div><div class="chain">${b.map((t, i) => (i ? '<em>→</em>' : '') + `<span>${E(t)}</span>`).join('')}</div>${c ? `<div class="cap">${E(c)}</div>` : ''}</div>`;
+  return '';
+}
+function lessonList(id){
+  const m = byId(id), L = window.WMLESSONS && window.WMLESSONS[id]; if(!m || !L) return null;
+  const ch = chapterOf(m.ch), pre = 'L_' + id + '_', n = L.steps.length, out = [];
+  const nums = ['One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven'];
+  out.push({ id:pre + 'intro', ch:m.ch, t:m.n + ': start here', steps:0,
+    narr:['Welcome to the ' + m.n + ' lesson.', m.tag, L.why, L.who, 'In this lesson you will learn ' + n + ' steps: ' + L.steps.map(s => s[0]).join(', then ') + '.'],
+    html: () => `<div style="display:flex;gap:18px;align-items:center" data-i="0">${ico(m.ic)}<div class="kick" style="margin:0">Module lesson · ${E(ch[1])}</div></div>
+    <h1 data-i="1" style="font-size:56px;margin-top:14px">${E(m.n)}</h1><p class="lede" data-i="2" style="font-size:23px;margin-top:8px;color:#fff">${E(m.tag)}</p>
+    <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:40px;margin-top:30px">
+      <div data-i="3"><div class="card"><h3 style="color:#FF8A80;font-size:13px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:8px">Why it matters</h3><p style="font-size:18px;color:#fff;line-height:1.45">${E(L.why)}</p></div>
+      <div class="card" style="margin-top:14px"><h3 style="color:#FF8A80;font-size:13px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:8px">Who uses it</h3><p style="font-size:16px">${E(L.who)}</p></div></div>
+      <div data-i="4"><h3 style="color:#FF8A80;font-size:13px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:12px">In this lesson</h3>${L.steps.map((s, i) => `<div style="display:flex;gap:12px;align-items:center;margin-bottom:10px"><span class="les-n" style="width:34px;height:34px;font-size:17px;border-radius:10px">${i + 1}</span><span style="font-size:17px;color:#E6E9F0;font-weight:600">${E(s[0])}</span></div>`).join('')}</div>
+    </div>` });
+  out.push({ id:pre + 'tour', ch:m.ch, t:'Tour of the screen', steps:3,
+    narr:['First, a quick tour of what you will see.', ...L.tour.map((t, i) => ['Number ' + (i + 1) + '. ', '', ''][0] + t[0] + '. ' + t[1])],
+    html: () => `<div class="kick" data-i="0">${E(m.n)}</div><h2 data-i="1">A quick tour of the screen</h2><div class="les-tour">${L.tour.map((t, i) => `<div class="bld" data-st="${i + 1}"><span class="tn">${i + 1}</span>${PIC(t[2])}<h3>${E(t[0])}</h3><p>${E(t[1])}</p></div>`).join('')}</div>` });
+  L.steps.forEach((s, i) => out.push({ id:pre + 's' + (i + 1), ch:m.ch, t:'Step ' + (i + 1) + ': ' + s[0], steps:0,
+    narr:['Step ' + nums[i] + '. ' + s[0] + '.', s[1]],
+    html: () => `<div class="kick" data-i="0">${E(m.n)} · Step ${i + 1} of ${n}</div><div class="les-step"><div data-i="1"><div class="les-n">${i + 1}</div><h2 style="font-size:40px;margin:18px 0 12px">${E(s[0])}</h2><p class="lede" style="font-size:21px;line-height:1.45">${E(s[1])}</p><div class="les-dots">${L.steps.map((x, j) => `<i class="${j < i ? 'dn' : j === i ? 'on' : ''}"></i>`).join('')}</div></div><div data-i="2" style="transform:scale(1.12);transform-origin:center">${PIC(s[2])}</div></div>` }));
+  const demo = modSlides(m)[1]; demo.id = pre + 'demo'; demo.t = 'See it work'; out.push(demo);
+  out.push({ id:pre + 'wrap', ch:m.ch, t:'Tips and what auditors ask', steps:0,
+    narr:['Before you go, three tips.', ...L.tips, 'And the question an auditor is likely to ask.', L.ask, 'This module connects to ' + m.link.map(l => (byId(l) || { n:l }).n).join(', ') + '. Open the module and try it now.'],
+    html: () => `<div class="kick" data-i="0">${E(m.n)} · Wrap up</div><h2 data-i="1">Three tips, and what an auditor will ask</h2>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:22px" data-i="2">${L.tips.map((t, i) => `<div class="card"><div class="les-n" style="width:36px;height:36px;font-size:18px;border-radius:11px;margin-bottom:10px">${i + 1}</div><p style="font-size:16px;color:#fff;line-height:1.45">${E(t)}</p></div>`).join('')}</div>
+    <div data-i="3" style="margin-top:26px"><h3 style="color:#FF8A80;font-size:13px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px">The auditor asks</h3><div class="les-q">“${E(L.ask)}”</div></div>
+    <div data-i="4" style="margin-top:22px"><h3 style="color:#FF8A80;font-size:13px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:8px">Connects to</h3>${m.link.map(l => { const t = byId(l); return t && window.WMLESSONS[l] ? `<span class="chip go" data-act="les" data-m="${l}">${E(t.n)} lesson</span>` : (t ? `<span class="chip">${E(t.n)}</span>` : ''); }).join('')}<button class="btn p" style="margin-left:10px" data-act="close">Open the module and try it</button></div>` });
+  out.forEach(s => { s.lesson = id; });
+  return out;
+}
+
 const FRAMEWORKS = [
  ['ISO 9001','Quality','Context and interested parties, leadership, risk and opportunity, objectives, competence, documented information, supplier and customer control, audit, management review and improvement.',['risks','objectives','documents','suppliers','crm','audits','management_review','nonconformances']],
  ['ISO 14001','Environment','Aspects and impacts, legal requirements, operational control, emergency preparedness, monitoring, internal audit and improvement.',['legal','processes','audits','nonconformances','management_review','incidents']],
@@ -41029,7 +41109,7 @@ function open(o){
   <div class="wmt-bot"><button class="wmt-ib" id="wmt-pv">◀ Back</button><div class="wmt-prog" id="wmt-pg"><i></i></div><span class="wmt-cnt" id="wmt-ct"></span><button class="wmt-ib on" id="wmt-nx">Next ▶</button></div>`;
   (o.host || document.body).appendChild(root);
   const $ = s => root.querySelector(s), stage = $('#wmt-stage'), view = $('#wmt-view');
-  let PL = playlist('full'), cur = -1, step = 0, cleanup = null, auto = false, aT = null, mode = 'full';
+  let PL = (o.lesson && lessonList(o.lesson)) || playlist('full'), cur = -1, step = 0, cleanup = null, auto = false, aT = null, mode = 'full';
   const fit = () => { const w = view.clientWidth, h = view.clientHeight, k = Math.min(w / 1280, h / 720); stage.style.transform = `scale(${k}) translate(-50%,-50%)`; stage.style.left = '50%'; stage.style.top = '50%'; stage.style.transformOrigin = '0 0'; stage.style.marginLeft = '0'; stage.style.transform = `translate(${(w - 1280 * k) / 2}px,${(h - 720 * k) / 2}px) scale(${k})`; stage.style.left = '0'; stage.style.top = '0'; };
   const ro = new ResizeObserver(fit); ro.observe(view); fit();
   function applyStep(el, n){ el.querySelectorAll('.bld').forEach(b => { const s = +b.dataset.st; if(s) b.classList.toggle('show', s <= n); }); el.querySelectorAll('[data-only]').forEach(b => { b.style.opacity = (+b.dataset.only === n) ? 1 : 0; b.style.transform = (+b.dataset.only === n) ? 'none' : 'translateY(12px)'; b.style.pointerEvents = (+b.dataset.only === n) ? 'auto' : 'none'; b.classList.add('show'); }); }
@@ -41108,13 +41188,15 @@ function open(o){
   document.addEventListener('keydown', key, true);
   $('#wmt-nx').onclick = next; $('#wmt-pv').onclick = prev; $('#wmt-fs').onclick = fs; if($('#wmt-x')) $('#wmt-x').onclick = close;
   $('#wmt-nr').onclick = () => setNarrate(!NS.on);
-  $('#wmt-ix').onclick = () => { NS.on = false; refreshNS(); jumpTo('index'); };
+  $('#wmt-ix').onclick = () => { if(o.lesson){ $('#wmt-dr').classList.toggle('open'); return; } NS.on = false; refreshNS(); jumpTo('index'); };
   $('#wmt-pg').onclick = e => { const r = e.currentTarget.getBoundingClientRect(); go(Math.max(0, Math.min(PL.length - 1, Math.floor((e.clientX - r.left) / r.width * PL.length)))); };
   $('#wmt-dr').onclick = e => { const a = e.target.closest('a'); if(a){ go(+a.dataset.i); $('#wmt-dr').classList.remove('open'); } };
   stage.addEventListener('click', e => {
     const a = e.target.closest('[data-act]'); if(!a) return; const act = a.dataset.act;
     if(act === 'next') next(); else if(act === 'index'){ NS.on = false; refreshNS(); jumpTo('index'); } else if(act === 'restart'){ setList('full'); go(0); }
     else if(act === 'mod'){ resume(); jumpTo(a.dataset.m); }
+    else if(act === 'les'){ const id = a.dataset.m; if(T) T.close(); WMTutorial.open({ lesson:id, narrate:true }); }
+    else if(act === 'close'){ close(); }
     else if(act === 'all-play'){ resume(); setList('full'); jumpTo('what'); }
     else if(act === 'pick'){ const id = a.dataset.m; SEL.has(id) ? SEL.delete(id) : SEL.add(id); const sc = stage.querySelector('[data-i="3"]').scrollTop; go(cur); stage.querySelector('[data-i="3"]').scrollTop = sc; }
     else if(act === 'sel-all'){ MODS.forEach(m => SEL.add(m.id)); go(cur); } else if(act === 'sel-none'){ SEL.clear(); go(cur); }
@@ -41127,14 +41209,14 @@ function open(o){
   go(start);
   if(o.narrate !== false && !NS.video){
     const ua = navigator.userActivation;
-    if(ua && !ua.hasBeenActive){ const st = document.createElement('div'); st.className = 'wmt-start'; st.innerHTML = '<div><div class="m">QaSHE Watchman</div><h2>Tutorial</h2><p>About 30 minutes, narrated like a short film. Pause at any time, go back or forward, or open the Index to choose particular modules.</p><button class="wmt-ib on" id="wmt-go">▶ Start the tutorial</button></div>'; root.appendChild(st); st.querySelector('#wmt-go').onclick = () => { st.remove(); setNarrate(true); }; }
+    if(ua && !ua.hasBeenActive){ const st = document.createElement('div'); st.className = 'wmt-start'; st.innerHTML = '<div><div class="m">QaSHE Watchman</div><h2>'+(o.lesson?E((byId(o.lesson)||{}).n||'Lesson'):'Tutorial')+'</h2><p>'+(o.lesson?'A short narrated lesson, about four minutes. Pause at any time, go back or forward.':'About 30 minutes, narrated like a short film. Pause at any time, go back or forward, or open the Index to choose particular modules.')+'</p><button class="wmt-ib on" id="wmt-go">▶ Start</button></div>'; root.appendChild(st); st.querySelector('#wmt-go').onclick = () => { st.remove(); setNarrate(true); }; }
     else setTimeout(() => setNarrate(true), 300);
   }
   if(NS.video){ root.classList.add('vid'); setNarrate(true); }
   T = { close, go, next, prev, jumpTo, el: root, narrate:setNarrate };
   return T;
 }
-window.WMTutorial = { open, script: () => playlist('full').map(s => ({ id:s.id, t:s.t, ch:s.ch, narr:s.narr || [], beats:s.beats || [] })), current: () => T, modules: () => MODS.map(m => m.id) };
+window.WMTutorial = { open, lessons: () => Object.keys(window.WMLESSONS || {}), lessonScript: id => (lessonList(id) || []).map(s => ({ id:s.id, t:s.t, narr:s.narr || [], beats:s.beats || [] })), script: () => playlist('full').map(s => ({ id:s.id, t:s.t, ch:s.ch, narr:s.narr || [], beats:s.beats || [] })), current: () => T, modules: () => MODS.map(m => m.id) };
 })();
 
 (function(){
@@ -42111,7 +42193,7 @@ window.WMTutorial = { open, script: () => playlist('full').map(s => ({ id:s.id, 
     ['privacy','Privacy (POPIA)',()=>{ const g=['ropa','operator','dsar','breach'].flatMap(gov); if(!g.length) return null; const op=g.filter(x=>['open','pending','received'].includes(x.status)).length; return [seg('Recorded or closed',g.length-op,'green'),seg('Open',op,'amber')]; }],
     ['retention','Records Retention',()=>{ const g=gov('retention'); if(!g.length) return null; return [seg('Schedules',g.length,'green')]; }],
   ];
-  const ctxKey=k=>k;
+  window.__wdExtra=EXTRA;
   function extraTiles(){
     const out=[];
     EXTRA.forEach(([k,title,fn])=>{ if(typeof canAccessModule==='function' && !canAccessModule(k)) return; let segs=null; try{ segs=fn(); }catch(e){} if(!segs) return; out.push(complianceCard(title,k,segs)); });
@@ -42123,6 +42205,7 @@ window.WMTutorial = { open, script: () => playlist('full').map(s => ({ id:s.id, 
     if(reg){ const tot=reg.segments.reduce((s,x)=>s+x.count,0);
       reg.segments.forEach(s=>rows.push({label:s.label,status:s.color==='green'?(s.count?'pass':'nodata'):s.color==='amber'?(s.count?'partial':'pass'):s.color==='red'?(s.count?'fail':'pass'):'nodata',detail:s.count+(tot?' of '+tot+' ('+Math.round(s.count/tot*100)+'%)':'')}));
       if(reg.footerText) rows.push({label:'Note',status:'nodata',detail:reg.footerText}); }
+    if(key==='audits_ext'){ try{ STATE.audits.filter(x=>x.origin==='external').forEach(x=>{ rows.push({label:x.audit_ref+': '+x.title,status:x.closed_at?'pass':(x.close_target_date&&x.close_target_date<todayISO())?'fail':'partial',detail:(x.closed_at?'Closed out':x.close_target_date?'Close out by '+x.close_target_date:'No close-out date')}); }); }catch(e){} }
     try{ if(typeof bhEvaluate==='function'){ bhEvaluate().forEach(ev=>ev.checks.forEach(c=>{ if(c.mod===key && c.status!=='na') rows.push({label:c.label,status:c.status,detail:c.detail||'',domain:ev.d.label}); })); }}catch(e){}
     try{ (typeof DATE_TRACKED_MODULES!=='undefined'?DATE_TRACKED_MODULES:[]).filter(m=>m.key===key).forEach(m=>{ let l=[]; try{ l=m.list()||[]; }catch(e){}
       let ok=0,sn=0,od=0; l.forEach(x=>{ const d=x[m.dateField]; if(!d||m.isResolved(x)) return; if(d<td()) od++; else if(d<=soon()) sn++; else ok++; });
@@ -42137,7 +42220,7 @@ window.WMTutorial = { open, script: () => playlist('full').map(s => ({ id:s.id, 
     const reg=(STATE._cardReg||{})[key]; const title=(reg&&reg.title)||(MODULE_META[key]&&MODULE_META[key].title)||key;
     const rows=kpiRows(key);
     box.style.display='';
-    box.innerHTML=`<div class="wd-h"><h3>${E(title)}: Key Performance Indicators</h3><span><button class="btn-small primary" onclick="showModule('${key}')">Open ${E(title)}</button> <button class="btn-small" onclick="wdKpi('${key}')">Close</button></span></div>`+
+    box.innerHTML=`<div class="wd-h"><h3>${E(title)}: Key Performance Indicators</h3><span><button class="btn-small primary" onclick="${key==='audits_ext'?`showModule('audits');switchAuditSubtab('external')`:`showModule('${key}')`}">Open ${E(title)}</button> <button class="btn-small" onclick="wdKpi('${key}')">Close</button></span></div>`+
       (rows.length?`<table><tr><th>Indicator</th><th>Status</th><th>Detail</th></tr>${rows.map(r=>`<tr><td class="strong">${E(r.label)}</td><td><span class="date-badge ${ST[r.status][1]}"><span class="dd"></span>${ST[r.status][0]}</span></td><td style="font-size:12.5px;color:var(--text-dim)">${E(r.detail)}</td></tr>`).join('')}</table>`:`<p style="font-size:13px;color:var(--text-dim)">Nothing recorded in this module yet, so there are no indicators to show.</p>`);
     document.querySelectorAll('#compliance-report .wd-card').forEach(c=>c.classList.toggle('wd-sel',(c.getAttribute('onclick')||'').includes("wdKpi('"+key+"')")));
     box.scrollIntoView({behavior:'smooth',block:'nearest'});
@@ -42221,6 +42304,7 @@ window.WMTutorial = { open, script: () => playlist('full').map(s => ({ id:s.id, 
     return out;
   }
   function recInfo(rt,rid){
+    if(rt==='audit'){ const r=arr(STATE.audits).find(x=>x.id===rid)||{}; return {ref:r.audit_ref||'Audit',title:r.title||'',kind:'Audit',target:r.close_target_date}; }
     if(rt==='raga'){ const r=arr(STATE.ragaAlerts).find(x=>x.id===rid)||{}; return {ref:r.ref_code||'RAGA alert',title:r.title||'',kind:'RAGA alert',target:r.target_close_date}; }
     const n=ncById(rid)||{}; const kinds={incident:'Incident',accident:'Accident',near_miss:'Near miss'}; return {ref:n.ref_code||'',title:n.title||'',kind:kinds[n.record_class]||'Nonconformance',target:n.target_close_date,severity:n.severity};
   }
@@ -42283,8 +42367,9 @@ window.WMTutorial = { open, script: () => playlist('full').map(s => ({ id:s.id, 
     for(const r of rows){ const body=`Hello ${r.person_name},\n\nThis is an update on ${i.ref}, ${i.title}, at ${STATE.org.name}.\n\nPlease sign in to QaSHE Watchman at ${appUrl()} and check whether anything is still needed from you: ${arr(r.purposes).map(k=>PURP[k]||k).join(', ')}.\n\nThank you.`;
       if(await sendEmailToAddress(r.person_email,`Update: ${i.ref}, ${i.title}`,body)){ n++; await STATE.supabase.from('record_people').update({notified_at:new Date().toISOString(),notified_by:STATE.user.id}).eq('id',r.id); } }
     toast(n+' of '+rows.length+' emailed.',n?'success':'error'); refresh(rt,rid); };
-  function refresh(rt,rid){ const a=rt==='raga'?document.getElementById('raga-detail-slot'):document.getElementById('nc-verify-warning'); if(rt==='raga'){ const t=document.querySelector('#raga-detail-slot .form-grid'); render(rt,rid,t&&t.parentNode?t:null); } else render(rt,rid,a); }
+  function refresh(rt,rid){ if(rt==='audit'){ openAuditDetail(rid); return; } const a=rt==='raga'?document.getElementById('raga-detail-slot'):document.getElementById('nc-verify-warning'); if(rt==='raga'){ const t=document.querySelector('#raga-detail-slot .form-grid'); render(rt,rid,t&&t.parentNode?t:null); } else render(rt,rid,a); }
   /* NC, incident, accident, near miss and information security incident detail */
+  window.__ppl={everyone,render,recInfo};
   { const _o=openNCDetail; openNCDetail=window.openNCDetail=async function(id){ const r=await _o.apply(this,arguments); try{ const a=document.getElementById('nc-verify-warning'); if(a) await render('nonconformance',id,a); }catch(e){ console.warn('ppl',e); } return r; }; }
   /* RAGA detail */
   { const _r=openRagaDetail; openRagaDetail=window.openRagaDetail=async function(id){ const r=await _r.apply(this,arguments); try{ const t=document.querySelector('#raga-detail-slot .status-row'); if(t) await render('raga',id,t); }catch(e){ console.warn('ppl raga',e); } return r; }; }
@@ -42297,6 +42382,918 @@ window.WMTutorial = { open, script: () => playlist('full').map(s => ({ id:s.id, 
       return r; }; }
 })();
 
+
+/* ===== b71: Audit reports: external reports (any format) with AI review and nonconformances, the internal audit lifecycle, and close-out (needs qashe-watchman-schema-audit-reports.sql) ===== */
+(function(){
+  const sb=()=>STATE.supabase;
+  const E=s=>escapeHtml(s==null?'':String(s));
+  const arr=x=>Array.isArray(x)?x:[];
+  const td=()=>todayISO();
+  const SRC={staff:['Staff audit done outside Watchman','internal'],customer:['Customer audit','customer'],supplier:['Supplier audit','supplier'],certification_body:['Certification body audit','certification'],third_party:['Other external third party audit','external']};
+  const isExt=a=>!!a&&a.origin==='external';
+  const canW=()=>['admin','manager','contributor'].includes(STATE.myRole);
+  const MAXMB=25;
+  const FT={major_nc:'Major nonconformance',minor_nc:'Minor nonconformance',observation:'Opportunity for Improvement',positive:'Positive observation'};
+  const sizeTxt=n=>n>=1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round((n||0)/1024))+' KB';
+  const css=document.createElement('style'); css.textContent=`
+  #ar-view-ov{position:fixed;inset:0;background:rgba(20,20,20,.72);z-index:9999;display:none;flex-direction:column;padding:18px}
+  #ar-view-ov.on{display:flex}
+  #ar-view-bar{display:flex;gap:10px;align-items:center;background:#fff;border-radius:10px 10px 0 0;padding:10px 14px;font-size:13px}
+  #ar-view-bar b{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #ar-view-body{flex:1;background:#fff;border-radius:0 0 10px 10px;overflow:auto;padding:0}
+  #ar-view-body iframe{width:100%;height:100%;border:0}
+  #ar-view-body .arv-doc{max-width:860px;margin:0 auto;padding:30px 36px;font-size:14px;line-height:1.6}
+  #ar-view-body .arv-doc table{border-collapse:collapse;font-size:12.5px}#ar-view-body .arv-doc td,#ar-view-body .arv-doc th{border:1px solid #ccc;padding:4px 8px}
+  .ar-step{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 14px}.ar-step span{flex:1;min-width:110px;padding:7px 10px;border-radius:8px;background:var(--grey-tint);font-size:11.5px;font-weight:600;color:var(--text-faint)}
+  .ar-step span.on{background:var(--ink,#111);color:#fff}.ar-step span.done{background:var(--green-tint);color:var(--green)}
+  `; document.head.appendChild(css);
+  /* ---------- data helpers ---------- */
+  async function loadFindingsAll(){ try{ const r=await sb().from('audit_findings').select('id,audit_id,finding_type,description,nonconformance_id,raga_alert_id').eq('organisation_id',STATE.org.id); STATE._afAll=r.error?[]:(r.data||[]); }catch(e){ STATE._afAll=[]; } return STATE._afAll; }
+  function closeInfo(a){
+    const fs=arr(STATE._afAll).filter(f=>f.audit_id===a.id && f.finding_type!=='positive');
+    const linked=fs.filter(f=>f.nonconformance_id||f.raga_alert_id);
+    const ncOf=f=>f.nonconformance_id?ncById(f.nonconformance_id):null;
+    const closed=linked.filter(f=>{ if(f.nonconformance_id){ const n=ncOf(f); return n&&n.status==='closed'; } const r=arr(STATE.ragaAlerts).find(x=>x.id===f.raga_alert_id); return r&&r.status==='closed'; });
+    const unraised=fs.length-linked.length;
+    let state, text;
+    if(a.closed_at){ state='closed'; text='Closed out'; }
+    else if(!fs.length){ state='none'; text='No findings to close'; }
+    else if(unraised){ state='toraise'; text=unraised+' finding'+(unraised===1?'':'s')+' to raise'; }
+    else if(closed.length===linked.length){ state='ready'; text='Ready to close out'; }
+    else if(a.close_target_date && a.close_target_date<td()){ state='overdue'; text='Overdue: '+closed.length+' of '+linked.length+' closed'; }
+    else { state='open'; text=closed.length+' of '+linked.length+' closed'; }
+    return {state,text,total:fs.length,linked:linked.length,closed:closed.length,unraised,open:linked.filter(f=>!closed.includes(f))};
+  }
+  async function filesOf(auditId){ try{ const r=await sb().from('audit_files').select('*').eq('audit_id',auditId).order('created_at',{ascending:true}); if(r.error) return {rows:[],broken:true}; return {rows:r.data||[],broken:false}; }catch(e){ return {rows:[],broken:true}; } }
+  async function readText(file){
+    const n=(file.name||'').toLowerCase();
+    try{
+      if(/\.(docx|pdf)$/.test(n)) return await extractReferenceText(file);
+      if(/\.(xlsx|xls)$/.test(n)){ const X=await ensureXLSX(); const wb=X.read(await file.arrayBuffer(),{type:'array'}); return wb.SheetNames.map(s=>'Sheet: '+s+'\n'+X.utils.sheet_to_csv(wb.Sheets[s])).join('\n\n'); }
+      if(/\.(txt|csv|md|rtf|eml|mht|mhtml)$/.test(n)) return await file.text();
+      if(/\.(html|htm)$/.test(n)){ const t=await file.text(); return t.replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' '); }
+    }catch(e){ console.warn('audit text',e); }
+    return null;
+  }
+  async function uploadFiles(auditId,kind,files){
+    let ok=0, bad=[];
+    for(const f of files){
+      if(f.size>MAXMB*1048576){ bad.push(f.name+' is over '+MAXMB+' MB'); continue; }
+      const path=`${STATE.org.id}/audit_${kind}/${auditId}/${Date.now()}-${sanitizeFileName(f.name)}`;
+      const up=await sb().storage.from('evidence').upload(path,f,evidenceUploadOpts(f));
+      if(up.error){ bad.push(f.name+': '+up.error.message); continue; }
+      let txt=await readText(f); if(txt) txt=String(txt).slice(0,300000);
+      const ins=await sb().from('audit_files').insert({organisation_id:STATE.org.id,audit_id:auditId,kind,file_name:f.name,file_type:evidenceMime(f),file_size:f.size,storage_path:path,extracted_text:txt||null,uploaded_by:STATE.user.id});
+      if(ins.error){ bad.push(f.name+': '+ins.error.message+(/audit_files/.test(ins.error.message||'')?' (run qashe-watchman-schema-audit-reports.sql first)':'')); continue; }
+      ok++;
+    }
+    if(bad.length) alert('Some files were not saved:\n'+bad.join('\n'));
+    return ok;
+  }
+  /* ---------- viewer: any format ---------- */
+  function ensureOv(){ let o=document.getElementById('ar-view-ov'); if(o) return o; o=document.createElement('div'); o.id='ar-view-ov';
+    o.innerHTML='<div id="ar-view-bar"><b id="ar-view-name"></b><button class="btn-small" id="ar-view-dl">Download original</button><button class="btn-small" id="ar-view-pr">Print</button><button class="btn-small primary" onclick="arViewClose()">Close</button></div><div id="ar-view-body"></div>'; document.body.appendChild(o); return o; }
+  window.arViewClose=function(){ const o=document.getElementById('ar-view-ov'); if(o){ o.classList.remove('on'); document.getElementById('ar-view-body').innerHTML=''; } if(STATE._arBlob){ try{ URL.revokeObjectURL(STATE._arBlob); }catch(e){} STATE._arBlob=null; } };
+  window.arView=async function(fileId){
+    const r=await sb().from('audit_files').select('*').eq('id',fileId).single(); if(r.error||!r.data){ toast('Could not open the file.','error'); return; }
+    const f=r.data; const o=ensureOv(); const body=document.getElementById('ar-view-body'); document.getElementById('ar-view-name').textContent=f.file_name; body.innerHTML='<div class="arv-doc">Loading…</div>'; o.classList.add('on');
+    const su=await sb().storage.from('evidence').createSignedUrl(f.storage_path,3600); if(su.error||!su.data){ body.innerHTML='<div class="arv-doc">The file could not be found in storage.</div>'; return; }
+    const url=su.data.signedUrl; const n=f.file_name.toLowerCase();
+    document.getElementById('ar-view-dl').onclick=()=>{ const a=document.createElement('a'); a.href=url; a.download=f.file_name; a.target='_blank'; document.body.appendChild(a); a.click(); a.remove(); };
+    let printHtml=null;
+    try{
+      const res=await fetch(url); const blob=await res.blob();
+      if(/\.pdf$/.test(n)||f.file_type==='application/pdf'){ const b=new Blob([blob],{type:'application/pdf'}); STATE._arBlob=URL.createObjectURL(b); body.innerHTML='<iframe id="ar-pdf" src="'+STATE._arBlob+'"></iframe>'; document.getElementById('ar-view-pr').onclick=()=>{ try{ document.getElementById('ar-pdf').contentWindow.print(); }catch(e){ window.open(STATE._arBlob); } }; return; }
+      if(/^image\//.test(f.file_type||'')||/\.(png|jpe?g|gif|webp)$/.test(n)){ STATE._arBlob=URL.createObjectURL(blob); body.innerHTML='<div class="arv-doc" style="text-align:center"><img src="'+STATE._arBlob+'" style="max-width:100%"></div>'; printHtml='<img src="'+STATE._arBlob+'" style="max-width:100%">'; }
+      else if(/\.docx$/.test(n)){ const m=await import('https://cdn.jsdelivr.net/npm/mammoth@1.12.3/+esm'); const out=await m.convertToHtml({arrayBuffer:await blob.arrayBuffer()}); printHtml=out.value; body.innerHTML='<div class="arv-doc">'+out.value+'</div>'; }
+      else if(/\.(xlsx|xls)$/.test(n)){ const X=await ensureXLSX(); const wb=X.read(await blob.arrayBuffer(),{type:'array'}); printHtml=wb.SheetNames.map(s=>'<h3>'+E(s)+'</h3>'+X.utils.sheet_to_html(wb.Sheets[s],{header:'',footer:''}).replace(/<\/?(html|head|body|meta)[^>]*>/gi,'')).join(''); body.innerHTML='<div class="arv-doc">'+printHtml+'</div>'; }
+      else if(/\.(txt|csv|md|eml|rtf|html|htm|mht|mhtml)$/.test(n)){ const t=await blob.text(); printHtml='<pre style="white-space:pre-wrap;font-family:Arial,sans-serif">'+E(t)+'</pre>'; body.innerHTML='<div class="arv-doc">'+printHtml+'</div>'; }
+      else if(/^(audio|video)\//.test(f.file_type||'')){ STATE._arBlob=URL.createObjectURL(blob); body.innerHTML='<div class="arv-doc"><'+(/^audio/.test(f.file_type)?'audio':'video')+' controls src="'+STATE._arBlob+'" style="width:100%"></'+(/^audio/.test(f.file_type)?'audio':'video')+'></div>'; }
+      else { body.innerHTML='<div class="arv-doc"><h3>'+E(f.file_name)+'</h3><p>This format cannot be shown in the page (for example PowerPoint or an Outlook message). It is stored safely and can be opened with the Download original button.'+(f.extracted_text?' Its text is available to the AI review.':'')+'</p></div>'; }
+    }catch(e){ body.innerHTML='<div class="arv-doc">The file could not be displayed: '+E(e.message||e)+'. Use Download original.</div>'; }
+    document.getElementById('ar-view-pr').onclick=()=>{ if(!printHtml){ toast('Nothing to print for this format.','info'); return; } const w=window.open('','_blank'); if(!w){ toast('Allow pop ups to print.','error'); return; } w.document.write('<html><head><title>'+E(f.file_name)+'</title><style>body{font-family:Arial,sans-serif;font-size:13px;margin:24px}table{border-collapse:collapse}td,th{border:1px solid #bbb;padding:3px 6px}</style></head><body>'+printHtml+'</body></html>'); w.document.close(); setTimeout(()=>w.print(),400); };
+  };
+  window.arRemoveFile=async function(id,auditId,path){ if(!confirm('Remove this file?')) return; try{ await sb().storage.from('evidence').remove([path]); }catch(e){} await sb().from('audit_files').delete().eq('id',id); openAuditDetail(auditId); };
+  function fileListHtml(rows,auditId,kind){
+    const l=rows.filter(f=>f.kind===kind);
+    if(!l.length) return '<p style="font-size:12.5px;color:var(--text-faint);margin:6px 0">Nothing uploaded yet.</p>';
+    return l.map(f=>`<div class="evidence-row" style="display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--border)"><div style="flex:1"><b style="font-size:12.5px">${E(f.file_name)}</b><div style="font-size:11px;color:var(--text-faint)">${sizeTxt(f.file_size)} · ${E(fmtDate(String(f.created_at).slice(0,10)))} · ${f.extracted_text?(f.extracted_text.length.toLocaleString()+' characters readable by the AI'):'text not readable by the AI (image, scan or unsupported format)'}</div></div>
+      <button class="btn-small primary" onclick="arView('${f.id}')">View</button>${canW()?`<button class="btn-small" onclick="arRemoveFile('${f.id}','${auditId}','${E(f.storage_path)}')">Remove</button>`:''}</div>`).join('');
+  }
+  window.arUpload=async function(auditId,kind){ const inp=document.getElementById('ar-file-'+kind); if(!inp||!inp.files.length){ alert('Choose at least one file first.'); return; } showLoader('Uploading and reading the file…'); try{ const n=await uploadFiles(auditId,kind,[...inp.files]); toast(n+' file'+(n===1?'':'s')+' saved.',n?'success':'error'); }finally{ hideLoader(); } openAuditDetail(auditId); };
+  /* ---------- AI ---------- */
+  async function aiJson(prompt,max){
+    const sd=await sb().auth.getSession(); const token=sd.data&&sd.data.session&&sd.data.session.access_token; if(!token) throw new Error('Your sign in has expired: sign out and in again.');
+    const res=await fetch(`${SUPABASE_URL}/functions/v1/watchman-chat`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:max||4096})});
+    const j=await res.json().catch(()=>({})); if(!res.ok&&!j.reply) throw new Error(j.error||('The AI service answered '+res.status));
+    const p=parseAiDraftJson((j.reply||j.message||'').trim()); if(!p) throw new Error('The AI answer could not be read. Try again.'); return p;
+  }
+  const JSONRULE='Return strictly valid JSON only, no commentary. Escape double quotes inside values as \\" and write line breaks as \\n.';
+  window.arAiReview=async function(auditId){
+    const a=STATE.audits.find(x=>x.id===auditId); if(!a) return; const fr=await filesOf(auditId);
+    let text=fr.rows.filter(f=>f.kind==='report'&&f.extracted_text).map(f=>'FILE: '+f.file_name+'\n'+f.extracted_text).join('\n\n');
+    const pasted=(document.getElementById('ar-paste')||{}).value||''; if(pasted.trim()) text+='\n\nPASTED TEXT:\n'+pasted.trim();
+    if(text.trim().length<200){ toast('The report text could not be read (it may be an image or scan). Paste its text in the box and run the review again.','error'); const b=document.getElementById('ar-paste-wrap'); if(b) b.style.display='block'; return; }
+    const chunks=[]; for(let i=0;i<text.length&&chunks.length<5;i+=12000) chunks.push(text.slice(i,i+12000));
+    const note=text.length>60000?' Only the first 60 000 characters were reviewed.':'';
+    const src=(SRC[a.report_source]||['external audit'])[0]; const all=[]; const sums=[];
+    try{
+      for(let i=0;i<chunks.length;i++){
+        showLoader('AI review: part '+(i+1)+' of '+chunks.length+'…');
+        const p=await aiJson(`You are a lead auditor reviewing an audit report issued to ${STATE.org.name}. Report type: ${src}. Issued by: ${a.issuing_body||a.external_auditor_name||'not stated'}. Standards: ${(a.standards||[]).join(', ')||'not stated'}.\n\nExtract every finding in the text below: nonconformances (major or minor), observations or opportunities for improvement, and positive observations. Do not invent anything that is not in the text. Use the exact clause or requirement reference and the report's own wording where possible. Where the report states a due date or timeframe, put it in due_hint.\n\nReturn JSON of this shape: {"summary":"two sentence summary of this part","outcome":"overall outcome if stated, else empty","findings":[{"type":"major_nc|minor_nc|observation|positive","clause":"","description":"","evidence":"","suggested_action":"","severity":"critical|major|minor","due_hint":""}]}. ${JSONRULE}\n\nREPORT TEXT (part ${i+1} of ${chunks.length}):\n"""${chunks[i]}"""`,4096);
+        arr(p.findings).forEach(f=>all.push(f)); if(p.summary) sums.push(p.summary); if(p.outcome&&!a._o) a._o=p.outcome;
+      }
+      showLoader('AI review: writing the summary…');
+      const seen=new Set(); const findings=all.filter(f=>{ const k=String(f.description||'').toLowerCase().replace(/\W+/g,' ').slice(0,90); if(!k||seen.has(k)) return false; seen.add(k); return true; });
+      let sum={}; try{ sum=await aiJson(`Summarise this external audit report for the executive team of ${STATE.org.name}. Use the term "Opportunities for Improvement" for observations. Part summaries: ${JSON.stringify(sums)}. Finding counts: major ${findings.filter(f=>f.type==='major_nc').length}, minor ${findings.filter(f=>f.type==='minor_nc').length}, opportunities ${findings.filter(f=>f.type==='observation').length}, positive ${findings.filter(f=>f.type==='positive').length}. Return JSON {"executive_summary":"","overall_outcome":"","themes":["recurring themes"],"positives":["strengths noted"],"recommended_actions":["priority actions"],"risk_themes":["risks or opportunities the register should capture"]}. ${JSONRULE}`,2048); }catch(e){ sum={executive_summary:sums.join(' ')}; }
+      const payload={summary:sum.executive_summary||sums.join(' '),outcome:sum.overall_outcome||a._o||'',themes:arr(sum.themes),positives:arr(sum.positives),actions:arr(sum.recommended_actions),risks:arr(sum.risk_themes),findings,note};
+      const up=await sb().from('audits').update({ai_summary:payload,ai_reviewed_at:new Date().toISOString()}).eq('id',auditId); if(up.error) throw new Error(up.error.message);
+      await loadAudits(); toast(findings.length+' findings extracted. Review them, then raise the nonconformances.'+note,'success');
+    }catch(e){ toast('AI review failed: '+(e.message||e),'error'); }
+    finally{ hideLoader(); }
+    openAuditDetail(auditId);
+  };
+  function reviewHtml(a){
+    const s=a.ai_summary; if(!s) return '<p style="font-size:12.5px;color:var(--text-faint)">Not reviewed yet. The AI reads the report, summarises it and lists every finding so you can log them in one step.</p>';
+    const done=arr(STATE._afAll).filter(f=>f.audit_id===a.id);
+    const dueDef=a.close_target_date||new Date(Date.now()+30*864e5).toISOString().slice(0,10);
+    const rows=arr(s.findings).map((f,i)=>{ const already=done.some(d=>String(d.description||'').slice(0,60)===String(f.description||'').slice(0,60));
+      const t=['major_nc','minor_nc','observation','positive'].includes(f.type)?f.type:'observation';
+      return `<tr><td><input type="checkbox" class="ar-pick" value="${i}" ${already||t==='positive'?'':'checked'} ${already?'disabled':''} style="width:auto"></td>
+      <td><select id="ar-ft-${i}" style="font-size:12px">${Object.keys(FT).map(k=>`<option value="${k}" ${k===t?'selected':''}>${FT[k]}</option>`).join('')}</select></td>
+      <td class="mono" style="font-size:11px">${E(f.clause||'')}</td><td style="font-size:12.5px">${E(f.description||'')}${f.suggested_action?`<div style="font-size:11.5px;color:var(--text-faint);margin-top:3px">Suggested: ${E(f.suggested_action)}</div>`:''}${f.due_hint?`<div style="font-size:11px;color:var(--amber,#B8791C)">Report says: ${E(f.due_hint)}</div>`:''}</td>
+      <td>${already?'<span class="linked-task-chip">Already logged</span>':`<input type="date" id="ar-fd-${i}" value="${dueDef}" style="font-size:12px">`}</td></tr>`; }).join('');
+    const li=l=>arr(l).length?'<ul style="margin:4px 0 8px 18px;font-size:12.5px">'+arr(l).map(x=>'<li>'+E(x)+'</li>').join('')+'</ul>':'';
+    return `<div style="font-size:13px;line-height:1.55;margin-bottom:10px"><b>Summary</b><br>${E(s.summary)}${s.outcome?`<br><b>Outcome</b>: ${E(s.outcome)}`:''}</div>
+      ${arr(s.themes).length?'<b style="font-size:12px">Themes</b>'+li(s.themes):''}${arr(s.positives).length?'<b style="font-size:12px">Strengths noted</b>'+li(s.positives):''}${arr(s.actions).length?'<b style="font-size:12px">Recommended priority actions</b>'+li(s.actions):''}${arr(s.risks).length?'<b style="font-size:12px">Risks and opportunities to capture in the Risk and Opportunity register</b>'+li(s.risks):''}
+      ${rows?`<table style="margin-top:8px"><tr><th></th><th>Type</th><th>Clause</th><th>Finding</th><th>Close by</th></tr>${rows}</table>
+      <div class="form-grid" style="margin-top:10px"><div class="field"><label>Owner of the nonconformances</label><select id="ar-owner">${memberOptions(a.close_owner_id||STATE.user.id)}</select></div></div>
+      <div class="form-actions" style="justify-content:flex-start"><button class="btn-primary" onclick="arRaise('${a.id}')">Log the ticked findings and raise nonconformances</button></div>
+      <p style="font-size:11.5px;color:var(--text-faint)">Each ticked finding is logged on this audit, a nonconformance (or RAGA alert) is raised and linked, and a follow-up task is created for the owner. Positive observations are logged without a nonconformance. Edit the type if the AI got it wrong.</p>`:'<p style="font-size:12.5px;color:var(--text-faint)">No findings were found in the text.</p>'}`;
+  }
+  window.arRaise=async function(auditId){
+    const a=STATE.audits.find(x=>x.id===auditId); const s=a&&a.ai_summary; if(!s) return; const picks=[...document.querySelectorAll('.ar-pick:checked')].map(c=>+c.value);
+    if(!picks.length){ toast('Tick at least one finding.','error'); return; } const owner=document.getElementById('ar-owner').value||STATE.user.id; const usesNc=STATE.org.nc_enabled!==false;
+    const ty=arr(STATE.ncTypes).filter(t=>t.is_active); const nty=ty.find(t=>/audit|external|finding/i.test(t.name))||ty[0]; if(usesNc&&!nty){ toast('Add a nonconformance type first.','error'); return; }
+    showLoader('Logging findings and raising nonconformances…'); let nf=0, nn=0;
+    try{
+      for(const i of picks){
+        const f=s.findings[i]; const type=document.getElementById('ar-ft-'+i).value; const due=(document.getElementById('ar-fd-'+i)||{}).value||td();
+        const fi=await sb().from('audit_findings').insert({organisation_id:STATE.org.id,audit_id:auditId,clause_reference:f.clause||'',description:f.description,finding_type:type,raised_by:STATE.user.id,ai_extracted:true}).select().single();
+        if(fi.error){ toast('Could not log a finding: '+fi.error.message,'error'); continue; } nf++;
+        if(type==='positive') continue;
+        const sev=type==='major_nc'?(f.severity==='critical'?'critical':'major'):'minor'; const srcLine=`Source: ${a.audit_ref}, ${a.title}${a.issuing_body?' ('+a.issuing_body+')':''}${f.clause?', '+f.clause:''}.`; let rid, ref, lt;
+        if(usesNc){
+          const n=await sb().from('nonconformances').insert({organisation_id:STATE.org.id,title:nty.name,nc_type_id:nty.id,description:f.description+'\n\n'+srcLine+(f.suggested_action?'\nSuggested action: '+f.suggested_action:''),standard_clause:f.clause||null,severity:sev,raised_by:STATE.user.id,owner_id:owner,target_close_date:due}).select().single();
+          if(n.error){ toast('Could not raise a nonconformance: '+n.error.message,'error'); continue; }
+          await sb().from('audit_findings').update({nonconformance_id:n.data.id}).eq('id',fi.data.id); rid=n.data.id; ref=n.data.ref_code; lt='nonconformance';
+        } else {
+          const r=await sb().from('raga_alerts').insert({organisation_id:STATE.org.id,alert_type:sev==='minor'?'orange':'red',title:((f.clause?f.clause+': ':'')+'Audit finding').slice(0,120),description:f.description+'\n\n'+srcLine,raised_by:STATE.user.id,owner_id:owner,target_close_date:due}).select().single();
+          if(r.error){ toast('Could not raise a RAGA alert: '+r.error.message,'error'); continue; }
+          await sb().from('audit_findings').update({raga_alert_id:r.data.id}).eq('id',fi.data.id); rid=r.data.id; ref='RAGA alert'; lt='raga_alert';
+        }
+        nn++;
+        await sb().from('tasks').insert({organisation_id:STATE.org.id,title:('Close out: '+(f.clause?f.clause+': ':'')+f.description).slice(0,120),description:f.description,linked_type:lt,linked_id:rid,assignee_id:owner,priority:'high',due_date:due,created_by:STATE.user.id});
+      }
+      await loadNCs(); try{ await loadRagaAlerts(); }catch(e){} try{ await loadTasks(); }catch(e){}
+      if(!a.close_target_date){ const ds=picks.map(i=>(document.getElementById('ar-fd-'+i)||{}).value).filter(Boolean).sort(); if(ds.length) await sb().from('audits').update({close_target_date:ds[ds.length-1],close_owner_id:owner}).eq('id',auditId); }
+      await loadAudits(); await loadFindingsAll();
+    } finally { hideLoader(); }
+    toast(nf+' finding'+(nf===1?'':'s')+' logged, '+nn+' nonconformance'+(nn===1?'':'s')+' raised with follow-up tasks.','success'); openAuditDetail(auditId);
+  };
+  /* ---------- external register ---------- */
+  function renderExternal(){
+    const wrap=document.getElementById('audit-subtab-content'); if(!wrap) return;
+    loadFindingsAll().then(()=>{ draw(); }); draw();
+    function draw(){
+      const fs=STATE._extF||{src:'',st:''}; STATE._extF=fs;
+      let rows=STATE.audits.filter(isExt); if(fs.src) rows=rows.filter(a=>a.report_source===fs.src);
+      const info=rows.map(a=>({a,i:closeInfo(a)})); const flt=fs.st?info.filter(x=>fs.st==='open'?!['closed','none'].includes(x.i.state):fs.st==='overdue'?x.i.state==='overdue':x.i.state===fs.st):info;
+      flt.sort((x,y)=>String(y.a.report_date||y.a.planned_date||'').localeCompare(String(x.a.report_date||x.a.planned_date||'')));
+      wrap.innerHTML=`<div class="toolbar" style="padding:0 0 12px;flex-wrap:wrap;gap:8px"><div class="filters">
+        <select onchange="STATE._extF.src=this.value;arExtRedraw()"><option value="">All sources</option>${Object.keys(SRC).map(k=>`<option value="${k}" ${fs.src===k?'selected':''}>${SRC[k][0]}</option>`).join('')}</select>
+        <select onchange="STATE._extF.st=this.value;arExtRedraw()"><option value="">All close-out states</option><option value="open" ${fs.st==='open'?'selected':''}>Open</option><option value="overdue" ${fs.st==='overdue'?'selected':''}>Overdue</option><option value="toraise" ${fs.st==='toraise'?'selected':''}>Findings to raise</option><option value="ready" ${fs.st==='ready'?'selected':''}>Ready to close out</option><option value="closed" ${fs.st==='closed'?'selected':''}>Closed out</option></select></div>
+        ${canW()?`<button class="btn-primary btn-add" onclick="arToggleForm()">Upload External Audit Report</button>`:''}</div>
+      <div class="detail-card" id="ar-form" style="display:none"><div class="panel-head"><h3>Upload External Audit Report</h3></div>
+        <p style="font-size:12.5px;color:var(--text-faint);margin:0 0 10px">For audit reports issued to the company that were not done inside Watchman: by your own staff, a customer, a supplier, a certification body or any other third party. Any file format is accepted. The AI can then read the report, extract the findings and raise the nonconformances.</p>
+        <div class="form-grid">
+          <div class="field span3"><label>Report title</label><input id="arf-title" placeholder="e.g. ISO 9001 surveillance audit report, Stage 2"></div>
+          <div class="field"><label>Who audited?</label><select id="arf-src">${Object.keys(SRC).map(k=>`<option value="${k}">${SRC[k][0]}</option>`).join('')}</select></div>
+          <div class="field"><label>Issuing organisation or auditor</label><input id="arf-by" placeholder="e.g. LRQA, Eskom, lead auditor name"></div>
+          <div class="field"><label>Their report reference</label><input id="arf-ref" placeholder="e.g. LRQ-2026-0457"></div>
+          <div class="field"><label>Date of the audit</label><input type="date" id="arf-adate" value="${td()}"></div>
+          <div class="field"><label>Date the report was issued</label><input type="date" id="arf-rdate" value="${td()}"></div>
+          <div class="field"><label>Respond and close out by</label><input type="date" id="arf-due" value="${new Date(Date.now()+30*864e5).toISOString().slice(0,10)}"></div>
+          <div class="field"><label>Standard(s) or scope</label>${checkboxMultiSelect('arf-std',AUDIT_STANDARDS_LIST.map(s=>({id:s,label:s})),[])}</div>
+          <div class="field"><label>Overall outcome</label><input id="arf-out" placeholder="e.g. Certification recommended, 2 minor nonconformances"></div>
+          <div class="field"><label>Responsible for close-out</label><select id="arf-owner">${memberOptions(STATE.user.id)}</select></div>
+          <div class="field span3"><label>Scope of the audit (optional)</label><textarea id="arf-scope" placeholder="Sites, processes and clauses covered"></textarea></div>
+          <div class="field span3"><label>Report file(s): any format</label><input type="file" id="arf-file" multiple></div>
+          <div class="field span3"><label style="text-transform:none;display:flex;gap:8px;align-items:center;font-family:Arial,sans-serif"><input type="checkbox" id="arf-ai" checked style="width:auto"> Run the AI review straight after upload</label></div>
+        </div>
+        <div class="form-actions"><button class="btn-cancel" onclick="arToggleForm()">Cancel</button><button class="btn-primary" id="arf-go" onclick="arSubmit()">Upload and register</button></div></div>
+      <div class="panel" style="padding:0;overflow:hidden">${flt.length?`<table><tr><th>Report</th><th>Source</th><th>Report date</th><th>Findings</th><th>Close-out</th><th>Due</th><th></th></tr>${flt.map(({a,i})=>`<tr class="clickable" onclick="openAuditDetail('${a.id}')">
+        <td class="strong">${E(a.title)}<div class="mono" style="font-size:10.5px;color:var(--text-faint)">${E(a.audit_ref)}${a.issuing_body?' · '+E(a.issuing_body):''}${a.report_reference?' · '+E(a.report_reference):''}</div></td>
+        <td style="font-size:12.5px">${E((SRC[a.report_source]||['External'])[0])}</td><td>${a.report_date?fmtDate(a.report_date):'—'}</td>
+        <td style="font-size:12.5px">${i.total} finding${i.total===1?'':'s'}${a.ai_summary?'<div style="font-size:10.5px;color:var(--text-faint)">AI reviewed</div>':''}</td>
+        <td><span class="pill ${i.state==='closed'?'completed':i.state==='overdue'?'critical':'in_progress'}"><span class="pill-dot"></span>${E(i.text)}</span></td>
+        <td>${a.close_target_date?dateStatusBadge(a.close_target_date,!!a.closed_at):'—'}</td>
+        <td style="text-align:right" onclick="event.stopPropagation()"><button class="btn-small primary" onclick="arOpenFirst('${a.id}')">View report</button></td></tr>`).join('')}</table>`:`<div class="empty-state"><p>No external audit reports yet. Upload a customer, supplier, certification body or other third party report, and Watchman will help you work through it.</p></div>`}</div>`;
+    }
+  }
+  window.arExtRedraw=renderExternal;
+  window.arToggleForm=function(){ const f=document.getElementById('ar-form'); if(f) f.style.display=f.style.display==='none'?'block':'none'; };
+  window.arOpenFirst=async function(id){ const r=await filesOf(id); const f=r.rows.find(x=>x.kind==='report'); if(f) arView(f.id); else { toast('No report file is attached yet.','info'); openAuditDetail(id); } };
+  window.arSubmit=async function(){
+    const g=id=>document.getElementById(id), title=g('arf-title').value.trim(); const files=[...g('arf-file').files];
+    if(!title){ alert('Give the report a title.'); return; } if(!files.length){ alert('Choose the report file first.'); return; }
+    const src=g('arf-src').value, std=getCheckedValues('arf-std'), btn=g('arf-go'); btn.disabled=true; showLoader('Registering the report…');
+    try{
+      const ad=g('arf-adate').value||td(), rd=g('arf-rdate').value||ad;
+      const ins=await sb().from('audits').insert({organisation_id:STATE.org.id,title,scope:g('arf-scope').value.trim(),criteria:'',standard:std[0]||null,standards:std,audit_type:SRC[src][1],origin:'external',report_source:src,issuing_body:g('arf-by').value.trim()||null,report_reference:g('arf-ref').value.trim()||null,report_date:rd,planned_date:ad,actual_date:ad,external_auditor_name:g('arf-by').value.trim()||null,external_outcome:g('arf-out').value.trim()||null,close_target_date:g('arf-due').value||null,close_owner_id:g('arf-owner').value||null,status:'completed',published_at:new Date().toISOString(),published_by:STATE.user.id,created_by:STATE.user.id}).select().single();
+      if(ins.error){ toast('Could not register the report: '+ins.error.message+(/origin|column/.test(ins.error.message||'')?' (run qashe-watchman-schema-audit-reports.sql first)':''),'error'); btn.disabled=false; return; }
+      const n=await uploadFiles(ins.data.id,'report',files);
+      await sb().from('tasks').insert({organisation_id:STATE.org.id,title:('Review and respond: '+title).slice(0,120),description:'External audit report received. Review the report, extract the findings, raise nonconformances and close out by the due date.',linked_type:'audit',linked_id:ins.data.id,assignee_id:g('arf-owner').value||STATE.user.id,priority:'high',due_date:g('arf-due').value||null,created_by:STATE.user.id}).then(()=>{},()=>{});
+      await loadAudits(); try{ await loadTasks(); }catch(e){}
+      const runAi=g('arf-ai').checked; hideLoader(); toast(ins.data.audit_ref+' registered with '+n+' file'+(n===1?'':'s')+'.','success');
+      STATE._auditSubtab='external'; await openAuditDetail(ins.data.id); if(runAi) arAiReview(ins.data.id);
+    }finally{ hideLoader(); btn.disabled=false; }
+  };
+  /* ---------- audit page ---------- */
+  function closeCard(a,info){
+    const open=info.open.map(f=>{ const n=f.nonconformance_id?ncById(f.nonconformance_id):null; return `<tr class="clickable" onclick="${n?`showModule('nonconformances');setTimeout(()=>openNCDetail('${n.id}'),0)`:''}"><td class="mono">${n?E(n.ref_code):'RAGA'}</td><td style="font-size:12.5px">${E((f.description||'').slice(0,110))}</td><td>${n&&n.target_close_date?dateStatusBadge(n.target_close_date,false):'—'}</td><td>${n?pill(n.status):''}</td></tr>`; }).join('');
+    return `<div class="detail-card" id="ar-close-card" style="margin-bottom:16px;padding:18px"><div class="panel-head" style="margin-bottom:6px"><h3 style="font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:600">Findings Close-out</h3><span class="pill ${info.state==='closed'?'completed':info.state==='overdue'?'critical':'in_progress'}"><span class="pill-dot"></span>${E(info.text)}</span></div>
+      <p style="font-size:12.5px;color:var(--text-faint);margin:0 0 8px">Every finding is raised as a nonconformance with a task. The audit closes out when all of them are closed by their owners and any interested parties have confirmed.</p>
+      ${info.total?`<div style="height:8px;background:var(--grey-tint);border-radius:6px;overflow:hidden;margin-bottom:8px"><i style="display:block;height:100%;width:${info.linked?Math.round(info.closed/Math.max(1,info.total)*100):0}%;background:var(--green,#2E7D4F)"></i></div><div style="font-size:12.5px">${info.closed} of ${info.total} findings closed${info.unraised?`, <b>${info.unraised}</b> not yet raised as nonconformances`:''}.</div>`:''}
+      ${open?`<table style="margin-top:8px"><tr><th>Ref</th><th>Open finding</th><th>Target</th><th>Status</th></tr>${open}</table>`:''}
+      <div class="form-grid" style="margin-top:10px"><div class="field"><label>Close out by</label><input type="date" id="arc-due" value="${a.close_target_date||''}" ${canW()?'':'disabled'}></div><div class="field"><label>Responsible</label><select id="arc-owner" ${canW()?'':'disabled'}>${memberOptions(a.close_owner_id||a.auditor_id||STATE.user.id)}</select></div></div>
+      ${canW()&&!a.closed_at?`<div class="form-actions" style="justify-content:flex-start;gap:8px"><button class="btn-small" onclick="arSaveClose('${a.id}')">Save date and owner</button>${info.state==='ready'||info.state==='none'?`<input id="arc-sign" placeholder="Type your full name to close out" style="min-width:230px"><button class="btn-small primary" onclick="arCloseOut('${a.id}')">Close out audit</button>`:''}</div>`:''}
+      ${a.closed_at?`<p style="font-size:12.5px;color:var(--green)">Closed out on ${E(fmtDate(String(a.closed_at).slice(0,10)))} by ${E(a.closure_signature||memberName(a.closed_by))}.</p>`:''}</div>`;
+  }
+  window.arSaveClose=async function(id){ const r=await sb().from('audits').update({close_target_date:document.getElementById('arc-due').value||null,close_owner_id:document.getElementById('arc-owner').value||null}).eq('id',id); if(r.error){ toast('Could not save: '+r.error.message,'error'); return; } await loadAudits(); toast('Saved.','success'); openAuditDetail(id); };
+  window.arCloseOut=async function(id){
+    const a=STATE.audits.find(x=>x.id===id); const sig=(document.getElementById('arc-sign')||{}).value||''; if(sig.trim().length<3){ toast('Type your full name to sign the close-out.','error'); return; }
+    await loadFindingsAll(); const i=closeInfo(a); if(!['ready','none'].includes(i.state)){ toast('Not every finding is closed yet.','error'); return; }
+    const r=await sb().from('audits').update({closed_at:new Date().toISOString(),closed_by:STATE.user.id,closure_signature:sig.trim()}).eq('id',id); if(r.error){ toast('Could not close out: '+r.error.message,'error'); return; }
+    try{ await sb().from('tasks').update({status:'done'}).eq('linked_type','audit').eq('linked_id',id); }catch(e){}
+    await loadAudits(); try{ await loadTasks(); }catch(e){} toast('Audit closed out.','success'); openAuditDetail(id);
+  };
+  function extMeta(a){
+    const v=(l,x)=>`<div class="dm-item"><div class="l">${l}</div><div class="v">${x||'—'}</div></div>`;
+    return `<div class="detail-meta" style="margin-bottom:12px">${v('Source',E((SRC[a.report_source]||['External'])[0]))}${v('Issued by',E(a.issuing_body||a.external_auditor_name))}${v('Their reference',E(a.report_reference))}${v('Report date',a.report_date?fmtDate(a.report_date):'')}${v('Outcome',E(a.external_outcome))}${v('Close out by',a.close_target_date?fmtDate(a.close_target_date):'')}</div>`;
+  }
+  async function extCard(a){
+    const fr=await filesOf(a.id); const info=closeInfo(a);
+    return `<div class="detail-card" id="ar-ext-card" style="margin-bottom:16px;padding:18px"><div class="panel-head" style="margin-bottom:6px"><h3 style="font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:600">External Audit Report</h3><span class="mono" style="font-size:11px;color:var(--text-faint)">Received, not audited in Watchman</span></div>
+      ${extMeta(a)}${fr.broken?'<p style="color:var(--red);font-size:12.5px">Run qashe-watchman-schema-audit-reports.sql in the Supabase SQL editor to switch on report files.</p>':''}
+      ${fileListHtml(fr.rows,a.id,'report')}
+      ${canW()?`<div style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="file" id="ar-file-report" multiple><button class="btn-small" onclick="arUpload('${a.id}','report')">Add file</button></div>`:''}
+      <div class="panel-head" style="margin:16px 0 6px"><h3 style="font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:600">AI Review of the Report</h3>${canW()?`<button class="btn-small primary" onclick="arAiReview('${a.id}')">${a.ai_summary?'Run the review again':'Review with AI'}</button>`:''}</div>
+      <div id="ar-paste-wrap" style="display:none;margin-bottom:8px"><label style="font-size:12px">The report text could not be read from the file. Paste the text of the report here:</label><textarea id="ar-paste" style="width:100%;min-height:120px"></textarea></div>
+      ${reviewHtml(a)}
+      <p style="font-size:11.5px;color:var(--text-faint);margin-top:8px">The AI reads the readable text of the report and suggests; you decide what is logged. Check every finding against the original report before relying on it.</p></div>${closeCard(a,info)}`;
+  }
+  /* internal lifecycle */
+  function stepper(a,info,fr,hasChk){
+    const st=[['Planned',true],['Prepared',!!(hasChk||fr)],['Conducted',['in_progress','completed','report_issued'].includes(a.status)],['Report written',!!a.executive_summary],['Published',!!a.published_at],['Findings closed',!!a.closed_at]];
+    const cur=st.findIndex(s=>!s[1]);
+    return '<div class="ar-step">'+st.map((s,i)=>`<span class="${s[1]?'done':i===cur?'on':''}">${i+1} · ${s[0]}</span>`).join('')+'</div>';
+  }
+  async function peopleOptions(selected){ const p=window.__ppl?await window.__ppl.everyone():[]; return `<option value="self">I will do the audit myself</option>`+p.map(x=>`<option value="${x.v}" ${selected===x.v?'selected':''}>${E(x.name)}${x.email?'':' (no email address)'}</option>`).join('')+`<option value="email">Someone else: enter an email address…</option>`; }
+  async function intCard(a){
+    const fr=await filesOf(a.id); const info=closeInfo(a);
+    const sel=a.auditor_id?(a.auditor_id===STATE.user.id?'self':'m:'+a.auditor_id):a.auditor_personnel_id?'p:'+a.auditor_personnel_id:'self';
+    const who=a.auditor_id?memberName(a.auditor_id):(a.external_auditor_name||a.auditor_email||'Not assigned');
+    const tpl=arr(STATE.auditChecklistTemplates); const ranks=['planned','in_progress'].includes(a.status);
+    return `<div class="detail-card" id="ar-int-card" style="margin-bottom:16px;padding:18px"><div class="panel-head" style="margin-bottom:6px"><h3 style="font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:600">Audit Workflow</h3><span class="mono" style="font-size:11px;color:var(--text-faint)">Plan to close-out</span></div>
+      ${stepper(a,info,fr.rows.some(f=>f.kind==='reference'),!!a.audit_checklist_template_id)}
+      ${canW()&&!a.closed_at?`<div class="form-grid">
+        <div class="field"><label>Checklist</label><select id="arw-chk"><option value="">None</option>${tpl.map(t=>`<option value="${t.id}" ${a.audit_checklist_template_id===t.id?'selected':''}>${E(t.title)}</option>`).join('')}</select></div>
+        <div class="field"><label>Who does the audit? Currently: ${E(who)}</label><select id="arw-who" onchange="document.getElementById('arw-em').style.display=this.value==='email'?'block':'none'">${await peopleOptions(sel)}</select></div>
+        <div class="field" id="arw-em" style="display:none"><label>Name and email</label><input id="arw-name" placeholder="Name" style="margin-bottom:4px"><input id="arw-email" type="email" placeholder="name@company.com"></div>
+        <div class="field span3"><label>Message to the auditor (optional)</label><textarea id="arw-msg" placeholder="Anything they should prepare or focus on"></textarea></div></div>
+        <div class="form-actions" style="justify-content:flex-start"><button class="btn-small primary" onclick="arPrepare('${a.id}',true)">Save and email the auditor</button><button class="btn-small" onclick="arPrepare('${a.id}',false)">Save without email</button>${a.status==='planned'?`<button class="btn-small" onclick="startAudit('${a.id}')">Start the audit now</button>`:''}</div>`:`<p style="font-size:12.5px">Auditor: <b>${E(who)}</b></p>`}
+      <div style="margin-top:14px"><b style="font-size:12.5px">Previous audit or other reference material</b><p style="font-size:11.5px;color:var(--text-faint);margin:2px 0 4px">Upload an earlier audit report or any document that gives context. The AI uses it when compiling the report.</p>${fileListHtml(fr.rows,a.id,'reference')}
+        ${canW()?`<div style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="file" id="ar-file-reference" multiple><button class="btn-small" onclick="arUpload('${a.id}','reference')">Upload for reference</button></div>`:''}</div>
+      <div class="panel-head" style="margin:16px 0 6px"><h3 style="font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:600">Report</h3><span>${canW()?`<button class="btn-small primary" onclick="arCompile('${a.id}')">Compile the report with AI</button> `:''}<button class="btn-small" onclick="printAudit('${a.id}')">Preview / PDF</button></span></div>
+      <p style="font-size:12px;color:var(--text-faint);margin:0 0 6px">The AI drafts the executive summary, conclusion and reference list from the scope, checklist results, findings and reference material, in the fields below. Edit them, save, then publish.</p>
+      ${canW()&&!a.closed_at?`<div class="form-actions" style="justify-content:flex-start"><button class="btn-primary" onclick="arPublish('${a.id}')">${a.published_at?'Publish again and notify':'Publish the report and notify interested parties'}</button></div>`:''}
+      ${a.published_at?`<p style="font-size:12.5px;color:var(--green)">Published on ${E(fmtDate(String(a.published_at).slice(0,10)))}.</p>`:''}</div>${a.published_at||info.total?closeCard(a,info):''}`;
+  }
+  window.arPrepare=async function(id,send){
+    const a=STATE.audits.find(x=>x.id===id); const who=document.getElementById('arw-who').value; const chk=document.getElementById('arw-chk').value||null; const patch={audit_checklist_template_id:chk};
+    let to=null, toName='';
+    if(who==='self'){ Object.assign(patch,{auditor_id:STATE.user.id,auditor_personnel_id:null,auditor_email:null,external_auditor_name:null}); }
+    else if(who.startsWith('m:')){ const uid=who.slice(2); Object.assign(patch,{auditor_id:uid,auditor_personnel_id:null,auditor_email:null,external_auditor_name:null}); toName=memberName(uid); const em=await ensureMemberEmails(); to=em[uid]&&em[uid].email; }
+    else if(who.startsWith('p:')){ const p=arr(STATE.personnel).find(x=>x.id===who.slice(2)); Object.assign(patch,{auditor_id:null,auditor_personnel_id:p.id,auditor_email:p.email||null,external_auditor_name:p.full_name}); to=p.email; toName=p.full_name; }
+    else { const nm=document.getElementById('arw-name').value.trim(), em=document.getElementById('arw-email').value.trim(); if(!nm||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){ toast('Enter the name and a valid email address.','error'); return; } Object.assign(patch,{auditor_id:null,auditor_personnel_id:null,auditor_email:em,external_auditor_name:nm}); to=em; toName=nm; }
+    const up=await sb().from('audits').update(patch).eq('id',id); if(up.error){ toast('Could not save: '+up.error.message,'error'); return; }
+    if(chk && a.status==='in_progress'){ const ex=await sb().from('audit_checklist_item_responses').select('id').eq('audit_id',id).limit(1); if(!(ex.data||[]).length){ const items=arr(STATE.auditChecklistItems).filter(i=>i.template_id===chk&&i.is_active); if(items.length) await sb().from('audit_checklist_item_responses').insert(items.map(i=>({organisation_id:STATE.org.id,audit_id:id,item_text:i.item_text,sort_order:i.sort_order}))); } }
+    if(patch.auditor_id){ await sb().from('tasks').update({assignee_id:patch.auditor_id}).eq('linked_type','audit').eq('linked_id',id); }
+    let msg='Saved.';
+    if(send && who!=='self'){ if(!to) msg='Saved, but this person has no email address.'; else {
+        const cl=chk?(tpl=>tpl?tpl.title:'')(arr(STATE.auditChecklistTemplates).find(t=>t.id===chk)):'';
+        const body=`Hello ${toName},\n\n${(STATE.profile&&STATE.profile.name)||'A colleague'} has asked you to carry out an audit at ${STATE.org.name}.\n\nReference: ${a.audit_ref}\nAudit: ${a.title}\nScheduled for: ${fmtDate(a.planned_date)}\n${(a.standards||[]).length?'Standard(s): '+a.standards.join(', ')+'\n':''}${a.scope?'Scope: '+a.scope+'\n':''}${cl?'Checklist: '+cl+'\n':''}${(document.getElementById('arw-msg').value||'').trim()?'\nMessage:\n'+document.getElementById('arw-msg').value.trim()+'\n':''}\n${patch.auditor_id?`Sign in to QaSHE Watchman at ${location.origin}${location.pathname} and open Audits, ${a.audit_ref}, to complete the checklist and record your findings.`:'Please reply to this email to confirm. You will be given access to record the findings.'}\n\nThank you.`;
+        const ok=await sendEmailToAddress(to,`Audit assigned to you: ${a.audit_ref}, ${a.title}`,body);
+        if(ok){ await sb().from('audits').update({invite_sent_at:new Date().toISOString()}).eq('id',id); msg='Saved and emailed '+toName+'.'; } else msg='Saved, but the email could not be sent: '+(STATE._lastEmailError||'unknown reason'); } }
+    await loadAudits(); try{ await loadTasks(); }catch(e){} toast(msg,'success'); openAuditDetail(id);
+  };
+  window.arCompile=async function(id){
+    const a=STATE.audits.find(x=>x.id===id); if(!a) return; showLoader('Compiling the report with AI…');
+    try{
+      const [fr,fi,ck]=await Promise.all([filesOf(id),sb().from('audit_findings').select('*').eq('audit_id',id),sb().from('audit_checklist_item_responses').select('*').eq('audit_id',id).order('sort_order',{ascending:true})]);
+      const ref=fr.rows.filter(f=>f.kind==='reference'&&f.extracted_text).map(f=>f.file_name+':\n'+f.extracted_text.slice(0,5000)).join('\n\n').slice(0,9000);
+      const prior=STATE.audits.filter(x=>x.id!==id&&x.executive_summary&&(x.standards||[]).some(s=>(a.standards||[]).includes(s))).slice(0,2).map(x=>x.audit_ref+' '+x.title+': '+String(x.executive_summary).slice(0,500)).join('\n');
+      const items=arr(ck.data).map(r=>`- ${r.item_text} => ${r.result||'not assessed'}${r.notes?' ('+r.notes+')':''}`).join('\n').slice(0,6000);
+      const finds=arr(fi.data).map(f=>`- [${FT[f.finding_type]||f.finding_type}] ${f.clause_reference||''}: ${f.description}`).join('\n').slice(0,5000);
+      const p=await aiJson(`You are a lead auditor writing the formal report of an internal audit at ${STATE.org.name}. Write in a professional, executive tone, no hyphens as dashes, and use the term "Opportunities for Improvement" for observations.\n\nAudit: ${a.title} (${a.audit_ref})\nType: ${label(a.audit_type)}\nStandards: ${(a.standards||[]).join(', ')||'not stated'}\nScope: ${a.scope||'not stated'}\nCriteria: ${a.criteria||'not stated'}\nDate: ${a.actual_date?fmtDate(a.actual_date):fmtDate(a.planned_date)}\nAuditor: ${a.auditor_id?memberName(a.auditor_id):(a.external_auditor_name||'')}\n\nChecklist results:\n${items||'none recorded'}\n\nFindings:\n${finds||'none recorded'}\n\nPrevious audits on the same standards:\n${prior||'none'}\n\nReference material supplied:\n${ref||'none'}\n\nWrite only from the information above. Where something is not recorded, say it was not recorded rather than inventing it. Return JSON {"executive_summary":"2 to 4 paragraphs","conclusion":"formal conclusion on conformity and effectiveness, with a recommendation","reference_documents":"documents and evidence relied on, one per line","auditees":"names or roles if recorded, else empty"}. ${JSONRULE}`,3000);
+      const set=(i,v)=>{ const e=document.getElementById(i); if(e&&v) e.value=v; };
+      set('ar-execsummary',p.executive_summary); set('ar-conclusion',p.conclusion); set('ar-refdocs',p.reference_documents); set('ar-auditees',p.auditees);
+      toast('Draft written into the Report content fields below. Review, edit, then press Save report content.','success');
+      const t=document.getElementById('ar-execsummary'); if(t) t.scrollIntoView({behavior:'smooth',block:'center'});
+    }catch(e){ toast('Could not compile the report: '+(e.message||e),'error'); } finally{ hideLoader(); }
+  };
+  window.arPublish=async function(id){
+    const a=STATE.audits.find(x=>x.id===id); const es=(document.getElementById('ar-execsummary')||{}).value||a.executive_summary||''; if(es.trim().length<20){ toast('Write or compile the executive summary first, then save the report content.','error'); return; }
+    if(!confirm('Publish this report? The audit team and the interested parties are emailed.')) return;
+    await window.saveAuditReportFields(id);
+    const r=await sb().from('audits').update({published_at:new Date().toISOString(),published_by:STATE.user.id,status:['report_issued'].includes(a.status)?a.status:'completed',actual_date:a.actual_date||td()}).eq('id',id); if(r.error){ toast('Could not publish: '+r.error.message,'error'); return; }
+    let sent=0, tot=0;
+    try{ const em=await ensureMemberEmails(); const team=arr(STATE.auditTeamMembers).filter(t=>t.audit_id===id).map(t=>t.user_id); const uids=[...new Set([a.auditor_id,...team,a.close_owner_id].filter(Boolean))];
+      const body=`The audit report for ${a.audit_ref}, ${a.title}, at ${STATE.org.name} has been published.\n\nSummary:\n${es.slice(0,1200)}\n\nSign in to QaSHE Watchman at ${location.origin}${location.pathname} and open Audits, ${a.audit_ref}, to read the report, the findings and your actions.`;
+      for(const u of uids){ if(u===STATE.user.id) continue; tot++; if(em[u]&&em[u].email&&await sendEmailToAddress(em[u].email,`Audit report published: ${a.audit_ref}, ${a.title}`,body)) sent++; }
+      const pr=await sb().from('record_people').select('*').eq('record_type','audit').eq('record_id',id);
+      for(const p of arr(pr.data)){ if(!p.person_email) continue; tot++; if(await sendEmailToAddress(p.person_email,`Audit report published: ${a.audit_ref}, ${a.title}`,`Hello ${p.person_name},\n\n`+body)){ sent++; await sb().from('record_people').update({notified_at:new Date().toISOString(),notified_by:STATE.user.id}).eq('id',p.id); } } }catch(e){ console.warn(e); }
+    await loadAudits(); toast('Published. '+sent+' of '+tot+' people emailed. Now raise the nonconformances for the findings.','success'); openAuditDetail(id);
+  };
+  /* wrap the audit page */
+  { const _o=openAuditDetail; openAuditDetail=window.openAuditDetail=async function(id){
+      await _o.apply(this,arguments);
+      try{
+        const a=STATE.audits.find(x=>x.id===id); const panel=document.querySelector('#audit-detail-slot .detail-panel'); if(!a||!panel) return;
+        await loadFindingsAll(); const meta=panel.querySelector('.detail-meta'); const old=document.getElementById('ar-ext-card')||document.getElementById('ar-int-card'); if(old) old.remove();
+        const html=isExt(a)?await extCard(a):await intCard(a);
+        const anchor=meta?meta:panel.firstElementChild; anchor.insertAdjacentHTML('afterend',html);
+        if(isExt(a)){ const sr=panel.querySelector('.status-row'); if(sr) sr.remove(); [...panel.querySelectorAll('.detail-card')].forEach(c=>{ if(/Approve & Issue Report|Report approved/.test(c.textContent) && !c.closest('#ar-ext-card')) c.remove(); }); }
+        const card=document.getElementById('ar-close-card')||document.getElementById('ar-int-card')||document.getElementById('ar-ext-card');
+        if(window.__ppl&&card){ const last=document.getElementById('ar-close-card')||card; await window.__ppl.render('audit',id,last); const pc=document.getElementById('ppl-card'); if(pc){ const h=pc.querySelector('h3'); if(h) h.textContent='Interested Parties'; } }
+      }catch(e){ console.warn('b71',e); }
+    }; }
+  /* the Audits toolbar and sub tab */
+  { const _r=renderAuditSubtabContent; renderAuditSubtabContent=window.renderAuditSubtabContent=function(tab){ if(tab==='external') return renderExternal(); return _r.apply(this,arguments); }; }
+  { const _ra=renderAuditsList; renderAuditsList=window.renderAuditsList=function(){ const r=_ra.apply(this,arguments); try{ document.querySelectorAll('#audit-list-wrap tr.clickable').forEach(tr=>{ const m=(tr.getAttribute('onclick')||'').match(/openAuditDetail\('([^']+)'\)/); const a=m&&STATE.audits.find(x=>x.id===m[1]); if(a&&isExt(a)){ const s=tr.querySelector('td'); if(s&&!s.querySelector('.ar-tag')) s.insertAdjacentHTML('beforeend','<span class="ar-tag pill in_progress" style="margin-left:6px"><span class="pill-dot"></span>External report</span>'); } }); }catch(e){} return r; }; }
+  /* the Audits dashboard tile, due dates and Management Review */
+  DATE_TRACKED_MODULES.push({key:'audits',label:'Audits: Close-out Due',list:()=>STATE.audits.filter(a=>a.close_target_date&&!a.closed_at&&(a.published_at||isExt(a))),dateField:'close_target_date',isResolved:x=>!!x.closed_at,titleField:'title',getPerson:x=>memberName(x.close_owner_id||x.auditor_id)});
+  { const _w=wdAttentionItems; wdAttentionItems=window.wdAttentionItems=function(){ const out=_w.apply(this,arguments); const n=STATE.audits.filter(a=>a.close_target_date&&!a.closed_at&&a.close_target_date<td()&&(a.published_at||isExt(a))).length; if(n) out.push({label:'Audit close-outs overdue',count:n,mod:'audits'}); return out; }; }
+  { const _m=computeMRAgendaStats; computeMRAgendaStats=window.computeMRAgendaStats=function(key){ let h=_m.apply(this,arguments);
+      if(key==='audits'){ try{ const ex=STATE.audits.filter(isExt); const pub=STATE.audits.filter(a=>a.published_at||isExt(a)); const openC=pub.filter(a=>!a.closed_at).length; const od=pub.filter(a=>!a.closed_at&&a.close_target_date&&a.close_target_date<td()).length; const fs=arr(STATE._afAll);
+        h+=`<div class="mr-stat-row">${mrStatCard(ex.length,'External audit reports received',ex.filter(a=>a.ai_summary).length+' AI reviewed',null)}${mrStatCard(fs.filter(f=>f.finding_type!=='positive').length,'Audit findings raised',fs.filter(f=>f.nonconformance_id).length+' as nonconformances',null)}${mrStatCard(openC,'Audits awaiting close-out',od?od+' overdue':'none overdue',od?'var(--red)':'var(--green)')}</div>`; }catch(e){} }
+      return h; }; }
+  if(window.__wdExtra){ window.__wdExtra.push(['audits_ext','External Audit Reports',()=>{ if(!canAccessModule('audits')) return null; const ex=STATE.audits.filter(isExt); if(!ex.length) return null; const inf=ex.map(closeInfo); return [{label:'Closed out',count:inf.filter(i=>i.state==='closed').length,color:'green'},{label:'Open',count:inf.filter(i=>['open','ready','toraise','none'].includes(i.state)).length,color:'amber'},{label:'Overdue',count:inf.filter(i=>i.state==='overdue').length,color:'red'}]; }]); }
+  loadFindingsAll();
+})();
+/* ===== b72-lessons-start ===== */
+/* module lesson button on every module's home page */
+(function(){
+  const MAP = { soa:'infosec', info_assets:'infosec', threat_intel:'infosec', infosec_incidents:'infosec', process_flowcharts:'processes', account_security:'security', change_log:'security' };
+  const lessonFor = m => { const id = MAP[m] || m; return (window.WMLESSONS && window.WMLESSONS[id]) ? id : null; };
+  const css = document.createElement('style'); css.textContent = '#mod-les-btn{margin-left:auto;display:none;align-items:center;gap:6px;white-space:nowrap;flex:none;font-size:12px;background:#B21616;color:#fff;border-color:#B21616}#mod-les-btn:hover{background:#8F1010}#mod-les-btn+#mod-tpl-btn{margin-left:8px!important}#mod-les-btn .lb-short{display:inline}#mod-les-btn .lb-long{display:none}@media(min-width:1700px){#mod-les-btn .lb-long{display:inline}#mod-les-btn .lb-short{display:none}}'; document.head.appendChild(css);
+  function ensure(){
+    let b = document.getElementById('mod-les-btn'); if(b) return b;
+    const h = document.getElementById('mod-title'); if(!h || !h.parentNode) return null;
+    b = document.createElement('button'); b.id = 'mod-les-btn'; b.className = 'btn-small'; b.innerHTML = '<span aria-hidden="true">&#9654;</span> <span class="lb-long">Module Tutorial</span><span class="lb-short">Lesson</span>';
+    b.title = 'A short narrated lesson on this module';
+    const holder = h.parentNode.parentNode, tpl = document.getElementById('mod-tpl-btn');
+    if(tpl && tpl.parentNode === holder) holder.insertBefore(b, tpl); else holder.appendChild(b);
+    b.onclick = () => { const id = b.dataset.lesson; if(id && window.WMTutorial) WMTutorial.open({ lesson:id, narrate:true }); };
+    return b;
+  }
+  window.wmLessonFor = lessonFor;
+  { const _sm = showModule; showModule = window.showModule = function(mod){
+      const r = _sm.apply(this, arguments);
+      try{ const b = ensure(); if(b){ const cur = document.getElementById('mod-title').textContent; const id = lessonFor(mod); b.dataset.lesson = id || ''; b.style.display = id ? 'inline-flex' : 'none';
+        const tpl = document.getElementById('mod-tpl-btn'); if(tpl && b.nextSibling !== tpl && tpl.parentNode === b.parentNode) b.parentNode.insertBefore(b, tpl); } }catch(e){ console.warn('lesson btn', e); }
+      return r; }; }
+})();
+
+window.WMLESSONS = window.WMLESSONS || {};
+(function(W){
+W.overview = {
+why:'Most people lose the first hour of every day finding out what needs attention. The Overview does that for you, the moment you sign in.',
+who:'Everyone. Managers use it to see what is due; contributors use it to find their own actions.',
+tour:[['Your tiles','One tile for each module you may use, with a badge showing open items.',['stats','Your modules',[['Nonconformances','4','red'],['Tasks due','9'],['Audits','2'],['Documents','31']],'Click any tile to go straight in']],
+ ['The reminders pop-up','Actions, expiries and reviews that are due appear when you sign in.',['cards','Due today',[['Calibration certificate expires','Gauge G-04 · 6 days','Due'],['Corrective action overdue','NC-0114 · P. Naidoo','Overdue'],['Policy review','Quality Policy · 12 days','Due']]]],
+ ['The side menu','Every module you have access to, grouped, with badges for open items.',['table','Side menu',['Module','Open'],[['Nonconformances','4'],['Tasks','9'],['Audits','2']]]]],
+steps:[['Sign in','Sign in with your email, password and the authenticator code. You land on the Overview.',['form','Sign in',[['Email','david@company.co.za'],['Password','••••••••'],['*Authenticator code','482 913']],'Sign in']],
+ ['Read the reminders','If anything is due, a pop-up lists it. Read it, then open the item or close the pop-up.',['cards','Reminders',[['Corrective action overdue','NC-0114','Overdue'],['Training expires in 14 days','Forklift licence','Due']]]],
+ ['Open a tile','Click a tile to jump straight to that module. The badge tells you how many items need you.',['stats','Overview',[['Nonconformances','4','red'],['Tasks due','9'],['Documents','31'],['Audits','2']]]],
+ ['Use the badges','A red badge on the side menu means something is overdue. Start with the red ones.',['table','Side menu',['Module','Open','Overdue'],[['*Nonconformances','4','2'],['Tasks','9','0']]]],
+ ['Get help any time','The face at the bottom of the page answers how-to questions, takes bug reports and change requests.',['chain','Help',['Ask me for help','Report a bug','Request a change'],'Always one click away']]],
+tips:['Start every day on the Overview and clear the red badges first.','Open the Templates button inside a module to find ready-made documents.','If a module is missing, ask your administrator: access is set per person.'],
+ask:'How do you know when an action, certificate or review is about to fall due?'};
+W.compliance = {
+why:'Instead of finding out at the annual audit that registers are out of date, you see a live compliance score every day and fix the cause.',
+who:'Managers, directors and the person responsible for the management system.',
+tour:[['The health score','One figure built from every register you keep, with colour for how healthy it is.',['stats','Compliance health',[['Health score','86%','grn'],['Registers current','21'],['Overdue items','4','red']],'Updated live']],
+ ['The module tiles','Each module shows what is done, what is due and what is overdue.',['table','By module',['Module','Done','Gap'],[['Training','24','2'],['Legal','31','1'],['*Suppliers','12','5']]]],
+ ['The drill-down','Click a tile to see the individual items behind it.',['cards','Suppliers: gaps',[['Annual review overdue','Delta Steel','Overdue'],['Certificate expired','Apex Lifting','Expired']]]]],
+steps:[['Open the dashboard','Choose Compliance Dashboard. Every module you can access is covered.',['stats','Compliance Dashboard',[['Health score','86%','grn'],['Modules','34']]]],
+ ['Read the score','Green is healthy, amber is due soon, red is a gap. Read the weakest tiles first.',['bars','Score over six months',[55,60,62,70,78,86],'Steady improvement']],
+ ['Find what pulls it down','Look for tiles with red. They show exactly how many items are overdue.',['table','Weakest areas',['Module','Overdue'],[['*Suppliers','5'],['Training','2'],['Documents','1']]]],
+ ['Click through','Click the tile to see the items. Open an item and fix it, or raise an action.',['cards','Overdue suppliers',[['Delta Steel','Annual review','Overdue'],['Apex Lifting','Certificate','Expired']]]],
+ ['Watch the trend','The trend shows whether things are improving. Report it at management review.',['bars','Health score',[55,60,62,70,78,86],'Up six points this quarter']]],
+tips:['Check the dashboard weekly, not just before an audit.','Red tiles tell you where to act; do not chase green ones.','Show the trend chart at management review as evidence of improvement.'],
+ask:'How do you monitor the performance of your management system, and where is the evidence?'};
+W.business_health = {
+why:'Compliance in one area can hide a weakness in another. Business Health shows every discipline side by side, so management sees the whole picture.',
+who:'Directors, the managing director and management system owners.',
+tour:[['Discipline cards','Governance, quality, safety, environment, information security, POPIA, welding and excellence.',['check','Disciplines',['Governance','Quality','Environment','-Health and safety','-Information security']]],
+ ['Validation against records','Each card is checked against what is really recorded, not what is claimed.',['stats','Health and safety',[['Checks passed','9','grn'],['Gaps','3','red']],'Validated against the registers']],
+ ['Gaps become actions','Any weak area can be opened and an action assigned.',['chain','From gap to action',['Gap found','Open the area','Assign action','Closed'],'Tracked in Task Management']]],
+steps:[['Open Business Health','Choose Business Health Validation from the side menu.',['stats','Business health',[['Disciplines','8'],['Healthy','5','grn'],['Needs attention','3','red']]]],
+ ['Review each card','Read each discipline card. Green means the evidence supports it.',['check','Disciplines',['Governance','Quality','Environment','-Health and safety']]],
+ ['Open a weak area','Click an amber or red card to see which checks failed.',['check','Health and safety',['Legal register reviewed','Incident register used','-Training matrix incomplete','-Two risk reviews overdue']]],
+ ['Assign actions','Raise an action for each gap with an owner and a date.',['form','New action',[['Action','Complete the training matrix'],['Owner','S. Dlamini'],['*Due','30 November']],'Save']],
+ ['Report to management','Use the view at management review to show the state of the whole business.',['chain','Reporting',['Business Health','Management Review','Decisions','Actions']]]],
+tips:['Review it monthly with the management team.','Fix red cards before amber ones.','Use it to brief directors in five minutes.'],
+ask:'How does top management satisfy itself that the system is effective across all disciplines?'};
+W.nonconformances = {
+why:'Every Opportunity for Improvement is captured once, owned by one person, and closed with proof. Nothing is lost in email or on a desk.',
+who:'Anyone can report. Managers investigate and close. Auditors read the register.',
+tour:[['The register','Every record with its number, severity, owner and status in one list.',['table','Nonconformances',['Ref','Category','Severity','Status'],[['NC-0114','Housekeeping','Minor','Open'],['NC-0115','Calibration','Major','Investigating'],['NC-0113','Training','Minor','Closed']]]],
+ ['Category first','Choose the category first, and only then do the details open. This keeps every record countable.',['form','New record',[['*Category','Housekeeping'],['Description','Pallet fell from racking'],['Severity','Minor']],'Save']],
+ ['The workflow','A record moves from raised, to investigated, to corrected, to verified and closed.',['flow','Workflow',['Raised','Investigate','Correct','Verify','Closed'],2]]],
+steps:[['Raise it','Click New, choose the category first, then describe what happened and the severity.',['form','New nonconformance',[['*Category','Calibration'],['Description','Gauge G-04 used out of date'],['Severity','Major']],'Save']],
+ ['Assign an owner','Give it an owner and a target close date. They are emailed straight away.',['form','Ownership',[['Owner','P. Naidoo'],['*Target close date','30 November'],['Immediate action','Gauge removed from use']]]],
+ ['Find the root cause','Ask why until you reach the real cause. Record it, then agree the corrective action.',['chain','Five whys',['Gauge out of date','No reminder','No register','No owner'],'Root cause: no owner for calibration']],
+ ['Involve the right people','Add people involved and email them to comment, add information or upload evidence. A client or supplier can respond by private link.',['mail','Your input is requested: NC-0115',['p.naidoo@company.co.za','Please add your comments and upload the calibration certificate.','Open the record']]],
+ ['Verify and close','Check the fix worked, attach the evidence, and close. Closing is signed and recorded.',['check','Closure',['Corrective action done','Evidence attached','Effectiveness verified','Closed and signed']]]],
+tips:['Pick the category carefully: it drives your trend reports.','Always link a risk or task when the fix is bigger than one action.','Print the record to PDF as the file copy: it carries the NC number and your own reference.'],
+ask:'Show me how you decide that a corrective action was effective, and the evidence.'};
+W.incidents = {
+why:'A near miss reported today is an injury prevented tomorrow. This register makes reporting quick and the trends visible.',
+who:'Every worker reports. Supervisors and the SHE officer investigate.',
+tour:[['One register','Near misses, incidents and accidents together, with severity and status.',['table','Incidents',['Ref','Type','Severity','Status'],[['IAN-0102','Near miss','Minor','Closed'],['IAN-0103','Incident','Major','Open']]]],
+ ['Injury details','For injuries: body part, days lost and whether it must be reported to the authority.',['form','Injury details',[['Body part','Left hand'],['Days lost','3'],['*Reportable to authority','Yes']]]],
+ ['Trends','Statistics per category and period show where the next incident will come from.',['bars','Incidents per month',[30,40,25,55,35,20],'Slips and falls are the top category']]],
+steps:[['Say what happened','Choose near miss, incident or accident, then the category.',['form','Report',[['*Type','Near miss'],['Category','Slip, trip or fall'],['When','Today, 09:40']],'Save']],
+ ['Describe it','Say what happened, who was involved and what was done immediately.',['form','Details',[['What happened','Worker slipped on wet floor'],['Immediate action','Area cordoned off'],['*Witness','T. Mokoena']]]],
+ ['Record injuries','Capture the injury, days lost and any notification to the authority.',['form','Injury',[['Injury','Bruised knee'],['Days lost','0'],['*Reportable','No']]]],
+ ['Investigate','Find the root cause and agree corrective actions. They become tasks.',['chain','Investigation',['Incident','Root cause','Corrective action','Task']]],
+ ['Review the trends','Each month look at categories and periods and ask what to change.',['bars','By category',[60,35,25,15,10],'Slips, trips and falls lead']]],
+tips:['Make reporting near misses easy and blame free.','Investigate within 24 hours while memories are fresh.','Check reporting duties under the OHS Act and COIDA for injuries.'],
+ask:'How do you investigate incidents, and how do you know the same one will not happen again?'};
+W.raga = {
+why:'Red and Orange alerts get risks fixed fast. Green alerts recognise good practice, which builds the culture you want.',
+who:'Everyone raises alerts. Supervisors and managers own and close them.',
+tour:[['Red, Orange, Green','Red is serious, Orange is minor, Green is recognition.',['table','Alerts',['Ref','Alert','Category','Status'],[['RA-0031','Red','Working at height','Open'],['RA-0032','Orange','PPE','Open'],['RA-0033','Green','Housekeeping','Completed']]]],
+ ['Category first','Choose the category so alerts can be counted and trended.',['form','New alert',[['*Alert','Red'],['Category','Working at height'],['Description','Harness not clipped on']],'Save']],
+ ['Recognition','Green alerts name the person and what they did well.',['cards','Green alerts',[['Best housekeeping in the warehouse','P. Naidoo','Completed']]]]],
+steps:[['Pick the colour','Red for serious, Orange for minor, Green for good practice.',['chain','Colour',['Red','Orange','Green'],'Serious · Minor · Positive']],
+ ['Choose the category','The category comes first so the details open for the right situation.',['form','Category',[['*Category','PPE not worn or not suitable'],['Description','']]]],
+ ['Describe it','Say what happened, or what was done well, and who is responsible.',['form','Details',[['Description','Contractor without safety glasses'],['Owner','S. Dlamini'],['*Target','Today']]]],
+ ['Track to closure','Red and Orange alerts stay open until the owner closes them with evidence.',['flow','Status',['Raised','Owner acting','Closed'],1]],
+ ['Recognise the good','Green alerts can be shared in a bulletin or toolbox talk.',['mail','Well done, P. Naidoo',['team@company.co.za','Thank you for the best housekeeping in the warehouse this month.']]]],
+tips:['Aim for as many Green alerts as Red ones.','Close Red alerts the same week.','Review the categories monthly to spot patterns.'],
+ask:'How do you encourage hazard reporting, and what happens after someone reports?'};
+W.tasks = {
+why:'Good intentions fall away without owners and dates. Tasks turn every decision, finding and review into an action somebody must finish.',
+who:'Everyone who has an action; managers who verify completion.',
+tour:[['Task list','All tasks with owner, due date and status.',['table','My tasks',['Task','Owner','Due','Status'],[['Close NC-0114','P. Naidoo','30 Nov','Open'],['Renew certificate','S. Dlamini','12 Nov','Overdue'],['Update register','T. Mokoena','20 Nov','Completed']]]],
+ ['Source link','Each task links back to the record that created it.',['chain','Source',['Audit finding','Nonconformance','Task'],'Click through to see why']],
+ ['Reminders','Overdue actions are flagged and the owner is reminded.',['cards','Reminder',[['Renew certificate','Overdue by 3 days','Overdue']]]]],
+steps:[['An action is created','Most tasks are created for you: from nonconformances, audits and reviews.',['chain','Created from',['Nonconformance','Audit','Management review','Task']]],
+ ['Assign owner and date','Every task has one owner and a due date.',['form','Task',[['Task','Replace fire extinguisher'],['*Owner','P. Naidoo'],['Due','30 November']],'Save']],
+ ['Owner updates progress','The owner adds notes as the work progresses.',['flow','Progress',['Created','Assigned','In progress','Verified','Closed'],2]],
+ ['Verify','A manager checks the work and confirms completion.',['check','Verify',['Work completed','Evidence attached','Manager confirmed']]],
+ ['Close with evidence','Closing a task keeps the evidence with the record.',['cards','Closed',[['Replace fire extinguisher','Closed 28 Nov · evidence attached','Completed']]]]],
+tips:['One task, one owner. Shared ownership means nobody owns it.','Use realistic dates; overdue tasks hide the real ones.','Open the source record when you are not sure why a task exists.'],
+ask:'How do you make sure actions arising from audits and reviews are completed?'};
+W.audits = {
+why:'Audits prove the system works. Watchman takes you from plan to report, and turns findings into tracked action, for your own audits and those received from outside.',
+who:'Internal auditors, the audit programme owner, managers and anyone who responds to findings.',
+tour:[['Plan and register','The audit programme, with date, standard, scope and auditor.',['table','Audit plan',['Audit','Standard','Date','Status'],[['Internal ISO 9001','ISO 9001','10 Dec','Planned'],['Supplier audit','ISO 45001','14 Nov','In progress']]]],
+ ['Checklist and findings','Apply a checklist, tick conformance and record findings with evidence.',['check','Checklist',['Policy displayed','Legal register reviewed','-Calibration certificates expired','Actions closed on time']]],
+ ['External audit reports','Upload a customer, supplier or certification body report. AI extracts the findings and raises nonconformances.',['cards','External reports',[['ISO 9001 surveillance','LRQA · 2 findings','Open']]]]],
+steps:[['Plan the audit','Set the title, standard, scope, date and auditor. Assign by email or do it yourself.',['form','Plan',[['Title','Internal ISO 9001'],['*Auditor','Anna Botha (by email)'],['Date','10 December']],'Save']],
+ ['Upload previous audits','Upload an earlier report for context. The AI uses it when compiling the new report.',['cards','Reference material',[['Audit 2025.pdf','Previous report','Completed']]]],
+ ['Do the audit','Work through the checklist and record findings and evidence.',['check','Checklist',['Policy displayed','Training current','-Calibration expired','Objectives reviewed']]],
+ ['Compile and publish','The AI drafts the executive summary and conclusion. You edit, then publish the report to the team.',['mail','Audit report published: AUD-0009',['team@company.co.za','The internal audit report is published. Please review your actions.','Open the audit']]],
+ ['Raise and close findings','Raise nonconformances for each finding. The audit closes out when every one is closed.',['flow','Close-out',['Findings','Nonconformances','Actions','Verified','Audit closed'],2]]],
+tips:['Upload last year\'s report so the AI can compare.','Use the external reports tab for customer and certification audits.','Close out by the target date and sign the close-out.'],
+ask:'Show me your audit programme, and how findings were followed up to closure.'};
+W.risks = {
+why:'Risks and opportunities that are scored and reviewed let you spend effort where it matters, and give auditors proof of risk based thinking.',
+who:'Management, process owners and the risk champion.',
+tour:[['The register','Each risk with its score, owner and treatment status.',['table','Risk register',['Ref','Risk','Score','Status'],[['R-012','Loss of key supplier','15','Treating'],['R-013','Cyber attack','20','Treating'],['R-014','Injury on site','12','Open']]]],
+ ['Scoring','Likelihood times impact gives the score. High scores need treatment first.',['stats','Score',[['Likelihood','4'],['Impact','5'],['Score','20','red']],'Likelihood 4 × impact 5']],
+ ['Treatment','Actions to reduce the risk, with owners and dates.',['cards','Treatment plan',[['Offsite backup','IT Lead · 15 Dec','Planned'],['Staff awareness training','HR · 30 Nov','In progress']]]]],
+steps:[['Add the risk or opportunity','Describe it, choose the category and say what could go wrong or right.',['form','New risk',[['Risk','Loss of a key supplier'],['*Category','Supply chain'],['Cause','Single source of steel']],'Save']],
+ ['Score it','Score likelihood and impact. The score decides the priority.',['stats','Score',[['Likelihood','3'],['Impact','5'],['Score','15','red']]]],
+ ['Agree treatment','Agree actions, an owner and a date. Actions become tasks.',['form','Treatment',[['Action','Qualify a second supplier'],['Owner','P. Naidoo'],['*Due','31 January']]]],
+ ['Link it','Link the risk to nonconformances and objectives it affects.',['chain','Links',['Risk R-012','Nonconformance NC-0114','Objective O-3']]],
+ ['Review and re-score','Review on the set date and re-score after treatment. Show the reduction.',['bars','Score over time',[80,70,60,45,35],'Risk reduced after treatment']]],
+tips:['Record opportunities too, not just risks.','Link every serious nonconformance to a risk.','Review high scores monthly.'],
+ask:'How do you determine and address risks and opportunities, and how do you know the actions worked?'};
+W.objectives = {
+why:'Objectives turn the policy into numbers and dates, so people can see progress instead of wondering.',
+who:'Top management sets them; process owners deliver them.',
+tour:[['Objective list','Each objective with measure, target, owner and progress.',['table','Objectives',['Objective','Target','Progress','Status'],[['Reduce incidents','5 per year','3','On track'],['On-time delivery','95%','91%','Amber']]]],
+ ['Progress over time','Record the figure each period and watch the line.',['bars','On-time delivery',[84,86,88,90,91,91],'Target 95%']],
+ ['Links','Each objective links to a process, risk and policy.',['chain','Links',['Policy','Objective','Process','Risk']]]],
+steps:[['Set the objective','Write it as a measure, a target and a date.',['form','New objective',[['Objective','On-time delivery'],['*Target','95% by 31 March'],['Owner','Operations manager']],'Save']],
+ ['Link it','Link it to a process, risk or policy statement.',['chain','Link',['Process: Despatch','Objective O-3','Risk R-014']]],
+ ['Record progress','Enter the actual each period.',['form','Progress',[['Period','October'],['*Actual','91%'],['Comment','Two late trucks']]]],
+ ['Watch the trend','Bars show whether you are moving toward the target.',['bars','Progress',[84,86,88,90,91],'Rising']],
+ ['Review at management review','Review progress and decide actions where you are behind.',['stats','Status',[['On track','7','grn'],['At risk','2','red'],['Achieved','4']]]]],
+tips:['Make objectives measurable and time bound.','Fewer, better objectives beat a long list.','Link each to a process owner who can act.'],
+ask:'What are your objectives, how are they monitored, and what do you do when you are behind?'};
+W.management_review = {
+why:'The management review is where top management decides. Watchman builds the agenda from live data so the meeting starts informed.',
+who:'Top management, the management system owner and everyone who reports.',
+tour:[['The agenda','Built from audits, incidents, objectives, customers, risks and more.',['check','Agenda',['Previous actions','Audit results','Incident trends','Customer satisfaction','Objectives and risks','Resources']]],
+ ['Live data','Each agenda item shows the current figures from its module.',['stats','Audit results',[['External reports','2'],['Findings raised','7'],['Close-outs overdue','1','red']]]],
+ ['Decisions and actions','Record decisions. They become tracked tasks.',['cards','Decisions',[['Approve second supplier','M. Goedvolk · 31 Jan','Assigned']]]]],
+steps:[['Open the review','Create the review for the period and pull in the data.',['form','New review',[['Period','Q4 2026'],['*Chair','Managing director'],['Date','8 December']],'Create']],
+ ['Walk the agenda','Go item by item. The data is already on screen.',['check','Agenda',['Previous actions','Audit results','Incidents','Objectives']]],
+ ['Record decisions','Write decisions and any changes to the policy or resources.',['form','Decision',[['Decision','Appoint a second steel supplier'],['*Owner','Procurement manager'],['Due','31 January']]]],
+ ['Actions become tasks','Each action is assigned and tracked in Task Management.',['chain','Flow',['Decision','Task','Owner','Closed']]],
+ ['Sign and file','Sign the minutes and keep them as evidence.',['cards','Minutes',[['Management review Q4 2026','Signed 8 December','Approved']]]]],
+tips:['Hold it quarterly and keep the dates.','Make sure every input required by the standard is covered.','Review last quarter\'s actions first.'],
+ask:'Show me the minutes of your last management review and the actions that came out of it.'};
+})(window.WMLESSONS);
+
+(function(W){
+W.documents = {
+why:'Out-of-date documents cause errors and failed audits. Document Management makes sure everyone uses the current approved version, and that changes are reviewed and approved.',
+who:'Document owners, reviewers, approvers and every user who needs the latest version.',
+tour:[['The register','Every document with its number, revision, status and owner.',['table','Documents',['Number','Title','Rev','Status'],[['QMS-PRO-004','Control of Records','2','Approved'],['HSE-FRM-011','Incident Report','1','Review'],['QMS-POL-001','Quality Policy','3','Approved']]]],
+ ['Numbering','Numbers are built from department and document type, so the library stays tidy.',['chain','Number',['QMS','PRO','004'],'Department, type, sequence']],
+ ['The workflow','Draft, review, approval, approved. A document cannot skip a stage.',['flow','Workflow',['Draft','Review','Approval','Approved'],1]]],
+steps:[['Create the document','Click New Document, name it, and pick the department and type.',['form','New document',[['Name','Control of Records'],['*Department','Quality'],['Type','Procedure']],'Continue']],
+ ['Start from a template or upload','Pick a template, upload an historical document for reference, or ask the AI to draft it.',['cards','Starting point',[['Template: Procedure','Library','New'],['Upload old version','Reference','Draft']]]],
+ ['Write and review','Add reviewers. Each gets an email and their own comment colour. Everyone must tick Satisfied.',['check','Reviewers',['Anna Botha: satisfied','P. Naidoo: satisfied','-S. Dlamini: comments open']]],
+ ['Approve','Choose the approver. They receive a link and approve, or send it back for changes.',['mail','For your approval: QMS-PRO-004',['m.goedvolk@company.co.za','The document is ready for approval.','Open the document']]],
+ ['Revise with history','To change an approved document, request an amendment. The current version stays in use meanwhile.',['table','History',['Rev','Date','Status'],[['*3','12 Nov','Approved'],['2','5 Mar','Superseded']]]]],
+tips:['Use the numbering scheme from day one.','Give reviewers a deadline.','Never email a document to staff. Point them to All Documents.'],
+ask:'How do you make sure that only current approved documents are in use?'};
+W.all_documents = {
+why:'People waste time hunting for documents. All Documents puts every controlled and legacy file in one searchable place.',
+who:'Everyone. Administrators maintain what is filed.',
+tour:[['Browse by department','Documents are filed by department and type.',['table','Filing',['Department','Documents'],[['Quality','48'],['Health and safety','62'],['Human resources','25']]]],
+ ['Search','Search across all documents at once, by name, number or type.',['form','Search',[['*Search','calibration'],['Results','6 documents']]]],
+ ['Status at a glance','See the revision and status before you open.',['table','Results',['Number','Title','Rev','Status'],[['QMS-PRO-012','Calibration','2','Approved'],['QMS-FRM-020','Calibration Log','1','Approved']]]]],
+steps:[['Open All Documents','Choose All Documents from the Documents menu.',['stats','All documents',[['Documents','135'],['Departments','9']]]],
+ ['Search or browse','Type a word or open a department to see its documents.',['form','Search',[['*Search','incident'],['Department','Health and safety']]]],
+ ['Open the document','Click the title to open or download it.',['cards','Result',[['HSE-PRO-007 Incident Reporting','Rev 2 · Approved','Approved']]]],
+ ['Check its status','Make sure it is the approved revision before you use it.',['table','Document',['Number','Rev','Status'],[['*HSE-PRO-007','2','Approved']]]],
+ ['Ask for an amendment','Spotted an error? Request an amendment. It flags the document while the current version stays usable.',['flow','Amendment',['Approved','Amendment requested','Review','Approved'],1]]],
+tips:['Search first. Do not keep personal copies.','Check the revision before every use.','Approved documents arrive here automatically.'],
+ask:'Where do your staff find the documents they must work to?'};
+W.master_register = {
+why:'The master register is the auditor\'s first request. It lists every controlled document number, revision, owner and review date.',
+who:'Administrators and document controllers. Auditors read it.',
+tour:[['The master list','Every number, title, revision and owner.',['table','Master register',['Number','Title','Rev','Review due'],[['QMS-POL-001','Quality Policy','3','Mar 27'],['HSE-PRO-007','Incident Reporting','2','*Overdue']]]],
+ ['Checks','Automatic checks flag gaps, duplicate numbers and numbers that do not match the scheme.',['check','Checks',['Numbers unique','-Gap in QMS-PRO series','Scheme followed']]],
+ ['AI review','An AI second pass suggests possible duplicates and misfiled documents. It only suggests.',['cards','AI suggestions',[['Two procedures cover the same process','QMS-PRO-004 and 011','Review']]]]],
+steps:[['Open the register','Choose Master Documents Register. It appears even if Document Control is off.',['stats','Master register',[['Documents','135'],['Review due','4','red']]]],
+ ['Filter','Filter by department, type or status.',['form','Filter',[['*Department','Quality'],['Status','Approved']]]],
+ ['Check revision and review','Overdue reviews show in red. Open the document to start the review.',['table','Due',['Number','Review'],[['*HSE-PRO-007','Overdue'],['QMS-POL-001','Mar 27']]]],
+ ['Run the AI review','Click Run AI Review for a second opinion. Each finding is a suggestion you accept or dismiss.',['cards','Findings',[['Probable duplicate','QMS-PRO-004 / 011','Review']]]],
+ ['Print for the auditor','Print or export the register as evidence of document control.',['chain','Evidence',['Register','Print','Auditor']]]],
+tips:['Fix duplicates and gaps before the auditor finds them.','Review overdue documents monthly.','The AI only suggests. You decide.'],
+ask:'May I see your register of controlled documents?'};
+W.policies = {
+why:'Starting from a blank page is slow and risky. The library has over five hundred audit-ready templates with reference numbers.',
+who:'Anyone who writes a document, form or register. Administrators control them.',
+tour:[['The library','Policies, procedures, forms, registers, checklists, flowcharts and letters.',['table','Library',['Ref','Template','Type'],[['POL-014','Quality Policy','Policy'],['PRO-022','Incident Procedure','Procedure'],['FRM-031','Inspection Form','Form']]]],
+ ['Templates in each module','A Templates button inside each module shows what belongs there.',['cards','Incidents: templates',[['Incident Report Form','FRM-044','New'],['Investigation Report','FRM-045','New']]]],
+ ['Traceability','Every template carries a stable reference number.',['chain','Reference',['PRO','022','Rev 3']]]],
+steps:[['Click Templates','Open any module and click Templates.',['chain','Where',['Module','Templates button','Library']]],
+ ['Search and preview','Search by name or standard and preview before using.',['form','Search',[['*Search','incident'],['Standard','ISO 45001']]]],
+ ['Create or apply','Create a document from it, or apply a checklist or flowchart.',['cards','Use it',[['Create document','Document Management','New'],['Apply checklist','Audits','New']]]],
+ ['Adapt it','Make it yours: your name, your processes, your risks.',['form','Edit',[['Company','Your Company (Pty) Ltd'],['*Scope','Warehouse and despatch']]]],
+ ['Approve and control','Approve it. It becomes a controlled document.',['flow','Controlled',['Template','Adapted','Approved'],2]]],
+tips:['Adapt templates. Auditors spot generic text.','Use the module Templates button to save time.','Approve before use.'],
+ask:'How were your procedures developed, and are they relevant to your operations?'};
+W.checklists = {
+why:'Inspections done the same way every time give you comparable results and a defensible record.',
+who:'Inspectors, supervisors, auditors.',
+tour:[['Library checklists','Pass or fail and weighted score lists from the template library.',['cards','Checklists',[['Forklift pre-use','12 items','Active'],['Housekeeping','20 items','Active']]]],
+ ['Answering','Answer each item. Failures can have a note and a photo.',['check','Forklift pre-use',['Brakes tested','Horn works','-Hydraulic leak seen']]],
+ ['The score','A score is calculated and trended over time.',['stats','Result',[['Score','83%'],['Failed','1','red']]]]],
+steps:[['Pick the checklist','Choose the checklist for the job.',['cards','Pick',[['Forklift pre-use','12 items','Active']]]],
+ ['Answer each item','Tick pass or fail. Add a note or photo for a failure.',['check','Items',['Brakes tested','Horn works','-Hydraulic leak seen']]],
+ ['See the score','The score appears as soon as you finish.',['stats','Score',[['Result','83%','grn'],['Failed','2','red']]]],
+ ['Raise actions','A failed item can raise an action with an owner.',['form','Action',[['Item','Hydraulic leak'],['*Owner','Workshop manager']],'Raise']],
+ ['Watch the trend','Scores over time show whether standards are holding.',['bars','Score',[70,76,80,78,85,90],'Improving']]],
+tips:['Run checklists on a phone at the point of work.','Photos make actions easy to understand.','Review failed items weekly.'],
+ask:'How do you inspect equipment and workplaces, and what happens to failures?'};
+W.processes = {
+why:'A process on paper is not a process in control. Registers, flowcharts and KPIs show who owns it and how well it runs.',
+who:'Process owners, the management system owner and managers.',
+tour:[['Process register','Each process with an owner and linked documents.',['table','Processes',['Process','Owner','KPIs'],[['Despatch','Operations','3'],['Purchasing','Procurement','2']]]],
+ ['Flowchart','Draw it or apply a template to show the steps.',['chain','Despatch',['Order','Pick','Pack','Load','Deliver']]],
+ ['KPIs','Weighted KPIs are measured over time.',['bars','On-time delivery',[84,86,88,90,91],'Target 95%']]],
+steps:[['Register the process','Name it, assign the owner, state its purpose.',['form','New process',[['Name','Despatch'],['*Owner','Operations manager']],'Save']],
+ ['Draw the flowchart','Build it step by step or apply a template.',['chain','Flow',['Order','Pick','Pack','Load','Deliver']]],
+ ['Set KPIs and weights','Choose what to measure and how much it counts.',['table','KPIs',['KPI','Target','Weight'],[['On-time delivery','95%','50'],['Damage rate','1%','30']]]],
+ ['Record readings','Enter the result each period.',['form','Reading',[['Period','October'],['*On-time','91%']]]],
+ ['Review','Review KPIs at management review and act on misses.',['stats','KPIs',[['Met','4','grn'],['Missed','1','red']]]]],
+tips:['Keep flowcharts simple, six to ten steps.','Fewer KPIs, measured regularly.','Link each process to its procedure and objective.'],
+ask:'How do you monitor and measure your key processes?'};
+W.five_s = {
+why:'A tidy workplace is safer and more productive. 5S inspections score it and keep it that way.',
+who:'Area supervisors, inspectors and everyone in the area.',
+tour:[['Areas','Every area is inspected and scored.',['table','Areas',['Area','Last score'],[['Warehouse','82%'],['Workshop','74%'],['Office','91%']]]],
+ ['Five S','Sort, set in order, shine, standardise, sustain.',['chain','5S',['Sort','Set in order','Shine','Standardise','Sustain']]],
+ ['Photos','Photos prove the condition.',['cards','Findings',[['Tools left on bench','Workshop','Open']]]]],
+steps:[['Select the area','Pick the area and the inspector.',['form','Inspection',[['*Area','Workshop'],['Date','Today']],'Start']],
+ ['Score the five S','Score each S.',['table','Scores',['S','Score'],[['Sort','4'],['Set in order','3'],['*Shine','2'],['Standardise','4'],['Sustain','3']]]],
+ ['Add photos','Add a photo and note for each finding.',['cards','Evidence',[['Oil spill near bay 2','Photo attached','Open']]]],
+ ['Raise actions','Actions go to the area owner.',['form','Action',[['Action','Clean bay 2'],['*Owner','Workshop foreman']]]],
+ ['Publish the scores','Publish so every area sees how it compares.',['bars','Area scores',[82,74,91,68],'Friendly competition']]],
+tips:['Inspect the same areas on a fixed day.','Photograph the good as well as the bad.','Share scores openly.'],
+ask:'How do you maintain order and cleanliness in the workplace?'};
+W.appraisals = {
+why:'Performance reviews should be fair and focused. KPIs for each position, a self-assessment and a manager review make them so.',
+who:'Employees, line managers and human resources.',
+tour:[['Position KPIs','Each position has its own KPIs.',['table','Position KPIs',['KPI','Weight'],[['Quality of work','30'],['Safety compliance','30'],['Deadlines','40']]]],
+ ['Self-assessment','The employee rates themselves first.',['form','Self-assessment',[['Deadlines','4'],['*Comment','Delivered all projects']]]],
+ ['Manager review','The manager rates and agrees development.',['stats','Review',[['Self','4.1'],['Manager','3.8']]]]],
+steps:[['Set position KPIs','Define what good looks like for the position.',['table','KPIs',['KPI','Weight'],[['Quality','30'],['Safety','30']]]],
+ ['Employee self-assessment','The employee completes it online.',['form','Self-assessment',[['*Rating','4'],['Comment','Met all targets']]]],
+ ['Manager reviews','The manager gives the rating and comments.',['form','Manager review',[['*Rating','3.8'],['Comment','Strong on safety']]]],
+ ['Agree development','Development needs flow into Training.',['cards','Needs',[['First aid refresher','Training','Planned']]]],
+ ['Sign and file','Both sign. The record is kept.',['check','Sign-off',['Employee signed','Manager signed']]]],
+tips:['Review KPIs yearly with the employee.','Be specific in comments.','Turn needs into training the same day.'],
+ask:'How do you evaluate the performance and competence of your people?'};
+W.personnel = {
+why:'You cannot prove competence without a record. Personnel and Competence shows who is qualified, medically fit and certified, and when it expires.',
+who:'Human resources, line managers and the SHE officer.',
+tour:[['People register','Every person with position, department and line manager.',['table','Personnel',['Name','Position','Status'],[['P. Naidoo','Forklift operator','Active'],['S. Dlamini','Welder','Active']]]],
+ ['Competence matrix','Position against skills, with gaps coloured.',['table','Matrix',['Skill','Competent','Gap'],[['First aid','12','2'],['Forklift','8','1']]]],
+ ['Expiry','Certificates and medicals show when they expire.',['cards','Expiring',[['Medical certificate','P. Naidoo · 14 days','Expiring']]]]],
+steps:[['Add the person','Enter name, position, department and line manager.',['form','New person',[['Name','P. Naidoo'],['*Position','Forklift operator']],'Save']],
+ ['Record qualifications','Add certificates with expiry dates.',['form','Certificate',[['Certificate','Forklift licence'],['*Expiry','30 June 2027']]]],
+ ['See the matrix','Green is competent, amber expiring, red a gap.',['table','Matrix',['Skill','Status'],[['Forklift','Competent'],['*First aid','Gap']]]],
+ ['Raise training','Gaps become training needs.',['cards','Needs',[['First aid','P. Naidoo','Planned']]]],
+ ['Watch expiries','Reminders tell you before anything lapses.',['mail','Certificate expiring',['hr@company.co.za','Medical certificate for P. Naidoo expires in 14 days.']]]],
+tips:['Keep certificates attached to the record.','Review the matrix quarterly.','Do not assign work without competence.'],
+ask:'How do you determine the necessary competence of people, and keep evidence?'};
+W.orgchart = {
+why:'Responsibility must be clear, written and signed. Organisation charts and appointment letters give you that, with renewal notices.',
+who:'Management, human resources and appointees.',
+tour:[['Master chart','The organisation, drawn from job titles and reporting lines.',['chain','Structure',['MD','Operations','Supervisors']]],
+ ['Appointments','Legal appointments are listed with their status.',['table','Appointments',['Role','Person','Status'],[['SHE representative','P. Naidoo','Signed'],['First aider','S. Dlamini','Awaiting']]]],
+ ['Signature','Appointees sign electronically.',['mail','Appointment letter',['p.naidoo@company.co.za','Please review and sign your appointment as SHE representative.','Sign now']]]],
+steps:[['Set up positions','Create departments and positions.',['form','Position',[['Position','Operations manager'],['*Reports to','Managing director']]]],
+ ['Appoint a person','Choose the role and the person.',['form','Appointment',[['*Role','SHE representative'],['Person','P. Naidoo']],'Appoint']],
+ ['They sign','They receive the letter and sign electronically.',['mail','Please sign',['p.naidoo@company.co.za','Your appointment letter is ready.','Sign now']]],
+ ['File and show','The signed letter and chart are on file.',['cards','Signed',[['SHE representative','Signed 12 Nov','Signed']]]],
+ ['Renew in time','A notice arrives before the appointment lapses.',['cards','Notice',[['First aider','Expires in 30 days','Due']]]]],
+tips:['Appoint in writing, always.','Keep the chart current.','Check statutory appointments yearly.'],
+ask:'Show me how responsibilities and authorities are assigned and communicated.'};
+W.training = {
+why:'Training must be planned, delivered and proven effective. This module follows it from need to certificate.',
+who:'Human resources, trainers and line managers.',
+tour:[['Needs and plan','Training needs and the plan with dates.',['table','Plan',['Course','Date','Status'],[['First aid','5 Dec','Planned'],['Forklift','12 Nov','Completed']]]],
+ ['Attendance','Who attended and passed.',['check','Attendance',['P. Naidoo: passed','S. Dlamini: passed','-T. Mokoena: absent']]],
+ ['Certificates','Certificates stored with expiry dates.',['cards','Certificates',[['Forklift licence','P. Naidoo · 2027','Valid']]]]],
+steps:[['Identify the need','Gaps and appraisals create needs.',['form','Need',[['Person','P. Naidoo'],['*Course','First aid']]]],
+ ['Plan the course','Choose the trainer, date and venue.',['form','Plan',[['Date','5 December'],['*Trainer','Safety College']],'Save']],
+ ['Record attendance','Record who attended and the result.',['check','Result',['P. Naidoo: passed','-T. Mokoena: absent']]],
+ ['Store the certificate','Upload the certificate with its expiry.',['form','Certificate',[['File','FirstAid.pdf'],['*Expiry','5 Dec 2028']]]],
+ ['Check effectiveness','A later review shows whether it worked.',['stats','Effectiveness',[['Effective','9','grn'],['Not yet','1','red']]]]],
+tips:['Plan the year in advance.','Always upload the certificate.','Review effectiveness within three months.'],
+ask:'How do you determine training needs, and how do you evaluate effectiveness?'};
+W.bulletins = {
+why:'Safety messages only help if people receive them. Bulletins and toolbox talks reach everyone and prove who read them.',
+who:'Managers and safety officers publish. All staff read.',
+tour:[['Bulletins','Notices with downloadable material.',['cards','Bulletins',[['Working at height reminder','12 Nov','Published']]]],
+ ['Toolbox talks','Topic, date, presenter and attendance.',['table','Toolbox talks',['Topic','Date','Attended'],[['Manual handling','8 Nov','24']]]],
+ ['Flash notices','After an incident, flash a notice to everyone.',['mail','Flash notice',['all@company.co.za','Please do not enter bay 2 until further notice.']]]],
+steps:[['Write it','Choose bulletin or toolbox talk and write it.',['form','Bulletin',[['Title','Working at height'],['*Message','Always clip on']],'Save']],
+ ['Attach material','Add documents, posters or a presentation.',['cards','Attached',[['Poster.pdf','Download','Published']]]],
+ ['Publish','Publish to all staff. A pop-up shows on sign-in.',['flow','Publish',['Draft','Published','Read'],1]],
+ ['Record who has read','See who has read it.',['stats','Read',[['Read','52','grn'],['Not yet','8','red']]]],
+ ['Follow up','Remind those who have not read it.',['mail','Reminder',['t.mokoena@company.co.za','Please read the working at height bulletin.']]]],
+tips:['Keep bulletins short.','Use after-incident flash notices.','Record attendance for every talk.'],
+ask:'How do you communicate safety information to employees, and how do you know it was received?'};
+W.hr = {
+why:'On a site, you must know who is present, now. GPS clock-in and attendance records answer that, and make leave simple.',
+who:'Site managers, human resources and employees.',
+tour:[['Clock-in','Employees clock in from their phone with GPS.',['cards','Clock in',[['P. Naidoo','07:02 · on site','Active']]]],
+ ['Attendance register','See who is present and for how long.',['table','Today',['Name','In','Out'],[['P. Naidoo','07:02','16:30'],['S. Dlamini','07:10','—']]]],
+ ['Leave','Apply, approve and see balances.',['cards','Leave',[['S. Dlamini','3 days · 14 Dec','Pending']]]]],
+steps:[['Open the link','The employee opens their mobile link.',['chain','Mobile',['Link','Phone','Clock-in']]],
+ ['Clock in','Tap to clock in. GPS confirms the location.',['cards','Clock in',[['Warehouse gate','07:02','Active']]]],
+ ['See live attendance','The manager sees who is on site.',['stats','On site',[['Present','42','grn'],['Absent','3']]]],
+ ['Apply for leave','The employee requests leave.',['form','Leave',[['Type','Annual'],['*Dates','14 to 16 Dec']],'Apply']],
+ ['Approve','The manager approves. The balance updates.',['flow','Leave',['Applied','Approved'],1]]],
+tips:['Use the link on every site.','Check attendance before an emergency drill.','Approve leave promptly.'],
+ask:'How do you know who is on site in an emergency?'};
+})(window.WMLESSONS);
+
+(function(W){
+W.suppliers = {
+why:'Your suppliers and subcontractors can hurt your business and your people. Approval, documents and monitoring keep that risk in check, and satisfy the law on contractor control.',
+who:'Procurement, the SHE officer and the responsible manager.',
+tour:[['The register','Each supplier with risk class, status and expiring documents.',['table','Suppliers',['Name','Risk','Status'],[['Delta Steel','Medium','Approved'],['Apex Lifting','High','Pending'],['Clean Co','Low','Approved']]]],
+ ['SHERQ File link','Email the subcontractor a link. They upload their own documents.',['mail','Upload your SHERQ File',['info@apexlifting.co.za','Please upload your safety file, certificates and insurance.','Open the upload page']]],
+ ['Expiry control','Documents with expiry dates create tasks before they lapse.',['cards','Expiring',[['Public liability insurance','Apex Lifting · 20 days','Expiring']]]]],
+steps:[['Add the supplier','Enter name, contact, what they supply and the risk class.',['form','New supplier',[['Name','Apex Lifting'],['*Risk class','High'],['Supplies','Crane hire']],'Save']],
+ ['Send the SHERQ File link','They upload their documents without a Watchman login.',['mail','SHERQ File request',['info@apexlifting.co.za','Please upload your documents.','Open the upload page']]],
+ ['Review each document','Accept or reject each one, with a reason.',['check','Documents',['Company registration','Insurance','-COIDA letter missing','Method statement']]],
+ ['Approve','Approve when the file is complete and the score is acceptable.',['stats','Score',[['Score','82%','grn'],['Decision','Approved']]]],
+ ['Monitor','Watch expiry and performance. Raise nonconformances when things go wrong.',['table','Monitor',['Supplier','Next review','Status'],[['Delta Steel','Mar 27','Approved'],['*Apex Lifting','Overdue','Expired']]]]],
+tips:['Risk class first: it decides how deep the check goes.','Never allow work to start before approval.','Review each supplier at least yearly.'],
+ask:'How do you evaluate, select and monitor your external providers?'};
+W.site_files = {
+why:'Clients and inspectors ask for the safety file on site. A controlled file per site, always ready, saves hours and protects you.',
+who:'Site managers, the SHE officer and project managers.',
+tour:[['Files by site','One file for each client site.',['table','Site files',['Site','Readiness'],[['Evander plant','92%'],['Secunda shutdown','64%']]]],
+ ['Sections','The sections the regulations and client require.',['check','Sections',['Safety plan','Risk assessments','Appointments','-Subcontractor documents']]],
+ ['Readiness','A check against what is required.',['stats','Readiness',[['Complete','11','grn'],['Missing','3','red']]]]],
+steps:[['Open a file','Create the file for the new site.',['form','New file',[['Site','Evander plant'],['*Client','Kijima']],'Create']],
+ ['Add sections and documents','Add or link the documents for each section.',['check','Sections',['Safety plan','Risk assessments','-Medical certificates']]],
+ ['Check readiness','See what is still missing.',['stats','Readiness',[['Complete','11'],['Missing','3','red']]]],
+ ['Include subcontractors','Subcontractor files are linked in.',['cards','Subcontractors',[['Apex Lifting','Documents complete','Approved']]]],
+ ['Print or share','Print the whole file for the client.',['chain','Share',['File','Print','Client']]]],
+tips:['Build the file before mobilising.','Check readiness weekly.','Keep appointments current.'],
+ask:'Show me the SHERQ file for this site.'};
+W.customers = {
+why:'You cannot please customers you do not know. The register records who they are, what you supply and who looks after them.',
+who:'Sales, account managers and quality.',
+tour:[['Customer list','Customers with account manager and tier.',['table','Customers',['Customer','Account manager','Tier'],[['Kijima','S. Dlamini','A'],['Eskom','P. Naidoo','A']]]],
+ ['Products and services','What you supply to each.',['cards','Supply',[['Fire suppression systems','Kijima','Active']]]],
+ ['Links','Complaints and surveys link to the customer.',['chain','Links',['Customer','Complaint','Survey']]]],
+steps:[['Add the customer','Enter name, industry and contacts.',['form','New customer',[['Name','Kijima'],['*Industry','Construction']],'Save']],
+ ['Assign the account manager','Name the person who looks after them.',['form','Account',[['*Account manager','S. Dlamini'],['Sales rep','P. Naidoo']]]],
+ ['Record what you supply','List the products and services.',['cards','Supply',[['Installations','Active','Active']]]],
+ ['Link complaints','Complaints are raised as nonconformances against the customer.',['chain','Complaint',['Complaint','Nonconformance','Customer']]],
+ ['Review satisfaction','See survey results and trends.',['bars','Satisfaction',[70,74,80,78,84],'Improving']]],
+tips:['Keep contacts current.','Tier customers by importance.','Link every complaint to the customer.'],
+ask:'How do you monitor customer perceptions and satisfaction?'};
+W.crm = {
+why:'Customer growth needs a visible pipeline. CRM tracks opportunities, activities and satisfaction in one place.',
+who:'Sales team, account managers and management.',
+tour:[['Pipeline','Opportunities by stage from lead to won.',['table','Pipeline',['Opportunity','Stage','Value'],[['Kijima fire system','Proposal','R450k'],['Eskom service','Won','R1.2m']]]],
+ ['Activities','Calls, meetings and visits scheduled.',['cards','This week',[['Site visit, Evander','Thursday','Planned']]]],
+ ['Reports','Forecast, wins and reasons for loss.',['bars','Won per month',[20,35,30,50,45,60],'Rand millions']]],
+steps:[['Add the opportunity','Customer, product and value.',['form','New opportunity',[['Customer','Kijima'],['*Value','R450 000']],'Save']],
+ ['Move through stages','Lead, qualified, proposal, won or lost.',['flow','Stages',['Lead','Qualified','Proposal','Won'],2]],
+ ['Schedule activities','Calls, meetings and visits.',['form','Activity',[['Type','Site visit'],['*Date','Thursday']]]],
+ ['Record the result','Won or lost, with the reason.',['form','Result',[['Result','Lost'],['*Reason','Price']]]],
+ ['Review the forecast','See the forecast and survey results.',['stats','Forecast',[['Pipeline','R3.2m'],['Win rate','38%','grn']]]]],
+tips:['Update stages the same day.','Always record why you lost.','Link satisfaction results to account plans.'],
+ask:'How do you determine customer requirements and review them before commitment?'};
+W.legal = {
+why:'The law is not optional. A register of applicable legal requirements, with evidence of compliance, protects the company and its directors.',
+who:'The SHE officer, legal or compliance officer and managers.',
+tour:[['Legal register','Each requirement with status and owner.',['table','Register',['Requirement','Status'],[['OHS Act s8','Compliant'],['COIDA letter','Compliant'],['Noise regulations','Partly']]]],
+ ['AI suggestions','The AI suggests legislation for your activities. You decide.',['cards','Suggested',[['Environment Conservation Act','Suggested','New']]]],
+ ['Compliance review','Assess each item with evidence.',['check','Review',['Evidence attached','Reviewed this year','-Action open']]]],
+steps:[['Add the requirement','Type it or generate suggestions with AI.',['form','New requirement',[['Legislation','OHS Act 85 of 1993'],['*Section','s8']],'Save']],
+ ['Assess compliance','Mark compliant, partly or non-compliant.',['form','Assess',[['*Status','Partly'],['Reviewer','S. Dlamini']]]],
+ ['Record evidence','Attach proof.',['cards','Evidence',[['Risk assessment 2026.pdf','Attached','Verified']]]],
+ ['Raise an action','If not compliant, raise an action.',['chain','Action',['Gap','Task','Owner','Closed']]],
+ ['Link to an audit','Link an item to an internal audit that checked it.',['chain','Audit',['Legal item','Audit AUD-0009','Finding']]]],
+tips:['Review the register yearly.','Attach evidence, not just a status.','AI suggestions need your judgement.'],
+ask:'How do you identify, access and evaluate compliance with legal requirements?'};
+W.legal_certs = {
+why:'An expired certificate can stop a contract or a site. This repository tracks every registration and warns you in time.',
+who:'Administration, finance, compliance.',
+tour:[['Repository','Every certificate in one place.',['table','Certificates',['Certificate','Expiry'],[['B-BBEE','Mar 27'],['COID letter','*Dec 26'],['ISO 9001','Jun 28']]]],
+ ['Expiry dates','Colour shows what is due.',['cards','Due',[['COID letter of good standing','30 days','Due']]]],
+ ['Reminders','Emails 30 days before expiry.',['mail','Reminder',['admin@company.co.za','COID letter expires in 30 days.']]]],
+steps:[['Upload the certificate','Add the file and name.',['form','Upload',[['File','COID.pdf'],['*Type','COID letter']]]],
+ ['Record the expiry date','The expiry drives the reminders.',['form','Expiry',[['*Expiry','31 December 2026']]]],
+ ['Get the reminder','An email arrives 30 days before.',['mail','Reminder',['admin@company.co.za','Your COID letter expires in 30 days.']]],
+ ['Renew and replace','Upload the new one. The old one is kept.',['table','History',['Certificate','Expiry'],[['*COID 2027','Dec 27'],['COID 2026','Archived']]]],
+ ['Share it','Hand a client or auditor one place.',['chain','Share',['Repository','Download','Client']]]],
+tips:['Always set the expiry date.','Assign someone to receive reminders.','Renew early.'],
+ask:'May I see your current registrations and certificates?'};
+W.governance = {
+why:'Good governance is shown, not claimed. Resolutions, delegations, conflicts and gifts give boards and auditors proof.',
+who:'Directors, company secretary and compliance.',
+tour:[['Resolutions','Board and management resolutions.',['table','Resolutions',['Date','Resolution'],[['12 Nov','Approve budget']]]],
+ ['Conflicts and gifts','Declarations recorded and reviewed.',['cards','Declarations',[['Conflict: supplier family tie','Declared','Pending']]]],
+ ['Principles','Assess against the ISO 37000 principles.',['stats','Assessment',[['Principles met','9','grn'],['Gaps','2','red']]]]],
+steps:[['Record the resolution','Capture the date, wording and signatories.',['form','Resolution',[['Resolution','Approve budget'],['*Date','12 November']]]],
+ ['Set delegations','Who may approve what.',['table','Delegations',['Role','Limit'],[['Operations manager','R50k'],['MD','R500k']]]],
+ ['Declare conflicts and gifts','Record each declaration for review.',['form','Declaration',[['Type','Gift'],['*Value','R450']]]],
+ ['Review stakeholders','Keep the stakeholder list current.',['cards','Stakeholders',[['Regulator','Compliance','Active']]]],
+ ['Assess the principles','Rate each ISO 37000 principle.',['stats','Principles',[['Met','9','grn'],['Gaps','2','red']]]]],
+tips:['Declare early.','Keep resolutions signed.','Review delegations yearly.'],
+ask:'Show me how decisions and delegations are recorded and governed.'};
+W.privacy = {
+why:'POPIA carries heavy penalties. A readiness assessment and live registers show the regulator you take privacy seriously.',
+who:'The information officer, IT and human resources.',
+tour:[['Eight conditions','Readiness against each condition.',['check','POPIA',['Accountability','Processing limitation','-Security safeguards','Openness']]],
+ ['Processing register','Every processing activity recorded.',['table','Processing',['Activity','Basis'],[['Payroll','Contract'],['CCTV','Legitimate']]]],
+ ['Requests and breaches','Data subject requests and breaches tracked.',['cards','Open',[['Access request','Received 5 Nov','Open']]]]],
+steps:[['Assess the eight conditions','Tick each condition and note the gap.',['check','Conditions',['Accountability','-Security safeguards']]],
+ ['Record processing','List each activity, basis and recipients.',['form','Activity',[['Activity','Payroll'],['*Basis','Contract']]]],
+ ['Handle requests','Log each request and the deadline.',['form','Request',[['Type','Access'],['*Due','5 December']]]],
+ ['Track breaches','Log and notify within the timeframe.',['flow','Breach',['Detected','Assessed','Notified','Closed'],1]],
+ ['Operator agreements','Keep agreements with operators.',['cards','Operators',[['Payroll provider','Signed','Signed']]]]],
+tips:['Appoint and register an information officer.','Respond to requests inside the legal time.','Review operators annually.'],
+ask:'How do you protect personal information and handle a breach?'};
+W.retention = {
+why:'Keep too little and you break the law; keep too much and you break POPIA. A schedule says how long to keep each record and proves disposal.',
+who:'Records manager, compliance and department heads.',
+tour:[['Schedule','Record types and retention periods.',['table','Schedule',['Record','Keep'],[['Payroll','5 years'],['Incident reports','40 years'],['Training','5 years']]]],
+ ['Legal basis','Reason or law for each period.',['cards','Basis',[['Incident reports','OHS Act','Active']]]],
+ ['Disposal','Proof of proper disposal.',['check','Disposal',['Reviewed','Approved','Destroyed']]]],
+steps:[['List the record types','Everything you keep.',['form','Record type',[['Type','Payroll'],['*Owner','HR']]]],
+ ['Set the period and reason','Retention and legal basis.',['form','Period',[['*Keep','5 years'],['Basis','Tax law']]]],
+ ['Review what is past','See records past their period.',['cards','Past',[['2019 payroll','Past period','Overdue']]]],
+ ['Record the disposal','Who destroyed what, when.',['form','Disposal',[['Method','Shredded'],['*Date','Today']]]],
+ ['Link to POPIA','The schedule supports your POPIA evidence.',['chain','Links',['Retention','POPIA','Evidence']]]],
+tips:['Check legal periods with advice.','Dispose on a set date yearly.','Record every disposal.'],
+ask:'How long do you retain records and how do you dispose of them?'};
+W.infosec = {
+why:'Information security is a business risk and a customer demand. This module holds the controls, assets and threats auditors expect.',
+who:'The information security officer, IT and management.',
+tour:[['Statement of Applicability','Every ISO 27002:2022 control, applicable or not, with a reason.',['table','SoA',['Control','Applicable','Status'],[['5.1 Policies','Yes','Done'],['8.24 Cryptography','Yes','Partly']]]],
+ ['Asset register','Information assets with owner and classification.',['cards','Assets',[['Customer database','Confidential · IT','Active']]]],
+ ['Threat intelligence','Briefings reviewed by a person.',['cards','Briefings',[['New phishing campaign','Reviewed','Done']]]]],
+steps:[['Mark each control','Applicable or not, and why.',['form','Control',[['Control','8.24 Cryptography'],['*Applicable','Yes']]]],
+ ['Register assets','Name the asset, owner and classification.',['form','Asset',[['Asset','Customer database'],['*Class','Confidential']]]],
+ ['Review threats','A person reviews each briefing.',['check','Threats',['Briefing read','Action decided']]],
+ ['Attach evidence','Evidence ties to each control.',['cards','Evidence',[['Encryption policy.pdf','Attached','Verified']]]],
+ ['Log incidents','Security incidents tracked separately.',['flow','Incident',['Detected','Contained','Closed'],1]]],
+tips:['Be honest about not applicable controls.','Review threats weekly.','Test your incident plan.'],
+ask:'Show me your Statement of Applicability and how it is maintained.'};
+W.assets = {
+why:'Equipment that is not inspected or certified is a hazard and a liability. The register keeps every item safe and legal.',
+who:'The maintenance manager, supervisors and the SHE officer.',
+tour:[['Asset register','Each asset with owner and location.',['table','Assets',['Asset','Location','Status'],[['Forklift FL-02','Warehouse','Active'],['Crane CR-01','Yard','Due']]]],
+ ['Inspections','Checklists and results.',['check','Pre-use',['Brakes','Lights','-Hydraulics']]],
+ ['Certificates','Calibration and test certificates with expiry.',['cards','Certificates',[['Crane load test','30 days','Expiring']]]]],
+steps:[['Register the asset','Name, location and owner.',['form','New asset',[['Asset','Forklift FL-02'],['*Owner','Warehouse manager']],'Save']],
+ ['Set the checklist','Pick the inspection checklist.',['cards','Checklist',[['Forklift pre-use','12 items','Active']]]],
+ ['Record inspections','Pass or fail each time.',['check','Result',['Brakes','-Hydraulics']]],
+ ['Store certificates','Upload with expiry.',['form','Certificate',[['File','LoadTest.pdf'],['*Expiry','31 March 2027']]]],
+ ['Raise maintenance','Failures raise maintenance tasks.',['chain','Action',['Fail','Task','Repair','Closed']]]],
+tips:['Tag every asset with a code.','Inspect before use, not after.','Remove failed equipment immediately.'],
+ask:'How do you control and maintain equipment, and where are its certificates?'};
+W.asset_watchman = {
+why:'For service providers, knowing the condition of a client\'s equipment over time turns maintenance from guesswork into a plan.',
+who:'Service engineers and account managers.',
+tour:[['Asset database','Client assets with components.',['table','Assets',['Asset','Client','Condition'],[['Pump P-12','MRS','Good'],['Gearbox G-3','MRS','Watch']]]],
+ ['Readings','Readings over time per component.',['bars','Vibration',[20,24,30,38,52],'Rising: investigate']],
+ ['Reports','Recommendations for the client.',['cards','Report',[['Replace bearing within 30 days','Gearbox G-3','Due']]]]],
+steps:[['Register the asset','Client, asset and components.',['form','Asset',[['Asset','Gearbox G-3'],['*Client','MRS']]]],
+ ['Record readings','Enter or scan readings.',['form','Reading',[['*Vibration','52 mm/s']]]],
+ ['See the trend','Watch the condition move.',['bars','Trend',[20,24,30,38,52],'Increasing']],
+ ['Recommend action','Write the recommendation.',['cards','Action',[['Replace bearing','Within 30 days','Due']]]],
+ ['Report','Share the report with the client.',['chain','Report',['Readings','Report','Client']]]],
+tips:['Record readings on a schedule.','Trend beats a single reading.','Photograph every defect.'],
+ask:'How do you know when equipment is about to fail?'};
+W.welding = {
+why:'ISO 3834 requires welding quality to be planned and controlled. This module holds procedures, welders, equipment and jobs in one auditable system.',
+who:'Welding coordinators, inspectors and quality managers.',
+tour:[['Procedures','Welding procedures and records.',['table','WPS',['WPS','Process','Status'],[['WPS-012','MIG','Approved']]]],
+ ['Welders','Qualifications with expiry.',['cards','Welders',[['T. Mokoena','Qualified to Dec 27','Valid']]]],
+ ['Jobs','Jobs, inspections and review.',['check','Job',['Procedure used','Welder qualified','Inspection done']]]],
+steps:[['Record the procedure','Add the WPS.',['form','WPS',[['WPS','WPS-012'],['*Process','MIG']]]],
+ ['Qualify the welders','Add qualifications and expiry.',['form','Welder',[['Welder','T. Mokoena'],['*Expires','December 2027']]]],
+ ['Release the job','Check procedure and welder.',['check','Release',['WPS approved','Welder valid']]],
+ ['Inspect','Record visual and NDT results.',['table','Inspection',['Weld','Result'],[['W-01','Passed'],['W-02','Failed']]]],
+ ['Review against ISO 3834','The readiness check shows gaps.',['stats','Readiness',[['Met','14','grn'],['Gaps','3','red']]]]],
+tips:['No work without a valid qualification.','Keep consumables traceable.','Review readiness before surveillance.'],
+ask:'Show me how you control welding and the qualifications of your welders.'};
+W.security = {
+why:'Records are only trusted if they cannot be quietly changed. The audit trail and secure sign-in make sure of that.',
+who:'Administrators, the information security officer and auditors.',
+tour:[['Authenticator app','Each sign-in is protected by a code.',['form','Sign in',[['Email','david@company.co.za'],['*Code','482 913']]]],
+ ['Change log','Every create, change and delete is recorded.',['table','Change log',['Time','Who','Action'],[['09:12','D. Elliott','Edited NC-0114'],['09:30','A. Botha','Deleted draft']]]],
+ ['Separation','Each organisation sees only its own data.',['chain','Data',['Org A','Org B','Separate']]]],
+steps:[['Turn on the authenticator','Scan the code with your phone app.',['form','Authenticator',[['*Code','482 913']]]],
+ ['Open the change log','See what was done and by whom.',['table','Log',['Time','Action'],[['09:12','Edited']]]],
+ ['Filter','By record or person.',['form','Filter',[['*Person','A. Botha'],['Record','NC-0114']]]],
+ ['Read the detail','See what changed.',['table','Change',['Field','From','To'],[['Status','Open','Closed']]]],
+ ['Hand it to the auditor','Export as evidence.',['chain','Evidence',['Log','Export','Auditor']]]],
+tips:['Turn on the authenticator for everyone.','Review the log monthly.','The log cannot be edited.'],
+ask:'How do you protect the integrity of your records, and trace changes?'};
+W.administration = {
+why:'One control centre sets up who sees what. Get it right once and every module stays tidy and secure.',
+who:'Administrators only.',
+tour:[['Departments','Departments and branches.',['table','Departments',['Name','People'],[['Operations','24'],['Quality','6']]]],
+ ['People and access','Each person and the modules they see.',['table','People',['Name','Role','Modules'],[['A. Botha','Manager','All'],['T. Mokoena','Contributor','5']]]],
+ ['Modules and branding','Switch modules on or off and brand the system.',['check','Modules',['Nonconformances','Audits','-Welding']]]],
+steps:[['Set up departments','Add departments and branches.',['form','Department',[['Name','Operations'],['*Branch','Johannesburg']]]],
+ ['Add people and roles','Invite and set a role.',['form','Invite',[['Email','anna@company.co.za'],['*Role','Manager']],'Send']],
+ ['Choose modules per person','Tick what each person sees.',['check','Access',['Nonconformances','Tasks','-Administration']]],
+ ['Switch modules on or off','A switch affects everyone at once.',['check','Switches',['Audits on','Welding off']]],
+ ['Apply branding','Logo and colours.',['form','Branding',[['Logo','company.png'],['*Colour','Red']]]]],
+tips:['Admin has full access; manager has everything but Administration.','Contributors contribute; viewers only view.','Review access every quarter.'],
+ask:'How do you control who has access to what?'};
+})(window.WMLESSONS);
+
+/* ===== b72-lessons-end ===== */
 </script>
 </body>
 </html>
