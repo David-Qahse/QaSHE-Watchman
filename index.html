@@ -13210,7 +13210,7 @@ async function openPersonDetail(id){
 
       <div class="status-row">
         <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase;">Status</label>
-        <select id="pd-status">
+        <select id="pd-status" onchange="savePersonStatus('${p.id}')">
           <option value="active" ${p.status==='active'?'selected':''}>Active</option>
           <option value="inactive" ${p.status==='inactive'?'selected':''}>Inactive</option>
         </select>
@@ -13614,11 +13614,17 @@ window.savePersonLink = async function(personId){
 window.savePersonLineManager = async function(personId){
   const managerId = document.getElementById('pd-line-manager').value || null;
   if(managerId === personId){ toast('Someone can\'t be their own line manager.', 'error'); return; }
-  const { error } = await STATE.supabase.from('personnel').update({ line_manager_id: managerId }).eq('id', personId);
-  if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+  const stEl = document.getElementById('pd-status'), cur = personById(personId);
+  const patch = { line_manager_id: managerId };
+  const statusChanged = !!(stEl && cur && stEl.value !== cur.status);
+  if(statusChanged) patch.status = stEl.value;
+  const r = await STATE.supabase.from('personnel').update(patch).eq('id', personId).select('id, status');
+  if(r.error){ toast('Could not save: ' + r.error.message, 'error'); return; }
+  if(!r.data || !r.data.length){ toast('Nothing was saved: you may not have permission to change this person.', 'error'); return; }
   await loadPersonnel();
   openPersonDetail(personId);
-  toast('Line manager updated.', 'success');
+  renderPersonnelView();
+  toast(statusChanged ? 'Line manager updated and status set to ' + (patch.status === 'inactive' ? 'Inactive' : 'Active') + '.' : 'Line manager updated.', 'success');
 };
 
 window.savePersonDivisions = async function(personId){
@@ -34562,8 +34568,8 @@ window.brandFromLogo = function(){
           <div class="field span2"><label>File</label><input type="file" id="oa-d-file"></div>
           <div class="field"><label class="sf-inline"><input type="checkbox" id="oa-d-conf" ${canConf() ? '' : 'disabled'}> Confidential</label></div>
         </div><button class="btn-small primary" onclick="oaDocUpload('${pid}')">Save and upload document</button><div style="height:8px"></div>` : ''}
-        ${docs.length ? docs.map(d => `<div class="oa-row"><span><b>${esc(d.title || (PD_BY_KEY[d.doc_type] || [])[1] || d.doc_type)}</b> <span style="font-size:10.5px;color:var(--text-faint)">${esc((PD_BY_KEY[d.doc_type] || [])[1] || '')}${d.confidential ? ' · confidential' : ''}</span><br><span style="font-size:11px;color:var(--text-faint)">${esc([d.issuer, d.issue_date ? 'issued ' + fmtDate(d.issue_date) : '', d.competency_tag ? SF_COMPETENCY_LABELS[d.competency_tag] : ''].filter(Boolean).join(' · '))}</span></span>
-          <span style="display:flex;gap:6px;align-items:center">${d.expiry_date ? sfExpiryBadge(d.expiry_date) : ''}${d.storage_path ? `<button class="btn-small" onclick="downloadFromBucket('documents','${esc(d.storage_path)}')">Open</button>` : ''}${canEdit() ? `<button class="btn-small" onclick="oaDocEdit('${d.id}','${pid}')">Edit dates</button>` : ''}${canConf() ? `<button class="btn-small" onclick="oaDocDel('${d.id}','${pid}')">Delete</button>` : ''}</span></div><div id="oa-de-${d.id}"></div>`).join('') : '<p style="font-size:12.5px;color:var(--text-faint)">No documents uploaded yet.</p>'}
+        ${docs.length ? docs.map(d => `<div class="oa-row"><span><b>${esc(d.title || (PD_BY_KEY[d.doc_type] || [])[1] || d.doc_type)}</b> <span style="font-size:10.5px;color:var(--text-faint)">${esc((PD_BY_KEY[d.doc_type] || [])[1] || '')}${d.confidential ? ' · confidential' : ''}</span><br><span style="font-size:11px;color:var(--text-faint)">${esc([d.issuer, d.issue_date ? (d.doc_type === 'contract' ? 'starts ' : 'issued ') + fmtDate(d.issue_date) : (d.doc_type === 'contract' ? 'start date not recorded' : ''), d.expiry_date ? (d.doc_type === 'contract' ? 'ends ' : 'expires ') + fmtDate(d.expiry_date) : (d.doc_type === 'contract' && d.issue_date ? 'permanent (no end date)' : ''), d.competency_tag ? SF_COMPETENCY_LABELS[d.competency_tag] : ''].filter(Boolean).join(' · '))}</span></span>
+          <span style="display:flex;gap:6px;align-items:center">${d.expiry_date ? sfExpiryBadge(d.expiry_date) : ''}${d.storage_path ? `<button class="btn-small" onclick="downloadFromBucket('documents','${esc(d.storage_path)}')">Open</button>` : ''}${canEdit() ? `<button class="btn-small" onclick="oaDocEdit('${d.id}','${pid}')">${d.doc_type === 'contract' && !d.issue_date ? 'Add contract dates' : 'Edit dates'}</button>` : ''}${canConf() ? `<button class="btn-small" onclick="oaDocDel('${d.id}','${pid}')">Delete</button>` : ''}</span></div><div id="oa-de-${d.id}"></div>`).join('') : '<p style="font-size:12.5px;color:var(--text-faint)">No documents uploaded yet.</p>'}
       </div>`;
   }
   window.oaDocTypeChanged = function(){
@@ -34599,7 +34605,7 @@ window.brandFromLogo = function(){
       <div class="field"><label>Issuer or institution</label><input id="oa-de-i-${id}" value="${esc(d.issuer || '')}"></div>
       <div class="field"><label>${isC ? 'Issue date (contract start)' : 'Issue date'}</label><input type="date" id="oa-de-is-${id}" value="${esc(d.issue_date || '')}"></div>
       <div class="field"><label>${isC ? 'Expiry date (end of a fixed term contract, leave empty if permanent)' : 'Expiry date (if any)'}</label><input type="date" id="oa-de-ex-${id}" value="${esc(d.expiry_date || '')}"></div>
-      <div class="field span3"><button class="btn-small primary" onclick="oaDocEditSave('${id}','${pid}')">Save</button> <button class="btn-small" onclick="document.getElementById('oa-de-${id}').innerHTML=''">Cancel</button></div></div>`;
+      <div class="field span3" style="display:flex;flex-direction:row;gap:8px;align-items:center"><button class="btn-small primary" style="width:auto;flex:none;padding:8px 22px" onclick="oaDocEditSave('${id}','${pid}')">Save dates</button><button class="btn-small" style="width:auto;flex:none" onclick="document.getElementById('oa-de-${id}').innerHTML=''">Cancel</button></div></div>`;
   };
   window.oaDocEditSave = async function(id, pid){
     const v = k => document.getElementById('oa-de-' + k + '-' + id).value || null;
