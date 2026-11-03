@@ -42488,11 +42488,31 @@ window.WMTutorial = { open, lessons: () => Object.keys(window.WMLESSONS || {}), 
   }
   window.arUpload=async function(auditId,kind){ const inp=document.getElementById('ar-file-'+kind); if(!inp||!inp.files.length){ alert('Choose at least one file first.'); return; } showLoader('Uploading and reading the file…'); try{ const n=await uploadFiles(auditId,kind,[...inp.files]); toast(n+' file'+(n===1?'':'s')+' saved.',n?'success':'error'); }finally{ hideLoader(); } openAuditDetail(auditId); };
   /* ---------- AI ---------- */
-  async function aiJson(prompt,max){
+  /* Recover what can be read from a reply that was cut off or is not quite valid JSON: keep the summary and every complete finding object. */
+  function salvageAi(raw){
+    const t=String(raw||''); const s0=t.indexOf('{'); if(s0<0) return null; const out={};
+    const grab=k=>{ const m=t.match(new RegExp('"'+k+'"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"')); if(m){ try{ out[k]=JSON.parse('"'+m[1]+'"'); }catch(e){ out[k]=m[1]; } } };
+    ['summary','outcome','executive_summary','overall_outcome'].forEach(grab);
+    const fi=t.indexOf('"findings"'); const arrStart=fi>=0?t.indexOf('[',fi):-1;
+    if(arrStart>=0){ const items=[]; let depth=0,inStr=false,esc=false,st=-1;
+      for(let i=arrStart+1;i<t.length;i++){ const c=t[i];
+        if(inStr){ if(esc) esc=false; else if(c==='\\') esc=true; else if(c==='"') inStr=false; continue; }
+        if(c==='"'){ inStr=true; continue; }
+        if(c==='{'){ if(depth===0) st=i; depth++; }
+        else if(c==='}'){ depth--; if(depth===0&&st>=0){ try{ items.push(JSON.parse(t.slice(st,i+1))); }catch(e){} st=-1; } }
+        else if(c===']'&&depth===0) break; }
+      out.findings=items; out._partial=true; }
+    return (out.findings&&out.findings.length)||out.summary||out.executive_summary?out:null;
+  }
+  async function aiJson(prompt,max,_retry){
     const sd=await sb().auth.getSession(); const token=sd.data&&sd.data.session&&sd.data.session.access_token; if(!token) throw new Error('Your sign in has expired: sign out and in again.');
     const res=await fetch(`${SUPABASE_URL}/functions/v1/watchman-chat`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:max||4096})});
     const j=await res.json().catch(()=>({})); if(!res.ok&&!j.reply) throw new Error(j.error||('The AI service answered '+res.status));
-    const p=parseAiDraftJson((j.reply||j.message||'').trim()); if(!p) throw new Error('The AI answer could not be read. Try again.'); return p;
+    const raw=(j.reply||j.message||j.content||'').toString().trim();
+    let p=parseAiDraftJson(raw)||salvageAi(raw);
+    if(!p&&!_retry) return aiJson('IMPORTANT: your previous answer was cut off or was not valid JSON. Answer again with shorter text: at most 15 findings, every value under 200 characters, no line breaks inside values.\n\n'+prompt,max,true);
+    if(!p) throw new Error('The AI answer could not be read, even after a second attempt'+(raw?'':' (the AI service returned nothing)')+'. Try again in a minute; if it keeps happening, paste only the findings section of the report into the box.');
+    return p;
   }
   const JSONRULE='Return strictly valid JSON only, no commentary. Escape double quotes inside values as \\" and write line breaks as \\n.';
   window.arAiReview=async function(auditId){
@@ -42500,21 +42520,22 @@ window.WMTutorial = { open, lessons: () => Object.keys(window.WMLESSONS || {}), 
     let text=fr.rows.filter(f=>f.kind==='report'&&f.extracted_text).map(f=>'FILE: '+f.file_name+'\n'+f.extracted_text).join('\n\n');
     const pasted=(document.getElementById('ar-paste')||{}).value||''; if(pasted.trim()) text+='\n\nPASTED TEXT:\n'+pasted.trim();
     if(text.trim().length<200){ toast('The report text could not be read (it may be an image or scan). Paste its text in the box and run the review again.','error'); const b=document.getElementById('ar-paste-wrap'); if(b) b.style.display='block'; return; }
-    const chunks=[]; for(let i=0;i<text.length&&chunks.length<5;i+=12000) chunks.push(text.slice(i,i+12000));
-    const note=text.length>60000?' Only the first 60 000 characters were reviewed.':'';
-    const src=(SRC[a.report_source]||['external audit'])[0]; const all=[]; const sums=[];
+    const chunks=[]; for(let i=0;i<text.length&&chunks.length<9;i+=7000) chunks.push(text.slice(i,i+7000));
+    let partialN=0; const note0=text.length>63000?' Only the first 63 000 characters were reviewed.':'';
+    const note=note0; const src=(SRC[a.report_source]||['external audit'])[0]; const all=[]; const sums=[];
     try{
       for(let i=0;i<chunks.length;i++){
         showLoader('AI review: part '+(i+1)+' of '+chunks.length+'…');
-        const p=await aiJson(`You are a lead auditor reviewing an audit report issued to ${STATE.org.name}. Report type: ${src}. Issued by: ${a.issuing_body||a.external_auditor_name||'not stated'}. Standards: ${(a.standards||[]).join(', ')||'not stated'}.\n\nExtract every finding in the text below: nonconformances (major or minor), observations or opportunities for improvement, and positive observations. Do not invent anything that is not in the text. Use the exact clause or requirement reference and the report's own wording where possible. Where the report states a due date or timeframe, put it in due_hint.\n\nReturn JSON of this shape: {"summary":"two sentence summary of this part","outcome":"overall outcome if stated, else empty","findings":[{"type":"major_nc|minor_nc|observation|positive","clause":"","description":"","evidence":"","suggested_action":"","severity":"critical|major|minor","due_hint":""}]}. ${JSONRULE}\n\nREPORT TEXT (part ${i+1} of ${chunks.length}):\n"""${chunks[i]}"""`,4096);
-        arr(p.findings).forEach(f=>all.push(f)); if(p.summary) sums.push(p.summary); if(p.outcome&&!a._o) a._o=p.outcome;
+        const p=await aiJson(`You are a lead auditor reviewing an audit report issued to ${STATE.org.name}. Report type: ${src}. Issued by: ${a.issuing_body||a.external_auditor_name||'not stated'}. Standards: ${(a.standards||[]).join(', ')||'not stated'}.\n\nExtract every finding in the text below: nonconformances (major or minor), observations or opportunities for improvement, and positive observations. Do not invent anything that is not in the text. Use the exact clause or requirement reference and the report's own wording where possible. Where the report states a due date or timeframe, put it in due_hint. Keep description under 250 characters and evidence and suggested_action under 150 characters each.\n\nReturn JSON of this shape: {"summary":"two sentence summary of this part","outcome":"overall outcome if stated, else empty","findings":[{"type":"major_nc|minor_nc|observation|positive","clause":"","description":"","evidence":"","suggested_action":"","severity":"critical|major|minor","due_hint":""}]}. ${JSONRULE}\n\nREPORT TEXT (part ${i+1} of ${chunks.length}):\n"""${chunks[i]}"""`,4096);
+        if(p._partial) partialN++; arr(p.findings).forEach(f=>all.push(f)); if(p.summary) sums.push(p.summary); if(p.outcome&&!a._o) a._o=p.outcome;
       }
       showLoader('AI review: writing the summary…');
       const seen=new Set(); const findings=all.filter(f=>{ const k=String(f.description||'').toLowerCase().replace(/\W+/g,' ').slice(0,90); if(!k||seen.has(k)) return false; seen.add(k); return true; });
       let sum={}; try{ sum=await aiJson(`Summarise this external audit report for the executive team of ${STATE.org.name}. Use the term "Opportunities for Improvement" for observations. Part summaries: ${JSON.stringify(sums)}. Finding counts: major ${findings.filter(f=>f.type==='major_nc').length}, minor ${findings.filter(f=>f.type==='minor_nc').length}, opportunities ${findings.filter(f=>f.type==='observation').length}, positive ${findings.filter(f=>f.type==='positive').length}. Return JSON {"executive_summary":"","overall_outcome":"","themes":["recurring themes"],"positives":["strengths noted"],"recommended_actions":["priority actions"],"risk_themes":["risks or opportunities the register should capture"]}. ${JSONRULE}`,2048); }catch(e){ sum={executive_summary:sums.join(' ')}; }
-      const payload={summary:sum.executive_summary||sums.join(' '),outcome:sum.overall_outcome||a._o||'',themes:arr(sum.themes),positives:arr(sum.positives),actions:arr(sum.recommended_actions),risks:arr(sum.risk_themes),findings,note};
+      const note2=partialN?(note+' In '+partialN+' part(s) the AI answer was cut short, so a few findings may be missing: check the report and run the review again if needed.'):note;
+      const payload={summary:sum.executive_summary||sums.join(' '),outcome:sum.overall_outcome||a._o||'',themes:arr(sum.themes),positives:arr(sum.positives),actions:arr(sum.recommended_actions),risks:arr(sum.risk_themes),findings,note:note2};
       const up=await sb().from('audits').update({ai_summary:payload,ai_reviewed_at:new Date().toISOString()}).eq('id',auditId); if(up.error) throw new Error(up.error.message);
-      await loadAudits(); toast(findings.length+' findings extracted. Review them, then raise the nonconformances.'+note,'success');
+      await loadAudits(); toast(findings.length+' findings extracted. Review them, then raise the nonconformances.'+note2,'success');
     }catch(e){ toast('AI review failed: '+(e.message||e),'error'); }
     finally{ hideLoader(); }
     openAuditDetail(auditId);
