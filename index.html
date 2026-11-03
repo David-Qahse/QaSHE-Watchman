@@ -4798,6 +4798,12 @@ async function openNCDetail(id){
         <label>Closure signature: required to close, type full name to confirm</label>
         <input id="d-closure-signature" value="${(n.closure_signature_name||'').replace(/"/g,'&quot;')}" placeholder="Full name">
       </div>
+      ${(n.record_class||'nonconformance')==='nonconformance' ? ('closure_conclusion' in n ? `<div class="field span3" style="margin-bottom:10px;border:2px solid #B8791C;border-radius:12px;padding:10px 12px;background:#fffaf0;">
+        <label>Conclusion: required to close. What was concluded, and why the nonconformance can now be closed</label>
+        <textarea id="d-closure-conclusion" placeholder="e.g. Corrective action completed and verified effective on 12 Nov; no recurrence in 30 days.">${escapeHtml(n.closure_conclusion||'')}</textarea>
+        <label style="margin-top:8px;display:block;">Reason the original due date was passed${(n.original_target_close_date||n.target_close_date) ? ' (original due date ' + fmtDate(n.original_target_close_date||n.target_close_date) + ')' : ''}: required to close when the original due date has passed</label>
+        <textarea id="d-overdue-reason" placeholder="e.g. Spare part delayed by the supplier; the new date was agreed with the client.">${escapeHtml(n.overdue_reason||'')}</textarea>
+        <div style="font-size:11.5px;color:var(--text-faint);margin-top:4px;">A nonconformance cannot be closed until these are completed. If it is closed on or before its original due date, the reason is not needed.</div></div>` : `<div class="warn-note" style="margin-bottom:10px;"><div>Run qashe-watchman-schema-nc-closure.sql in Supabase to switch on the closure conclusion and overdue reason. Until then a nonconformance cannot be closed.</div></div>`) : ''}
       <div id="nc-verify-warning"></div>
 
       ${linkedTasks.length ? `<div style="margin-bottom:16px;"><div class="l" style="font-family:Arial,Helvetica,sans-serif; font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:8px;">Linked tasks</div>
@@ -5363,6 +5369,8 @@ async function buildAndPrintNC(id, sections){
   if(sourceFinding) meta.push(['Raised from audit', `${sourceFinding.audits ? sourceFinding.audits.audit_ref+': '+sourceFinding.audits.title : 'audit finding'}`]);
   if(n.status === 'closed'){
     meta.push(['Verified by', memberName(n.verified_by)], ['Verified date', fmtDate(n.verified_date)], ['Closure signature', n.closure_signature_name || '—']);
+    if(n.closure_conclusion) meta.push(['Conclusion', n.closure_conclusion]);
+    if(n.overdue_reason) meta.push(['Reason original due date was passed', n.overdue_reason]);
   }
 
   let body = `<p><b>Description of the Nonconformance</b><br>${n.description || 'No description recorded.'}</p>`;
@@ -5477,13 +5485,31 @@ window.saveNCDetail = async function(id){
     patch.verified_date = todayISO();
     patch.closure_signature_name = closureSignature || null;
   }
+  // Closure requirements: a conclusion, and the reason the original due date was passed
+  if((n.record_class||'nonconformance') === 'nonconformance'){
+    const cEl = document.getElementById('d-closure-conclusion'), rEl = document.getElementById('d-overdue-reason');
+    const warnBox = html => { const w = document.getElementById('nc-verify-warning'); if(w) w.innerHTML = `<div class="warn-note"><div>${html}</div></div>`; };
+    if(cEl && rEl){
+      const concl = cEl.value.trim(), why = rEl.value.trim();
+      patch.closure_conclusion = concl || null; patch.overdue_reason = why || null;
+      if(newStatus === 'closed' && n.status !== 'closed'){
+        const orig = n.original_target_close_date || n.target_close_date || null, late = !!(orig && todayISO() > orig);
+        if(concl.length < 5){ warnBox('A nonconformance cannot be closed until the <b>conclusion</b> has been entered.'); cEl.focus(); return; }
+        if(late && why.length < 5){ warnBox('The original due date (' + fmtDate(orig) + ') has passed. Enter the <b>reason the original due date was passed</b> before closing.'); rEl.focus(); return; }
+      }
+    } else if(newStatus === 'closed' && n.status !== 'closed'){
+      toast('Run qashe-watchman-schema-nc-closure.sql first: closing now needs a conclusion and an overdue reason.', 'error'); return;
+    }
+  }
 
   const { error } = await STATE.supabase.from('nonconformances').update(patch).eq('id', id);
   if(error){
     const msg = (error.message || '').toLowerCase();
     // Two DB-level controls can reject a closure attempt — the database enforces
     // both regardless of what the UI allows through, so both get a friendly message.
-    if(msg.includes('verifier_not_owner')){
+    if(msg.includes('closure_conclusion_required') || msg.includes('overdue_reason_required')){
+      document.getElementById('nc-verify-warning').innerHTML = `<div class="warn-note"><div>${msg.includes('closure_conclusion_required') ? 'Enter the conclusion before closing this nonconformance.' : 'Enter the reason the original due date was passed before closing this nonconformance.'}</div></div>`;
+    } else if(msg.includes('verifier_not_owner')){
       document.getElementById('nc-verify-warning').innerHTML = `<div class="warn-note"><svg viewBox="0 0 24 24"><path d="M12 3l10 18H2L12 3z"/><line x1="12" y1="10" x2="12" y2="14"/><line x1="12" y1="17" x2="12" y2="17.01"/></svg><div>The verifier can't be the same person as the owner: the database enforces this as a segregation-of-duties control. Choose a different verifier.</div></div>`;
     } else if(msg.includes('designated approval authority') || msg.includes('signature')){
       document.getElementById('nc-verify-warning').innerHTML = `<div class="warn-note"><svg viewBox="0 0 24 24"><path d="M12 3l10 18H2L12 3z"/><line x1="12" y1="10" x2="12" y2="14"/><line x1="12" y1="17" x2="12" y2="17.01"/></svg><div>Closing requires both a designated approver and a typed signature. Choose a verifier and type their full name to confirm.</div></div>`;
@@ -39189,7 +39215,11 @@ async function renderNcResponsePage(token){
   const E = s => escapeHtml(String(s == null ? '' : s));
   const canWrite = () => ['admin','manager','contributor'].includes(STATE.myRole);
   const isAdmin = () => STATE.myRole === 'admin' || !!(STATE.profile && STATE.profile.is_platform_staff);
-  const isSub = s => s && s.party_type === 'subcontractor';
+  const isSub = s => !!s && (s.party_type === 'subcontractor' || s.party_type === 'both');
+  const sfMode = s => (s && s.sherq_file_mode) || (isSub(s) ? 'standard' : 'not_required');
+  const needsFile = s => isSub(s) && sfMode(s) !== 'not_required';
+  const PT = { supplier:'Supplier only', subcontractor:'Subcontractor only', both:'Both a supplier and a subcontractor' };
+  const SFM = { standard:'Standard SHERQ File', own:'Their own SHERQ File', not_required:'Not required' };
   const fileOf = sid => (STATE.scFiles || []).find(f => f.supplier_id === sid);
   const linkOf = f => `${location.origin}${location.pathname}?ss=${f.token}`;
   const ST = { setup:['Not yet invited','#6B7280'], invited:['Invited','#B8791C'], in_progress:['Being completed','#B8791C'], submitted:['Submitted: review needed','#1F5FA8'], approved:['Approved','#2E7D4F'], rejected:['Returned for correction','#B3261E'], closed:['Closed','#9CA3AF'] };
@@ -39231,54 +39261,82 @@ async function renderNcResponsePage(token){
   const _r = RENDERERS.suppliers;
   RENDERERS.suppliers = () => {
     let h = _r();
-    h = h.replace('<select id="sup-filter-risk"', `<select id="sup-filter-type" onchange="renderSuppliersTable()"><option value="">Suppliers and subcontractors</option><option value="supplier">Suppliers only</option><option value="subcontractor">Subcontractors only</option></select>\n        <select id="sup-filter-risk"`);
+    h = h.replace('<select id="sup-filter-risk"', `<select id="sup-filter-type" onchange="renderSuppliersTable()"><option value="">Suppliers and subcontractors</option><option value="supplier">Suppliers only</option><option value="subcontractor">Subcontractors (including both)</option></select>\n        <select id="sup-filter-risk"`);
     h = h.replace('<button class="btn-small" onclick="openImportModal(\'suppliers\')">', `<button class="btn-small" onclick="scStructure()" title="The standard folders every subcontractor SHERQ File starts from">SHERQ File structure</button>\n      <button class="btn-small" onclick="openImportModal('suppliers')">`);
-    h = h.replace('<div class="field span2"><label>Name</label><input id="sf-name" placeholder="Company name"></div>', `<div class="field"><label>This party is a</label><select id="sf-ptype"><option value="supplier">Supplier: provides goods or services to us</option><option value="subcontractor">Subcontractor: does work on our behalf, or on a client's site for us</option></select></div>\n        <div class="field span2"><label>Name</label><input id="sf-name" placeholder="Company name"></div>`);
+    h = h.replace('<div class="field span2"><label>Name</label><input id="sf-name" placeholder="Company name"></div>', `<div class="field span3" style="border:2px solid #B8791C;border-radius:12px;padding:10px 12px;background:#fffaf0;"><div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#B8791C;margin-bottom:6px;">Classify first</div><div class="form-grid"><div class="field"><label>This party is a</label><select id="sf-ptype" onchange="scTypeChanged('sf')"><option value="supplier">Supplier only: provides goods or services to us</option><option value="subcontractor">Subcontractor only: does work for us, or on a client's site for us</option><option value="both">Both a supplier and a subcontractor</option></select></div><div class="field span2"><label>SHERQ File</label><select id="sf-sfmode"><option value="not_required" selected>Not required (a normal supplier)</option><option value="standard">Standard SHERQ File: 15 sections, with instructions</option><option value="own">Their own SHERQ File: they build the folders</option></select></div></div></div>\n        <div class="field span2"><label>Name</label><input id="sf-name" placeholder="Company name"></div>`);
     return h;
+  };
+  window.scTypeChanged = function(px){
+    const t = (document.getElementById(px + '-ptype') || {}).value, m = document.getElementById(px + '-sfmode'); if(!m) return;
+    m.value = t === 'supplier' ? 'not_required' : 'standard';
   };
   { const _s = submitSupplier;
     submitSupplier = window.submitSupplier = async function(){
-      const pt = (document.getElementById('sf-ptype') || {}).value, name = ((document.getElementById('sf-name') || {}).value || '').trim(), before = STATE.suppliers.length;
+      const pt = (document.getElementById('sf-ptype') || {}).value || 'supplier', sm = (document.getElementById('sf-sfmode') || {}).value || 'not_required', name = ((document.getElementById('sf-name') || {}).value || '').trim(), before = STATE.suppliers.length;
       await _s.apply(this, arguments);
-      if(pt === 'subcontractor' && name && STATE.suppliers.length > before){
-        const s = STATE.suppliers.filter(x => x.name === name && !isSub(x)).sort((a,b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
-        if(s){ const { error } = await STATE.supabase.from('suppliers').update({ party_type:'subcontractor' }).eq('id', s.id);
-          if(error) toast('Added, but could not mark it as a subcontractor: ' + error.message + ' (run qashe-watchman-schema-subcontractors.sql first)', 'error');
-          else { await loadSuppliers(); renderSuppliersTable(); toast('Marked as a subcontractor: open it to set up its SHERQ File.', 'success'); } }
+      if(name && STATE.suppliers.length > before && (pt !== 'supplier' || sm !== 'not_required')){
+        const s = STATE.suppliers.filter(x => x.name === name).sort((a,b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+        if(s){ const { error } = await STATE.supabase.from('suppliers').update({ party_type:pt, sherq_file_mode:pt === 'supplier' ? 'not_required' : sm }).eq('id', s.id);
+          if(error) toast('Added, but could not save the classification: ' + error.message + ' (run qashe-watchman-schema-supplier-classification.sql first)', 'error');
+          else { await loadSuppliers(); renderSuppliersTable(); if(pt !== 'supplier' && sm !== 'not_required') toast('Added as ' + PT[pt].toLowerCase() + ': open it to set up its SHERQ File.', 'success'); } }
       }
-    }; }
-  { const _t = toggleSupplierEdit;
-    toggleSupplierEdit = window.toggleSupplierEdit = function(id){
-      _t.apply(this, arguments);
-      const nm = document.getElementById('se-name'), s = supplierById(id);
-      if(nm && s && !document.getElementById('se-ptype')) nm.closest('.field').insertAdjacentHTML('beforebegin', `<div class="field"><label>This party is a</label><select id="se-ptype"><option value="supplier" ${!isSub(s)?'selected':''}>Supplier</option><option value="subcontractor" ${isSub(s)?'selected':''}>Subcontractor</option></select></div>`);
     }; }
   { const _e = saveSupplierEdit;
     saveSupplierEdit = window.saveSupplierEdit = async function(id){
-      const pt = (document.getElementById('se-ptype') || {}).value, s = supplierById(id);
+      const nm = ((document.getElementById('se-cname') || {}).value || '').trim(), em = ((document.getElementById('se-cemail') || {}).value || '').trim(), f = fileOf(id), was = (supplierById(id) || {}).contact_email || '';
       await _e.apply(this, arguments);
-      if(pt && s && pt !== (s.party_type || 'supplier')){
-        const { error } = await STATE.supabase.from('suppliers').update({ party_type:pt }).eq('id', id);
-        if(error){ toast('Could not change the type: ' + error.message, 'error'); return; }
-        await loadSuppliers(); renderSuppliersTable(); openSupplierDetail(id);
+      // keep the SHERQ File invitation contact in step with the supplier's contact
+      if(f && em && em !== was && f.status !== 'closed'){
+        const { error } = await STATE.supabase.from('subcontractor_files').update({ invited_email:em, invited_name:nm || f.invited_name || null }).eq('id', f.id);
+        if(!error){ await loadSuppliers(); openSupplierDetail(id); toast('The SHERQ File contact is now ' + em + '.', 'success'); }
       }
     }; }
   { const _t = renderSuppliersTable;
     renderSuppliersTable = window.renderSuppliersTable = function(){
       const all = STATE.suppliers, ft = (document.getElementById('sup-filter-type') || {}).value;
-      if(ft) STATE.suppliers = all.filter(s => (ft === 'subcontractor') === isSub(s));
+      if(ft) STATE.suppliers = all.filter(s => ft === 'subcontractor' ? isSub(s) : s.party_type !== 'subcontractor');
       try{ _t.apply(this, arguments); } finally { STATE.suppliers = all; }
       const wrap = document.getElementById('sup-table-wrap'); if(!wrap) return;
       wrap.querySelectorAll('tr.clickable').forEach(tr => {
         const m = /openSupplierDetail\('([^']+)'\)/.exec(tr.getAttribute('onclick') || ''); const s = m && supplierById(m[1]); if(!s) return;
         const cell = tr.querySelector('td.strong'); if(!cell) return;
         if(isSub(s)){ const f = fileOf(s.id), ok = cleared(f);
-          cell.insertAdjacentHTML('beforeend', ` <span class="sev-badge" style="background:#B8791C;color:#fff;">Subcontractor</span> ${f ? (ok ? '<span class="sev-badge" style="background:#2E7D4F;color:#fff;">Cleared for site</span>' : `<span class="sev-badge" style="background:#B3261E;color:#fff;" title="${E((ST[f.status]||[''])[0])}">Not cleared</span>`) : '<span class="sev-badge" style="background:#B3261E;color:#fff;">No SHERQ File</span>'}`); }
+          if(!needsFile(s)){ cell.insertAdjacentHTML('beforeend', ` <span class="sev-badge" style="background:#B8791C;color:#fff;">${s.party_type === 'both' ? 'Supplier and subcontractor' : 'Subcontractor'}</span> <span class="sev-badge" style="background:#6B7280;color:#fff;">SHERQ File not required</span>`); return; }
+          cell.insertAdjacentHTML('beforeend', ` <span class="sev-badge" style="background:#B8791C;color:#fff;">${s.party_type === 'both' ? 'Supplier and subcontractor' : 'Subcontractor'}</span> ${f ? (ok ? '<span class="sev-badge" style="background:#2E7D4F;color:#fff;">Cleared for site</span>' : `<span class="sev-badge" style="background:#B3261E;color:#fff;" title="${E((ST[f.status]||[''])[0])}">Not cleared</span>`) : '<span class="sev-badge" style="background:#B3261E;color:#fff;">No SHERQ File</span>'}`); }
       });
     }; }
 
   /* ---------- 2. the SHERQ File card on a subcontractor's profile ---------- */
   const bar = (n, t, c) => `<div style="background:#eee;border-radius:6px;height:10px;width:140px;display:inline-block;vertical-align:middle;"><i style="display:block;height:10px;border-radius:6px;background:${c||'#2E7D4F'};width:${t ? Math.round(n/t*100) : 0}%"></i></div>`;
+  function classifyHtml(s){
+    const unset = !s.sherq_file_mode && !isSub(s), pt = s.party_type || 'supplier', sm = sfMode(s), w = canWrite();
+    const opt = (o, v) => Object.entries(o).map(([k, t]) => `<option value="${k}" ${k === v ? 'selected' : ''}>${E(t)}</option>`).join('');
+    return `<div id="sc-class" style="border:2px solid ${unset ? '#B8791C' : 'var(--border)'};border-radius:14px;padding:12px 16px;margin:0 0 14px;background:${unset ? '#fffaf0' : '#fff'};">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#B8791C;margin-bottom:8px;">${unset ? 'Classify this party' : 'Classification'}</div>
+      <div class="form-grid">
+        <div class="field"><label>This party is a</label><select id="cl-ptype" ${w ? '' : 'disabled'} onchange="scTypeChanged('cl')">${opt(PT, pt)}</select></div>
+        <div class="field"><label>SHERQ File</label><select id="cl-sfmode" ${w ? '' : 'disabled'}>${opt(SFM, sm)}</select></div>
+        <div class="field" style="display:flex;align-items:flex-end;">${w ? `<button class="btn-small primary" onclick="scClassify('${s.id}')">Save classification</button>` : ''}</div></div>
+      <div style="font-size:12px;color:var(--text-faint);margin-top:6px;">A normal supplier needs no SHERQ File. A subcontractor, or a party that is both, completes one before any site work. You can change this at any time if the relationship changes; any file already started is kept on record.</div></div>`;
+  }
+  window.scClassify = async function(id){
+    const s = supplierById(id); if(!s) return;
+    const pt = document.getElementById('cl-ptype').value; let sm = document.getElementById('cl-sfmode').value; if(pt === 'supplier') sm = 'not_required';
+    const f = fileOf(id);
+    if(f && sm === 'not_required' && !confirm('A SHERQ File is no longer required for this party. The file already started is kept on record, but it will no longer block site work. Continue?')) return;
+    const { error } = await STATE.supabase.from('suppliers').update({ party_type:pt, sherq_file_mode:sm }).eq('id', id);
+    if(error){ toast('Could not save the classification: ' + error.message + (/party_type|sherq_file_mode|check/i.test(error.message) ? ' (run qashe-watchman-schema-supplier-classification.sql first)' : ''), 'error'); return; }
+    await loadSuppliers(); renderSuppliersTable(); openSupplierDetail(id);
+    toast(f && sm !== 'not_required' && sm !== (f.structure_mode === 'custom' ? 'own' : 'standard') ? 'Saved. The SHERQ File already started keeps its current structure.' : 'Classification saved.', 'success');
+  };
+  window.scSaveContact = async function(fid){
+    const f = (STATE.scFiles || []).find(x => x.id === fid); if(!f) return;
+    const nm = document.getElementById('sc-ename').value.trim(), em = document.getElementById('sc-eemail').value.trim();
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){ toast('Enter a valid email address.', 'error'); return; }
+    const { error } = await STATE.supabase.from('subcontractor_files').update({ invited_email:em, invited_name:nm || null }).eq('id', fid);
+    if(error){ toast('Could not update the contact: ' + error.message, 'error'); return; }
+    await loadSuppliers(); openSupplierDetail(f.supplier_id); toast('SHERQ File contact updated. The next email goes to ' + em + '.', 'success');
+  };
   async function cardHtml(s){
     if(STATE.scBroken) return `<div class="warn-note"><div>Run qashe-watchman-schema-subcontractors.sql in Supabase to switch the SHERQ File on.</div></div>`;
     const f = fileOf(s.id);
@@ -39287,8 +39345,8 @@ async function renderNcResponsePage(token){
       return `<p style="font-size:13px;color:var(--text-dim);margin:0 0 10px;">This subcontractor must complete a SHERQ File before it may do any work on site, or on a client's site on our behalf. Choose how the file is structured, then invite them by email.</p>
         <div class="form-grid">
           <div class="field span3"><label>Structure</label>
-            <label style="font-weight:500;display:flex;gap:8px;margin:4px 0;cursor:pointer;"><input type="radio" name="sc-mode" value="generic" checked style="width:auto;"> The standard SHERQ File: 15 sections and ${((STATE._sherqLib && STATE._sherqLib.active) || []).length || 46} folders, each with instructions on what to upload</label>
-            <label style="font-weight:500;display:flex;gap:8px;margin:4px 0;cursor:pointer;"><input type="radio" name="sc-mode" value="custom" style="width:auto;"> Their own structure: they create the folders (the legal documents folders are still compulsory)</label></div>
+            <label style="font-weight:500;display:flex;gap:8px;margin:4px 0;cursor:pointer;"><input type="radio" name="sc-mode" value="generic" ${sfMode(s) !== 'own' ? 'checked' : ''} style="width:auto;"> The standard SHERQ File: 15 sections and ${((STATE._sherqLib && STATE._sherqLib.active) || []).length || 46} folders, each with instructions on what to upload</label>
+            <label style="font-weight:500;display:flex;gap:8px;margin:4px 0;cursor:pointer;"><input type="radio" name="sc-mode" value="custom" ${sfMode(s) === 'own' ? 'checked' : ''} style="width:auto;"> Their own structure: they create the folders (the legal documents folders are still compulsory)</label></div>
           <div class="field"><label>Contact name</label><input id="sc-cname" value="${E(s.contact_name||'')}"></div>
           <div class="field"><label>Contact email</label><input id="sc-cemail" type="email" value="${E(s.contact_email||'')}"></div>
           <div class="field span3"><label>Message to add to the email (optional)</label><textarea id="sc-msg" placeholder="e.g. The pump installation at the client's plant starts on 1 November."></textarea></div></div>
@@ -39305,9 +39363,10 @@ async function renderNcResponsePage(token){
       <div style="font-size:13px;margin:6px 0;">Required folders completed: <b>${have} of ${req.length}</b> ${bar(have, req.length)} ${exp ? `<span style="color:#B3261E;font-weight:700;margin-left:10px;">${exp} expired</span>` : ''}${sn ? `<span style="color:#B8791C;font-weight:700;margin-left:10px;">${sn} expiring within 30 days</span>` : ''}${pend ? `<span style="margin-left:10px;color:var(--text-dim);">${pend} to review</span>` : ''}</div>
       ${f.review_note && f.status === 'rejected' ? `<div class="warn-note" style="margin:8px 0;"><div><b>Returned with this note:</b> ${E(f.review_note)}</div></div>` : ''}
       ${f.invited_email ? `<div style="font-size:12px;color:var(--text-faint);">Invited ${E(f.invited_name||'')} ${E(f.invited_email)}${f.invited_at ? ' on ' + fmtDate(String(f.invited_at).slice(0,10)) : ''}${f.last_activity_at ? ' · last activity ' + fmtDate(String(f.last_activity_at).slice(0,10)) : ''}</div>` : ''}
+      ${canWrite() && f.status !== 'closed' ? `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px;font-size:12px;"><b>SHERQ File contact:</b> <input id="sc-ename" placeholder="Name" value="${E(f.invited_name || s.contact_name || '')}" style="width:150px;border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;"><input id="sc-eemail" type="email" placeholder="Email" value="${E(f.invited_email || s.contact_email || '')}" style="width:230px;border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;"><button class="btn-small" onclick="scSaveContact('${f.id}')">Update contact</button><span style="color:var(--text-faint);">Invitations and decisions are emailed here.</span></div>` : ''}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
         <button class="btn-small primary" onclick="scReview('${s.id}')">Open the file${f.status === 'submitted' ? ' to review' : ''}</button>
-        ${canWrite() && f.status !== 'closed' ? `<button class="btn-small" onclick="scCopy('${f.id}')">Copy link</button>${(f.invited_email || s.contact_email) ? `<button class="btn-small" onclick="scInvite('${f.id}')">${f.invited_at ? 'Resend invitation' : 'Send invitation'}</button>` : ''}` : ''}
+        ${canWrite() && f.status !== 'closed' ? `<button class="btn-small" onclick="scCopy('${f.id}')">Copy link</button>${(f.invited_email || s.contact_email) ? `<button class="btn-small" onclick="scInvite('${f.id}')">${f.invited_at ? 'Resend invitation' : 'Send invitation'} to ${E(f.invited_email || s.contact_email)}</button>` : ''}` : ''}
         ${canWrite() && f.status === 'submitted' ? `<button class="btn-small primary" onclick="scDecide('${f.id}','approved')">Approve and clear for site</button><button class="btn-small" onclick="scDecide('${f.id}','rejected')">Return for correction</button>` : ''}
         ${canWrite() && f.status === 'approved' ? `<button class="btn-small" onclick="scDecide('${f.id}','revoke')">Withdraw clearance</button>` : ''}
         ${canWrite() ? `<button class="btn-small" onclick="scPrintStatus('${s.id}')">Print status</button>` : ''}
@@ -39319,14 +39378,13 @@ async function renderNcResponsePage(token){
       const res = await _o.apply(this, arguments);
       try{
         const s = supplierById(id), slot = document.getElementById('sup-detail-slot'); if(!s || !slot) return res;
-        slot.querySelector('#sc-card')?.remove();
+        slot.querySelector('#sc-card')?.remove(); slot.querySelector('#sc-class')?.remove();
         const meta = slot.querySelector('.detail-meta'); if(!meta) return res;
-        if(!isSub(s)){
-          if(canWrite() && !STATE.scBroken) meta.insertAdjacentHTML('afterend', `<div id="sc-card" style="margin:0 0 12px;font-size:12.5px;"><button class="btn-small" onclick="scMakeSub('${id}')">This is a subcontractor: change the type and set up its SHERQ File</button></div>`);
-          return res;
-        }
-        await loadLib();
-        meta.insertAdjacentHTML('afterend', `<div id="sc-card" style="border:2px solid #B8791C;border-radius:14px;padding:14px 16px;margin:0 0 16px;background:#fff;"><div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#B8791C;margin-bottom:8px;">Subcontractor SHERQ File: required before any site work</div><div id="sc-card-body">${await cardHtml(s)}</div></div>`);
+        if(needsFile(s) && !STATE.scBroken){
+          await loadLib();
+          meta.insertAdjacentHTML('afterend', `<div id="sc-card" style="border:2px solid #B8791C;border-radius:14px;padding:14px 16px;margin:0 0 16px;background:#fff;"><div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#B8791C;margin-bottom:8px;">SHERQ File: required before any site work</div><div id="sc-card-body">${await cardHtml(s)}</div></div>`);
+        } else if(needsFile(s)) meta.insertAdjacentHTML('afterend', `<div id="sc-card" style="margin:0 0 12px;"><div class="warn-note"><div>Run qashe-watchman-schema-subcontractors.sql in Supabase to switch the SHERQ File on.</div></div></div>`);
+        meta.insertAdjacentHTML('afterend', classifyHtml(s));
       }catch(e){ console.warn('sherq card', e); }
       return res;
     }; }
@@ -39343,6 +39401,7 @@ async function renderNcResponsePage(token){
     if(send && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ toast('Enter the email address to send the invitation to.', 'error'); return; }
     STATE._scMsg = document.getElementById('sc-msg').value.trim();
     const { data: f, error } = await STATE.supabase.from('subcontractor_files').insert({ organisation_id:STATE.org.id, supplier_id:sid, structure_mode:mode, status:'setup', invited_email:email || null, invited_name:name || null, created_by:STATE.user.id }).select().single();
+    STATE.supabase.from('suppliers').update({ sherq_file_mode: mode === 'custom' ? 'own' : 'standard' }).eq('id', sid).then(()=>{}, ()=>{});
     if(error){ toast('Could not create the file: ' + error.message + (/subcontractor_files/.test(error.message||'') ? ' (run qashe-watchman-schema-subcontractors.sql first)' : ''), 'error'); return; }
     const lib = STATE._sherqLib.active.slice().sort((a,b) => a.section_no - b.section_no || a.sort_order - b.sort_order);
     const pick = mode === 'custom' ? lib.filter(x => x.section_no === 15) : lib;
@@ -39440,12 +39499,30 @@ async function renderNcResponsePage(token){
     kpiOverlay(`<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;"><div><h3 style="font-family:Arial,Helvetica,sans-serif;margin:0 0 4px;">Standard SHERQ File structure</h3>
       <div style="font-size:12.5px;color:var(--text-dim);max-width:560px;">${lib.custom ? 'This is your organisation\'s version. New subcontractor files copy it; files already in progress keep their own folders.' : 'This is the standard structure supplied with Watchman.'} ${ad ? '' : 'Only an administrator can change it: send a change request.'}</div></div>
       <div style="display:flex;gap:8px;align-items:flex-start;">${ad && !lib.custom ? '<button class="btn-small primary" onclick="scCustomise()">Customise for my organisation</button>' : ''}${ad && lib.custom ? '<button class="btn-small" onclick="scResetLib()">Reset to the standard</button>' : ''}${!ad ? '<button class="btn-small primary" onclick="kpiCloseOverlay();wmRequestChange({label:\'SHERQ File structure\'})">Request a change</button>' : ''}<button class="btn-small" onclick="kpiCloseOverlay()">Close</button></div></div>
-      ${Object.keys(secs).sort((a,b) => a - b).map(n => `<h4 style="margin:16px 0 6px;font-size:14px;">${n}. ${E(secs[n].t)} ${ad && lib.custom ? `<button class="btn-small" onclick="scFolderForm('new',${n})">+ Folder</button>` : ''}</h4>` + secs[n].f.map(x => `<div style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;margin:4px 0;font-size:12.5px;${x.is_active === false ? 'opacity:.5;' : ''}"><b>${E(x.name)}</b> ${x.is_required ? '<span style="color:#B3261E;">required</span>' : ''} ${x.expiry_tracked ? '<span style="color:#B8791C;">expiry date</span>' : ''} ${ad && lib.custom ? `<button class="btn-small" style="float:right;" onclick="scFolderForm('${x.id}')">Edit</button>` : ''}<div style="color:var(--text-dim);">${E(x.instructions || '')}</div></div>`).join('')).join('')}`);
+      ${Object.keys(secs).sort((a,b) => a - b).map(n => `<h4 style="margin:16px 0 6px;font-size:14px;">${n}. ${E(secs[n].t)} ${ad ? `<button class="btn-small" onclick="scRenameSection(${n})">Rename heading</button>` : ''} ${ad && lib.custom ? `<button class="btn-small" onclick="scFolderForm('new',${n})">+ Folder</button>` : ''}</h4>` + secs[n].f.map(x => `<div style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;margin:4px 0;font-size:12.5px;${x.is_active === false ? 'opacity:.5;' : ''}"><b>${E(x.name)}</b> ${x.is_required ? '<span style="color:#B3261E;">required</span>' : ''} ${x.expiry_tracked ? '<span style="color:#B8791C;">expiry date</span>' : ''} ${ad && lib.custom ? `<button class="btn-small" style="float:right;" onclick="scFolderForm('${x.id}')">Edit</button>` : ''}<div style="color:var(--text-dim);">${E(x.instructions || '')}</div></div>`).join('')).join('')}`);
   };
   window.scCustomise = async function(){
     const lib = await loadLib(); if(!confirm('Make a copy of the standard structure for your organisation that you can change?')) return;
     const { error } = await STATE.supabase.from('org_sherq_folders').insert(lib.def.map(x => ({ organisation_id:STATE.org.id, section_no:x.section_no, section_title:x.section_title, name:x.name, instructions:x.instructions, is_required:x.is_required, expiry_tracked:x.expiry_tracked, sort_order:x.sort_order })));
     if(error){ toast('Could not copy: ' + error.message, 'error'); return; } await loadLib(true); scStructure();
+  };
+  window.scRenameSection = async function(n){
+    let lib = await loadLib(true); const cur = (lib.custom ? lib.org : lib.def).find(x => x.section_no === n); if(!cur) return;
+    if(!lib.custom){
+      if(!confirm('To change a heading you first need your organisation\'s own copy of the structure. Make the copy now?')) return;
+      const { error } = await STATE.supabase.from('org_sherq_folders').insert(lib.def.map(x => ({ organisation_id:STATE.org.id, section_no:x.section_no, section_title:x.section_title, name:x.name, instructions:x.instructions, is_required:x.is_required, expiry_tracked:x.expiry_tracked, sort_order:x.sort_order })));
+      if(error){ toast('Could not copy: ' + error.message, 'error'); return; }
+    }
+    const t = prompt('New heading for section ' + n + ':', cur.section_title); if(t === null) return;
+    const title = t.trim(); if(!title){ toast('The heading cannot be empty.', 'error'); return; } if(title === cur.section_title){ await loadLib(true); scStructure(); return; }
+    const { error: e1 } = await STATE.supabase.from('org_sherq_folders').update({ section_title:title }).eq('organisation_id', STATE.org.id).eq('section_no', n);
+    if(e1){ toast('Could not rename: ' + e1.message, 'error'); return; }
+    const open = (STATE.scFiles || []).filter(f => f.structure_mode === 'generic' && ['setup','invited','in_progress','rejected'].includes(f.status)).map(f => f.id);
+    if(open.length && confirm('Also use the new heading in the ' + open.length + ' SHERQ File(s) not yet submitted? Files already submitted or approved keep the old heading.')){
+      const { error: e2 } = await STATE.supabase.from('subcontractor_file_folders').update({ section_title:title }).eq('organisation_id', STATE.org.id).eq('section_no', n).in('file_id', open);
+      if(e2) toast('Renamed, but files in progress could not be updated: ' + e2.message, 'error');
+    }
+    await loadLib(true); scStructure(); toast('Heading renamed.', 'success');
   };
   window.scResetLib = async function(){
     if(!confirm('Delete your changes and go back to the standard structure? Files already set up are not affected.')) return;
@@ -39482,6 +39559,7 @@ async function renderNcResponsePage(token){
       sfRegsOf(f.id, 'subcontractor').forEach(reg => {
         const sid = (reg.data || {}).supplier_id; if(!sid) { r.issues.push({ lvl:'warn', text:`${reg.title}: not linked to the Suppliers register, so its SHERQ File clearance cannot be checked.` }); return; }
         const sup = supplierById(sid), sf = fileOf(sid);
+        if(sup && !needsFile(sup)) return;
         if(!sf) r.issues.push({ lvl:'block', text:`${reg.title}: no SHERQ File. No subcontractor may work on site until its SHERQ File is approved.` });
         else if(!cleared(sf)) r.issues.push({ lvl:'block', text:`${reg.title}: SHERQ File ${sf.status === 'approved' ? 'has expired documents' : 'not yet approved (' + (ST[sf.status]||[sf.status])[0].toLowerCase() + ')'}: not cleared for site work.` });
       });
@@ -39491,7 +39569,7 @@ async function renderNcResponsePage(token){
     SF_TAB_RENDER.subcontractors = function(f){
       const regs = sfRegsOf(f.id, 'subcontractor');
       const lines = regs.map(reg => { const sid = (reg.data || {}).supplier_id, sf = sid ? fileOf(sid) : null;
-        return `<tr><td class="strong">${E(reg.title)}</td><td>${sf ? stBadge(sf) : '<span class="sev-badge" style="background:#B3261E;color:#fff;">No SHERQ File</span>'}</td><td>${cleared(sf) ? '<span style="color:#2E7D4F;font-weight:700;">Cleared for site work</span>' : '<span style="color:#B3261E;font-weight:700;">Not cleared</span>'}</td><td style="text-align:right;">${sid ? `<button class="btn-small" onclick="showModule('suppliers');setTimeout(()=>openSupplierDetail('${sid}'),0)">Open SHERQ File</button>` : ''}</td></tr>`; }).join('');
+        return `<tr><td class="strong">${E(reg.title)}</td><td>${sf ? stBadge(sf) : '<span class="sev-badge" style="background:#B3261E;color:#fff;">No SHERQ File</span>'}</td><td>${(sid && supplierById(sid) && !needsFile(supplierById(sid))) ? '<span style="color:#6B7280;font-weight:700;">SHERQ File not required</span>' : cleared(sf) ? '<span style="color:#2E7D4F;font-weight:700;">Cleared for site work</span>' : '<span style="color:#B3261E;font-weight:700;">Not cleared</span>'}</td><td style="text-align:right;">${sid ? `<button class="btn-small" onclick="showModule('suppliers');setTimeout(()=>openSupplierDetail('${sid}'),0)">Open SHERQ File</button>` : ''}</td></tr>`; }).join('');
       return (regs.length ? `<div class="sf-block"><div class="sf-block-head"><h4>SHERQ File clearance</h4></div><p style="font-size:12.5px;color:var(--text-dim);margin:0 0 8px;">Linked to the Suppliers module. A subcontractor whose SHERQ File is not approved, or has expired documents, blocks this site file.</p><table><tr><th>Subcontractor</th><th>SHERQ File</th><th>Clearance</th><th></th></tr>${lines}</table></div>` : '') + _t(f);
     };
   }catch(e){ console.warn('site file link', e); }
