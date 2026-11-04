@@ -3811,6 +3811,7 @@ const RENDERERS = {
         <div class="field span2"><label>Name</label><input id="cf-name" placeholder="Company name"></div>
         <div class="field"><label>Your account number <span style="font-weight:400;color:var(--text-faint);">(optional)</span></label><input id="cf-account" placeholder="Your own customer account / ID"></div>
         <div class="field"><label>Contact name</label><input id="cf-contact-name"></div>
+        <div class="field"><label>Position / designation</label><input id="cf-contact-position" placeholder="e.g. SHEQ Manager"></div>
         <div class="field"><label>Contact email</label><input id="cf-contact-email" type="email"></div>
         <div class="field"><label>Contact phone</label><input id="cf-contact-phone"></div>
         <div class="field"><label>Account owner</label><select id="cf-owner">${memberOptions(STATE.user.id)}</select></div>
@@ -11030,6 +11031,7 @@ window.submitCustomer = async function(){
     created_by: STATE.user.id,
   };
   { const an = (document.getElementById('cf-account')||{value:''}).value.trim(); if(an) payload.account_number = an; }
+  { const cp = (document.getElementById('cf-contact-position')||{value:''}).value.trim(); if(cp) payload.contact_position = cp; }
   const { data: newCust, error } = await STATE.supabase.from('customers').insert(payload).select().single();
   if(error){ toast('Could not add customer: ' + error.message, 'error'); return; }
   toggleCustomerForm();
@@ -11090,6 +11092,7 @@ async function openCustomerDetail(id){
       </div>
       <div class="detail-meta">
         <div class="dm-item"><div class="l">Contact</div><div class="v">${c.contact_name || '—'}</div></div>
+        <div class="dm-item"><div class="l">Position / designation</div><div class="v">${c.contact_position || '—'}</div></div>
         <div class="dm-item"><div class="l">Email</div><div class="v">${c.contact_email || '—'}</div></div>
         <div class="dm-item"><div class="l">Owner</div><div class="v">${memberName(c.account_owner_id)}</div></div>
         <div class="dm-item"><div class="l">Status</div><div class="v">${pill(c.status)}</div></div>
@@ -11130,10 +11133,17 @@ window.printCustomer = async function(id){
   if(!c) return;
   const { data: surveys } = await STATE.supabase.from('satisfaction_surveys').select('*').eq('customer_id', id).order('sent_at', {ascending:false});
   const meta = [
-    ['Contact', c.contact_name || '—'], ['Email', c.contact_email || '—'], ['Phone', c.contact_phone || '—'],
+    ['Contact', c.contact_name || '—'], ['Position / designation', c.contact_position || '—'], ['Email', c.contact_email || '—'], ['Phone', c.contact_phone || '—'],
     ['Account owner', memberName(c.account_owner_id)], ['Status', label(c.status)],
   ];
   let body = '';
+  try{
+    const { data: cts } = await STATE.supabase.from('crm_contacts').select('*').eq('customer_id', id).order('name', {ascending:true});
+    if(cts && cts.length){
+      body += printSectionTitle('Customer Contacts');
+      body += printTable(['Name','Position / designation','Email','Phone'], cts.map(x => [x.name + (x.is_primary ? ' (main contact)' : ''), x.job_title || '—', x.email || '—', x.phone || '—']));
+    }
+  }catch(e){}
   if(surveys && surveys.length){
     body += printSectionTitle('Satisfaction Survey History');
     body += printTable(['Sent','Status','Rating'], surveys.map(s => [
@@ -21400,7 +21410,7 @@ function renderAdminTeam(){
         </select>
       </div>
       <div class="field">
-        <label>Module access <span style="text-transform:none; font-weight:400; color:var(--text-faint);">(Admins see every module regardless of what's ticked here)</span></label>
+        <label>Module access <span style="text-transform:none; font-weight:400; color:var(--text-faint);">(Admins see every module. Managers, Contributors and Viewers see only what is ticked)</span></label>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 16px; margin-top:6px;">
           ${adminInviteModules().map(m => `
             <div style="display:flex; align-items:center; gap:8px;">
@@ -21526,7 +21536,7 @@ window.toggleAdminMemberEdit = function(userId){
         </select>
       </div>
       <div class="field">
-        <label>Module access <span style="text-transform:none; font-weight:400; color:var(--text-faint);">(Admins and Managers see every module; Managers cannot open Administration. Ticks apply to Contributors and Viewers.)</span></label>
+        <label>Module access <span style="text-transform:none; font-weight:400; color:var(--text-faint);">(Admins see every module. Managers, Contributors and Viewers see only the modules ticked here. Only Admins can open Administration.)</span></label>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 16px; margin-top:6px;">
           ${adminInviteModules().map(mod => `
             <div style="display:flex; align-items:center; gap:8px;">
@@ -21618,7 +21628,13 @@ async function renderBulkDocumentsRegister(){
   const root = document.getElementById('alldocs-root');
   if(!root) return;
   root.innerHTML = '<div class="empty-state"><p>Loading…</p></div>';
-  const { data, error } = await STATE.supabase.from('bulk_documents').select('*').eq('organisation_id', STATE.org.id).order('doc_number', {ascending:true});
+  let data = [], error = null;
+  for(let from = 0; from < 20000; from += 1000){ // the database returns at most 1000 rows per request: read every page so no document is missing
+    const r = await STATE.supabase.from('bulk_documents').select('*').eq('organisation_id', STATE.org.id).order('doc_number', {ascending:true}).range(from, from + 999);
+    if(r.error){ error = r.error; break; }
+    data = data.concat(r.data || []);
+    if(!r.data || r.data.length < 1000) break;
+  }
   if(error){ toast('Could not load documents: ' + error.message, 'error'); return; }
   STATE.bulkDocuments = data || [];
   // A fresh load of the register is a fresh set of rows on screen — any
@@ -21649,15 +21665,20 @@ window.renderAllDocsView = renderAllDocsView;
 // A controlled document counts as published once it has been approved at least once, however that approval was recorded.
 function allDocsIsPublished(d){ return !!(d.ever_approved || d.approval_status === 'approved' || d.workflow_status === 'approved' || d.approver_signed_off_at); }
 function allDocsControlledCount(deptId, typeId){
+  if(deptId === '' || typeId === '') return allDocsControlledDocs(deptId, typeId).length;
   return (STATE.documents||[]).filter(d => allDocsIsPublished(d) && (deptId === null || d.department_id === deptId) && (typeId === null || d.type_id === typeId || d.document_type_id === typeId)).length;
 }
+// '' means "not filed": no department/type, OR one that is switched off or deleted, so a document can never be counted yet be unreachable.
+function allDocsActiveIds(list){ return new Set((list||[]).filter(x=>x.is_active!==false).map(x=>x.id)); }
 function allDocsDeptDocs(deptId){
   const active = STATE.bulkDocuments.filter(d=>!d.archived);
-  return deptId === '' ? active.filter(d=>!d.department_id) : active.filter(d=>d.department_id===deptId);
+  if(deptId === ''){ const ok = allDocsActiveIds(STATE.docDepartments); return active.filter(d=>!d.department_id || !ok.has(d.department_id)); }
+  return active.filter(d=>d.department_id===deptId);
 }
 function allDocsTypeDocs(deptId, typeId){
   const deptDocs = allDocsDeptDocs(deptId);
-  return typeId === '' ? deptDocs.filter(d=>!d.document_type_id) : deptDocs.filter(d=>d.document_type_id===typeId);
+  if(typeId === ''){ const ok = allDocsActiveIds(STATE.docTypes); return deptDocs.filter(d=>!d.document_type_id || !ok.has(d.document_type_id)); }
+  return deptDocs.filter(d=>d.document_type_id===typeId);
 }
 // The controlled documents (Document Control) belonging to this exact
 // department + type — shown alongside the bulk register at level 3, since
@@ -21666,7 +21687,12 @@ function allDocsTypeDocs(deptId, typeId){
 // browsing All Documents shouldn't have to know or care which table it's
 // filed under.
 function allDocsControlledDocs(deptId, typeId){
-  if(deptId === '' || typeId === '') return []; // controlled documents always have both set
+  if(deptId === '' || typeId === ''){
+    const okD = allDocsActiveIds(STATE.docDepartments), okT = allDocsActiveIds(STATE.docTypes);
+    return (STATE.documents||[]).filter(d => allDocsIsPublished(d) &&
+      (deptId === '' ? (!d.department_id || !okD.has(d.department_id)) : d.department_id === deptId) &&
+      (typeId === '' ? (!(d.type_id||d.document_type_id) || !okT.has(d.type_id||d.document_type_id)) : (d.type_id===typeId || d.document_type_id===typeId)));
+  }
   // A document only surfaces here once it has been approved for the first
   // time — before that it lives in Document Management while it's drafted,
   // reviewed and approved. Once it HAS been approved at least once, it stays
@@ -21679,7 +21705,7 @@ function allDocsControlledDocs(deptId, typeId){
 /* ---- Level 1: Departments ---- */
 function renderAllDocsDepartmentsShell(){
   const depts = STATE.docDepartments.filter(d=>d.is_active);
-  const unfiledCount = allDocsDeptDocs('').length;
+  const unfiledCount = allDocsDeptDocs('').length + (STATE.documents||[]).filter(d=>allDocsIsPublished(d) && !allDocsActiveIds(STATE.docDepartments).has(d.department_id)).length;
   return `
     ${allDocsHeroHtml()}
     <div class="toolbar">
@@ -21888,7 +21914,7 @@ function renderAllDocsTypesShell(deptId){
   if(deptId !== '' && !dept) return '<div class="empty-state"><p>Department not found.</p></div>';
   const deptLabel = deptId === '' ? 'Unfiled documents' : dept.name;
   const types = STATE.docTypes.filter(t=>t.is_active);
-  const unfiledCount = allDocsTypeDocs(deptId, '').length;
+  const unfiledCount = allDocsTypeDocs(deptId, '').length + allDocsControlledDocs(deptId, '').length;
   return `
     ${allDocsNavHtml(2, deptLabel, null)}
     <div class="toolbar">
@@ -22095,7 +22121,6 @@ function renderAllDocsRegisterShell(deptId, typeId){
 // a person browsing All Documents sees the whole picture in one place —
 // the file itself stays in Document Control; this is a pointer, not a copy.
 function renderAllDocsControlledSection(deptId, typeId){
-  if(deptId === '' || typeId === '') return '';
   const docs = allDocsControlledDocs(deptId, typeId);
   if(!docs.length) return '';
   return `
@@ -22994,9 +23019,16 @@ function renderComplianceDashboard(){
       return `<div class="wd-comp-row" data-tip="${wdTipAttr({ t:c.label, v:Math.round(v)+'%', s:'Contributes equally to the overall score' })}"><div class="t"><span>${wdEsc(c.label)}</span><b>${Math.round(v)}%</b></div><div class="b"><i style="width:${v.toFixed(1)}%; background:${WD_BRIGHT[k]};"></i></div></div>`;
     }).join('');
 
+    if(health.score != null && health.components.length){
+      const low = health.components.reduce((a,c) => (Number.isFinite(c.value) && (!a || c.value < a.value)) ? c : a, null);
+      html += `<div class="wd-panel" style="display:flex;flex-wrap:wrap;align-items:center;gap:18px;padding:14px 20px;margin-bottom:14px;">
+        <div style="font-size:34px;font-weight:900;line-height:1;color:${WD_BRIGHT[hst.key]};">${Math.round(health.score)}%</div>
+        <div style="flex:1;min-width:220px;"><div style="font-size:13px;font-weight:800;">Compliance average: ${hst.label}</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-top:2px;">The average of ${health.components.length} live indicator${health.components.length===1?'':'s'}, each carrying equal weight${low ? '. Lowest: ' + wdEsc(low.label) + ' at ' + Math.round(low.value) + '%' : ''}. The same figure is shown next to the welcome message on the Overview.</div></div></div>`;
+    }
     html += `<div class="wd-hero">
       <div class="wd-panel wd-dial-card">
-        <div class="wd-eyebrow">Compliance Health Score</div>
+        <div class="wd-eyebrow">Compliance Average</div>
         ${wdDial(health.score, hst.key, 260, {dark:true})}
         <span class="wd-status ${hst.key}">${hst.label}</span>
         <div style="font-size:11px; color:#A6A09B; margin-top:8px;">${health.components.length ? 'Blended across '+health.components.length+' live indicator'+(health.components.length===1?'':'s')+' · hover a bar for detail' : 'Not enough live data yet: add records to any register to start scoring'}</div>
@@ -30607,9 +30639,9 @@ RENDERERS.overview = () => {
   ].join('');
   return `<div class="ovx">
     <div class="ovx-hero"><div style="flex:1;min-width:240px;position:relative;z-index:1;"><div class="ovx-eye">${escapeHtml(STATE.org.name)} · ${fmtDate(today)}</div>
-      <h2>${greet}${first?', '+escapeHtml(first):''}</h2>
-      <div class="ovx-sub">${overdueNC.length+overdueTasks.length ? `${overdueNC.length+overdueTasks.length} item${overdueNC.length+overdueTasks.length===1?'':'s'} need your attention today.` : 'Nothing is overdue. Keep the momentum going.'} ${hs.score!=null ? 'Your live compliance health is shown on the right.' : 'Start using the registers to build your live compliance health score.'}</div></div>
-      <div class="ovx-ring" style="background:conic-gradient(${col} ${hs.score==null?0:hs.score*3.6}deg,rgba(255,255,255,.15) 0);cursor:pointer;" onclick="showModule('compliance')"><div><b>${hs.score==null?'—':hs.score}</b><span>Health score</span></div></div></div>
+      <h2>${greet}${first?', '+escapeHtml(first):''}${(hs.score!=null && (hs.components||[]).length) ? ` <span onclick="showModule('compliance')" title="Open the compliance dashboard" style="cursor:pointer;display:inline-block;vertical-align:middle;margin-left:10px;padding:5px 12px;border-radius:999px;font-size:13px;font-weight:800;letter-spacing:.02em;background:${col};color:#fff;white-space:nowrap;">Compliance average ${hs.score}%</span>` : ''}</h2>
+      <div class="ovx-sub">${overdueNC.length+overdueTasks.length ? `${overdueNC.length+overdueTasks.length} item${overdueNC.length+overdueTasks.length===1?'':'s'} need your attention today.` : 'Nothing is overdue. Keep the momentum going.'} ${hs.score!=null ? 'Your live compliance average is shown next to the welcome and on the right.' : 'Start using the registers to build your live compliance health score.'}</div></div>
+      <div class="ovx-ring" style="background:conic-gradient(${col} ${hs.score==null?0:hs.score*3.6}deg,rgba(255,255,255,.15) 0);cursor:pointer;" onclick="showModule('compliance')"><div><b>${hs.score==null?'—':hs.score}</b><span>Compliance average</span></div></div></div>
     <div class="ovx-tiles">${tile(openNC.length,'Open nonconformances','k','nonconformances')}${tile(overdueNC.length,'Overdue nonconformances',overdueNC.length?'r':'g','nonconformances')}${tile(openTasks.length,'Open tasks','o','tasks')}${tile(overdueTasks.length,'Overdue tasks',overdueTasks.length?'r':'g','tasks')}${tile(hiRisks.length,'High risks',hiRisks.length?'o':'g','risks')}</div>
     <div class="ovx-grid">
       <div class="ovx-card"><h3>Needs your attention</h3>${items || '<p style="color:#1B8E3E;font-weight:800;margin:0;">✓ All clear: nothing needs attention right now.</p>'}</div>
@@ -30905,6 +30937,7 @@ window.toggleCustomerEdit = function(id){
     <div class="field span2"><label>Name</label><input id="ce-name" value="${escapeHtml(c.name||'')}"></div>
     <div class="field"><label>Your account number</label><input id="ce-account" value="${escapeHtml(c.account_number||'')}" placeholder="Your own customer account / ID"></div>
     <div class="field"><label>Contact name</label><input id="ce-cname" value="${escapeHtml(c.contact_name||'')}"></div>
+    <div class="field"><label>Position / designation</label><input id="ce-cpos" value="${escapeHtml(c.contact_position||'')}"></div>
     <div class="field"><label>Contact email</label><input id="ce-cemail" value="${escapeHtml(c.contact_email||'')}"></div>
     <div class="field"><label>Contact phone</label><input id="ce-cphone" value="${escapeHtml(c.contact_phone||'')}"></div>
     <div class="field"><label>Account owner</label><select id="ce-owner">${memberOptions(c.account_owner_id)}</select></div>
@@ -30916,6 +30949,7 @@ window.saveCustomerEdit = async function(id){
   const name = document.getElementById('ce-name').value.trim(); if(!name){ alert('Name is required.'); return; }
   const patch = { name, contact_name:document.getElementById('ce-cname').value.trim(), contact_email:document.getElementById('ce-cemail').value.trim(), contact_phone:document.getElementById('ce-cphone').value.trim(),
     account_owner_id:document.getElementById('ce-owner').value, status:document.getElementById('ce-status').value };
+  { const cpos = (document.getElementById('ce-cpos')||{value:''}).value.trim(); if(cpos !== (c.contact_position||'')) patch.contact_position = cpos || null; }
   const an = document.getElementById('ce-account').value.trim(); if(an !== (c.account_number||'')) patch.account_number = an || null;
   const { error } = await STATE.supabase.from('customers').update(patch).eq('id', id);
   if(error){ toast('Could not save: ' + error.message + (/account_number/.test(error.message) ? ' (run the new SQL file first)' : ''), 'error'); return; }
@@ -37321,9 +37355,19 @@ function fmtRev(rev){
         ['Health', h.pct==null ? 'Not scored' : h.pct+'% ('+bandTxt(h)+')'], ['Status', a.lifecycle_status==='out_of_service' ? 'Out of service' : fitLabel(a.current_status)],
         ['Last inspected', fmtDate(a.last_inspection_date)], ['Next inspection due', fmtDate(a.next_inspection_date)], ['Inspection cadence', a.inspection_frequency && ASSET_FREQ[a.inspection_frequency] ? ASSET_FREQ[a.inspection_frequency].label : '—'],
         ['Certificate', a.certificate_type ? a.certificate_type + (a.certificate_expiry_date ? ' to ' + fmtDate(a.certificate_expiry_date) : '') : '—']];
-      let body = `<div style="display:flex;gap:24px;align-items:center;margin-bottom:10px;break-inside:avoid"><div style="width:150px;flex:none">${wdDial(h.pct, h.key, 150)}</div>
+      const { files: evidenceFiles } = await loadEvidence('asset', id);
+      const photoUrl = assetPhotoUrl(a), stTxt = a.lifecycle_status==='out_of_service' ? 'Out of service' : fitLabel(a.current_status);
+      const tile = 'text-align:center;background:#FAFAF9;border:1px solid #E3E1DF;border-radius:8px;padding:10px;';
+      let body = `<div style="display:flex;gap:14px;margin-bottom:16px;flex-wrap:wrap;break-inside:avoid">
+        ${photoUrl ? `<div style="${tile}"><img src="${photoUrl}" style="width:150px;height:150px;object-fit:cover;border-radius:4px;display:block"><div style="font-size:10.5px;color:#615C59;margin-top:8px;font-weight:600">Asset photo</div></div>` : ''}
+        <div style="${tile}"><img src="${assetQrCodeUrl(a, 150)}" style="width:150px;height:150px;display:block"><div style="font-size:10.5px;color:#615C59;margin-top:8px;font-weight:600">Asset QR code</div></div>
+        <div style="${tile}width:150px;display:flex;flex-direction:column;justify-content:center"><div style="font-size:26px;font-weight:800;color:${h.key==='green'?GREEN:h.key==='amber'?AMBER:h.key==='red'?RED:'#9C9895'}">${h.pct==null?'—':h.pct+'%'}</div><div style="font-size:10.5px;color:#615C59;margin-top:4px;font-weight:600">Asset health</div></div>
+        <div style="${tile}width:150px;display:flex;flex-direction:column;justify-content:center"><div style="font-size:15px;font-weight:800;color:#333">${E(stTxt)}</div><div style="font-size:10.5px;color:#615C59;margin-top:4px">Next inspection due<br><b>${fmtDate(a.next_inspection_date)}</b></div><div style="font-size:9.5px;color:#9C9895;margin-top:6px;font-weight:600">Status</div></div>
+      </div>
+      <div style="display:flex;gap:24px;align-items:center;margin-bottom:10px;break-inside:avoid"><div style="width:150px;flex:none">${wdDial(h.pct, h.key, 150)}</div>
         <div><div style="font-size:15px;font-weight:700;color:${h.key==='green'?GREEN:h.key==='amber'?AMBER:h.key==='red'?RED:'#615C59'}">${E(h.label)}</div>
         <ul style="margin:6px 0 0 16px;font-size:12px;line-height:1.6">${h.reasons.map(r=>`<li>${E(r)}</li>`).join('')}</ul></div></div>`;
+      if(a.notes) body += `<p><b>Notes</b><br>${E(a.notes)}</p>`;
       body += printSectionTitle('Inspections and health');
       body += list.length ? chartBox('Inspections per month (last 12 months)', barChartSvg(ms.cats, ms.series, { title:'Inspections per month', height:180 }))
         + chartBox('Condition score of each inspection', barChartSvg(cats, [{ name:'Score', color:GREEN, values:sc.map(v=>v==null?0:v), colors:sc.map(bandColor) }], { title:'Condition score', pct:true, max:100, legend:false, height:180 })) : '<p>No completed inspections yet.</p>';
@@ -37336,6 +37380,8 @@ function fmtRev(rev){
       if(poorRows.length){ body += printSectionTitle('Items repeatedly rated poor (recent inspections)'); body += printTable(['Criterion','Times rated 4 or 5'], poorRows); }
       if(list.length){ body += printSectionTitle('Inspection history'); body += printTable(['Date','Inspected by','Source','Score','Result','Notes'], list.map(i => { const s = scoreOf(i); return [fmtDate(i.inspection_date), E(i.inspected_by_name||'—'), i.submitted_via==='qr_scan'?'QR scan':'App', s==null?'—':s+'%', fitLabel(i.status), E(i.overall_notes||'')]; })); }
       if(maint.length){ body += printSectionTitle('Maintenance history'); body += printTable(['Date','Type','What was done','By','Cost'], maint.map(m => [fmtDate(m.maintenance_date), E(label(m.kind)), E(m.description||''), E(m.performed_by||'—'), m.cost!=null ? 'R ' + m.cost : '—'])); }
+      { const gal = await buildPrintPhotoGallery(evidenceFiles); if(gal){ body += printSectionTitle('Photos and evidence'); body += gal; } }
+      body += buildPrintSupportingDocsList(evidenceFiles);
       hideLoader();
       await printRecord('Asset Report: Inspections and Health', a.ref_code + ' · ' + a.description, meta, body, null, 'assets');
     } catch(e){ hideLoader(); toast('Could not prepare the report: ' + e.message, 'error'); }
@@ -37360,6 +37406,8 @@ function fmtRev(rev){
     body += printTable(['Ref','Asset','Category','Location','Health','Status','Last inspected','Next due'], infos.map(({a,h}) => [E(a.ref_code), E(a.description), E(assetCategoryLabel(a.asset_category)), E(a.location||'—'), h.pct==null?'—':h.pct+'% '+bandTxt(h), a.lifecycle_status==='out_of_service'?'Out of service':fitLabel(a.current_status||null).replace('In progress','Not inspected'), fmtDate(a.last_inspection_date), fmtDate(a.next_inspection_date)]));
     await printRecord('Assets and Maintenance Register: Inspections and Health', STATE.org.name, meta, body, null, 'assets');
   };
+  /* the Print / PDF button on an asset now produces the same full report as Asset Watchman: photo, QR code, status and full history */
+  window.printAsset = function(id){ return window.printAssetFullReport(id); };
 })();
 
 
@@ -37508,19 +37556,40 @@ function fmtRev(rev){
 
   function tagCard(p){
     return `<div class="detail-card" id="pers-att-card" style="padding:16px;margin-bottom:16px">
-      <div class="panel-head" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h3 style="font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:600">Attendance, schedule and ID tag</h3>
+      <div class="panel-head" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h3 style="font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:600">Attendance and schedule</h3>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><select onchange="attSetWeeks('${p.id}',+this.value)" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px">${[4,12,26].map(n=>`<option value="${n}" ${n===STATE._attWeeks?'selected':''}>Last ${n} weeks</option>`).join('')}</select>
-        ${canManage() ? `<button class="btn-small primary" onclick="printIdTags(['${p.id}'])">Print ID tag</button><button class="btn-small" onclick="attReissueBadge('${p.id}')">Reissue tag (lost card)</button>` : ''}</div></div>
+        </div></div>
       <div id="pers-att-body"></div></div>`;
+  }
+  /* each person's staff QR ID, shown at the top of the profile for managers (the tag is read by scanner stations) */
+  function qrCard(p){
+    return `<div class="detail-card" id="pers-qr-card" style="padding:16px;margin-bottom:16px;display:flex;gap:18px;align-items:center;flex-wrap:wrap">
+      <div id="pers-qr-img" style="width:130px;height:130px;flex:none;border:1px solid var(--border-soft);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-faint);text-align:center;padding:6px;box-sizing:border-box">Loading QR code…</div>
+      <div style="flex:1;min-width:220px"><h3 style="font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:600;margin:0 0 4px">Staff QR ID</h3>
+        <p style="font-size:12.5px;color:var(--text-dim);margin:0 0 10px">${E(p.full_name||'')}. Scanned at the gate or scanner station to record attendance.</p>
+        <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn-small primary" onclick="printIdTags(['${p.id}'])">Print ID tag</button><button class="btn-small" onclick="attReissueBadge('${p.id}')">Reissue tag (lost card)</button></div></div></div>`;
+  }
+  async function fillQr(p){
+    const box = document.getElementById('pers-qr-img'); if(!box) return;
+    try{
+      const have = await ensureBadges([p.id]), b = have[p.id];
+      if(!b || !b.token){ box.textContent = 'No tag issued yet'; return; }
+      box.style.padding = '0'; box.innerHTML = `<img src="${qrImg('WMB:' + b.token, 130)}" alt="Staff QR ID" style="width:130px;height:130px;display:block">`;
+    }catch(e){ box.textContent = 'QR code unavailable: run qashe-watchman-schema-badge-attendance.sql'; }
   }
   const _opd = openPersonDetail;
   openPersonDetail = window.openPersonDetail = async function(id){
     const r = await _opd.apply(this, arguments);
     try {
       const p = personById(id), panel = document.querySelector('#pers-detail-slot .detail-panel'); if(!p || !panel) return r;
+      if(canManage()){
+        const q = document.createElement('div'); q.innerHTML = qrCard(p);
+        const anchor = panel.querySelector('.form-grid') || panel.querySelector('.status-row');
+        anchor ? anchor.parentNode.insertBefore(q.firstElementChild, anchor) : panel.appendChild(q.firstElementChild);
+        fillQr(p);
+      }
       const holder = document.createElement('div'); holder.innerHTML = tagCard(p);
-      const anchor = panel.querySelector('.form-grid') || panel.querySelector('.status-row');
-      anchor ? anchor.parentNode.insertBefore(holder.firstElementChild, anchor) : panel.appendChild(holder.firstElementChild);
+      panel.appendChild(holder.firstElementChild); /* attendance data sits at the bottom of the profile */
       renderPersonAttendance(id);
     } catch(e){ console.warn('person attendance', e); }
     return r;
@@ -39850,6 +39919,7 @@ async function renderNcResponsePage(token){
       <div class="field"><label>Customer since</label><input type="date" id="ce-since" value="${E(c.customer_since || '')}"></div>
       <div class="field span3"><label>Products or services we provide to this customer</label><textarea id="ce-prod">${E(c.products_services || '')}</textarea></div>
       <div class="field"><label>Contact name</label><input id="ce-cn" value="${E(c.contact_name || '')}"></div>
+      <div class="field"><label>Position / designation</label><input id="ce-cpos" value="${E(c.contact_position || '')}"></div>
       <div class="field"><label>Contact email</label><input id="ce-ce" value="${E(c.contact_email || '')}"></div>
       <div class="field"><label>Contact phone</label><input id="ce-cp" value="${E(c.contact_phone || '')}"></div>
       <div class="field span2"><label>Address</label><input id="ce-addr" value="${E(c.address || '')}"></div>
@@ -39860,8 +39930,10 @@ async function renderNcResponsePage(token){
   window.custSave = async function(id){
     const g = i => (document.getElementById(i) || {}).value || '';
     if(!g('ce-name').trim()){ toast('Name is required.', 'error'); return; }
+    const c0 = customerById(id) || {};
     const patch = { name:g('ce-name').trim(), account_number:g('ce-acc').trim() || null, account_owner_id:g('ce-mgr'), sales_rep_id:g('ce-rep') || null, status:g('ce-status'), tier:g('ce-tier') || null, industry:g('ce-ind').trim() || null,
       customer_since:g('ce-since') || null, products_services:g('ce-prod').trim() || null, contact_name:g('ce-cn').trim(), contact_email:g('ce-ce').trim(), contact_phone:g('ce-cp').trim(), address:g('ce-addr').trim() || null, website:g('ce-web').trim() || null, notes:g('ce-notes').trim() || null };
+    if(g('ce-cpos').trim() !== (c0.contact_position || '')) patch.contact_position = g('ce-cpos').trim() || null;
     const { error } = await STATE.supabase.from('customers').update(patch).eq('id', id);
     if(error){ toast('Could not save: ' + error.message + (/column/.test(error.message || '') ? ' (run qashe-watchman-schema-crm.sql first)' : ''), 'error'); return; }
     await loadCustomers(); renderCustomersTable(); openCustomerDetail(id); toast('Customer saved.', 'success');
@@ -40107,7 +40179,7 @@ async function renderNcResponsePage(token){
   window.crmContactForm = function(id, cid){
     const x = id ? D().contacts.find(k => k.id === id) : { customer_id:cid, name:'', is_primary:false };
     kpiOverlay(`<h3 style="font-family:Arial,Helvetica,sans-serif;margin:0 0 10px;">${id ? 'Edit contact' : 'New contact'}</h3><div class="form-grid">
-      ${field('cc-name','Name',`<input id="cc-name" value="${E(x.name)}">`,'span2')}${field('cc-title','Job title',`<input id="cc-title" value="${E(x.job_title || '')}">`)}${field('cc-email','Email',`<input id="cc-email" value="${E(x.email || '')}">`)}${field('cc-phone','Phone',`<input id="cc-phone" value="${E(x.phone || '')}">`)}
+      ${field('cc-name','Name',`<input id="cc-name" value="${E(x.name)}">`,'span2')}${field('cc-title','Position / designation',`<input id="cc-title" value="${E(x.job_title || '')}">`)}${field('cc-email','Email',`<input id="cc-email" value="${E(x.email || '')}">`)}${field('cc-phone','Phone',`<input id="cc-phone" value="${E(x.phone || '')}">`)}
       ${field('cc-role','Role in buying decisions',`<select id="cc-role"><option value="">Not set</option>${opts(DROLE, x.decision_role)}</select>`)}${field('cc-prim','Main contact',`<select id="cc-prim"><option value="no">No</option><option value="yes" ${x.is_primary ? 'selected' : ''}>Yes</option></select>`)}${field('cc-notes','Notes',`<textarea id="cc-notes">${E(x.notes || '')}</textarea>`,'span3')}</div>
       <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button>${id ? `<button class="btn-small" onclick="crmContactDelete('${id}')">Delete</button>` : ''}<button class="btn-primary" onclick="crmContactSave('${id || ''}','${x.customer_id}')">Save</button></div>`);
   };
@@ -42332,7 +42404,7 @@ window.WMTutorial = { open, lessons: () => Object.keys(window.WMLESSONS || {}), 
 /* ===== b70b: access calibration: every sidebar item can be ticked per person; Manager has full access except Administration ===== */
 (function(){
   /* sidebar modules that were not in the per-person list before. People who were last saved before calibration keep what they see until an administrator saves their access. */
-  const NEWG=['master_register','incidents','infosec_incidents','soa','info_assets','threat_intel','governance','privacy','retention','crm'];
+  const NEWG=['master_register','incidents','infosec_incidents','soa','info_assets','threat_intel','governance','privacy','retention','crm','business_health'];
   window.WM_NEWG=NEWG;
   const hasMarker=()=>(STATE.myModuleAccess||[]).includes(WM_CAL);
   { const _c=canAccessModule; canAccessModule=window.canAccessModule=function(mod){
@@ -42340,6 +42412,16 @@ window.WMTutorial = { open, lessons: () => Object.keys(window.WMLESSONS || {}), 
       if(staff||STATE.myRole==='admin') return _c.apply(this,arguments);
       if(STATE.myRole==='manager'){
         if(mod==='administration') return _c.apply(this,arguments);
+        /* a Manager saved with ticked modules sees only those; a Manager from before calibration keeps full access until saved */
+        if(hasMarker() && mod!=='overview' && mod!=='compliance'){
+          const ticks=(STATE.myModuleAccess||[]).filter(k=>k!==WM_CAL);
+          if(ticks.length){
+            if(mod==='process_flowcharts') return orgHasModule(mod) && (ticks.includes(mod)||ticks.includes('processes'));
+            if(ORG_MODULE_FLAGS[mod] && !orgHasModule(mod)) return false;
+            if(mod==='policies'||mod==='checklists'||mod==='processes') return false;
+            return ticks.includes(mod);
+          }
+        }
         const r=STATE.myRole; STATE.myRole='admin'; try{ return _c.apply(this,arguments); } finally{ STATE.myRole=r; }
       }
       const base=_c.apply(this,arguments);
@@ -42356,6 +42438,25 @@ window.WMTutorial = { open, lessons: () => Object.keys(window.WMLESSONS || {}), 
       const r=_n.apply(this,arguments);
       NEWG.forEach(k=>{ const el=document.querySelector('.nav-item[data-mod="'+k+'"]'); if(el && !canAccessModule(k)) el.style.display='none'; });
       return r; }; }
+  /* Document access block: the three document views are shown together as toggles, with select all / clear all for the whole module list */
+  window.wmDocBlock=function(scope){
+    try{
+      const keys=[['master_register','Master Documents Register','Register of every controlled document number: for staff who only need to find the current document.'],['all_documents','All Documents','Every document the organisation has uploaded, by block.'],['documents','Document Management','Document control: draft, review, approve and issue. For senior people.']];
+      const cbs={}; keys.forEach(k=>{ const cb=scope.querySelector('input[type=checkbox][value="'+k[0]+'"]'); if(cb) cbs[k[0]]=cb; });
+      if(!Object.keys(cbs).length || scope.querySelector('.wm-doc-block')) return;
+      const grid=Object.values(cbs)[0].closest('div[style*="grid"]'); if(!grid) return;
+      const blk=document.createElement('div'); blk.className='wm-doc-block'; blk.style.cssText='border:1px solid var(--grey-line,#d8d8d8);background:#fff;padding:10px 12px;margin:8px 0 10px;';
+      blk.innerHTML='<div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px;">Document access: switch each on or off</div>';
+      keys.forEach(k=>{ const cb=cbs[k[0]]; if(!cb) return; const row=cb.closest('div'); const lab=row.querySelector('label'); if(lab) lab.innerHTML='<b>'+k[1]+'</b> <span style="color:var(--text-faint);">'+k[2]+'</span>'; row.style.cssText='display:flex;align-items:flex-start;gap:8px;margin:5px 0;'; blk.appendChild(row); });
+      grid.parentNode.insertBefore(blk,grid);
+      const bar=document.createElement('div'); bar.style.cssText='display:flex;gap:8px;margin:6px 0;';
+      const mk=(t,v)=>{ const b=document.createElement('button'); b.type='button'; b.className='btn-small'; b.textContent=t; b.onclick=()=>{ scope.querySelectorAll('input[type=checkbox][class*="module-cb"]').forEach(c=>{ c.checked=v; }); }; return b; };
+      bar.appendChild(mk('Select all modules',true)); bar.appendChild(mk('Clear all modules',false));
+      grid.parentNode.insertBefore(bar,blk);
+    }catch(e){ console.warn('wmDocBlock',e); }
+  };
+  { const _r=renderAdminTeam; renderAdminTeam=window.renderAdminTeam=function(){ const r=_r.apply(this,arguments); const w=document.getElementById('admin-subtab-content'); if(w) w.querySelectorAll('.detail-card').forEach(c=>{ if(c.querySelector('.admin-inv-module-cb')) window.wmDocBlock(c); }); return r; }; }
+  { const _t2=toggleAdminMemberEdit; toggleAdminMemberEdit=window.toggleAdminMemberEdit=function(userId){ const r=_t2.apply(this,arguments); const cell=document.querySelector('#admin-member-edit-'+userId+' td'); if(cell && cell.innerHTML.trim()) window.wmDocBlock(cell); return r; }; }
   /* people not yet calibrated: show their current effective access as ticked in the edit box */
   { const _t=toggleAdminMemberEdit; toggleAdminMemberEdit=window.toggleAdminMemberEdit=function(userId){
       const r=_t.apply(this,arguments); const m=(STATE.members||[]).find(x=>x.user_id===userId);
@@ -43399,6 +43500,65 @@ ask:'How do you control who has access to what?'};
 })(window.WMLESSONS);
 
 /* ===== b72-lessons-end ===== */
+/* ===== b76: customers: several contacts per customer, each with a position / designation ===== */
+(function(){
+  const E = s => escapeHtml(s == null ? '' : String(s));
+  const canW = () => ['admin','manager','contributor'].includes(STATE.myRole) || (STATE.profile && STATE.profile.is_platform_staff);
+  const canD = () => ['admin','manager'].includes(STATE.myRole) || (STATE.profile && STATE.profile.is_platform_staff);
+  STATE._custContacts = STATE._custContacts || {};
+  async function loadContacts(cid){
+    const r = await STATE.supabase.from('crm_contacts').select('*').eq('customer_id', cid).order('is_primary', {ascending:false}).order('name', {ascending:true});
+    if(r.error){ return { missing:true, msg:r.error.message, rows:[] }; }
+    STATE._custContacts[cid] = r.data || [];
+    return { missing:false, rows:r.data || [] };
+  }
+  function cardHtml(cid, res){
+    if(res.missing) return `<div class="detail-card wm-cc-card" id="cust-contacts-card" style="padding:16px;margin:12px 0;"><h4 style="margin:0 0 6px;font-size:14px;">Contacts</h4><p style="font-size:12.5px;color:var(--text-faint);">Several contacts per customer need qashe-watchman-schema-customer-contacts.sql to be run first.</p></div>`;
+    const rows = res.rows;
+    return `<div class="detail-card wm-cc-card" id="cust-contacts-card" style="padding:16px;margin:12px 0;">
+      <div class="panel-head" style="margin-bottom:6px;"><h4 style="margin:0;font-size:14px;">Contacts (${rows.length})</h4>${canW() ? `<button class="btn-small primary" onclick="custContactForm('','${cid}')">+ Add contact</button>` : ''}</div>
+      ${rows.length ? `<table><tr><th>Name</th><th>Position / designation</th><th>Email</th><th>Phone</th><th></th></tr>${rows.map(x => `<tr>
+        <td class="strong">${E(x.name)}${x.is_primary ? ' <span title="Main contact">★</span>' : ''}</td><td>${E(x.job_title || '—')}</td><td>${E(x.email || '—')}</td><td>${E(x.phone || '—')}</td>
+        <td style="text-align:right;white-space:nowrap;">${canW() ? `<button class="btn-small" onclick="custContactForm('${x.id}','${cid}')">Edit</button>` : ''}</td></tr>`).join('')}</table>`
+      : '<p style="font-size:12.5px;color:var(--text-faint);">No additional contacts recorded yet. Add each person you deal with at this customer, with their position or designation.</p>'}
+    </div>`;
+  }
+  async function render(cid){
+    const slot = document.getElementById('cust-detail-slot'); if(!slot) return;
+    const res = await loadContacts(cid);
+    slot.querySelectorAll('.detail-card').forEach(c => { const h = c.querySelector('h4'); if(h && /^Contacts/.test(h.textContent.trim()) && c.id !== 'cust-contacts-card') c.remove(); });
+    const old = document.getElementById('cust-contacts-card'); if(old) old.remove();
+    const meta = slot.querySelector('.detail-meta'); if(!meta) return;
+    meta.insertAdjacentHTML('afterend', cardHtml(cid, res));
+  }
+  { const _o = openCustomerDetail; openCustomerDetail = window.openCustomerDetail = async function(id){ const r = await _o.apply(this, arguments); try{ await render(id); }catch(e){ console.warn('b76 contacts', e); } return r; }; }
+  window.custContactForm = function(id, cid){
+    const x = id ? ((STATE._custContacts[cid] || []).find(k => k.id === id) || {}) : { name:'', is_primary:false };
+    kpiOverlay(`<h3 style="font-family:Arial,Helvetica,sans-serif;margin:0 0 10px;">${id ? 'Edit contact' : 'New contact'}</h3><div class="form-grid">
+      <div class="field span2"><label>Name</label><input id="cc2-name" value="${E(x.name)}"></div>
+      <div class="field"><label>Position / designation</label><input id="cc2-title" value="${E(x.job_title || '')}" placeholder="e.g. SHEQ Manager"></div>
+      <div class="field"><label>Email</label><input id="cc2-email" type="email" value="${E(x.email || '')}"></div>
+      <div class="field"><label>Phone</label><input id="cc2-phone" value="${E(x.phone || '')}"></div>
+      <div class="field"><label>Main contact</label><select id="cc2-prim"><option value="no">No</option><option value="yes" ${x.is_primary ? 'selected' : ''}>Yes</option></select></div>
+    </div>
+    <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button>${id && canD() ? `<button class="btn-small" onclick="custContactDelete('${id}','${cid}')">Delete</button>` : ''}<button class="btn-primary" onclick="custContactSave('${id || ''}','${cid}')">Save</button></div>`);
+  };
+  window.custContactSave = async function(id, cid){
+    const g = i => ((document.getElementById(i) || {}).value || '').trim();
+    if(!g('cc2-name')){ toast('Enter the contact name.', 'error'); return; }
+    const row = { name:g('cc2-name'), job_title:g('cc2-title') || null, email:g('cc2-email') || null, phone:g('cc2-phone') || null, is_primary:g('cc2-prim') === 'yes' };
+    const r = id ? await STATE.supabase.from('crm_contacts').update(row).eq('id', id)
+                 : await STATE.supabase.from('crm_contacts').insert({ ...row, organisation_id:STATE.org.id, customer_id:cid, created_by:STATE.user.id });
+    if(r.error){ toast('Could not save the contact: ' + r.error.message, 'error'); return; }
+    kpiCloseOverlay(); toast('Contact saved.', 'success'); await render(cid);
+  };
+  window.custContactDelete = async function(id, cid){
+    if(!confirm('Delete this contact?')) return;
+    const r = await STATE.supabase.from('crm_contacts').delete().eq('id', id);
+    if(r.error){ toast('Could not delete: ' + r.error.message, 'error'); return; }
+    kpiCloseOverlay(); toast('Contact deleted.', 'success'); await render(cid);
+  };
+})();
 </script>
 </body>
 </html>
