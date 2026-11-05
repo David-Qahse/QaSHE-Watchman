@@ -44244,6 +44244,667 @@ ask:'How do you control who has access to what?'};
       return r;
     }; }
 })();
+
+/* ============================================================================
+   Release 14, part 1: bug reports and change requests go to the platform owner only;
+   the Templates button is removed from module headers.
+   ============================================================================ */
+(function(){
+  const SUPPORT_EMAIL = 'david@groupqashecg.com';
+  window.WM_SUPPORT_EMAIL = SUPPORT_EMAIL;
+
+  const _rq = window.wmRequestChange;
+  window.wmRequestChange = function(ctx){
+    _rq.apply(this, arguments);
+    try {
+      const p = document.querySelector('#wmcr-about') && document.querySelector('#wmcr-about').closest('div').parentNode.querySelector('h3');
+      const para = p && p.nextElementSibling;
+      if(para && para.tagName === 'P') para.innerHTML = 'Report a bug or problem, or ask for something to be changed. Every report goes to Group QaSHE CG, who will deal with it. Describe it below.';
+    } catch(e){}
+  };
+  const _sc = window.wmSendChange;
+  window.wmSendChange = async function(type, id){
+    const kind = (document.getElementById('wmcr-kind') || {}).value;
+    if(kind === 'bug') return _sc.apply(this, arguments);
+    const about = document.getElementById('wmcr-about').value.trim(), msg = document.getElementById('wmcr-msg').value.trim();
+    if(!msg){ toast('Describe what needs to change first.', 'error'); return; }
+    const btn = document.getElementById('wmcr-send'); btn.disabled = true; btn.textContent = 'Sending…';
+    try {
+      const { error } = await STATE.supabase.from('change_requests').insert({
+        organisation_id: STATE.org.id, requested_by: STATE.user.id, requested_by_name: memberName(STATE.user.id),
+        record_type: type || null, record_id: id || null, record_label: about, message: msg, routed_to_user_id: null, status: 'open' });
+      if(error) console.warn('change request not stored', error.message);
+      await sendEmailToAddress(SUPPORT_EMAIL, 'Watchman change request: ' + (STATE.org ? STATE.org.name : 'Unknown organisation'),
+        memberName(STATE.user.id) + ' (' + (STATE.user.email || 'unknown email') + ') asked for a change in QaSHE Watchman:\n\nAbout: ' + about + '\n\n"' + msg + '"\n\nOrganisation: ' + (STATE.org ? STATE.org.name : ''));
+      kpiCloseOverlay(); toast('Thank you: your change request has been sent to Group QaSHE CG.', 'success');
+    } catch(e){ btn.disabled = false; btn.textContent = 'Send'; toast('Could not send: ' + e.message, 'error'); }
+  };
+
+  /* Templates button: no longer in module headers. The library is offered inside the modules that use it. */
+  const hideTpl = () => { const b = document.getElementById('mod-tpl-btn'); if(b){ b.style.display = 'none'; b.onclick = null; } };
+  { const _sm = showModule; showModule = window.showModule = function(){ const r = _sm.apply(this, arguments); hideTpl(); setTimeout(hideTpl, 0); return r; }; }
+})();
+
+/* ============================================================================
+   Release 14, part 2: Quotations and Invoicing module (switchable, off by default)
+   ============================================================================ */
+(function(){
+  const E = s => escapeHtml(s == null ? '' : String(s));
+  const on = () => !!(STATE.org && STATE.org._qiOn);
+  const isStaff = () => !!(STATE.profile && STATE.profile.is_platform_staff);
+  const canQi = () => on() && (['admin','manager'].includes(STATE.myRole) || isStaff());
+  const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+  const nz = n => Number(n) || 0;
+  const num = n => nz(n).toLocaleString('en-ZA', { minimumFractionDigits:2, maximumFractionDigits:2 });
+  const cur = c => c || (S().base_currency || 'ZAR');
+  const money = (n, c) => cur(c) + ' ' + num(n);
+  const day = d => d ? String(d).slice(0,10) : '';
+  const addDays = (iso, n) => { const d = new Date((iso || todayISO()) + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0,10); };
+  const D = () => STATE._qi = STATE._qi || { settings:null, taxes:[], rates:[], items:[], quotes:[], qlines:[], pos:[], invoices:[], payments:[], loaded:false, broken:false };
+  const S = () => D().settings || {};
+
+  /* country defaults: currency and standard indirect tax. Starting points only: confirm with your tax adviser. */
+  const COUNTRIES = {
+    'South Africa':{cur:'ZAR',tax:'VAT',rate:15}, 'Namibia':{cur:'NAD',tax:'VAT',rate:15}, 'Botswana':{cur:'BWP',tax:'VAT',rate:14}, 'Zimbabwe':{cur:'USD',tax:'VAT',rate:15.5},
+    'Mozambique':{cur:'MZN',tax:'VAT',rate:16}, 'Zambia':{cur:'ZMW',tax:'VAT',rate:16}, 'Kenya':{cur:'KES',tax:'VAT',rate:16}, 'Nigeria':{cur:'NGN',tax:'VAT',rate:7.5},
+    'Ghana':{cur:'GHS',tax:'VAT',rate:15}, 'Tanzania':{cur:'TZS',tax:'VAT',rate:18}, 'Uganda':{cur:'UGX',tax:'VAT',rate:18},
+    'Saudi Arabia':{cur:'SAR',tax:'VAT',rate:15}, 'United Arab Emirates':{cur:'AED',tax:'VAT',rate:5}, 'Oman':{cur:'OMR',tax:'VAT',rate:5}, 'Bahrain':{cur:'BHD',tax:'VAT',rate:10},
+    'Qatar':{cur:'QAR',tax:'No VAT',rate:0}, 'Kuwait':{cur:'KWD',tax:'No VAT',rate:0},
+    'Australia':{cur:'AUD',tax:'GST',rate:10}, 'New Zealand':{cur:'NZD',tax:'GST',rate:15}, 'Canada':{cur:'CAD',tax:'GST',rate:5}, 'India':{cur:'INR',tax:'GST',rate:18},
+    'Singapore':{cur:'SGD',tax:'GST',rate:9}, 'United Kingdom':{cur:'GBP',tax:'VAT',rate:20}, 'Germany':{cur:'EUR',tax:'VAT',rate:19}, 'Netherlands':{cur:'EUR',tax:'VAT',rate:21},
+    'United States':{cur:'USD',tax:'Sales tax',rate:0},
+  };
+  const CURRENCIES = [...new Set(Object.values(COUNTRIES).map(c => c.cur).concat(['USD','EUR','GBP','ZAR']))].sort();
+  const WORK_TYPES = ['Consulting','Audit','Training','Inspection and testing','Calibration','Supply of goods','Installation and maintenance','Software and subscriptions','Other'];
+  const CHARGE_PRESETS = [['Travel and accommodation','fixed',0,true],['Fuel surcharge','percent',2,true],['Administration fee','percent',3,true],['After hours or urgent loading','percent',15,true],['Courier and freight','fixed',0,true],['Withholding tax recovery','percent',0,false]];
+  const QST = { draft:['Draft','#8A8785'], sent:['Sent','#2E5AA8'], accepted:['Accepted','#2E7D4F'], declined:['Declined','#B3261E'], expired:['Expired','#B26A16'], invoiced:['Invoiced','#7d3fbf'] };
+  const IST = { draft:['Draft','#8A8785'], issued:['Issued','#2E5AA8'], part_paid:['Part paid','#B26A16'], paid:['Paid','#2E7D4F'], overdue:['Overdue','#B3261E'], cancelled:['Cancelled','#6B6B6B'] };
+  const pill = (map, k) => { const m = map[k] || [k, '#888']; return `<span class="sev-badge" style="background:${m[1]};color:#fff;">${E(m[0])}</span>`; };
+  const quoteStatus = q => (q.status === 'sent' && q.valid_until && q.valid_until < todayISO()) ? 'expired' : q.status;
+  const invStatus = i => (['issued','part_paid'].includes(i.status) && i.due_date && i.due_date < todayISO() && nz(i.amount_paid) < nz(i.total)) ? 'overdue' : i.status;
+  const toBase = (amt, rate) => nz(amt) * (nz(rate) || 1);
+
+  /* ---------- switch, navigation, access ---------- */
+  async function loadFlag(){
+    if(!STATE.org) return; STATE.org._qiOn = false;
+    try { const r = await STATE.supabase.from('org_modules').select('enabled').eq('organisation_id', STATE.org.id).eq('module_key', 'quotes').maybeSingle(); if(r && !r.error && r.data) STATE.org._qiOn = r.data.enabled === true; } catch(e){}
+    STATE.org.quotes_module_enabled = STATE.org._qiOn;
+    try { applyModuleAccessToNav(); } catch(e){}
+  }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const r = await _lc.apply(this, arguments); await loadFlag(); return r; }; }
+  ADMIN_CONSOLE_TOGGLES.push({ field:'quotes_module_enabled', label:'Quotations and Invoicing', note:'Quotations, client purchase orders, invoices and payments, with a price book, tax codes, surcharges, currencies and AI assistance. Admins and managers only. Off by default.' });
+  { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
+      if(field !== 'quotes_module_enabled') return _t.apply(this, arguments);
+      const { error } = await STATE.supabase.from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:'quotes', enabled:!!value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
+      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
+    }; }
+  { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){ if(mod === 'quotes') return canQi(); return _c.apply(this, arguments); }; }
+  MODULE_META.quotes = { title:'Quotations and Invoicing', sub:() => 'Quotations, client purchase orders and invoices, with a price book that learns from the work you quote' };
+  RENDERERS.quotes = () => '<div id="qi-root"></div>';
+  { const nc = document.querySelector('.nav-item[data-mod="crm"]') || document.querySelector('.nav-item[data-mod="customers"]');
+    if(nc && !document.querySelector('.nav-item[data-mod="quotes"]')) nc.insertAdjacentHTML('afterend', '<div class="nav-item" data-mod="quotes" onclick="showModule(\'quotes\')"><svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h8M9 17h8M9 9h3"/></svg> Quotations and Invoicing</div>'); }
+  { const _a = applyModuleAccessToNav; applyModuleAccessToNav = window.applyModuleAccessToNav = function(){ const r = _a.apply(this, arguments);
+      const el = document.querySelector('.nav-item[data-mod="quotes"]'); if(el) el.style.display = canQi() ? '' : 'none'; return r; }; }
+  { const _s = showModule; showModule = window.showModule = function(mod){ const r = _s.apply(this, arguments); if(mod === 'quotes' && document.getElementById('qi-root')) qiInit(); return r; }; }
+  setTimeout(() => { try{ applyModuleAccessToNav(); }catch(e){} }, 0);
+  DATE_TRACKED_MODULES.push({ key:'quotes', label:'Invoices Due for Payment', list:() => canQi() ? D().invoices.filter(i => ['issued','part_paid'].includes(i.status)).map(i => ({ ...i, _t:`${i.invoice_number}: ${i.client_name || ''} (${money(nz(i.total) - nz(i.amount_paid), i.currency)})` })) : [], dateField:'due_date', isResolved:x => ['paid','cancelled'].includes(x.status), titleField:'_t', getPerson:x => memberName(STATE.user.id) });
+
+  /* ---------- data ---------- */
+  async function load(){
+    const d = D(), org = STATE.org.id, q = t => STATE.supabase.from(t).select('*').eq('organisation_id', org).limit(5000);
+    try {
+      const [s, t, r, it, qu, ql, po, inv, pay] = await Promise.all([STATE.supabase.from('qi_settings').select('*').eq('organisation_id', org).maybeSingle(), q('qi_taxes'), q('qi_rates'), q('qi_items'), q('qi_quotes'), q('qi_quote_lines'), q('qi_purchase_orders'), q('qi_invoices'), q('qi_payments')]);
+      if(qu.error || it.error){ d.broken = true; d.err = (qu.error || it.error).message; return; }
+      d.broken = false; d.settings = (s && s.data) || null; d.taxes = t.data || []; d.rates = r.data || []; d.items = (it.data || []).sort((a,b) => String(a.name).localeCompare(b.name));
+      d.quotes = (qu.data || []).sort((a,b) => String(b.created_at).localeCompare(String(a.created_at))); d.qlines = ql.data || [];
+      d.pos = (po.data || []).sort((a,b) => String(b.created_at).localeCompare(String(a.created_at)));
+      d.invoices = (inv.data || []).sort((a,b) => String(b.created_at).localeCompare(String(a.created_at))); d.payments = pay.data || []; d.loaded = true;
+    } catch(e){ d.broken = true; d.err = e.message; }
+  }
+  async function nextNo(kind){
+    const { data, error } = await STATE.supabase.rpc('qi_next_no', { p_org: STATE.org.id, p_kind: kind });
+    if(error || data == null) throw new Error('Could not get the next number: ' + (error ? error.message : 'no response'));
+    return data;
+  }
+  const pad = (n, w) => String(n).padStart(w || 4, '0');
+  async function numberFor(kind){
+    const s = S(), n = await nextNo(kind), yr = new Date().getFullYear();
+    const pre = kind === 'quote' ? (s.quote_prefix || 'Q') : kind === 'invoice' ? (s.invoice_prefix || 'INV') : (s.po_prefix || 'PO');
+    return `${pre}-${yr}-${pad(n)}`;
+  }
+  const customerById = id => (STATE.customers || []).find(c => c.id === id);
+  const taxById = id => D().taxes.find(t => t.id === id);
+  const rateFor = c => { const b = S().base_currency || 'ZAR'; if(!c || c === b) return 1; const r = D().rates.find(x => x.currency === c); return r ? nz(r.rate_to_base) : 1; };
+
+  async function qiInit(){
+    const root = document.getElementById('qi-root'); if(!root) return;
+    root.innerHTML = '<p style="color:var(--text-faint);font-size:13px;">Loading…</p>';
+    if(!(STATE.customers || []).length){ try{ await loadCustomers(); }catch(e){} }
+    await load(); STATE._qiEdit = null; draw();
+  }
+  window.qiInit = qiInit;
+  window.qiTab = k => { STATE._qiTab = k; STATE._qiEdit = null; STATE._qiView = null; draw(); };
+  const tab = () => STATE._qiTab || (S().legal_name || S().base_currency ? 'dashboard' : 'settings');
+
+  function draw(){
+    const root = document.getElementById('qi-root'); if(!root) return; const d = D();
+    if(d.broken){ root.innerHTML = `<div class="detail-card" style="padding:18px;"><b>Quotations and Invoicing is not set up yet.</b><p style="font-size:13px;color:var(--text-dim);">Run <b>qashe-watchman-schema-quotes.sql</b> in the Supabase SQL editor, then reload.</p><p style="font-size:11px;color:var(--text-faint);">${E(d.err || '')}</p></div>`; return; }
+    const t = tab(), tabs = [['dashboard','Dashboard'],['quotes','Quotations'],['pos','Purchase orders'],['invoices','Invoices'],['items','Price book'],['insights','Pricing insights'],['settings','Settings']];
+    root.innerHTML = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">${tabs.map(([k,l]) => `<button class="btn-small ${t === k ? 'primary' : ''}" onclick="qiTab('${k}')">${l}</button>`).join('')}</div><div id="qi-body"></div>`;
+    const b = document.getElementById('qi-body');
+    if(STATE._qiEdit){ b.innerHTML = editorHtml(); recalc(); return; }
+    if(STATE._qiView){ b.innerHTML = viewHtml(); return; }
+    b.innerHTML = ({ dashboard:dashHtml, quotes:quotesHtml, pos:posHtml, invoices:invoicesHtml, items:itemsHtml, insights:insightsHtml, settings:settingsHtml }[t] || dashHtml)();
+  }
+
+  /* ---------- dashboard ---------- */
+  const tile = (l, v, sub) => `<div class="detail-card" style="padding:14px 16px;flex:1;min-width:170px;"><div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;">${l}</div><div style="font-size:22px;font-weight:800;margin-top:4px;">${v}</div>${sub ? `<div style="font-size:11.5px;color:var(--text-dim);margin-top:2px;">${sub}</div>` : ''}</div>`;
+  function dashHtml(){
+    const d = D(), b = S().base_currency || 'ZAR', yr = String(new Date().getFullYear());
+    const qs = d.quotes, open = qs.filter(q => quoteStatus(q) === 'sent'), won = qs.filter(q => ['accepted','invoiced'].includes(q.status)), lost = qs.filter(q => q.status === 'declined');
+    const sum = (a, f) => a.reduce((s, x) => s + toBase(f(x), x.rate_to_base), 0);
+    const winRate = (won.length + lost.length) ? Math.round(won.length * 100 / (won.length + lost.length)) : null;
+    const outstanding = d.invoices.filter(i => ['issued','part_paid'].includes(i.status));
+    const overdue = outstanding.filter(i => invStatus(i) === 'overdue');
+    const invYear = d.invoices.filter(i => i.status !== 'draft' && i.status !== 'cancelled' && String(i.issue_date).startsWith(yr));
+    const awaitingInvoice = d.pos.filter(p => p.status === 'received');
+    return `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+      ${tile('Quotes awaiting response', open.length, money(sum(open, x => x.total), b))}
+      ${tile('Win rate', winRate == null ? '—' : winRate + '%', `${won.length} accepted, ${lost.length} declined`)}
+      ${tile('Invoiced this year', money(sum(invYear, x => x.total), b), invYear.length + ' invoices')}
+      ${tile('Outstanding', money(sum(outstanding, x => nz(x.total) - nz(x.amount_paid)), b), outstanding.length + ' invoices')}
+      ${tile('Overdue', overdue.length, money(sum(overdue, x => nz(x.total) - nz(x.amount_paid)), b))}
+    </div>
+    <div class="detail-card" style="padding:16px;margin-bottom:14px;"><div class="panel-head"><h3>Needs attention</h3></div>
+      ${[
+        ...overdue.map(i => `<div style="padding:6px 0;border-top:1px solid var(--border-soft);font-size:13px;"><b>${E(i.invoice_number)}</b> ${E(i.client_name || '')}: ${money(nz(i.total) - nz(i.amount_paid), i.currency)} was due ${fmtDate(i.due_date)} <button class="btn-small" onclick="qiOpen('invoice','${i.id}')">Open</button></div>`),
+        ...open.filter(q => q.valid_until && q.valid_until <= addDays(todayISO(), 7)).map(q => `<div style="padding:6px 0;border-top:1px solid var(--border-soft);font-size:13px;"><b>${E(q.quote_number)}</b> ${E(q.client_name || '')} expires ${fmtDate(q.valid_until)}: follow up <button class="btn-small" onclick="qiOpen('quote','${q.id}')">Open</button></div>`),
+        ...awaitingInvoice.map(p => `<div style="padding:6px 0;border-top:1px solid var(--border-soft);font-size:13px;">Purchase order <b>${E(p.po_number)}</b> from ${E(p.client_name || '')} is not invoiced yet <button class="btn-small" onclick="qiInvoiceFromPo('${p.id}')">Create invoice</button></div>`),
+      ].join('') || '<p style="font-size:12.5px;color:var(--text-faint);margin:0;">Nothing needs attention.</p>'}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn-small primary" onclick="qiNew('quote')">+ New quotation</button><button class="btn-small" onclick="qiNewPo()">+ Record purchase order</button><button class="btn-small" onclick="qiNew('invoice')">+ New invoice</button></div>`;
+  }
+
+  /* ---------- lists ---------- */
+  const clientOf = x => x.client_name || (customerById(x.customer_id) || {}).name || '—';
+  function quotesHtml(){
+    const d = D(), f = (STATE._qiQf || '');
+    const rows = d.quotes.filter(q => !f || quoteStatus(q) === f);
+    return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;"><button class="btn-small primary" onclick="qiNew('quote')">+ New quotation</button>
+      <select onchange="STATE._qiQf=this.value;qiTab('quotes')" style="max-width:180px;"><option value="">All statuses</option>${Object.keys(QST).map(k => `<option value="${k}" ${f === k ? 'selected' : ''}>${QST[k][0]}</option>`).join('')}</select></div>
+      ${rows.length ? `<table><tr><th>Number</th><th>Client</th><th>Subject</th><th>Date</th><th>Valid until</th><th style="text-align:right;">Total</th><th>Status</th></tr>
+      ${rows.map(q => `<tr class="clickable" onclick="qiOpen('quote','${q.id}')"><td class="mono-cell">${E(q.quote_number)}${q.version > 1 ? ' v' + q.version : ''}</td><td class="strong">${E(clientOf(q))}</td><td>${E(q.subject || '')}</td><td>${fmtDate(q.issue_date)}</td><td>${fmtDate(q.valid_until)}</td><td style="text-align:right;">${money(q.total, q.currency)}</td><td>${pill(QST, quoteStatus(q))}</td></tr>`).join('')}</table>`
+      : '<div class="empty-state"><p>No quotations yet. Create your first quotation.</p></div>'}`;
+  }
+  function posHtml(){
+    const d = D();
+    return `<div style="margin-bottom:10px;"><button class="btn-small primary" onclick="qiNewPo()">+ Record purchase order</button></div>
+      ${d.pos.length ? `<table><tr><th>PO number</th><th>Client</th><th>Quote</th><th>Received</th><th style="text-align:right;">Amount</th><th>Status</th><th></th></tr>
+      ${d.pos.map(p => { const q = d.quotes.find(x => x.id === p.quote_id); return `<tr><td class="mono-cell">${E(p.po_number)}</td><td class="strong">${E(clientOf(p))}</td><td>${q ? E(q.quote_number) : '—'}</td><td>${fmtDate(p.received_date)}</td><td style="text-align:right;">${money(p.amount, p.currency)}</td><td>${p.status === 'received' ? '<span class="sev-badge" style="background:#B26A16;color:#fff;">Not invoiced</span>' : p.status === 'invoiced' ? pill(QST, 'invoiced') : E(p.status)}</td>
+        <td style="white-space:nowrap;">${p.file_path ? `<button class="btn-small" onclick="downloadFromBucket('documents','${E(p.file_path)}')">View PO</button> ` : ''}${p.status === 'received' ? `<button class="btn-small primary" onclick="qiInvoiceFromPo('${p.id}')">Create invoice</button>` : ''}</td></tr>`; }).join('')}</table>`
+      : '<div class="empty-state"><p>No purchase orders recorded. Record the purchase order your client sends after accepting a quotation.</p></div>'}`;
+  }
+  function invoicesHtml(){
+    const d = D();
+    return `<div style="margin-bottom:10px;"><button class="btn-small primary" onclick="qiNew('invoice')">+ New invoice</button></div>
+      ${d.invoices.length ? `<table><tr><th>Number</th><th>Client</th><th>Client PO</th><th>Issued</th><th>Due</th><th style="text-align:right;">Total</th><th style="text-align:right;">Balance</th><th>Status</th></tr>
+      ${d.invoices.map(i => `<tr class="clickable" onclick="qiOpen('invoice','${i.id}')"><td class="mono-cell">${E(i.invoice_number)}</td><td class="strong">${E(clientOf(i))}</td><td>${E(i.client_po_number || '—')}</td><td>${fmtDate(i.issue_date)}</td><td>${fmtDate(i.due_date)}</td><td style="text-align:right;">${money(i.total, i.currency)}</td><td style="text-align:right;">${money(nz(i.total) - nz(i.amount_paid), i.currency)}</td><td>${pill(IST, invStatus(i))}</td></tr>`).join('')}</table>`
+      : '<div class="empty-state"><p>No invoices yet.</p></div>'}`;
+  }
+
+  /* ---------- price book ---------- */
+  function itemsHtml(){
+    const d = D(), f = STATE._qiItemEdit;
+    const form = f ? `<div class="detail-card" style="padding:16px;margin-bottom:12px;"><div class="panel-head"><h3>${f === 'new' ? 'New item' : 'Edit item'}</h3></div>${(() => { const it = f === 'new' ? {} : (d.items.find(x => x.id === f) || {}); return `<div class="form-grid">
+      <div class="field"><label>Code</label><input id="pi-code" value="${E(it.code || '')}"></div>
+      <div class="field span2"><label>Name</label><input id="pi-name" value="${E(it.name || '')}"></div>
+      <div class="field"><label>Type of work</label><select id="pi-wt">${WORK_TYPES.map(w => `<option ${it.work_type === w ? 'selected' : ''}>${w}</option>`).join('')}</select></div>
+      <div class="field"><label>Unit</label><input id="pi-unit" value="${E(it.unit || 'each')}" placeholder="hour, day, each, km"></div>
+      <div class="field"><label>Unit price</label><input type="number" step="any" id="pi-price" value="${it.unit_price != null ? it.unit_price : ''}"></div>
+      <div class="field"><label>Cost price (optional)</label><input type="number" step="any" id="pi-cost" value="${it.cost_price != null ? it.cost_price : ''}"></div>
+      <div class="field"><label>Currency</label><select id="pi-cur">${CURRENCIES.map(c => `<option ${(it.currency || S().base_currency || 'ZAR') === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
+      <div class="field"><label>Tax code</label><select id="pi-tax"><option value="">None</option>${d.taxes.filter(t => t.is_active).map(t => `<option value="${t.id}" ${it.tax_id === t.id ? 'selected' : ''}>${E(t.name)} ${nz(t.rate)}%</option>`).join('')}</select></div>
+      <div class="field span3"><label>Description</label><textarea id="pi-desc">${E(it.description || '')}</textarea></div></div>
+      <div class="form-actions"><button class="btn-cancel" onclick="STATE._qiItemEdit=null;qiTab('items')">Cancel</button><button class="btn-primary" onclick="qiSaveItem('${f}')">Save</button></div>`; })()}</div>` : '';
+    return `<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;"><button class="btn-small primary" onclick="STATE._qiItemEdit='new';qiTab('items')">+ New item</button><button class="btn-small" onclick="qiLearnItems()">Add items from past quotations</button></div>${form}
+      ${d.items.length ? `<table><tr><th>Code</th><th>Item</th><th>Type of work</th><th>Unit</th><th style="text-align:right;">Price</th><th>Quoted</th><th></th></tr>
+      ${d.items.map(it => { const used = d.qlines.filter(l => l.item_id === it.id).length; return `<tr><td class="mono-cell">${E(it.code || '')}</td><td class="strong">${E(it.name)}${it.is_active ? '' : ' <span style="color:var(--text-faint);">(inactive)</span>'}</td><td>${E(it.work_type || '')}</td><td>${E(it.unit || '')}</td><td style="text-align:right;">${money(it.unit_price, it.currency)}</td><td>${used}×</td><td><button class="btn-small" onclick="STATE._qiItemEdit='${it.id}';qiTab('items')">Edit</button></td></tr>`; }).join('')}</table>`
+      : '<div class="empty-state"><p>The price book is empty. Add the services and goods you quote on, or build it from past quotations as you go.</p></div>'}`;
+  }
+  window.qiSaveItem = async function(id){
+    const g = k => (document.getElementById(k) || {}).value || '';
+    if(!g('pi-name').trim()){ toast('Give the item a name.', 'error'); return; }
+    const row = { organisation_id:STATE.org.id, code:g('pi-code').trim() || null, name:g('pi-name').trim(), description:g('pi-desc').trim() || null, work_type:g('pi-wt'), unit:g('pi-unit').trim() || 'each',
+      unit_price:nz(g('pi-price')), cost_price:g('pi-cost') === '' ? null : nz(g('pi-cost')), currency:g('pi-cur'), tax_id:g('pi-tax') || null };
+    const { error } = id === 'new' ? await STATE.supabase.from('qi_items').insert(row) : await STATE.supabase.from('qi_items').update(row).eq('id', id);
+    if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+    STATE._qiItemEdit = null; await load(); draw(); toast('Saved.', 'success');
+  };
+  window.qiLearnItems = async function(){
+    const d = D(), seen = new Set(d.items.map(i => String(i.name).toLowerCase().trim())), cand = {};
+    d.qlines.forEach(l => { const k = String(l.description || '').toLowerCase().trim(); if(!k || seen.has(k) || l.item_id) return; (cand[k] = cand[k] || { l, n:0, sum:0 }); cand[k].n++; cand[k].sum += nz(l.unit_price); });
+    const list = Object.values(cand);
+    if(!list.length){ toast('Every line on your past quotations is already in the price book.', 'info'); return; }
+    if(!confirm(`Add ${list.length} item${list.length === 1 ? '' : 's'} from past quotations to the price book, using the average price quoted?`)) return;
+    const rows = list.map(c => ({ organisation_id:STATE.org.id, name:String(c.l.description).slice(0, 150), work_type:c.l.work_type || 'Other', unit:c.l.unit || 'each', unit_price:r2(c.sum / c.n), currency:S().base_currency || 'ZAR' }));
+    const { error } = await STATE.supabase.from('qi_items').insert(rows);
+    if(error){ toast(error.message, 'error'); return; } await load(); draw(); toast(rows.length + ' items added.', 'success');
+  };
+
+  /* ---------- pricing insights ---------- */
+  function stats(){
+    const d = D(), qById = {}; d.quotes.forEach(q => qById[q.id] = q);
+    const by = {};
+    d.qlines.forEach(l => { const q = qById[l.quote_id]; if(!q || q.status === 'draft') return; const k = l.work_type || 'Other'; const o = by[k] = by[k] || { n:0, sum:0, min:Infinity, max:0, won:0, lost:0, value:0 };
+      const p = toBase(l.unit_price, q.rate_to_base); o.n++; o.sum += p; o.min = Math.min(o.min, p); o.max = Math.max(o.max, p); o.value += toBase(l.line_total, q.rate_to_base);
+      if(['accepted','invoiced'].includes(q.status)) o.won++; else if(q.status === 'declined') o.lost++; });
+    return by;
+  }
+  function insightsHtml(){
+    const by = stats(), b = S().base_currency || 'ZAR', keys = Object.keys(by);
+    const clients = {}; D().quotes.filter(q => q.status !== 'draft').forEach(q => { const k = clientOf(q); const o = clients[k] = clients[k] || { n:0, won:0, value:0 }; o.n++; if(['accepted','invoiced'].includes(q.status)){ o.won++; o.value += toBase(q.total, q.rate_to_base); } });
+    return `<div class="detail-card" style="padding:16px;margin-bottom:14px;"><div class="panel-head"><h3>What you quote on, by type of work (${b})</h3></div>
+      ${keys.length ? `<table><tr><th>Type of work</th><th>Lines quoted</th><th style="text-align:right;">Average price</th><th style="text-align:right;">Lowest</th><th style="text-align:right;">Highest</th><th style="text-align:right;">Quoted value</th><th>Accepted</th><th>Declined</th></tr>
+      ${keys.map(k => { const o = by[k]; return `<tr><td class="strong">${E(k)}</td><td>${o.n}</td><td style="text-align:right;">${num(o.sum / o.n)}</td><td style="text-align:right;">${num(o.min)}</td><td style="text-align:right;">${num(o.max)}</td><td style="text-align:right;">${num(o.value)}</td><td>${o.won}</td><td>${o.lost}</td></tr>`; }).join('')}</table>`
+      : '<p style="font-size:12.5px;color:var(--text-faint);">Insights build automatically once quotations have been sent. Draft quotations are not counted.</p>'}</div>
+    <div class="detail-card" style="padding:16px;margin-bottom:14px;"><div class="panel-head"><h3>Clients</h3></div>
+      ${Object.keys(clients).length ? `<table><tr><th>Client</th><th>Quotes</th><th>Accepted</th><th style="text-align:right;">Accepted value (${b})</th></tr>${Object.entries(clients).map(([k,o]) => `<tr><td class="strong">${E(k)}</td><td>${o.n}</td><td>${o.won}</td><td style="text-align:right;">${num(o.value)}</td></tr>`).join('')}</table>` : '<p style="font-size:12.5px;color:var(--text-faint);">No sent quotations yet.</p>'}</div>
+    <div class="detail-card" style="padding:16px;"><div class="panel-head"><h3>Ask the assistant to review your pricing</h3></div>
+      <p style="font-size:12.5px;color:var(--text-dim);">The assistant reads the summary above and comments on pricing consistency, win rates and where there may be room to adjust.</p>
+      <button class="btn-small primary" onclick="qiAiInsights()">Review my pricing</button><div id="qi-ai-out" style="margin-top:10px;font-size:13px;white-space:pre-wrap;"></div></div>`;
+  }
+  async function aiAsk(prompt){
+    const { data: sd } = await STATE.supabase.auth.getSession(); const token = sd && sd.session && sd.session.access_token;
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/watchman-chat`, { method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${token}` }, body:JSON.stringify({ messages:[{ role:'user', content:prompt }], max_tokens:2000 }) });
+    const j = await res.json(); return (j.reply || j.message || '').trim();
+  }
+  window.qiAiInsights = async function(){
+    const by = stats(), out = document.getElementById('qi-ai-out'); if(!Object.keys(by).length){ toast('There is no sent-quotation history to review yet.', 'error'); return; }
+    out.textContent = 'Reviewing…';
+    const sum = Object.entries(by).map(([k,o]) => `${k}: ${o.n} lines, average ${r2(o.sum / o.n)}, range ${r2(o.min)} to ${r2(o.max)}, accepted ${o.won}, declined ${o.lost}`).join('\n');
+    try { out.textContent = await aiAsk(`You are a commercial adviser to a small consultancy. Base currency ${S().base_currency || 'ZAR'}. Review this quotation history by type of work and give a short executive note: where pricing looks inconsistent, where win rates suggest prices may be too high or too low, and 3 practical actions. Do not invent data.\n\n${sum}`) || 'No response.'; }
+    catch(e){ out.textContent = 'The assistant could not be reached: ' + e.message; }
+  };
+
+  /* ---------- settings ---------- */
+  function settingsHtml(){
+    const s = S(), d = D();
+    const g = k => E(s[k] == null ? '' : s[k]);
+    return `<div class="detail-card" style="padding:16px;margin-bottom:14px;"><div class="panel-head"><h3>Your business details (shown on quotations and invoices)</h3></div>
+      <div class="form-grid">
+        <div class="field span2"><label>Legal name</label><input id="qs-legal" value="${g('legal_name') || E(STATE.org.name)}"></div>
+        <div class="field"><label>Registration number</label><input id="qs-reg" value="${g('registration_no')}"></div>
+        <div class="field"><label>VAT or tax number</label><input id="qs-vat" value="${g('vat_no')}"></div>
+        <div class="field"><label>Email</label><input id="qs-email" value="${g('email')}"></div>
+        <div class="field"><label>Phone</label><input id="qs-phone" value="${g('phone')}"></div>
+        <div class="field span3"><label>Address</label><textarea id="qs-addr">${g('address')}</textarea></div>
+        <div class="field span3"><label>Bank details (shown on invoices)</label><textarea id="qs-bank">${g('bank_details')}</textarea></div>
+        <div class="field"><label>Your country</label><select id="qs-country" onchange="qiCountryDefaults(this.value)">${Object.keys(COUNTRIES).map(c => `<option ${(s.country || 'South Africa') === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
+        <div class="field"><label>Base currency (reporting)</label><select id="qs-cur">${CURRENCIES.map(c => `<option ${(s.base_currency || 'ZAR') === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
+        <div class="field"><label>Quote validity (days)</label><input type="number" id="qs-valid" value="${s.validity_days || 30}"></div>
+        <div class="field"><label>Payment terms (days)</label><input type="number" id="qs-pay" value="${s.payment_terms_days || 30}"></div>
+        <div class="field"><label>Quote prefix</label><input id="qs-qp" value="${E(s.quote_prefix || 'Q')}"></div>
+        <div class="field"><label>Invoice prefix</label><input id="qs-ip" value="${E(s.invoice_prefix || 'INV')}"></div>
+        <div class="field"><label>Purchase order prefix</label><input id="qs-pp" value="${E(s.po_prefix || 'PO')}"></div>
+        <div class="field"><label>Default tax code</label><select id="qs-tax"><option value="">None</option>${d.taxes.filter(t => t.is_active).map(t => `<option value="${t.id}" ${s.default_tax_id === t.id ? 'selected' : ''}>${E(t.name)} ${nz(t.rate)}%</option>`).join('')}</select></div>
+        <div class="field span3"><label>Standard terms and conditions</label><textarea id="qs-terms" style="min-height:90px;">${g('default_terms')}</textarea></div></div>
+      <button class="btn-primary" onclick="qiSaveSettings()">Save settings</button></div>
+    <div class="detail-card" style="padding:16px;margin-bottom:14px;"><div class="panel-head"><h3>Tax codes</h3></div>
+      <p style="font-size:12px;color:var(--text-faint);">Country rates below are starting points only. Confirm the current rate with your tax adviser before relying on it.</p>
+      ${d.taxes.length ? `<table><tr><th>Name</th><th>Country</th><th style="text-align:right;">Rate %</th><th></th></tr>${d.taxes.map(t => `<tr><td class="strong">${E(t.name)}</td><td>${E(t.country || '')}</td><td style="text-align:right;">${nz(t.rate)}</td><td><button class="btn-small" onclick="qiDelTax('${t.id}')">Remove</button></td></tr>`).join('')}</table>` : '<p style="font-size:12.5px;color:var(--text-faint);">No tax codes yet.</p>'}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:end;">
+        <div class="field"><label>Name</label><input id="tx-name" placeholder="e.g. VAT standard"></div>
+        <div class="field"><label>Country</label><select id="tx-country"><option value="">Any</option>${Object.keys(COUNTRIES).map(c => `<option>${c}</option>`).join('')}</select></div>
+        <div class="field"><label>Rate %</label><input type="number" step="any" id="tx-rate" style="width:90px;"></div>
+        <button class="btn-small primary" onclick="qiAddTax()">Add tax code</button>
+        <button class="btn-small" onclick="qiLoadCountryTax()">Load tax codes for the countries I trade in…</button></div></div>
+    <div class="detail-card" style="padding:16px;"><div class="panel-head"><h3>Exchange rates to ${E(S().base_currency || 'ZAR')}</h3></div>
+      <p style="font-size:12px;color:var(--text-faint);">Enter the rate you want to apply (1 unit of the currency = how many ${E(S().base_currency || 'ZAR')}). Rates are not fetched automatically; the rate used is stored on each document.</p>
+      ${d.rates.length ? `<table><tr><th>Currency</th><th style="text-align:right;">Rate</th><th>Updated</th></tr>${d.rates.map(r => `<tr><td class="strong">${E(r.currency)}</td><td style="text-align:right;">${nz(r.rate_to_base)}</td><td>${fmtDate(day(r.updated_at))}</td></tr>`).join('')}</table>` : ''}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:end;"><div class="field"><label>Currency</label><select id="rt-cur">${CURRENCIES.map(c => `<option>${c}</option>`).join('')}</select></div><div class="field"><label>Rate</label><input type="number" step="any" id="rt-rate" style="width:120px;"></div><button class="btn-small primary" onclick="qiSaveRate()">Save rate</button></div></div>`;
+  }
+  window.qiCountryDefaults = c => { const x = COUNTRIES[c]; if(x){ const el = document.getElementById('qs-cur'); if(el) el.value = x.cur; } };
+  window.qiSaveSettings = async function(){
+    const g = k => (document.getElementById(k) || {}).value || '';
+    const row = { organisation_id:STATE.org.id, legal_name:g('qs-legal').trim() || null, registration_no:g('qs-reg').trim() || null, vat_no:g('qs-vat').trim() || null, email:g('qs-email').trim() || null, phone:g('qs-phone').trim() || null,
+      address:g('qs-addr').trim() || null, bank_details:g('qs-bank').trim() || null, country:g('qs-country'), base_currency:g('qs-cur'), validity_days:Number(g('qs-valid')) || 30, payment_terms_days:Number(g('qs-pay')) || 30,
+      quote_prefix:g('qs-qp').trim() || 'Q', invoice_prefix:g('qs-ip').trim() || 'INV', po_prefix:g('qs-pp').trim() || 'PO', default_tax_id:g('qs-tax') || null, default_terms:g('qs-terms').trim() || null, updated_at:new Date().toISOString() };
+    const { error } = await STATE.supabase.from('qi_settings').upsert(row, { onConflict:'organisation_id' });
+    if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+    await load(); STATE._qiTab = 'settings'; draw(); toast('Settings saved.', 'success');
+  };
+  async function addTaxRows(rows){ const { error } = await STATE.supabase.from('qi_taxes').insert(rows.map(r => ({ organisation_id:STATE.org.id, ...r }))); if(error){ toast(error.message, 'error'); return false; } await load(); return true; }
+  window.qiAddTax = async function(){
+    const name = (document.getElementById('tx-name').value || '').trim(); if(!name){ toast('Name the tax code.', 'error'); return; }
+    if(await addTaxRows([{ name, country:document.getElementById('tx-country').value || null, rate:nz(document.getElementById('tx-rate').value), kind:'vat' }])){ STATE._qiTab = 'settings'; draw(); }
+  };
+  window.qiLoadCountryTax = async function(){
+    const list = prompt('Countries to load tax codes for, separated by commas.\n\nAvailable: ' + Object.keys(COUNTRIES).join(', '), S().country || 'South Africa'); if(!list) return;
+    const have = new Set(D().taxes.map(t => (t.country || '') + '|' + t.name)), rows = [];
+    list.split(',').map(x => x.trim()).filter(Boolean).forEach(c => { const k = Object.keys(COUNTRIES).find(n => n.toLowerCase() === c.toLowerCase()); if(!k) return; const x = COUNTRIES[k];
+      [[`${x.tax} standard`, x.rate], [`${x.tax} zero-rated`, 0]].forEach(([n, r]) => { if(!have.has(k + '|' + n) && !(r === 0 && x.rate === 0 && n.includes('standard'))) rows.push({ name:n, country:k, rate:r, kind:'vat' }); }); });
+    if(!rows.length){ toast('Nothing new to add. Check the country names.', 'error'); return; }
+    if(await addTaxRows(rows)){ STATE._qiTab = 'settings'; draw(); toast(rows.length + ' tax codes added. Confirm the rates with your tax adviser.', 'success'); }
+  };
+  window.qiDelTax = async function(id){ if(!confirm('Remove this tax code? Existing documents keep the rate they were issued with.')) return; await STATE.supabase.from('qi_taxes').delete().eq('id', id); await load(); draw(); };
+  window.qiSaveRate = async function(){
+    const c = document.getElementById('rt-cur').value, r = nz(document.getElementById('rt-rate').value); if(r <= 0){ toast('Enter the rate.', 'error'); return; }
+    const { error } = await STATE.supabase.from('qi_rates').upsert({ organisation_id:STATE.org.id, currency:c, rate_to_base:r, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,currency' });
+    if(error){ toast(error.message, 'error'); return; } await load(); STATE._qiTab = 'settings'; draw(); toast('Rate saved.', 'success');
+  };
+
+  /* ---------- editor (quotation and invoice share it) ---------- */
+  function blankDoc(kind){
+    const s = S(), cc = COUNTRIES[s.country || 'South Africa'] || {};
+    const base = { currency:s.base_currency || cc.cur || 'ZAR', rate_to_base:1, discount_pct:0, charges:[], terms:s.default_terms || '', notes:'', client_country:s.country || 'South Africa', issue_date:todayISO(), default_tax_id:s.default_tax_id || '' };
+    return kind === 'quote' ? { ...base, status:'draft', valid_until:addDays(todayISO(), s.validity_days || 30), version:1, owner_id:STATE.user.id }
+      : { ...base, status:'draft', due_date:addDays(todayISO(), s.payment_terms_days || 30), amount_paid:0 };
+  }
+  const blankLine = () => { const t = taxById(STATE._qiEdit.doc.default_tax_id); return { description:'', qty:1, unit:'each', unit_price:0, discount_pct:0, tax_name:t ? t.name : '', tax_rate:t ? nz(t.rate) : 0, work_type:'Consulting', item_id:null }; };
+  window.qiNew = function(kind){ STATE._qiEdit = { kind, doc:blankDoc(kind), lines:[], id:null }; STATE._qiEdit.lines.push(blankLine()); STATE._qiTab = kind === 'quote' ? 'quotes' : 'invoices'; draw(); };
+  window.qiEditDoc = async function(kind, id){
+    const d = D(), doc = (kind === 'quote' ? d.quotes : d.invoices).find(x => x.id === id); if(!doc) return;
+    const { data } = await STATE.supabase.from(kind === 'quote' ? 'qi_quote_lines' : 'qi_invoice_lines').select('*').eq(kind === 'quote' ? 'quote_id' : 'invoice_id', id).order('sort_order', { ascending:true });
+    STATE._qiView = null; STATE._qiEdit = { kind, id, doc:{ ...doc, default_tax_id:doc.default_tax_id || S().default_tax_id || '' }, lines:(data || []).map(l => ({ ...l })) }; draw();
+  };
+  function lineCalc(l){ return r2(nz(l.qty) * nz(l.unit_price) * (1 - nz(l.discount_pct) / 100)); }
+  function totals(doc, lines){
+    let gross = 0; lines.forEach(l => gross += lineCalc(l));
+    const disc = r2(gross * nz(doc.discount_pct) / 100), sub = r2(gross - disc), f = gross ? (1 - nz(doc.discount_pct) / 100) : 1;
+    let tax = 0; lines.forEach(l => tax += lineCalc(l) * f * nz(l.tax_rate) / 100);
+    const dt = taxById(doc.default_tax_id), dr = dt ? nz(dt.rate) : (lines[0] ? nz(lines[0].tax_rate) : 0);
+    let ch = 0; (doc.charges || []).forEach(c => { c.amount = r2(c.type === 'percent' ? sub * nz(c.value) / 100 : nz(c.value)); ch += c.amount; if(c.taxable) tax += c.amount * dr / 100; });
+    return { gross:r2(gross), disc, sub, charges:r2(ch), tax:r2(tax), total:r2(sub + ch + tax) };
+  }
+  function editorHtml(){
+    const ed = STATE._qiEdit, d = D(), doc = ed.doc, isQ = ed.kind === 'quote';
+    const custOpts = (STATE.customers || []).map(c => `<option value="${c.id}" ${doc.customer_id === c.id ? 'selected' : ''}>${E(c.name)}</option>`).join('');
+    const taxOpts = sel => `<option value="">No tax</option>` + d.taxes.filter(t => t.is_active).map(t => `<option value="${t.id}" ${sel === t.id ? 'selected' : ''}>${E(t.name)} ${nz(t.rate)}%</option>`).join('');
+    const inp = (k, label, type, cls) => `<div class="field ${cls || ''}"><label>${label}</label><input type="${type || 'text'}" value="${E(doc[k] == null ? '' : doc[k])}" oninput="qiSetF('${k}',this.value)"></div>`;
+    return `<div class="detail-card" style="padding:16px;margin-bottom:14px;">
+      <div class="panel-head" style="display:flex;align-items:center;"><h3>${ed.id ? 'Edit' : 'New'} ${isQ ? 'quotation' : 'invoice'}${doc.quote_number || doc.invoice_number ? ': ' + E(doc.quote_number || doc.invoice_number) : ''}</h3>
+        <button class="btn-small" style="margin-left:auto;" onclick="qiAiOpen()">Draft with the assistant</button></div>
+      <div class="form-grid">
+        <div class="field"><label>Existing client</label><select onchange="qiPickClient(this.value)"><option value="">New client or prospect</option>${custOpts}</select></div>
+        ${inp('client_name', 'Client name', 'text', 'span2')}${inp('client_contact', 'Contact person')}${inp('client_email', 'Contact email')}${inp('client_vat_no', 'Client VAT or tax number')}
+        <div class="field span3"><label>Client address</label><textarea oninput="qiSetF('client_address',this.value)">${E(doc.client_address || '')}</textarea></div>
+        <div class="field"><label>Client country</label><select onchange="qiSetCountry(this.value)">${Object.keys(COUNTRIES).map(c => `<option ${doc.client_country === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
+        <div class="field"><label>Currency</label><select onchange="qiSetCurrency(this.value)">${CURRENCIES.map(c => `<option ${doc.currency === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
+        <div class="field"><label>Rate to ${E(S().base_currency || 'ZAR')}</label><input type="number" step="any" id="qe-rate" value="${nz(doc.rate_to_base) || 1}" oninput="qiSetF('rate_to_base',this.value)"></div>
+        <div class="field"><label>Default tax code</label><select onchange="qiSetF('default_tax_id',this.value);qiApplyTaxToAll(this.value)">${taxOpts(doc.default_tax_id)}</select></div>
+        ${inp('subject', 'Subject', 'text', 'span2')}
+        <div class="field"><label>Type of work</label><select onchange="qiSetF('work_type',this.value)">${WORK_TYPES.map(w => `<option ${doc.work_type === w ? 'selected' : ''}>${w}</option>`).join('')}</select></div>
+        ${inp('issue_date', 'Date', 'date')}${isQ ? inp('valid_until', 'Valid until', 'date') : inp('due_date', 'Payment due', 'date')}${isQ ? '' : inp('client_po_number', 'Client PO number')}
+        ${isQ ? '' : '<div class="field"></div>'}</div></div>
+    <div class="detail-card" style="padding:16px;margin-bottom:14px;"><div class="panel-head"><h3>Items</h3></div>
+      <datalist id="qi-items-dl">${d.items.filter(i => i.is_active).map(i => `<option value="${E(i.name)}"></option>`).join('')}</datalist>
+      <div id="qi-lines">${ed.lines.map((l, i) => lineHtml(l, i, taxOpts)).join('')}</div>
+      <div style="display:flex;gap:8px;margin-top:8px;"><button class="btn-small" onclick="qiAddLine()">+ Add line</button></div></div>
+    <div class="detail-card" style="padding:16px;margin-bottom:14px;"><div class="panel-head"><h3>Discount and surcharges</h3></div>
+      <div class="form-grid"><div class="field"><label>Discount on the whole document %</label><input type="number" step="any" value="${nz(doc.discount_pct)}" oninput="qiSetF('discount_pct',this.value)"></div></div>
+      <div id="qi-charges">${(doc.charges || []).map((c, i) => chargeHtml(c, i)).join('')}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;"><select id="qi-chpre" style="max-width:260px;">${CHARGE_PRESETS.map((p, i) => `<option value="${i}">${p[0]}</option>`).join('')}<option value="x">Other surcharge</option></select><button class="btn-small" onclick="qiAddCharge()">+ Add surcharge</button></div>
+      <div id="qi-totals" style="margin-top:14px;text-align:right;font-size:13px;"></div></div>
+    <div class="detail-card" style="padding:16px;margin-bottom:14px;"><div class="form-grid">
+      <div class="field span3"><label>Terms and conditions</label><textarea style="min-height:90px;" oninput="qiSetF('terms',this.value)">${E(doc.terms || '')}</textarea></div>
+      <div class="field span3"><label>Notes to the client</label><textarea oninput="qiSetF('notes',this.value)">${E(doc.notes || '')}</textarea></div></div>
+      <div id="qi-hints" style="font-size:12px;color:var(--text-dim);margin-top:8px;"></div></div>
+    <div class="form-actions"><button class="btn-cancel" onclick="qiCancelEdit()">Cancel</button><button class="btn-primary" onclick="qiSaveDoc()">Save ${isQ ? 'quotation' : 'invoice'}</button></div>`;
+  }
+  function lineHtml(l, i, taxOpts){
+    const wt = `<select onchange="qiSetL(${i},'work_type',this.value)" style="max-width:140px;">${WORK_TYPES.map(w => `<option ${l.work_type === w ? 'selected' : ''}>${w}</option>`).join('')}</select>`;
+    return `<div style="border-top:1px solid var(--border-soft);padding:8px 0;display:grid;grid-template-columns:3fr 70px 80px 110px 70px 150px 100px 30px;gap:6px;align-items:start;">
+      <div><input list="qi-items-dl" value="${E(l.description)}" placeholder="Description or pick from the price book" oninput="qiSetL(${i},'description',this.value)" onchange="qiPickItem(${i},this.value)"><div style="margin-top:4px;">${wt}</div></div>
+      <input type="number" step="any" value="${nz(l.qty)}" title="Quantity" oninput="qiSetL(${i},'qty',this.value)">
+      <input value="${E(l.unit || '')}" title="Unit" oninput="qiSetL(${i},'unit',this.value)">
+      <input type="number" step="any" value="${nz(l.unit_price)}" title="Unit price" oninput="qiSetL(${i},'unit_price',this.value)" onchange="qiHints()">
+      <input type="number" step="any" value="${nz(l.discount_pct)}" title="Discount %" oninput="qiSetL(${i},'discount_pct',this.value)">
+      <select title="Tax" onchange="qiSetLineTax(${i},this.value)">${taxOpts(((D().taxes.find(t => t.name === l.tax_name && nz(t.rate) === nz(l.tax_rate))) || {}).id)}</select>
+      <div id="qi-lt-${i}" style="text-align:right;padding-top:8px;font-weight:600;">${num(lineCalc(l))}</div>
+      <button class="btn-small" onclick="qiDelLine(${i})" title="Remove">×</button></div>`;
+  }
+  const chargeHtml = (c, i) => `<div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap;"><input value="${E(c.label)}" style="flex:1;min-width:180px;" oninput="qiSetC(${i},'label',this.value)">
+      <select onchange="qiSetC(${i},'type',this.value)"><option value="percent" ${c.type === 'percent' ? 'selected' : ''}>% of subtotal</option><option value="fixed" ${c.type === 'fixed' ? 'selected' : ''}>Fixed amount</option></select>
+      <input type="number" step="any" value="${nz(c.value)}" style="width:100px;" oninput="qiSetC(${i},'value',this.value)">
+      <label style="font-size:12px;"><input type="checkbox" ${c.taxable ? 'checked' : ''} onchange="qiSetC(${i},'taxable',this.checked)"> taxable</label><button class="btn-small" onclick="qiDelCharge(${i})">×</button></div>`;
+  function recalc(){
+    const ed = STATE._qiEdit; if(!ed) return; const t = totals(ed.doc, ed.lines);
+    ed.lines.forEach((l, i) => { const el = document.getElementById('qi-lt-' + i); if(el) el.textContent = num(lineCalc(l)); });
+    const el = document.getElementById('qi-totals'), c = ed.doc.currency, b = S().base_currency || 'ZAR';
+    if(el) el.innerHTML = `<div>Subtotal: <b>${money(t.gross, c)}</b></div>${t.disc ? `<div>Discount: <b>-${money(t.disc, c)}</b></div>` : ''}${t.charges ? `<div>Surcharges: <b>${money(t.charges, c)}</b></div>` : ''}<div>Tax: <b>${money(t.tax, c)}</b></div><div style="font-size:17px;margin-top:4px;">Total: <b>${money(t.total, c)}</b></div>${c !== b ? `<div style="font-size:11.5px;color:var(--text-faint);">About ${money(toBase(t.total, ed.doc.rate_to_base), b)} at the rate shown</div>` : ''}`;
+    qiHints();
+  }
+  window.qiHints = function(){
+    const ed = STATE._qiEdit, el = document.getElementById('qi-hints'); if(!ed || !el) return; const d = D(), b = S().base_currency || 'ZAR', out = [];
+    ed.lines.forEach(l => { if(!l.description) return; const k = String(l.description).toLowerCase().trim();
+      const hist = d.qlines.filter(x => (l.item_id && x.item_id === l.item_id) || String(x.description || '').toLowerCase().trim() === k); if(!hist.length) return;
+      const qm = {}; d.quotes.forEach(q => qm[q.id] = q); const ps = hist.map(x => toBase(x.unit_price, (qm[x.quote_id] || {}).rate_to_base)); const avg = ps.reduce((a, c) => a + c, 0) / ps.length;
+      const now = toBase(l.unit_price, ed.doc.rate_to_base), diff = avg ? Math.round((now - avg) * 100 / avg) : 0;
+      out.push(`<b>${E(l.description)}</b>: quoted ${hist.length} time${hist.length === 1 ? '' : 's'} before, average ${b} ${num(avg)} (${b} ${num(Math.min(...ps))} to ${num(Math.max(...ps))}). This price is ${diff >= 0 ? diff + '% above' : -diff + '% below'} your average.`); });
+    el.innerHTML = out.length ? '<b>Price check from your history</b><br>' + out.join('<br>') : '';
+  };
+  window.qiSetF = (k, v) => { const ed = STATE._qiEdit; ed.doc[k] = (['discount_pct','rate_to_base'].includes(k)) ? nz(v) : v; if(['discount_pct','rate_to_base'].includes(k)) recalc(); };
+  window.qiSetL = (i, k, v) => { const l = STATE._qiEdit.lines[i]; l[k] = ['qty','unit_price','discount_pct'].includes(k) ? nz(v) : v; recalc(); };
+  window.qiSetC = (i, k, v) => { const c = STATE._qiEdit.doc.charges[i]; c[k] = k === 'value' ? nz(v) : v; recalc(); };
+  window.qiSetLineTax = (i, id) => { const t = taxById(id), l = STATE._qiEdit.lines[i]; l.tax_name = t ? t.name : ''; l.tax_rate = t ? nz(t.rate) : 0; recalc(); };
+  window.qiApplyTaxToAll = id => { const t = taxById(id); STATE._qiEdit.lines.forEach(l => { l.tax_name = t ? t.name : ''; l.tax_rate = t ? nz(t.rate) : 0; }); const keep = STATE._qiEdit; draw(); };
+  window.qiAddLine = () => { STATE._qiEdit.lines.push(blankLine()); draw(); };
+  window.qiDelLine = i => { STATE._qiEdit.lines.splice(i, 1); if(!STATE._qiEdit.lines.length) STATE._qiEdit.lines.push(blankLine()); draw(); };
+  window.qiAddCharge = () => { const v = document.getElementById('qi-chpre').value, p = v === 'x' ? ['Surcharge', 'percent', 0, true] : CHARGE_PRESETS[Number(v)]; STATE._qiEdit.doc.charges.push({ label:p[0], type:p[1], value:p[2], taxable:p[3], amount:0 }); draw(); };
+  window.qiDelCharge = i => { STATE._qiEdit.doc.charges.splice(i, 1); draw(); };
+  window.qiPickClient = id => { const c = customerById(id), doc = STATE._qiEdit.doc; doc.customer_id = id || null; if(c){ doc.client_name = c.name; doc.client_contact = c.contact_name || ''; doc.client_email = c.contact_email || ''; doc.client_address = c.address || ''; } draw(); };
+  window.qiSetCountry = c => { const doc = STATE._qiEdit.doc, x = COUNTRIES[c]; doc.client_country = c; if(x){ doc.currency = x.cur; doc.rate_to_base = rateFor(x.cur);
+      const t = D().taxes.find(t => t.country === c && /standard/i.test(t.name)) || D().taxes.find(t => t.country === c); if(t){ doc.default_tax_id = t.id; STATE._qiEdit.lines.forEach(l => { l.tax_name = t.name; l.tax_rate = nz(t.rate); }); } }
+    draw(); };
+  window.qiSetCurrency = c => { const doc = STATE._qiEdit.doc; doc.currency = c; doc.rate_to_base = rateFor(c); draw(); };
+  window.qiPickItem = (i, name) => { const it = D().items.find(x => String(x.name).toLowerCase() === String(name).toLowerCase().trim()); if(!it) return; const l = STATE._qiEdit.lines[i], doc = STATE._qiEdit.doc;
+    let p = nz(it.unit_price); if(it.currency && it.currency !== doc.currency){ p = r2(p * rateFor(it.currency) / (nz(doc.rate_to_base) || 1)); }
+    l.description = it.name + (it.description ? ': ' + it.description : ''); l.item_id = it.id; l.unit = it.unit || 'each'; l.unit_price = p; l.work_type = it.work_type || l.work_type;
+    const t = it.tax_id ? taxById(it.tax_id) : null; if(t){ l.tax_name = t.name; l.tax_rate = nz(t.rate); } draw(); };
+  window.qiCancelEdit = () => { STATE._qiEdit = null; draw(); };
+
+  window.qiSaveDoc = async function(){
+    const ed = STATE._qiEdit, doc = ed.doc, isQ = ed.kind === 'quote', lines = ed.lines.filter(l => String(l.description || '').trim());
+    if(!String(doc.client_name || '').trim()){ toast('Enter the client name.', 'error'); return; }
+    if(!lines.length){ toast('Add at least one item.', 'error'); return; }
+    showLoader('Saving…');
+    try {
+      const t = totals(doc, lines);
+      const core = { customer_id:doc.customer_id || null, client_name:doc.client_name, client_contact:doc.client_contact || null, client_email:doc.client_email || null, client_address:doc.client_address || null, client_country:doc.client_country || null, client_vat_no:doc.client_vat_no || null,
+        subject:doc.subject || null, issue_date:doc.issue_date, currency:doc.currency, rate_to_base:nz(doc.rate_to_base) || 1, discount_pct:nz(doc.discount_pct), charges:doc.charges || [], subtotal:t.sub, charges_total:t.charges, tax_total:t.tax, total:t.total,
+        terms:doc.terms || null, notes:doc.notes || null, updated_at:new Date().toISOString() };
+      const tbl = isQ ? 'qi_quotes' : 'qi_invoices', ltbl = isQ ? 'qi_quote_lines' : 'qi_invoice_lines', fk = isQ ? 'quote_id' : 'invoice_id';
+      let id = ed.id;
+      if(isQ) Object.assign(core, { work_type:doc.work_type || null, valid_until:doc.valid_until || null, owner_id:doc.owner_id || STATE.user.id });
+      else Object.assign(core, { due_date:doc.due_date || null, client_po_number:doc.client_po_number || null, quote_id:doc.quote_id || null, po_id:doc.po_id || null });
+      if(!id){
+        core.organisation_id = STATE.org.id; core.created_by = STATE.user.id; core.status = 'draft';
+        core[isQ ? 'quote_number' : 'invoice_number'] = await numberFor(isQ ? 'quote' : 'invoice');
+        if(isQ) core.version = doc.version || 1;
+        const { data, error } = await STATE.supabase.from(tbl).insert(core).select().single(); if(error) throw new Error(error.message); id = data.id;
+      } else {
+        const { error } = await STATE.supabase.from(tbl).update(core).eq('id', id); if(error) throw new Error(error.message);
+        await STATE.supabase.from(ltbl).delete().eq(fk, id);
+      }
+      if(!isQ && !ed.id){
+        if(doc.po_id) await STATE.supabase.from('qi_purchase_orders').update({ status:'invoiced' }).eq('id', doc.po_id);
+        if(doc.quote_id) await STATE.supabase.from('qi_quotes').update({ status:'invoiced' }).eq('id', doc.quote_id);
+      }
+      const { error: le } = await STATE.supabase.from(ltbl).insert(lines.map((l, i) => ({ organisation_id:STATE.org.id, [fk]:id, sort_order:i, item_id:l.item_id || null, work_type:l.work_type || null, description:l.description, qty:nz(l.qty), unit:l.unit || null, unit_price:nz(l.unit_price), discount_pct:nz(l.discount_pct), tax_name:l.tax_name || null, tax_rate:nz(l.tax_rate), line_total:lineCalc(l) })));
+      if(le) throw new Error(le.message);
+      await load(); STATE._qiEdit = null; hideLoader(); await qiOpen(ed.kind, id); toast('Saved.', 'success');
+    } catch(e){ hideLoader(); toast('Could not save: ' + e.message, 'error'); }
+  };
+
+  /* ---------- AI draft ---------- */
+  window.qiAiOpen = function(){
+    kpiOverlay(`<div style="padding:18px 20px;max-width:640px;"><h3 style="margin:0 0 6px;">Draft with the assistant</h3>
+      <p style="font-size:12.5px;color:var(--text-dim);margin:0 0 10px;">Describe the work in a few lines. The assistant uses your price book and your quoting history for the prices, and proposes lines, terms and surcharges. You review and edit everything before saving.</p>
+      <textarea id="qai-brief" style="width:100%;min-height:120px;" placeholder="e.g. Two day ISO 45001 gap assessment and report for a client in Saudi Arabia, travel from Johannesburg, five days on site in total, plus a one day management training session."></textarea>
+      <div class="form-actions" style="margin-top:10px;"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" id="qai-go" onclick="qiAiRun()">Draft</button></div></div>`);
+  };
+  window.qiAiRun = async function(){
+    const brief = (document.getElementById('qai-brief').value || '').trim(); if(!brief){ toast('Describe the work first.', 'error'); return; }
+    const btn = document.getElementById('qai-go'); btn.disabled = true; btn.textContent = 'Drafting…';
+    const ed = STATE._qiEdit, d = D(), doc = ed.doc, by = stats();
+    const book = d.items.filter(i => i.is_active).slice(0, 60).map(i => `${i.code || '-'} | ${i.name} | ${i.work_type || ''} | per ${i.unit || 'each'} | ${i.unit_price} ${i.currency || S().base_currency}`).join('\n') || '(price book is empty)';
+    const hist = Object.entries(by).map(([k, o]) => `${k}: average line price ${r2(o.sum / o.n)} ${S().base_currency}, range ${r2(o.min)} to ${r2(o.max)}`).join('\n') || '(no history yet)';
+    const prompt = `You are helping a South African governance and compliance consultancy prepare a quotation.
+Client country: ${doc.client_country}. Quote currency: ${doc.currency}. Base currency: ${S().base_currency || 'ZAR'}.
+Allowed work types: ${WORK_TYPES.join(', ')}.
+
+Price book (use these items and prices where they fit, and name the line exactly as the item name):
+${book}
+
+Quoting history (use as a guide when an item is not in the price book):
+${hist}
+
+Brief from the consultant:
+${brief}
+
+Return ONLY valid JSON, no commentary:
+{"subject":"short subject","work_type":"one allowed work type","lines":[{"description":"clear line description","qty":1,"unit":"day","unit_price":0,"work_type":"allowed work type"}],"charges":[{"label":"Travel and accommodation","type":"fixed","value":0,"taxable":true}],"terms":"short payment and validity terms","notes":"short note to the client","assumptions":["each assumption or price you were unsure of"]}
+Prices must be in ${doc.currency}. If you are unsure of a price, set it to your best estimate and list it under assumptions. The JSON must be strictly valid.`;
+    try {
+      const { data: sd } = await STATE.supabase.auth.getSession(); const token = sd && sd.session && sd.session.access_token;
+      let p = await requestAiDraftSections(token, prompt); if(!p || !Array.isArray(p.lines) || !p.lines.length) p = await requestAiDraftSections(token, prompt);
+      if(!p || !Array.isArray(p.lines) || !p.lines.length) throw new Error('The assistant did not return usable lines. Try again with a little more detail.');
+      const dt = taxById(doc.default_tax_id);
+      doc.subject = p.subject || doc.subject; doc.work_type = WORK_TYPES.includes(p.work_type) ? p.work_type : doc.work_type;
+      ed.lines = p.lines.slice(0, 30).map(l => { const it = d.items.find(x => String(x.name).toLowerCase() === String(l.description || '').toLowerCase().trim());
+        return { description:String(l.description || ''), qty:nz(l.qty) || 1, unit:l.unit || (it && it.unit) || 'each', unit_price:it ? nz(it.unit_price) : nz(l.unit_price), discount_pct:0, tax_name:dt ? dt.name : '', tax_rate:dt ? nz(dt.rate) : 0, work_type:WORK_TYPES.includes(l.work_type) ? l.work_type : 'Other', item_id:it ? it.id : null }; });
+      doc.charges = (p.charges || []).filter(c => c && c.label).slice(0, 6).map(c => ({ label:String(c.label), type:c.type === 'fixed' ? 'fixed' : 'percent', value:nz(c.value), taxable:c.taxable !== false, amount:0 }));
+      if(p.terms) doc.terms = p.terms; if(p.notes) doc.notes = (doc.notes ? doc.notes + '\n' : '') + p.notes;
+      kpiCloseOverlay(); draw();
+      if((p.assumptions || []).length) setTimeout(() => { const h = document.getElementById('qi-hints'); if(h) h.innerHTML = '<b>Check these assumptions from the assistant</b><br>' + p.assumptions.map(a => '• ' + E(a)).join('<br>') + '<br>' + h.innerHTML; }, 50);
+      toast('Draft ready: check every price before you save.', 'success');
+    } catch(e){ btn.disabled = false; btn.textContent = 'Draft'; toast(e.message, 'error'); }
+  };
+
+  /* ---------- view, workflow, print ---------- */
+  window.qiOpen = async function(kind, id){ STATE._qiEdit = null; STATE._qiView = { kind, id }; STATE._qiTab = kind === 'quote' ? 'quotes' : 'invoices';
+    const tb = kind === 'quote' ? 'qi_quote_lines' : 'qi_invoice_lines', fk = kind === 'quote' ? 'quote_id' : 'invoice_id';
+    const { data } = await STATE.supabase.from(tb).select('*').eq(fk, id).order('sort_order', { ascending:true }); STATE._qiView.lines = data || [];
+    if(!document.getElementById('qi-root')) showModule('quotes'); else draw(); };
+  function viewHtml(){
+    const v = STATE._qiView, d = D(), isQ = v.kind === 'quote', doc = (isQ ? d.quotes : d.invoices).find(x => x.id === v.id); if(!doc) return '<p>Not found.</p>';
+    const st = isQ ? quoteStatus(doc) : invStatus(doc), c = doc.currency, lines = v.lines || [];
+    const pays = d.payments.filter(p => p.invoice_id === doc.id), bal = r2(nz(doc.total) - nz(doc.amount_paid));
+    const btns = isQ ? [
+      doc.status === 'draft' ? `<button class="btn-small primary" onclick="qiMark('quote','${doc.id}','sent')">Mark as sent</button>` : '',
+      ['sent'].includes(doc.status) ? `<button class="btn-small primary" onclick="qiMark('quote','${doc.id}','accepted')">Client accepted</button><button class="btn-small" onclick="qiDecline('${doc.id}')">Client declined</button>` : '',
+      doc.status === 'accepted' ? `<button class="btn-small" onclick="qiNewPo('${doc.id}')">Record client PO</button><button class="btn-small primary" onclick="qiInvoiceFromQuote('${doc.id}')">Create invoice</button>` : '',
+      `<button class="btn-small" onclick="qiEmail('quote','${doc.id}')">Email to client</button>`,
+      `<button class="btn-small" onclick="qiRevise('${doc.id}')">New version</button>`,
+    ] : [
+      doc.status === 'draft' ? `<button class="btn-small primary" onclick="qiMark('invoice','${doc.id}','issued')">Issue invoice</button>` : '',
+      ['issued','part_paid'].includes(doc.status) ? `<button class="btn-small" onclick="qiEmail('invoice','${doc.id}')">Email to client</button>` : '',
+      doc.status !== 'cancelled' && doc.status !== 'paid' && doc.status !== 'draft' ? `<button class="btn-small" onclick="qiMark('invoice','${doc.id}','cancelled')">Cancel invoice</button>` : '',
+    ];
+    return `<div class="detail-card" style="padding:16px;"><div class="panel-head" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;"><h3>${E(isQ ? doc.quote_number : doc.invoice_number)}${isQ && doc.version > 1 ? ' v' + doc.version : ''}</h3>${pill(isQ ? QST : IST, st)}
+        <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;">${btns.join('')}${doc.status === 'draft' || isQ ? `<button class="btn-small" onclick="qiEditDoc('${v.kind}','${doc.id}')">Edit</button>` : ''}<button class="btn-small" onclick="qiPrint('${v.kind}','${doc.id}')">Print / PDF</button><button class="btn-small" onclick="STATE._qiView=null;draw()">Close</button></span></div>
+      <div class="detail-meta"><div class="dm-item"><div class="l">Client</div><div class="v">${E(clientOf(doc))}</div></div><div class="dm-item"><div class="l">Contact</div><div class="v">${E(doc.client_contact || '—')}${doc.client_email ? '<br>' + E(doc.client_email) : ''}</div></div>
+        <div class="dm-item"><div class="l">Date</div><div class="v">${fmtDate(doc.issue_date)}</div></div><div class="dm-item"><div class="l">${isQ ? 'Valid until' : 'Due'}</div><div class="v">${fmtDate(isQ ? doc.valid_until : doc.due_date)}</div></div>
+        <div class="dm-item"><div class="l">Currency</div><div class="v">${E(c)}${c !== (S().base_currency || 'ZAR') ? ' @ ' + nz(doc.rate_to_base) : ''}</div></div>${doc.subject ? `<div class="dm-item"><div class="l">Subject</div><div class="v">${E(doc.subject)}</div></div>` : ''}${!isQ && doc.client_po_number ? `<div class="dm-item"><div class="l">Client PO</div><div class="v">${E(doc.client_po_number)}</div></div>` : ''}</div>
+      <table style="margin-top:10px;"><tr><th>Description</th><th style="text-align:right;">Qty</th><th>Unit</th><th style="text-align:right;">Price</th><th style="text-align:right;">Disc %</th><th>Tax</th><th style="text-align:right;">Total</th></tr>
+      ${lines.map(l => `<tr><td>${E(l.description)}</td><td style="text-align:right;">${nz(l.qty)}</td><td>${E(l.unit || '')}</td><td style="text-align:right;">${num(l.unit_price)}</td><td style="text-align:right;">${nz(l.discount_pct) || ''}</td><td>${E(l.tax_name || '')} ${l.tax_rate ? nz(l.tax_rate) + '%' : ''}</td><td style="text-align:right;">${num(l.line_total)}</td></tr>`).join('')}</table>
+      <div style="text-align:right;margin-top:10px;font-size:13px;">${(doc.charges || []).map(ch => `<div>${E(ch.label)}: ${money(ch.amount, c)}</div>`).join('')}<div>Tax: ${money(doc.tax_total, c)}</div><div style="font-size:17px;"><b>Total: ${money(doc.total, c)}</b></div>${isQ ? '' : `<div>Paid: ${money(doc.amount_paid, c)}</div><div><b>Balance: ${money(bal, c)}</b></div>`}</div>
+      ${doc.decline_reason ? `<p style="font-size:12.5px;"><b>Reason declined:</b> ${E(doc.decline_reason)}</p>` : ''}
+      ${!isQ && ['issued','part_paid'].includes(doc.status) ? `<div style="border-top:1px solid var(--border-soft);margin-top:12px;padding-top:12px;"><b style="font-size:13px;">Record a payment</b>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-top:6px;"><div class="field"><label>Date</label><input type="date" id="pay-date" value="${todayISO()}"></div><div class="field"><label>Amount</label><input type="number" step="any" id="pay-amt" value="${bal}"></div><div class="field"><label>Method</label><input id="pay-method" placeholder="EFT, card"></div><div class="field"><label>Reference</label><input id="pay-ref"></div><button class="btn-small primary" onclick="qiPay('${doc.id}')">Record payment</button></div></div>` : ''}
+      ${pays.length ? `<table style="margin-top:10px;"><tr><th>Payment date</th><th style="text-align:right;">Amount</th><th>Method</th><th>Reference</th></tr>${pays.map(p => `<tr><td>${fmtDate(p.paid_date)}</td><td style="text-align:right;">${money(p.amount, c)}</td><td>${E(p.method || '')}</td><td>${E(p.reference || '')}</td></tr>`).join('')}</table>` : ''}
+      ${doc.quote_id && !isQ ? `<p style="font-size:12px;margin-top:10px;">From quotation <a href="#" onclick="qiOpen('quote','${doc.quote_id}');return false;">${E((d.quotes.find(x => x.id === doc.quote_id) || {}).quote_number || '')}</a></p>` : ''}</div>`;
+  }
+  window.qiMark = async function(kind, id, status){
+    const patch = { status, updated_at:new Date().toISOString() };
+    if(kind === 'quote'){ if(status === 'sent') patch.sent_at = new Date().toISOString(); if(['accepted','declined'].includes(status)) patch.decided_at = new Date().toISOString(); }
+    else if(status === 'issued'){ const inv = D().invoices.find(x => x.id === id); if(inv && !inv.due_date) patch.due_date = addDays(todayISO(), S().payment_terms_days || 30); }
+    const { error } = await STATE.supabase.from(kind === 'quote' ? 'qi_quotes' : 'qi_invoices').update(patch).eq('id', id);
+    if(error){ toast(error.message, 'error'); return; } await load(); await qiOpen(kind, id);
+  };
+  window.qiDecline = async function(id){ const r = prompt('Why was it declined? (price, timing, competitor, scope). This builds your pricing insights.', ''); if(r === null) return;
+    const { error } = await STATE.supabase.from('qi_quotes').update({ status:'declined', decline_reason:r || null, decided_at:new Date().toISOString() }).eq('id', id); if(error){ toast(error.message, 'error'); return; } await load(); await qiOpen('quote', id); };
+  window.qiRevise = async function(id){
+    const q = D().quotes.find(x => x.id === id); if(!q) return;
+    const { data } = await STATE.supabase.from('qi_quote_lines').select('*').eq('quote_id', id).order('sort_order', { ascending:true });
+    const base = q.quote_number.replace(/\s*v\d+$/, ''), ver = D().quotes.filter(x => x.quote_number === q.quote_number).length + 1;
+    STATE._qiView = null; STATE._qiEdit = { kind:'quote', id:null, doc:{ ...q, id:undefined, status:'draft', version:q.version + 1, quote_number:undefined, issue_date:todayISO(), valid_until:addDays(todayISO(), S().validity_days || 30), default_tax_id:S().default_tax_id || '' }, lines:(data || []).map(l => ({ ...l, id:undefined, quote_id:undefined })) };
+    STATE._qiEdit.doc.__from = q.quote_number; draw(); toast('New version: saving creates a new quotation number; the original is kept.', 'info');
+  };
+  window.qiNewPo = function(quoteId){
+    const q = quoteId ? D().quotes.find(x => x.id === quoteId) : null, d = D();
+    kpiOverlay(`<div style="padding:18px 20px;max-width:560px;"><h3 style="margin:0 0 10px;">Record client purchase order</h3><div class="form-grid">
+      <div class="field"><label>PO number</label><input id="po-no"></div>
+      <div class="field span2"><label>Quotation</label><select id="po-q" onchange="qiPoFill(this.value)"><option value="">None</option>${d.quotes.filter(x => ['sent','accepted'].includes(x.status)).map(x => `<option value="${x.id}" ${q && q.id === x.id ? 'selected' : ''}>${E(x.quote_number)}: ${E(clientOf(x))} (${money(x.total, x.currency)})</option>`).join('')}</select></div>
+      <div class="field span2"><label>Client</label><input id="po-client" value="${E(q ? clientOf(q) : '')}"></div>
+      <div class="field"><label>Date received</label><input type="date" id="po-date" value="${todayISO()}"></div>
+      <div class="field"><label>Currency</label><select id="po-cur">${CURRENCIES.map(c => `<option ${(q ? q.currency : (S().base_currency || 'ZAR')) === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
+      <div class="field"><label>Amount</label><input type="number" step="any" id="po-amt" value="${q ? q.total : ''}"></div>
+      <div class="field span3"><label>Copy of the purchase order (PDF or photo)</label><input type="file" id="po-file" accept="application/pdf,image/*"></div></div>
+      <div class="form-actions" style="margin-top:10px;"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" onclick="qiSavePo()">Save</button></div></div>`);
+  };
+  window.qiPoFill = id => { const q = D().quotes.find(x => x.id === id); if(!q) return; document.getElementById('po-client').value = clientOf(q); document.getElementById('po-amt').value = q.total; document.getElementById('po-cur').value = q.currency; };
+  window.qiSavePo = async function(){
+    const g = k => (document.getElementById(k) || {}).value || '', no = g('po-no').trim(); if(!no){ toast('Enter the PO number.', 'error'); return; }
+    const f = document.getElementById('po-file').files[0]; let path = null;
+    showLoader('Saving…');
+    try {
+      if(f){ path = `${STATE.org.id}/qi-po/${Date.now()}-${sanitizeFileName(f.name)}`; const up = await STATE.supabase.storage.from('documents').upload(path, f); if(up.error) throw new Error(up.error.message); }
+      const q = D().quotes.find(x => x.id === g('po-q'));
+      const { error } = await STATE.supabase.from('qi_purchase_orders').insert({ organisation_id:STATE.org.id, po_number:no, quote_id:q ? q.id : null, customer_id:q ? q.customer_id : null, client_name:g('po-client').trim() || null, received_date:g('po-date'), currency:g('po-cur'), amount:nz(g('po-amt')), status:'received', file_path:path, file_name:f ? f.name : null, created_by:STATE.user.id });
+      if(error) throw new Error(error.message);
+      if(q && q.status === 'sent') await STATE.supabase.from('qi_quotes').update({ status:'accepted', decided_at:new Date().toISOString() }).eq('id', q.id);
+      kpiCloseOverlay(); await load(); STATE._qiTab = 'pos'; STATE._qiView = null; draw(); toast('Purchase order recorded.', 'success');
+    } catch(e){ toast('Could not save: ' + e.message, 'error'); } finally { hideLoader(); }
+  };
+  async function invoiceFrom(q, po){
+    const { data: ql } = await STATE.supabase.from('qi_quote_lines').select('*').eq('quote_id', q.id).order('sort_order', { ascending:true });
+    STATE._qiView = null; STATE._qiTab = 'invoices';
+    STATE._qiEdit = { kind:'invoice', id:null, doc:{ ...blankDoc('invoice'), customer_id:q.customer_id, client_name:q.client_name, client_contact:q.client_contact, client_email:q.client_email, client_address:q.client_address, client_country:q.client_country, client_vat_no:q.client_vat_no,
+      subject:q.subject, currency:q.currency, rate_to_base:q.rate_to_base, discount_pct:q.discount_pct, charges:JSON.parse(JSON.stringify(q.charges || [])), terms:q.terms || S().default_terms || '', notes:q.notes || '', quote_id:q.id, po_id:po ? po.id : null, client_po_number:po ? po.po_number : '' },
+      lines:(ql || []).map(l => ({ ...l, id:undefined, quote_id:undefined, organisation_id:undefined })) };
+    if(document.getElementById('qi-root')) draw(); else showModule('quotes');
+  }
+  window.qiInvoiceFromQuote = async function(id){ const q = D().quotes.find(x => x.id === id), po = D().pos.find(p => p.quote_id === id); if(q) await invoiceFrom(q, po); };
+  window.qiInvoiceFromPo = async function(id){
+    const po = D().pos.find(p => p.id === id); if(!po) return; const q = D().quotes.find(x => x.id === po.quote_id);
+    if(q) return invoiceFrom(q, po);
+    STATE._qiView = null; STATE._qiTab = 'invoices'; STATE._qiEdit = { kind:'invoice', id:null, doc:{ ...blankDoc('invoice'), client_name:po.client_name, currency:po.currency, rate_to_base:rateFor(po.currency), po_id:po.id, client_po_number:po.po_number }, lines:[] }; STATE._qiEdit.lines.push(blankLine()); draw();
+  };
+  window.qiPay = async function(id){
+    const g = k => (document.getElementById(k) || {}).value || '', amt = nz(g('pay-amt')); if(amt <= 0){ toast('Enter the amount received.', 'error'); return; }
+    const inv = D().invoices.find(x => x.id === id); if(!inv) return;
+    const { error } = await STATE.supabase.from('qi_payments').insert({ organisation_id:STATE.org.id, invoice_id:id, paid_date:g('pay-date'), amount:amt, method:g('pay-method') || null, reference:g('pay-ref') || null, created_by:STATE.user.id });
+    if(error){ toast(error.message, 'error'); return; }
+    const paid = r2(nz(inv.amount_paid) + amt), status = paid >= nz(inv.total) - 0.005 ? 'paid' : 'part_paid';
+    await STATE.supabase.from('qi_invoices').update({ amount_paid:paid, status, updated_at:new Date().toISOString() }).eq('id', id);
+    if(status === 'paid' && inv.po_id) await STATE.supabase.from('qi_purchase_orders').update({ status:'invoiced' }).eq('id', inv.po_id);
+    if(inv.quote_id) await STATE.supabase.from('qi_quotes').update({ status:'invoiced' }).eq('id', inv.quote_id);
+    await load(); await qiOpen('invoice', id); toast('Payment recorded.', 'success');
+  };
+  window.qiEmail = async function(kind, id){
+    const doc = (kind === 'quote' ? D().quotes : D().invoices).find(x => x.id === id); if(!doc) return;
+    const to = prompt('Send to which email address?', doc.client_email || ''); if(!to) return;
+    const no = kind === 'quote' ? doc.quote_number : doc.invoice_number, s = S();
+    const body = `Dear ${doc.client_contact || 'Sir or Madam'},\n\nPlease find our ${kind === 'quote' ? 'quotation' : 'invoice'} ${no}${doc.subject ? ' for ' + doc.subject : ''} for ${money(doc.total, doc.currency)}${kind === 'quote' ? (doc.valid_until ? ', valid until ' + fmtDate(doc.valid_until) : '') : (doc.due_date ? ', payable by ' + fmtDate(doc.due_date) : '')}.\n\nThe full document is attached as a PDF when sent from your own mail program; reply to this message if you need anything further.\n\nKind regards,\n${s.legal_name || STATE.org.name}${s.phone ? '\n' + s.phone : ''}`;
+    try { await sendEmailToAddress(to, `${kind === 'quote' ? 'Quotation' : 'Invoice'} ${no} from ${s.legal_name || STATE.org.name}`, body); toast('Email sent.', 'success');
+      if(kind === 'quote' && doc.status === 'draft') await qiMark('quote', id, 'sent'); } catch(e){ toast('Could not send: ' + e.message, 'error'); }
+  };
+  window.qiPrint = async function(kind, id){
+    const doc = (kind === 'quote' ? D().quotes : D().invoices).find(x => x.id === id); if(!doc) return;
+    const { data } = await STATE.supabase.from(kind === 'quote' ? 'qi_quote_lines' : 'qi_invoice_lines').select('*').eq(kind === 'quote' ? 'quote_id' : 'invoice_id', id).order('sort_order', { ascending:true });
+    const s = S(), c = doc.currency, no = kind === 'quote' ? doc.quote_number : doc.invoice_number;
+    const meta = [['From', s.legal_name || STATE.org.name], ['Registration', s.registration_no || '—'], ['VAT or tax number', s.vat_no || '—'], ['To', clientOf(doc)], ['Client VAT or tax number', doc.client_vat_no || '—'], [kind === 'quote' ? 'Quotation date' : 'Invoice date', fmtDate(doc.issue_date)], [kind === 'quote' ? 'Valid until' : 'Payment due', fmtDate(kind === 'quote' ? doc.valid_until : doc.due_date)], ['Currency', c]];
+    if(kind === 'invoice' && doc.client_po_number) meta.push(['Client PO number', doc.client_po_number]);
+    let body = (doc.subject ? `<p><b>${E(doc.subject)}</b></p>` : '') + (doc.client_address ? `<p style="font-size:12px;">${E(doc.client_address).replace(/\n/g, '<br>')}</p>` : '');
+    body += printTable(['Description','Qty','Unit','Price','Disc %','Tax','Total'], (data || []).map(l => [E(l.description), nz(l.qty), E(l.unit || ''), num(l.unit_price), nz(l.discount_pct) || '', E(l.tax_name || '') + (l.tax_rate ? ' ' + nz(l.tax_rate) + '%' : ''), num(l.line_total)]));
+    body += `<div style="text-align:right;margin-top:10px;font-size:12.5px;">${nz(doc.discount_pct) ? `<div>Discount ${nz(doc.discount_pct)}%</div>` : ''}${(doc.charges || []).map(ch => `<div>${E(ch.label)}: ${money(ch.amount, c)}</div>`).join('')}<div>Subtotal: ${money(doc.subtotal, c)}</div><div>Tax: ${money(doc.tax_total, c)}</div><div style="font-size:15px;"><b>Total: ${money(doc.total, c)}</b></div>${kind === 'invoice' ? `<div>Paid: ${money(doc.amount_paid, c)}</div><div><b>Balance due: ${money(nz(doc.total) - nz(doc.amount_paid), c)}</b></div>` : ''}</div>`;
+    if(kind === 'invoice' && s.bank_details) body += `<p style="margin-top:14px;font-size:12px;"><b>Banking details</b><br>${E(s.bank_details).replace(/\n/g, '<br>')}</p>`;
+    if(doc.terms) body += `<p style="margin-top:12px;font-size:11.5px;"><b>Terms and conditions</b><br>${E(doc.terms).replace(/\n/g, '<br>')}</p>`;
+    if(doc.notes) body += `<p style="font-size:11.5px;">${E(doc.notes).replace(/\n/g, '<br>')}</p>`;
+    await printRecord(kind === 'quote' ? 'Quotation' : 'Tax Invoice', no, meta, body, null, 'quotes');
+  };
+})();
 </script>
 </body>
 </html>
