@@ -4184,6 +4184,7 @@ const RENDERERS = {
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <button class="btn-small" onclick="assetEmailAllDue()">Email due reminders</button>
+        <button class="btn-small" onclick="openImportModal('assets')">Import Excel</button>
         <button class="btn-small" onclick="exportModuleExcel('assets')">Export Excel</button>
         <button class="btn-small" onclick="printCurrentRegister('assets','Assets Register')">Print Register</button>
         <button class="btn-primary btn-add" onclick="toggleAssetForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Asset</button>
@@ -4221,6 +4222,8 @@ const RENDERERS = {
           <div class="field"><label>Warranty expires</label><input type="date" id="asf-warranty"></div>
           <div class="field"><label>Certificate type (if any)</label><input id="asf-cert-type" placeholder="e.g. Load Test Certificate"></div>
           <div class="field"><label>Certificate expiry</label><input type="date" id="asf-cert-expiry"></div>
+          <div class="field"><label>Certificate number (optional)</label><input id="asf-cert-number" placeholder="e.g. LT-2026-0457"></div>
+          <div class="field span2"><label>Copy of the certificate (PDF or photo)</label><input type="file" id="asf-cert-file" accept="application/pdf,image/*"><div style="font-size:11px;color:var(--text-faint);margin-top:3px;">Load test, pressure test, calibration and similar. The copy and expiry date appear on the register and on the asset page, and a renewal task is created before it expires. Inspection and safe operating procedures are linked on the asset page after it is created.</div></div>
         </div>
         <div class="form-actions"><button class="btn-cancel" onclick="toggleAssetForm()">Cancel</button><button class="btn-primary" onclick="nwNext()">Next: inspection checklist</button></div>
       </div>
@@ -14768,7 +14771,6 @@ async function openAssetDetail(id){
         ${fact('Status', a.lifecycle_status==='out_of_service' ? 'Out of service' : (a.current_status ? `<span class="sev-badge ${a.current_status==='quarantine'?'critical':'minor'}" style="text-transform:capitalize;">${a.current_status}</span>` : 'Not yet inspected'))}
       </div>
       ${a.about ? `<p style="font-size:12.5px; color:var(--text-dim); margin-bottom:12px;"><b>Used for:</b> ${escapeHtml(a.about)}</p>` : ''}
-      ${a.certificate_type ? `<div class="detail-card" style="padding:12px 16px; margin-bottom:16px;"><b>${escapeHtml(a.certificate_type)}</b>: ${a.certificate_expiry_date ? dateStatusBadge(a.certificate_expiry_date, false) : 'no expiry date recorded'}</div>` : ''}
       ${a.notes ? `<p style="font-size:12.5px; color:var(--text-faint); margin-bottom:16px;">${escapeHtml(a.notes)}</p>` : ''}
 
       <div class="detail-card" style="padding:16px; margin-bottom:16px;">
@@ -43890,6 +43892,356 @@ ask:'How do you control who has access to what?'};
         const req = (STATE.docReviewRequests || []).filter(x => (sourceType === 'document' ? x.document_id === id : x.bulk_document_id === id)).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
         if(req && (STATE.docReviewRequests || []).length > before && req.status === 'pending') await openInDM(req);
       }catch(e){ console.warn('b79 open request', e); }
+    }; }
+})();
+
+/* ============================================================================
+   Release 13: Assets and Maintenance
+   Legal certificates with history, bulk asset import, defect photos on
+   inspections, asset page restructure with procedures and Information Security note.
+   ============================================================================ */
+(function(){
+  const E = s => escapeHtml(s == null ? '' : String(s));
+  const canEditAsset = () => ['admin','manager','contributor'].includes(STATE.myRole) || (STATE.profile && STATE.profile.is_platform_staff);
+  const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0,10); };
+  const daysTo = iso => iso ? Math.round((new Date(iso + 'T00:00:00Z') - new Date(todayISO() + 'T00:00:00Z')) / 86400000) : null;
+  const missingSql = m => /relation|schema cache|does not exist|column/i.test(m || '');
+
+  /* ---------- data ---------- */
+  async function loadAssetCerts(){
+    try {
+      const { data, error } = await STATE.supabase.from('asset_certificates').select('*').eq('organisation_id', STATE.org.id).order('created_at', {ascending:false});
+      if(error){ STATE.assetCerts = []; STATE._certsMissing = missingSql(error.message); return; }
+      STATE.assetCerts = data || []; STATE._certsMissing = false;
+    } catch(e){ STATE.assetCerts = []; }
+  }
+  window.loadAssetCerts = loadAssetCerts;
+  const certsOf = id => (STATE.assetCerts || []).filter(c => c.asset_id === id);
+  const currentCert = id => certsOf(id).find(c => c.is_current) || null;
+  { const _la = loadAssets; loadAssets = window.loadAssets = async function(){ const r = await _la.apply(this, arguments); await loadAssetCerts(); return r; }; }
+
+  async function viewCertFile(path){ if(!path){ toast('No copy of this certificate has been uploaded yet.', 'error'); return; } await downloadFromBucket('documents', path); }
+  window.assetViewCert = id => { const c = (STATE.assetCerts||[]).find(x => x.id === id); return viewCertFile(c && c.file_path); };
+  window.assetViewCurrentCert = assetId => { const c = currentCert(assetId); return viewCertFile(c && c.file_path); };
+
+  function certState(expiry){
+    const d = daysTo(expiry);
+    if(d == null) return { key:'none', text:'No expiry date' };
+    if(d < 0) return { key:'expired', text:'Expired ' + (-d) + ' day' + (d === -1 ? '' : 's') + ' ago' };
+    if(d <= 60) return { key:'soon', text:'Expires in ' + d + ' day' + (d === 1 ? '' : 's') };
+    return { key:'ok', text:'Valid for ' + d + ' days' };
+  }
+
+  /* ---------- save a certificate (new or renewal) ---------- */
+  async function saveCertificate(a, f){
+    let path = null, name = null;
+    if(f.file){
+      path = `${STATE.org.id}/asset-certificates/${a.id}/${Date.now()}-${sanitizeFileName(f.file.name)}`;
+      const up = await STATE.supabase.storage.from('documents').upload(path, f.file);
+      if(up.error) throw new Error('The file could not be uploaded: ' + up.error.message);
+      name = f.file.name;
+    }
+    const prior = certsOf(a.id).filter(c => c.is_current).map(c => c.id);
+    if(prior.length) await STATE.supabase.from('asset_certificates').update({ is_current: false }).in('id', prior);
+    const { data: row, error } = await STATE.supabase.from('asset_certificates').insert({
+      organisation_id: STATE.org.id, asset_id: a.id, cert_type: f.type, cert_number: f.number || null, issued_by: f.issuer || null,
+      issued_date: f.issued || null, expiry_date: f.expiry || null, file_path: path, file_name: name, is_current: true, notes: f.notes || null, uploaded_by: STATE.user.id }).select().single();
+    if(error){ if(path) await STATE.supabase.storage.from('documents').remove([path]); throw new Error(error.message + (missingSql(error.message) ? ' (run qashe-watchman-schema-asset-suite.sql first)' : '')); }
+    await STATE.supabase.from('assets').update({ certificate_type: f.type, certificate_expiry_date: f.expiry || null }).eq('id', a.id);
+    try {
+      const { data: old } = await STATE.supabase.from('tasks').select('id').eq('linked_type', 'asset_certificate').in('linked_id', prior.length ? prior : ['00000000-0000-0000-0000-000000000000']).neq('status', 'done');
+      if((old||[]).length) await STATE.supabase.from('tasks').update({ status: 'done', completed_at: new Date().toISOString() }).in('id', old.map(t => t.id));
+      if(f.expiry){
+        let due = addDays(f.expiry, -30); if(due < todayISO()) due = todayISO();
+        await STATE.supabase.from('tasks').insert({ organisation_id: STATE.org.id, title: `Renew ${f.type}: ${a.ref_code} ${a.description}`.slice(0, 150),
+          description: `The ${f.type} for ${a.ref_code} (${a.description}) expires on ${f.expiry}. Arrange the test or calibration and upload the new certificate on the asset page.`,
+          linked_type: 'asset_certificate', linked_id: row.id, assignee_id: STATE.user.id, personnel_id: a.responsible_person_id || null, priority: 'high', due_date: due, created_by: STATE.user.id });
+      }
+    } catch(e){ console.warn('b80 cert task', e); }
+    return row;
+  }
+
+  window.assetUploadCert = async function(assetId){
+    const a = assetById(assetId); if(!a) return;
+    const g = k => (document.getElementById('ac-' + k) || {}).value || '';
+    const type = g('type').trim(), expiry = g('expiry'), fi = document.getElementById('ac-file'), file = fi && fi.files && fi.files[0];
+    if(!type){ toast('Enter the certificate type, for example Load Test Certificate.', 'error'); return; }
+    if(!expiry){ toast('Enter the expiry date so Watchman can flag it before it lapses.', 'error'); return; }
+    if(!file){ toast('Choose the certificate file (PDF or photo).', 'error'); return; }
+    showLoader('Saving the certificate…');
+    try {
+      await saveCertificate(a, { type, number: g('number').trim(), issuer: g('issuer').trim(), issued: g('issued'), expiry, file });
+      await assetRefresh(assetId); toast('Certificate saved. The previous one is kept in the history.', 'success');
+    } catch(e){ toast(e.message, 'error'); }
+    finally { hideLoader(); }
+  };
+
+  /* ---------- register: View certificate button and flag ---------- */
+  { const _rt = renderAssetsTable; renderAssetsTable = window.renderAssetsTable = function(){
+      _rt.apply(this, arguments);
+      const wrap = document.getElementById('asset-table-wrap'); if(!wrap) return;
+      let flagged = 0;
+      wrap.querySelectorAll('tr.clickable').forEach(tr => {
+        const m = /openAssetDetail\('([^']+)'\)/.exec(tr.getAttribute('onclick') || ''); if(!m) return;
+        const a = assetById(m[1]); const td = tr.children[7]; if(!a || !td) return;
+        const c = currentCert(a.id), exp = (c && c.expiry_date) || a.certificate_expiry_date;
+        if(!exp && !(c && c.file_path)){ td.innerHTML = '—'; return; }
+        const st = certState(exp); if(st.key === 'expired' || st.key === 'soon') flagged++;
+        const hasFile = !!(c && c.file_path);
+        td.innerHTML = `${a.certificate_type ? `<div style="font-size:11px;color:var(--text-faint);margin-bottom:2px;">${E(a.certificate_type)}</div>` : ''}${exp ? dateStatusBadge(exp, false) : ''}
+          ${hasFile ? `<div><button class="btn-small" style="margin-top:4px;" onclick="event.stopPropagation();assetViewCurrentCert('${a.id}')">View certificate</button></div>`
+                    : `<div style="font-size:10.5px;color:#B26A00;margin-top:3px;">No copy uploaded</div>`}`;
+      });
+      if(flagged){
+        const b = document.createElement('div');
+        b.style.cssText = 'background:#FFF4E0;border:1px solid #E8C27A;border-radius:8px;padding:9px 14px;font-size:12.5px;margin-bottom:10px;';
+        b.innerHTML = `<b>${flagged} certificate${flagged === 1 ? '' : 's'}</b> expired or expiring within 60 days. Open the asset and upload the renewed certificate when it is available.`;
+        wrap.insertBefore(b, wrap.firstChild);
+      }
+    }; }
+
+  /* ---------- registration: save the certificate captured on the form ---------- */
+  { const _sa = submitAsset; submitAsset = window.submitAsset = async function(mode){
+      const g = id => (document.getElementById(id) || {});
+      const type = (g('asf-cert-type').value || '').trim(), expiry = g('asf-cert-expiry').value || '', number = (g('asf-cert-number').value || '').trim();
+      const file = g('asf-cert-file').files && g('asf-cert-file').files[0];
+      const desc = (g('asf-description').value || '').trim();
+      const before = new Set((STATE.assets||[]).map(x => x.id));
+      const r = await _sa.apply(this, arguments);
+      try {
+        if(type && (file || expiry)){
+          const fresh = (STATE.assets||[]).filter(x => !before.has(x.id) && x.description === desc).pop();
+          if(fresh){ await saveCertificate(fresh, { type, number, expiry, file }); await loadAssetCerts(); renderAssetsTable(); toast('Certificate recorded against ' + fresh.ref_code + '.', 'success'); if(g('asf-cert-file').value) g('asf-cert-file').value = ''; }
+        }
+      } catch(e){ toast('The asset was added, but the certificate could not be saved: ' + e.message, 'error'); }
+      return r;
+    }; }
+
+  /* ---------- bulk upload ---------- */
+  const CAT_LABELS = ASSET_CATEGORIES.map(c => c.label);
+  const FREQ_KEYS = Object.keys(ASSET_FREQ);
+  IMPORT_SPECS.assets = {
+    label: 'Assets',
+    table: 'assets',
+    columns: [
+      {key:'description', label:'Description', required:true, type:'text', example:'Forklift 3 ton Toyota', aliases:['Asset','Asset Description','Name']},
+      {key:'category', label:'Category (exact name from the list)', required:true, type:'enum', values:CAT_LABELS, example:'Vehicles & mobile plant', aliases:['Asset Category','Type']},
+      {key:'serial_number', label:'Serial Number', required:false, type:'text', example:'7FD25-12345', aliases:['Serial','Serial No']},
+      {key:'make_model', label:'Make / Model', required:false, type:'text', example:'Toyota 7FD25', aliases:['Make','Model','Make and Model']},
+      {key:'location', label:'Location', required:false, type:'text', example:'Warehouse', aliases:['Site','Area']},
+      {key:'responsible', label:'Responsible Person (exact name)', required:false, type:'personnel', example:'Jane Ndlovu', aliases:['Responsible','Owner']},
+      {key:'criticality', label:'Criticality (low, medium or high)', required:false, type:'enum', values:['low','medium','high'], example:'high'},
+      {key:'purchase_date', label:'Purchase Date', required:false, type:'date', example:'2024-03-01'},
+      {key:'warranty_expiry_date', label:'Warranty Expiry', required:false, type:'date', example:'2027-03-01'},
+      {key:'certificate_type', label:'Certificate Type', required:false, type:'text', example:'Load Test Certificate'},
+      {key:'certificate_expiry_date', label:'Certificate Expiry', required:false, type:'date', example:'2027-01-31'},
+      {key:'inspection_frequency', label:'Inspection Frequency (daily, weekly, monthly, quarterly, six_monthly, annually)', required:false, type:'enum', values:FREQ_KEYS, example:'monthly'},
+      {key:'next_inspection_date', label:'Next Inspection Due', required:false, type:'date', example:'2026-12-01'},
+    ],
+    buildPayload(row, resolved){
+      const cat = ASSET_CATEGORIES.find(c => c.label.toLowerCase() === String(row.category||'').toLowerCase() || c.key === String(row.category||'').toLowerCase());
+      const freq = row.inspection_frequency || (cat && cat.freq) || 'annually';
+      return {
+        organisation_id: STATE.org.id, description: row.description, asset_category: cat ? cat.key : 'other',
+        serial_number: row.serial_number || '', make_model: row.make_model || null, location: row.location || '',
+        responsible_person_id: resolved.responsible || null, criticality: row.criticality || null,
+        purchase_date: row.purchase_date || null, warranty_expiry_date: row.warranty_expiry_date || null,
+        certificate_type: row.certificate_type || '', certificate_expiry_date: row.certificate_expiry_date || null,
+        inspection_frequency: freq, inspection_reminder_days: 7, next_inspection_date: row.next_inspection_date || addDays(todayISO(), 7),
+        created_by: STATE.user.id,
+      };
+    },
+    afterAll: async function(){ await loadAssets(); renderAssetsTable(); if(typeof updateNavBadges === 'function') updateNavBadges(); },
+  };
+
+  /* ---------- defect photos ---------- */
+  async function loadInspPhotos(inspIds){
+    if(!inspIds.length) return [];
+    const { data, error } = await STATE.supabase.from('asset_inspection_photos').select('*').in('inspection_id', inspIds).order('item_index', {ascending:true});
+    return error ? [] : (data || []);
+  }
+  const photoGrid = (list, big) => `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;">${list.map(p => `<div style="text-align:center;">
+      <img src="${p.image_data}" style="${big ? 'max-width:260px;max-height:200px;' : 'width:110px;height:110px;object-fit:cover;'}border:1px solid var(--border);border-radius:8px;cursor:pointer;" onclick="window.open(this.src,'_blank')">
+      <div style="font-size:10.5px;color:var(--text-faint);max-width:${big ? 260 : 110}px;margin-top:3px;">${E(p.item_text || p.caption || '')}</div></div>`).join('')}</div>`;
+
+  { const _oi = openInspectionDetail; openInspectionDetail = window.openInspectionDetail = async function(inspectionId, assetId){
+      const r = await _oi.apply(this, arguments);
+      try {
+        const panel = document.querySelector('#asset-detail-slot .detail-panel'); if(!panel) return r;
+        const photos = await loadInspPhotos([inspectionId]);
+        const card = document.createElement('div'); card.className = 'detail-card'; card.style.cssText = 'padding:16px;margin-top:16px;';
+        card.innerHTML = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:10px;color:var(--text-faint);text-transform:uppercase;margin-bottom:6px;">Defect photos</div>
+          ${photos.length ? photoGrid(photos, true) : '<p style="font-size:12.5px;color:var(--text-faint);">No defect photos on this inspection.</p>'}
+          ${canEditAsset() ? `<div style="display:flex;gap:6px;margin-top:10px;align-items:center;flex-wrap:wrap;"><input type="file" id="ip-file" accept="image/*" capture="environment" multiple style="max-width:240px;font-size:11px;"><input id="ip-cap" placeholder="What does the photo show?" style="flex:1;min-width:160px;"><button class="btn-small primary" onclick="addInspectionPhotos('${inspectionId}','${assetId}')">Add photo</button></div>` : ''}`;
+        const list = panel.querySelector('#inspection-items-list'); if(list) list.after(card); else panel.appendChild(card);
+      } catch(e){ console.warn('b80 inspection photos', e); }
+      return r;
+    }; }
+  window.addInspectionPhotos = async function(inspectionId, assetId){
+    const inp = document.getElementById('ip-file'), files = inp ? Array.from(inp.files) : [];
+    if(!files.length){ toast('Choose one or more photos first.', 'error'); return; }
+    const cap = (document.getElementById('ip-cap') || {}).value || '';
+    showLoader('Saving the photos…');
+    try {
+      for(const f of files.slice(0, 10)){
+        const rz = await resizeImageFile(f, 1000, 0.7); if(!rz.ok) continue;
+        const data = await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => res(null); fr.readAsDataURL(rz.file); });
+        if(!data) continue;
+        const { error } = await STATE.supabase.from('asset_inspection_photos').insert({ organisation_id: STATE.org.id, asset_id: assetId, inspection_id: inspectionId, image_data: data, caption: cap.slice(0, 200) || null });
+        if(error){ toast('Could not save a photo: ' + error.message + (missingSql(error.message) ? ' (run qashe-watchman-schema-asset-suite.sql first)' : ''), 'error'); break; }
+      }
+      await openInspectionDetail(inspectionId, assetId);
+    } finally { hideLoader(); }
+  };
+
+  { const _pai = printAssetInspection; printAssetInspection = window.printAssetInspection = async function(inspectionId){
+      STATE._printInspId = inspectionId;
+      try { return await _pai.apply(this, arguments); } finally { STATE._printInspId = null; }
+    }; }
+  { const _pg = buildPrintPhotoGallery; buildPrintPhotoGallery = window.buildPrintPhotoGallery = async function(){
+      let html = await _pg.apply(this, arguments);
+      try {
+        if(STATE._printInspId){
+          const ph = await loadInspPhotos([STATE._printInspId]);
+          if(ph.length) html += printSectionTitle('Defect photos') + `<div style="margin:10px 0;display:flex;flex-wrap:wrap;gap:14px;">${ph.map(p => `<div style="text-align:center;border:1px solid #E3E1DF;border-radius:8px;padding:8px;"><img src="${p.image_data}" style="max-width:260px;max-height:200px;display:block;"><div style="font-size:10.5px;color:#615C59;margin-top:6px;max-width:260px;">${E(p.item_text || p.caption || '')}</div></div>`).join('')}</div>`;
+        } else if(STATE._printAssetId){
+          const { data: ins } = await STATE.supabase.from('asset_inspections').select('id,inspection_date').eq('asset_id', STATE._printAssetId).order('inspection_date', {ascending:false}).limit(12);
+          const ph = await loadInspPhotos((ins||[]).map(i => i.id));
+          if(ph.length){
+            const dt = {}; (ins||[]).forEach(i => dt[i.id] = i.inspection_date);
+            html += printSectionTitle('Defect photos from inspections') + `<div style="margin:10px 0;display:flex;flex-wrap:wrap;gap:14px;">${ph.slice(0,24).map(p => `<div style="text-align:center;border:1px solid #E3E1DF;border-radius:8px;padding:8px;"><img src="${p.image_data}" style="max-width:240px;max-height:180px;display:block;"><div style="font-size:10.5px;color:#615C59;margin-top:6px;max-width:240px;">${fmtDate(dt[p.inspection_id])}: ${E(p.item_text || p.caption || '')}</div></div>`).join('')}</div>`;
+          }
+        }
+      } catch(e){ console.warn('b80 print photos', e); }
+      return html;
+    }; }
+  { const _pf = printAssetFullReport; printAssetFullReport = window.printAssetFullReport = async function(id){
+      STATE._printAssetId = id;
+      try { return await _pf.apply(this, arguments); } finally { STATE._printAssetId = null; }
+    };
+    window.printAsset = function(id){ return window.printAssetFullReport(id); }; }
+  { const _pc = printRecord; printRecord = window.printRecord = async function(title, ref, meta, body){
+      const args = Array.from(arguments);
+      if(STATE._printAssetId && /Asset Report/.test(title || '')){
+        const list = certsOf(STATE._printAssetId);
+        if(list.length) args[3] = (body || '') + printSectionTitle('Legal certificates') + printTable(['Type','Number','Issued','Expiry','Status','Copy on file'], list.map(c => [E(c.cert_type), E(c.cert_number || '—'), fmtDate(c.issued_date), fmtDate(c.expiry_date), E(c.is_current ? 'Current' : 'Superseded'), c.file_path ? 'Yes' : 'No']));
+      }
+      return _pc.apply(this, args);
+    }; }
+
+  /* ---------- procedures (inspection procedure and SOP) ---------- */
+  const PROC_KINDS = [
+    { field:'inspection_procedure_doc_id', title:'Inspection procedure', typeCode:'PRO', make: a => ({ title:`Inspection procedure: ${a.description}`, purpose:`Describes how ${a.ref_code} (${a.description}) is inspected, by whom, how often and what to do when a defect is found.` }) },
+    { field:'sop_doc_id', title:'Safe operating procedure', typeCode:'SOP', make: a => ({ title:`Safe operating procedure: ${a.description}`, purpose:`Sets out how ${a.ref_code} (${a.description}) is operated safely, including competence, pre-use checks, hazards, controls and emergency actions.` }) },
+  ];
+  function procCard(a){
+    const edit = canEditAsset();
+    const docs = (STATE.documents || []).filter(d => !['withdrawn','superseded'].includes(d.workflow_status));
+    const rows = PROC_KINDS.map(k => {
+      const d = a[k.field] ? (STATE.documents || []).find(x => x.id === a[k.field]) : null;
+      if(d) return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--border-soft);">
+        <div style="flex:1;min-width:200px;"><div style="font-size:11px;color:var(--text-faint);">${k.title}</div><b>${E(d.doc_number || '')}</b> ${E(d.title)}</div>
+        <span class="sev-badge" style="background:${documentWorkflowBadge(d).color};color:#fff;">${E(documentWorkflowBadge(d).label)}</span>
+        <button class="btn-small" onclick="showModule('documents');setTimeout(()=>openDocumentDetail('${d.id}'),500)">Open</button>
+        ${edit ? `<button class="btn-small" onclick="assetUnlinkProc('${a.id}','${k.field}')">Unlink</button>` : ''}</div>`;
+      return `<div style="padding:12px 14px;margin-top:10px;background:#FFF1F0;border:1px solid #E7A39B;border-radius:8px;">
+        <div style="font-weight:700;color:#B3261E;font-size:13px;">${k.title}: not available</div>
+        <div style="font-size:12px;color:var(--text-dim);margin:3px 0 8px;">${k.field === 'sop_doc_id' ? 'Operators need a safe operating procedure for equipment that can cause harm. ' : ''}Link an existing controlled document, or create one in Document Management so it is reviewed, approved and version controlled.</div>
+        ${edit ? `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <select id="ap-${k.field}-${a.id}" style="max-width:300px;"><option value="">Link an existing document…</option>${docs.map(x => `<option value="${x.id}">${E((x.doc_number || '') + ' ' + x.title)}</option>`).join('')}</select>
+          <button class="btn-small" onclick="assetLinkProc('${a.id}','${k.field}')">Link</button>
+          <button class="btn-small primary" onclick="assetCreateProc('${a.id}','${k.field}')">Create in Document Management</button></div>` : ''}</div>`;
+    }).join('');
+    return `<div class="detail-card" id="asset-proc-card" style="padding:16px;margin-bottom:16px;"><div class="panel-head" style="margin-bottom:4px;"><h3 style="font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:600;">Procedures</h3></div>
+      <p style="font-size:12px;color:var(--text-faint);margin:0;">The inspection procedure and the safe operating procedure for this asset, where available.</p>${rows}</div>`;
+  }
+  window.assetLinkProc = async function(id, field){
+    const v = (document.getElementById(`ap-${field}-${id}`) || {}).value; if(!v){ toast('Choose a document first.', 'error'); return; }
+    const { error } = await STATE.supabase.from('assets').update({ [field]: v }).eq('id', id);
+    if(error){ toast('Could not link: ' + error.message + (missingSql(error.message) ? ' (run qashe-watchman-schema-asset-suite.sql first)' : ''), 'error'); return; }
+    await assetRefresh(id); toast('Document linked.', 'success');
+  };
+  window.assetUnlinkProc = async function(id, field){
+    if(!confirm('Unlink this document from the asset? The document itself is not deleted.')) return;
+    await STATE.supabase.from('assets').update({ [field]: null }).eq('id', id); await assetRefresh(id);
+  };
+  window.assetCreateProc = function(id, field){
+    const a = assetById(id), k = PROC_KINDS.find(x => x.field === field); if(!a || !k) return;
+    const t = k.make(a);
+    startProcedureCreation(null, null, t.title, t.purpose, null, k.typeCode);
+    STATE._pendingProcedureLink = { assetId: id, assetField: field };
+  };
+  { const _apl = applyPendingProcedureLink; applyPendingProcedureLink = window.applyPendingProcedureLink = async function(newDoc){
+      const pend = STATE._pendingProcedureLink;
+      if(pend && pend.assetId){
+        STATE._pendingProcedureLink = null;
+        const { error } = await STATE.supabase.from('assets').update({ [pend.assetField]: newDoc.id }).eq('id', pend.assetId);
+        if(error) toast('Document created, but it could not be linked to the asset: ' + error.message, 'error');
+        else { try { await loadAssets(); } catch(e){} toast('Document created and linked to the asset.', 'success'); }
+        return;
+      }
+      return _apl.apply(this, arguments);
+    }; }
+
+  /* ---------- legal certificates card ---------- */
+  function certCard(a){
+    const edit = canEditAsset(), cur = currentCert(a.id), hist = certsOf(a.id).filter(c => !c.is_current);
+    const exp = (cur && cur.expiry_date) || a.certificate_expiry_date, type = (cur && cur.cert_type) || a.certificate_type || '';
+    const st = certState(exp);
+    const banner = (st.key === 'expired' || st.key === 'soon')
+      ? `<div style="background:${st.key === 'expired' ? '#FFF1F0' : '#FFF4E0'};border:1px solid ${st.key === 'expired' ? '#E7A39B' : '#E8C27A'};border-radius:8px;padding:9px 14px;font-size:12.5px;margin:8px 0;"><b>${st.key === 'expired' ? 'Certificate expired' : 'Certificate due for renewal'}:</b> ${E(st.text)}. Upload the new certificate below when it is available; the old one stays in the history.</div>` : '';
+    const currentBlock = (type || exp || cur)
+      ? `<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:8px 0;">
+          <div style="flex:1;min-width:200px;"><b>${E(type || 'Certificate')}</b>${cur && cur.cert_number ? ' · No. ' + E(cur.cert_number) : ''}${cur && cur.issued_by ? '<br><span style="font-size:12px;color:var(--text-faint);">Issued by ' + E(cur.issued_by) + '</span>' : ''}</div>
+          <div>${exp ? dateStatusBadge(exp, false) : ''}</div>
+          ${cur && cur.file_path ? `<button class="btn-small primary" onclick="assetViewCert('${cur.id}')">View certificate</button>` : '<span style="font-size:12px;color:#B3261E;font-weight:700;">No copy uploaded</span>'}</div>`
+      : `<div style="padding:12px 14px;background:var(--grey-tint);border-radius:8px;font-size:12.5px;margin:8px 0;">No legal certificate recorded. Where this asset needs one (load test, pressure test, calibration and similar) upload it below.</div>`;
+    return `<div class="detail-card" id="asset-cert-card" style="padding:16px;margin-bottom:16px;"><div class="panel-head" style="margin-bottom:4px;"><h3 style="font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:600;">Legal certificates</h3></div>
+      <p style="font-size:12px;color:var(--text-faint);margin:0;">Load test, pressure test, calibration and similar. The expiry date feeds the register, the reminders and a renewal task.</p>
+      ${banner}${currentBlock}
+      ${edit ? `<div style="border-top:1px solid var(--border-soft);margin-top:10px;padding-top:12px;"><div style="font-size:12px;font-weight:700;margin-bottom:6px;">${cur || type ? 'Upload a renewed certificate' : 'Upload a certificate'}</div>
+        <div class="form-grid">
+          <div class="field"><label>Certificate type</label><input id="ac-type" value="${E(type)}" placeholder="e.g. Load Test Certificate"></div>
+          <div class="field"><label>Certificate number</label><input id="ac-number"></div>
+          <div class="field"><label>Issued by</label><input id="ac-issuer" placeholder="Testing body or inspector"></div>
+          <div class="field"><label>Issue date</label><input type="date" id="ac-issued"></div>
+          <div class="field"><label>Expiry date</label><input type="date" id="ac-expiry"></div>
+          <div class="field"><label>Certificate file (PDF or photo)</label><input type="file" id="ac-file" accept="application/pdf,image/*"></div></div>
+        <button class="btn-small primary" onclick="assetUploadCert('${a.id}')">Save certificate</button></div>` : ''}
+      ${hist.length ? `<div style="margin-top:14px;"><div style="font-size:12px;font-weight:700;margin-bottom:4px;">Certificate history</div>
+        <table><tr><th>Type</th><th>Number</th><th>Issued</th><th>Expired</th><th>Uploaded</th><th></th></tr>
+        ${hist.map(c => `<tr><td>${E(c.cert_type)}</td><td>${E(c.cert_number || '—')}</td><td>${fmtDate(c.issued_date)}</td><td>${fmtDate(c.expiry_date)}</td><td>${fmtDate(String(c.created_at).slice(0,10))}</td><td>${c.file_path ? `<button class="btn-small" onclick="assetViewCert('${c.id}')">View</button>` : ''}</td></tr>`).join('')}</table></div>` : ''}</div>`;
+  }
+
+  /* ---------- asset page: reorder and Information Security note ---------- */
+  { const _oad = openAssetDetail; openAssetDetail = window.openAssetDetail = async function(id){
+      if(!STATE.assetCerts) await loadAssetCerts();
+      const r = await _oad.apply(this, arguments);
+      try {
+        const panel = document.querySelector('#asset-detail-slot .detail-panel'); const a = assetById(id); if(!panel || !a) return r;
+        panel.querySelectorAll('#asset-proc-card,#asset-cert-card').forEach(n => n.remove());
+        const cards = [...panel.children].filter(n => n.classList && n.classList.contains('detail-card'));
+        const head = c => (c.querySelector('h3') || c).textContent;
+        const sched = cards.find(c => /Inspection schedule/.test(head(c))), chk = cards.find(c => /Inspection checklist/.test(head(c)));
+        const chart = cards.find(c => c !== sched && /Inspections per month/.test(c.textContent));
+        const perm = cards.find(c => c !== chk && c !== sched && c !== chart && c.id !== 'asset-ia-card' && /Permanent checklist|permanent/i.test(c.textContent));
+        const holder = document.createElement('div'); holder.innerHTML = procCard(a) + certCard(a);
+        const proc = holder.children[0], cert = holder.children[1];
+        if(sched){
+          if(chk) panel.insertBefore(chk, sched);
+          if(perm) panel.insertBefore(perm, sched);
+          panel.insertBefore(proc, sched); panel.insertBefore(cert, sched);
+          if(chart) sched.after(chart);
+        } else { panel.appendChild(proc); panel.appendChild(cert); }
+        const ia = panel.querySelector('#asset-ia-card');
+        if(ia && !ia.querySelector('.ia-note')){
+          const n = document.createElement('div'); n.className = 'ia-note';
+          n.style.cssText = 'background:var(--grey-tint);border-radius:8px;padding:9px 12px;font-size:12px;color:var(--text-dim);margin-bottom:10px;';
+          n.innerHTML = '<b>Note:</b> this section applies only when the asset is linked to computers, or to any asset related to the control or management of data and information. For all other equipment no action is needed here.';
+          const hd = ia.querySelector('.panel-head'); if(hd) hd.after(n); else ia.prepend(n);
+        }
+      } catch(e){ console.warn('b80 asset page', e); }
+      return r;
     }; }
 })();
 </script>
