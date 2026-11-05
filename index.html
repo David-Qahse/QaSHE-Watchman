@@ -3031,7 +3031,7 @@ function updateNavBadges(){
   const openTasks = STATE.tasks.filter(t=>t.status!=='done').length;
   const openAudits = STATE.audits.filter(a=>a.status!=='report_issued').length;
   const openRisks = STATE.risks.filter(r=>r.status!=='closed').length;
-  const draftDocs = STATE.documents.filter(d=>d.status==='draft').length;
+  const draftDocs = STATE.documents.filter(d=>documentWorkflowBadge(d).key==='draft').length;
   const pendingSuppliers = STATE.suppliers.filter(s=>s.status==='pending_qualification').length;
   const draftObjectives = STATE.objectives.filter(o=>o.status==='draft').length;
   const nonCompliantLegal = STATE.legalRegister.filter(l=>l.current_status==='non_compliant' || l.current_status==='semi_compliant').length;
@@ -3633,11 +3633,11 @@ const RENDERERS = {
       <div class="filters" id="doc-register-toolbar-extra" style="display:${STATE._docSubtab==='setup' ? 'none' : 'flex'};">
         <select id="doc-filter-status" onchange="renderDocumentsTable()">
           <option value="">All statuses</option>
-          <option value="Draft">Draft</option>
-          <option value="In Review">In Review</option>
-          <option value="Awaiting Approval">Awaiting Approval</option>
-          <option value="Revision in Progress">Revision in Progress</option>
-          <option value="Approved">Approved</option>
+          <option value="draft">Draft</option>
+          <option value="under_review">Under Review</option>
+          <option value="ready">Ready for Approval</option>
+          <option value="approved">Approved</option>
+          <option value="withdrawn">Withdrawn</option>
         </select>
         <select id="doc-filter-department" onchange="renderDocumentsTable()">
           <option value="">All departments</option>
@@ -8257,12 +8257,15 @@ function documentSignoffStatus(d){
 }
 
 // Register status follows the live review/approval workflow (the old developer/approver sign-off still drives the printed PDF block).
+// The status of a document is worked out from where it is in the review and approval workflow. Nobody sets it by hand.
 function documentWorkflowBadge(d){
-  if(d.approval_status === 'approved') return { label:'Approved', color:'#2E5AA8' };
-  const w = d.workflow_status || 'draft';
-  if(w === 'submitted_for_review' || w === 'reviewers_satisfied') return { label:'In Review', color:'#2E7D4F' };
-  if(w === 'submitted_for_approval' || w === 'approver_requested_changes' || w === 'reviewers_finalized') return { label:'Awaiting Approval', color:'#7d3fbf' };
-  return { label: d.ever_approved ? 'Revision in Progress' : 'Draft', color:'#B26A16' };
+  if(d.status === 'withdrawn') return { key:'withdrawn', label:'Withdrawn', color:'#6B6B6B' };
+  if(d.status === 'superseded') return { key:'superseded', label:'Superseded', color:'#6B6B6B' };
+  if(d.approval_status === 'approved' || d.workflow_status === 'approved') return { key:'approved', label:'Approved', color:'#2E5AA8' };
+  const w = d.workflow_status || 'draft', rev = d.ever_approved ? 'Revision: ' : '';
+  if(w === 'submitted_for_review' || w === 'approver_requested_changes') return { key:'under_review', label: rev + 'Under Review', color:'#2E7D4F' };
+  if(w === 'reviewers_satisfied' || w === 'submitted_for_approval' || w === 'reviewers_finalized') return { key:'ready', label: rev + 'Ready for Approval', color:'#7d3fbf' };
+  return { key:'draft', label: rev + 'Draft', color:'#B26A16' };
 }
 
 function docCanManage(){ return STATE.myRole === 'admin' || STATE.myRole === 'manager'; }
@@ -8275,7 +8278,7 @@ function docReviewBadge(d){
 }
 // Status badge: click it to jump straight to the review / approval section of that document.
 function docStatusBadgeHtml(d, st){
-  const go = ['In Review','Awaiting Approval','Revision in Progress','Draft'].includes(st.label);
+  const go = st.key !== 'approved' && st.key !== 'withdrawn' && st.key !== 'superseded';
   return `<span class="sev-badge" style="background:${st.color}; color:#fff; ${go?'cursor:pointer;':''}" ${go?`title="Click to open the review and approval section" onclick="event.stopPropagation(); goToDocumentWorkflow('${d.id}')"`:''}>${st.label}${go?' →':''}</span>`;
 }
 window.goToDocumentWorkflow = async function(id){
@@ -8328,7 +8331,7 @@ function renderDocumentsTable(){
   const fDept = document.getElementById('doc-filter-department').value;
   const fType = document.getElementById('doc-filter-type').value;
   const rows = STATE.documents.filter(d =>
-    (!fStatus||documentWorkflowBadge(d).label===fStatus) && (!fDept||d.department_id===fDept) && (!fType||d.type_id===fType)
+    (!fStatus||documentWorkflowBadge(d).key===fStatus) && (!fDept||d.department_id===fDept) && (!fType||d.type_id===fType)
   );
   if(!rows.length){
     wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z"/><line x1="9" y1="12" x2="17" y2="12"/><line x1="9" y1="16" x2="17" y2="16"/></svg><p>No documents match this filter.</p></div>`;
@@ -8721,9 +8724,10 @@ async function openDocumentDetail(id){
 
       <div class="status-row">
         <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase;">Status</label>
-        <select id="dd-status">${DOC_STATUSES.map(s=>`<option value="${s}" ${d.status===s?'selected':''}>${label(s)}</option>`).join('')}</select>
-        <button class="btn-small primary" onclick="saveDocumentStatus('${d.id}')">Update status</button>
+        <span class="sev-badge" style="background:${documentWorkflowBadge(d).color}; color:#fff;">${documentWorkflowBadge(d).label}</span>
+        <span style="font-size:11.5px; color:var(--text-faint);">Set automatically by the review and approval workflow above: it cannot be changed by hand.</span>
         ${d.storage_path ? `<button class="btn-small" onclick="downloadFromBucket('documents','${d.storage_path}')">View Document</button>` : ''}
+        ${STATE.myRole === 'admin' && d.status !== 'withdrawn' ? `<button class="btn-small" onclick="withdrawDocument('${d.id}')">Withdraw document</button>` : ''}
       </div>
 
       <div class="panel-head" style="margin-top:10px;"><h3 style="font-family:Arial,Helvetica,sans-serif; font-size:15px; font-weight:600;">Issue a new revision</h3></div>
@@ -9597,7 +9601,7 @@ window.downloadDocumentPdf = async function(id, mode){
   }
   const d = documentById(id);
   if(!d) return;
-  showLoader('Generating PDF…');
+  if(mode !== 'blob') showLoader('Generating PDF…');
 
   const jspdfLib = await import('https://cdn.jsdelivr.net/npm/jspdf@4.2.1/+esm');
   const { jsPDF } = jspdfLib;
@@ -9752,6 +9756,7 @@ window.downloadDocumentPdf = async function(id, mode){
   }
 
   hideLoader();
+  if(mode === 'blob') return doc.output('blob');
   if(mode === 'download'){
     doc.save(`${d.doc_number} - ${d.title}.pdf`);
     toast('PDF downloaded.', 'success');
@@ -10151,17 +10156,17 @@ window.saveDocumentStatus = async function(id){
   updateNavBadges();
 };
 
-window.approveDocumentRevision = async function(id){
+window.approveDocumentRevision = async function(id, opts){
   const d = documentById(id);
   if(!d) return;
   let sodOverride = false;
   if(d.created_by === STATE.user.id){
     if(STATE.myRole !== 'admin'){ toast('The person who wrote this document cannot approve it. Ask another approver.', 'error'); return; }
-    if(!confirm('You wrote this document. Approving it yourself breaks separation of duties and will be recorded. Continue?')) return;
+    if(!(opts && opts.sodAsked) && !confirm('You wrote this document. Approving it yourself breaks separation of duties and will be recorded. Continue?')) return;
     sodOverride = true;
   }
   const patch = { approval_status:'approved', approved_by: STATE.user.id, approved_date: todayISO() };
-  const { error } = await STATE.supabase.from('documents').update({ ...patch, workflow_status: 'approved', ever_approved: true }).eq('id', id);
+  const { error } = await STATE.supabase.from('documents').update({ ...patch, workflow_status: 'approved', ever_approved: true, ...(['withdrawn','superseded'].includes(d.status) ? {} : { status:'active' }) }).eq('id', id);
   if(error){ toast('Could not approve: ' + error.message, 'error'); return; }
   // Mirror the same approval onto that revision's own history row.
   await STATE.supabase.from('document_revisions').update(patch)
@@ -10180,7 +10185,7 @@ window.approveDocumentRevision = async function(id){
       organisation_id: STATE.org.id, document_id: id, revision_id: revRow ? revRow.id : null, revision_code: String(d.current_revision),
       doc_number: d.doc_number, title: d.title,
       sections: (secs||[]).map(x => ({ title:x.section_title, content:x.content })),
-      contributors: { author: d.created_by, owner: d.owner_id, reviewers: (revs||[]).map(r=>r.reviewer_id), approver: STATE.user.id, approved_on: todayISO(), override: sodOverride },
+      contributors: { author: d.created_by, owner: d.owner_id, reviewers: (revs||[]).map(r=>r.reviewer_id), approver: STATE.user.id, approvers: (STATE._docApprovers && STATE._docApprovers[id] ? STATE._docApprovers[id].map(a=>a.approver_id) : [STATE.user.id]), approved_on: todayISO(), override: sodOverride },
       created_by: STATE.user.id,
     });
     if(snapErr) console.warn('Approved copy not stored (has the document-workflow-v2 SQL been run?):', snapErr.message);
@@ -17744,7 +17749,7 @@ function computeFlowchartKpiValue(key){
     return ((reviewed.filter(l=>l.current_status==='compliant').length / reviewed.length) * 100).toFixed(0) + '%';
   }
   if(key === 'documents_draft_count'){
-    return String((STATE.documents||[]).filter(d=>d.status==='draft').length);
+    return String((STATE.documents||[]).filter(d=>documentWorkflowBadge(d).key==='draft').length);
   }
   if(key === 'documents_overdue_review_count'){
     return String((STATE.documents||[]).filter(d=>d.next_review_date && d.next_review_date < today && !['withdrawn','superseded'].includes(d.status)).length);
@@ -22134,6 +22139,7 @@ function renderAllDocsControlledSection(deptId, typeId){
           <td>${d.current_revision != null ? d.current_revision : '—'}</td>
           <td>${pill(d.approval_status || 'pending')}${d.workflow_status && d.workflow_status !== 'approved' ? ` <span class="pill" style="background:#fff3cd; color:#8a6400;">Under amendment/review</span>` : ''}</td>
           <td style="text-align:right; white-space:nowrap;">
+            ${d.storage_path ? `<button class="btn-small primary" onclick="downloadFromBucket('documents','${d.storage_path}')">View approved PDF</button>` : ''}
             <button class="btn-small" onclick="showModule('documents'); setTimeout(()=>openDocumentDetail('${d.id}'),0);">Open in Document Control</button>
             <button class="btn-small" onclick="openReviewRequestForm('document','${d.id}','${deptId}','${typeId}')">Request update</button>
           </td>
@@ -32102,7 +32108,7 @@ window.brandFromLogo = function(){
   const dn=id=>{ const d=(STATE.docDepartments||[]).find(x=>x.id===id); return d?d.name:'Unfiled'; };
   const tn=id=>{ const t=(STATE.docTypes||[]).find(x=>x.id===id); return t?t.name:''; };
   function mrRows(){
-    const ctl=(STATE.documents||[]).filter(d=>d.doc_number).map(d=>({src:'Document Management',num:d.doc_number,title:d.title||'',dept:dn(d.department_id),deptId:d.department_id||'',type:tn(d.type_id),rev:d.current_revision||'',status:(d.approval_status==='approved'?'Approved':(d.approval_status||d.status||'Draft')),id:d.id,kind:'c'}));
+    const ctl=(STATE.documents||[]).filter(d=>d.doc_number).map(d=>({src:'Document Management',num:d.doc_number,title:d.title||'',dept:dn(d.department_id),deptId:d.department_id||'',type:tn(d.type_id),rev:d.current_revision||'',status:documentWorkflowBadge(d).label,id:d.id,kind:'c'}));
     const bulk=(STATE.bulkDocuments||[]).filter(d=>d.doc_number&&!d.archived).map(d=>({src:'All Documents',num:d.doc_number,title:d.file_name||'',dept:dn(d.department_id),deptId:d.department_id||'',type:tn(d.document_type_id),rev:'',status:d.approved_status?'Approved':(d.current_status===false?'Superseded':'Filed'),id:d.id,path:d.storage_path,kind:'b'}));
     return [...ctl,...bulk].sort((a,b)=>String(a.num).localeCompare(String(b.num),undefined,{numeric:true}));
   }
@@ -32133,7 +32139,7 @@ window.brandFromLogo = function(){
     const w=document.getElementById('mr2-table'); if(!w) return;
     const q=(document.getElementById('mr2-q').value||'').toLowerCase().trim(), d=document.getElementById('mr2-dept').value, s=document.getElementById('mr2-src').value;
     const rows=mrRows().filter(r=>(!d||r.dept===d)&&(!s||r.src===s)&&(!q||(r.num+' '+r.title).toLowerCase().includes(q)));
-    w.innerHTML=rows.length?`<table><tr><th>Document Number</th><th>Title</th><th>Department</th><th>Type</th><th>Rev</th><th>Status</th><th>Source</th><th></th></tr>${rows.slice(0,500).map(r=>`<tr><td class="mono-cell">${escapeHtml(r.num)}</td><td class="strong">${escapeHtml(r.title)}</td><td>${escapeHtml(r.dept)}</td><td>${escapeHtml(r.type)}</td><td style="text-align:center;">${escapeHtml(String(r.rev))}</td><td>${escapeHtml(r.status)}</td><td>${r.src}</td><td style="text-align:right;">${r.kind==='c'?`<button class="btn-small" onclick="downloadDocumentPdf('${r.id}')">View Document</button>`:(r.path?`<button class="btn-small" onclick="downloadFromBucket('documents','${r.path}')">View Document</button>`:'')}</td></tr>`).join('')}</table>${rows.length>500?'<p style="padding:10px;font-size:12px;color:var(--text-faint);">Showing the first 500: refine your search to narrow the list.</p>':''}`:'<div class="empty-state"><p>No documents match.</p></div>';
+    w.innerHTML=rows.length?`<table><tr><th>Document Number</th><th>Title</th><th>Department</th><th>Type</th><th>Rev</th><th>Status</th><th>Source</th><th></th></tr>${rows.slice(0,500).map(r=>`<tr><td class="mono-cell">${escapeHtml(r.num)}</td><td class="strong">${escapeHtml(r.title)}</td><td>${escapeHtml(r.dept)}</td><td>${escapeHtml(r.type)}</td><td style="text-align:center;">${escapeHtml(String(r.rev))}</td><td>${escapeHtml(r.status)}</td><td>${r.src}</td><td style="text-align:right;">${r.kind==='c'?`<button class="btn-small" onclick="downloadDocumentPdf('${r.id}')">View Document</button>`:(r.path?`<button class="btn-small" onclick="downloadFromBucket('documents','${r.path}')">View Document</button>`:'')} <button class="btn-small" onclick="mrRequestUpdate('${r.kind}','${r.id}')">Request update</button></td></tr>`).join('')}</table>${rows.length>500?'<p style="padding:10px;font-size:12px;color:var(--text-faint);">Showing the first 500: refine your search to narrow the list.</p>':''}`:'<div class="empty-state"><p>No documents match.</p></div>';
   };
   window.exportMasterRegister=async function(){
     try{ const XLSX=await ensureXLSX(); const rows=mrRows(); const ws=XLSX.utils.json_to_sheet(rows.map(r=>({'Document Number':r.num,'Title':r.title,'Department':r.dept,'Type':r.type,'Revision':r.rev,'Status':r.status,'Source':r.src}))); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Master Register'); XLSX.writeFile(wb,'master-documents-register.xlsx'); }catch(e){ toast('Export is not available right now.','error'); }
@@ -43558,6 +43564,333 @@ ask:'How do you control who has access to what?'};
     if(r.error){ toast('Could not delete: ' + r.error.message, 'error'); return; }
     kpiCloseOverlay(); toast('Contact deleted.', 'success'); await render(cid);
   };
+})();
+/* ===== b79: Document Management workflow: team pickers, several reviewers and approvers, automatic status, filed PDF ===== */
+(function(){
+  const E = s => escapeHtml(s == null ? '' : String(s));
+  const sb = () => STATE.supabase;
+  const APP_COLORS = ['#111111','#7d3fbf','#00838f','#8d6e37','#c2185b','#2166ac'];
+  STATE._docApprovers = STATE._docApprovers || {};
+  STATE._docSections = STATE._docSections || {};
+
+  Object.assign(DOC_WORKFLOW_LABELS, {
+    draft: 'Draft: not yet submitted for review',
+    submitted_for_review: 'Under review: reviewers are reading and commenting',
+    reviewers_satisfied: 'Review complete: ready for approval',
+    submitted_for_approval: 'Review complete: ready for approval',
+    approver_requested_changes: 'Under review: an approver asked for changes, reviewers are rechecking',
+    reviewers_finalized: 'Review complete: ready for approval',
+    approved: 'Approved',
+  });
+
+  /* ---------- people: everyone who can be given a review role ---------- */
+  function pool(){
+    const out = [], seen = new Set();
+    (STATE.members || []).forEach(m => { seen.add(m.user_id); out.push({ id:m.user_id, label:(m.profiles && m.profiles.name) || memberName(m.user_id) || 'Unknown', ok:true }); });
+    // People loaded in Personnel who are linked to a login but missing from the member list, and people without a login (shown, not selectable)
+    (STATE.personnel || []).filter(p => !p.status || p.status === 'active').forEach(p => {
+      if(p.linked_profile_id && seen.has(p.linked_profile_id)) return;
+      if(p.linked_profile_id){ seen.add(p.linked_profile_id); out.push({ id:p.linked_profile_id, label:p.full_name, ok:true }); }
+      else if(!out.some(o => o.label.trim().toLowerCase() === String(p.full_name || '').trim().toLowerCase())) out.push({ id:'', label:p.full_name, ok:false });
+    });
+    return out.sort((a, b) => a.label.localeCompare(b.label));
+  }
+  function picker(cls, selected, excludeId){
+    const sel = new Set(selected || []), list = pool().filter(o => o.id !== excludeId || !o.ok);
+    return `<div style="max-height:190px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px 10px;">${list.length ? list.map(o => o.ok
+      ? `<label style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12.5px;font-weight:400;"><input type="checkbox" class="${cls}" value="${o.id}" ${sel.has(o.id) ? 'checked' : ''} style="width:auto;"> ${E(o.label)}</label>`
+      : `<label style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12.5px;font-weight:400;color:var(--text-faint);"><input type="checkbox" disabled style="width:auto;"> ${E(o.label)} <i style="font-size:11px;">(no login yet: invite them in Administration, Team)</i></label>`).join('')
+      : '<p style="font-size:12px;color:var(--text-faint);margin:0;">No team members loaded yet. Invite people in Administration, Team.</p>'}</div>`;
+  }
+
+  /* ---------- approvers ---------- */
+  async function loadApprovers(id){
+    const r = await sb().from('document_approvers').select('*').eq('document_id', id).order('created_at', { ascending:true });
+    STATE._docApprovers[id] = r.error ? null : (r.data || []);
+    return STATE._docApprovers[id];
+  }
+  function approversOf(d){
+    const rows = STATE._docApprovers[d.id];
+    if(rows && rows.length) return rows;
+    return d.workflow_approver_id ? [{ approver_id:d.workflow_approver_id, color:'#111111', approved_at:null, legacy:true }] : [];
+  }
+  const isMyApprover = d => approversOf(d).some(a => a.approver_id === STATE.user.id);
+
+  { const _o = openDocumentDetail; openDocumentDetail = window.openDocumentDetail = async function(id){
+      try{
+        await loadApprovers(id);
+        const r = await sb().from('document_content_sections').select('id, section_title, sort_order').eq('document_id', id).order('sort_order', { ascending:true });
+        STATE._docSections[id] = r.data || [];
+      }catch(e){ console.warn('b79 preload', e); }
+      return _o.apply(this, arguments);
+    }; }
+
+  /* ---------- the review and approval card ---------- */
+  renderDocumentWorkflowCard = window.renderDocumentWorkflowCard = function(d, reviewers, comments){
+    const canManage = STATE.user.id === d.created_by || STATE.user.id === d.owner_id || STATE.myRole === 'admin' || STATE.myRole === 'manager';
+    const myRev = reviewers.find(r => r.reviewer_id === STATE.user.id);
+    const apps = approversOf(d), myApp = apps.find(a => a.approver_id === STATE.user.id);
+    const status = d.workflow_status || 'draft';
+    const round2 = status === 'approver_requested_changes' || status === 'reviewers_finalized';
+    const ready = ['reviewers_satisfied','submitted_for_approval','reviewers_finalized'].includes(status);
+    let body = '';
+
+    if(status === 'draft'){
+      body += canManage ? `
+        <div class="form-grid" style="margin-bottom:10px;">
+          <div class="field span3"><label>Reviewers: tick everyone who must review this document</label>${picker('dwf-reviewer-cb', reviewers.map(r => r.reviewer_id))}</div>
+          <div class="field span3"><label>Approvers: tick everyone who must approve it (one or several)</label>${picker('dwf-approver-cb', apps.map(a => a.approver_id))}</div>
+        </div>
+        <p style="font-size:11.5px;color:var(--text-faint);margin:0 0 10px;">Every reviewer and approver is emailed. Each reviewer reads the document, comments section by section and clicks Release for approval. When every reviewer has released it, the status changes to Review complete and the approvers are emailed. The document is Approved only when every approver has clicked Approve. The author cannot approve (an Admin can override and it is recorded), and nobody can be both reviewer and approver.</p>
+        <button class="btn-small primary" onclick="submitDocumentForReview('${d.id}')">Submit for review &amp; approval</button>`
+        : `<p style="font-size:12.5px;color:var(--text-faint);">Still being drafted by ${memberName(d.created_by)}.</p>`;
+    } else {
+      body += `<div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;margin-bottom:6px;">Reviewers (${reviewers.filter(r => round2 ? r.finalized_at : r.satisfied_at).length} of ${reviewers.length} released)</div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;">${reviewers.map(r => {
+          const done = round2 ? r.finalized_at : r.satisfied_at;
+          return `<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:20px;border:1.5px solid ${r.color};"><span style="width:8px;height:8px;border-radius:50%;background:${r.color};display:inline-block;"></span><b style="color:${r.color};font-size:12px;">${E(memberName(r.reviewer_id))}</b><span style="font-size:11px;color:${done ? 'var(--green)' : 'var(--text-faint)'};">${done ? '✓ Released' : 'Awaiting'}</span></div>`; }).join('')}</div>
+        <div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;margin-bottom:6px;">Approvers (${apps.filter(a => a.approved_at).length} of ${apps.length} approved)</div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;">${apps.map(a => `<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:20px;border:1.5px solid ${a.color || '#111'};"><b style="font-size:12px;">${E(memberName(a.approver_id))}</b><span style="font-size:11px;color:${a.approved_at || status === 'approved' ? 'var(--green)' : 'var(--text-faint)'};">${a.approved_at || status === 'approved' ? '✓ Approved' : (ready ? 'Awaiting approval' : 'Waiting for review')}</span></div>`).join('') || '<span style="font-size:12px;color:var(--text-faint);">No approver recorded.</span>'}</div>`;
+
+      body += `<div class="mono" style="font-size:10px;color:var(--text-faint);text-transform:uppercase;margin-bottom:8px;">Review Discussion</div>`;
+      body += comments.length ? comments.map(c => `<div style="margin-bottom:8px;padding:8px 12px;border-left:3px solid ${c.color || '#999'};background:var(--grey-tint);border-radius:0 8px 8px 0;">
+          <div style="font-size:11.5px;font-weight:600;color:${c.color || 'inherit'};">${E(memberName(c.author_id))} <span style="font-weight:400;color:var(--text-faint);text-transform:capitalize;">(${E(c.author_role)})</span> <span style="font-weight:400;color:var(--text-faint);">: ${fmtDate(c.created_at.slice(0, 10))}</span></div>
+          <p style="font-size:13px;margin:4px 0 0;white-space:pre-wrap;">${E(c.comment_text)}</p></div>`).join('') : `<p style="font-size:12px;color:var(--text-faint);margin-bottom:10px;">No comments yet.</p>`;
+
+      if((canManage || myRev || myApp) && status !== 'approved'){
+        const secs = STATE._docSections[d.id] || [];
+        body += `<div style="margin-top:10px;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;align-items:center;"><label style="font-size:11.5px;margin:0;">Comment on</label>
+            <select id="dwf-section-${d.id}" style="max-width:320px;font-size:12px;padding:5px 8px;"><option value="">The document as a whole</option>${secs.map((x, i) => `<option value="${E(x.section_title)}">${i + 1}. ${E(x.section_title)}</option>`).join('')}</select></div>
+          <textarea id="dwf-comment-${d.id}" placeholder="Add a comment…" style="width:100%;min-height:60px;font-size:12.5px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;"></textarea>
+          <button class="btn-small" style="margin-top:6px;" onclick="postWorkflowComment('${d.id}')">Submit comment (notifies everyone involved)</button></div>`;
+      }
+
+      if(status === 'submitted_for_review' && myRev){
+        body += myRev.satisfied_at
+          ? `<div style="margin-top:12px;"><button class="btn-small" onclick="reopenReviewerSatisfied('${d.id}')">Reopen: I have more to add</button></div>`
+          : `<div style="margin-top:12px;"><button class="btn-small primary" onclick="markReviewerSatisfied('${d.id}')">Release for approval: my review is complete</button></div>`;
+      }
+      if(status === 'approver_requested_changes' && myRev && !myRev.finalized_at){
+        body += `<div style="margin-top:12px;"><button class="btn-small primary" onclick="reviewerFinalize('${d.id}')">Release for approval: I agree with the approver's changes</button></div>`;
+      }
+      if(ready && myApp){
+        body += myApp.approved_at
+          ? `<div style="margin-top:12px;font-size:12.5px;color:var(--green);font-weight:600;">✓ You approved this on ${fmtDate(myApp.approved_at.slice(0, 10))}. Waiting for the other approvers.</div>`
+          : `<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;"><button class="btn-small primary" onclick="approverSignOff('${d.id}')">Approve</button><button class="btn-small" onclick="approverRequestChanges('${d.id}')">Request changes: send back to reviewers</button></div>`;
+      }
+      if(status === 'approved'){
+        body += `<div style="margin-top:12px;padding:10px 14px;background:var(--green-tint);border-radius:8px;font-size:12.5px;color:var(--green);font-weight:600;">✓ Approved on ${fmtDate(d.approved_date)}${apps.length > 1 ? ' by all ' + apps.length + ' approvers' : ' by ' + E(memberName(d.approved_by))}. The PDF has been filed in All Documents and the Master Documents Register.</div>`;
+      }
+    }
+    return `<div class="detail-card" id="dwf-card" style="padding:16px;margin-bottom:16px;transition:box-shadow .3s;">
+      <div class="panel-head" style="margin-bottom:10px;"><h3 style="font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:600;">Review &amp; Approval Workflow</h3></div>
+      <div style="background:var(--grey-tint);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12.5px;"><b>${E(DOC_WORKFLOW_LABELS[status] || label(status))}</b></div>
+      ${body}</div>`;
+  };
+
+  /* ---------- submit ---------- */
+  const link = () => `\n\nOpen QaSHE Watchman: ${location.origin}${location.pathname} (Document Management).`;
+  window.submitDocumentForReview = async function(docId){
+    const d = documentById(docId); if(!d) return;
+    const revs = [...document.querySelectorAll('.dwf-reviewer-cb:checked')].map(e => e.value);
+    const apps = [...document.querySelectorAll('.dwf-approver-cb:checked')].map(e => e.value);
+    if(!revs.length){ alert('Tick at least one reviewer.'); return; }
+    if(!apps.length){ alert('Tick at least one approver.'); return; }
+    if(apps.some(a => revs.includes(a))){ alert('Nobody can be both a reviewer and an approver of the same document. Untick them from one of the lists.'); return; }
+    const sod = apps.includes(d.created_by);
+    if(sod){
+      if(STATE.myRole !== 'admin'){ alert('The person who wrote the document cannot approve it. Choose different approvers.'); return; }
+      if(!confirm('The author is one of the approvers. This breaks separation of duties and will be recorded on the document. Continue?')) return;
+    }
+    await sb().from('document_reviewers').delete().eq('document_id', docId);
+    const rIns = await sb().from('document_reviewers').insert(revs.map((uid, i) => ({ organisation_id:STATE.org.id, document_id:docId, reviewer_id:uid, color:DOC_REVIEWER_COLORS[i % DOC_REVIEWER_COLORS.length] })));
+    if(rIns.error){ toast('Could not assign reviewers: ' + rIns.error.message, 'error'); return; }
+    await sb().from('document_approvers').delete().eq('document_id', docId);
+    const aIns = await sb().from('document_approvers').insert(apps.map((uid, i) => ({ organisation_id:STATE.org.id, document_id:docId, approver_id:uid, color:APP_COLORS[i % APP_COLORS.length] })));
+    if(aIns.error && apps.length > 1){ toast('Several approvers need qashe-watchman-schema-document-approvers.sql to be run first: ' + aIns.error.message, 'error'); return; }
+    const u = await sb().from('documents').update({ workflow_status:'submitted_for_review', workflow_approver_id:apps[0] }).eq('id', docId);
+    if(u.error){ toast('Could not submit for review: ' + u.error.message, 'error'); return; }
+    if(sod) await logDocumentOverride(docId, 'Separation-of-duties override: the author was nominated as an approver by an Admin.');
+    const m1 = await notifyDocumentUsers(revs, `Document review requested: ${d.doc_number}`,
+      `${memberName(STATE.user.id)} has submitted "${d.title}" (${d.doc_number}) for your review. Open Document Management, read it, comment section by section, and click Release for approval when your review is complete.` + link(), { includeSelf:true });
+    const m2 = await notifyDocumentUsers(apps, `You are an approver: ${d.doc_number}`,
+      `"${d.title}" (${d.doc_number}) has been submitted for review (${revs.length} reviewer${revs.length === 1 ? '' : 's'}). You will be emailed when the review is complete and it is ready for your approval.` + link(), { includeSelf:true });
+    await loadDocuments(); await loadApprovers(docId); openDocumentDetail(docId); renderDocumentsTable();
+    const all = { sent:[...m1.sent, ...m2.sent], failed:[...m1.failed, ...m2.failed] };
+    toast('Submitted for review.' + emailSummary(all), all.failed.length ? 'error' : 'success');
+  };
+
+  /* ---------- reviewers release; the last release completes the review ---------- */
+  window.markReviewerSatisfied = async function(docId){
+    const e = await sb().from('document_reviewers').update({ satisfied_at:new Date().toISOString() }).eq('document_id', docId).eq('reviewer_id', STATE.user.id);
+    if(e.error){ toast('Could not save: ' + e.error.message, 'error'); return; }
+    const { data: reviewers } = await sb().from('document_reviewers').select('*').eq('document_id', docId);
+    const d = documentById(docId), all = (reviewers || []).length && reviewers.every(r => r.satisfied_at);
+    if(all){
+      await sb().from('documents').update({ workflow_status:'submitted_for_approval' }).eq('id', docId);
+      await loadApprovers(docId);
+      const apps = approversOf(d).map(a => a.approver_id);
+      await notifyDocumentUsers(apps, `Review complete, ready for your approval: ${d.doc_number}`,
+        `Every reviewer has released "${d.title}" (${d.doc_number}). The review is complete. Please open Document Management and click Approve.` + link(), { includeSelf:true });
+      await notifyDocumentUsers([d.created_by, d.owner_id], `Review complete: ${d.doc_number}`,
+        `Every reviewer has released "${d.title}" (${d.doc_number}). It is now with ${apps.map(memberName).join(', ')} for approval.`, { includeSelf:true });
+    }
+    await loadDocuments(); openDocumentDetail(docId); renderDocumentsTable();
+    toast(all ? 'Released. The review is complete and the approvers have been emailed.' : 'Released for approval.', 'success');
+  };
+  window.reopenReviewerSatisfied = async function(docId){
+    await sb().from('document_reviewers').update({ satisfied_at:null }).eq('document_id', docId).eq('reviewer_id', STATE.user.id);
+    const d = documentById(docId);
+    if(['reviewers_satisfied','submitted_for_approval'].includes(d.workflow_status)){
+      await sb().from('documents').update({ workflow_status:'submitted_for_review' }).eq('id', docId);
+      await sb().from('document_approvers').update({ approved_at:null }).eq('document_id', docId);
+    }
+    await loadDocuments(); openDocumentDetail(docId); renderDocumentsTable();
+  };
+
+  /* ---------- comments: by section ---------- */
+  window.postWorkflowComment = async function(docId){
+    const el = document.getElementById('dwf-comment-' + docId), text = el.value.trim(); if(!text) return;
+    const secEl = document.getElementById('dwf-section-' + docId), sec = secEl ? secEl.value : '';
+    const d = documentById(docId);
+    const { data: reviewers } = await sb().from('document_reviewers').select('*').eq('document_id', docId);
+    const myRev = (reviewers || []).find(r => r.reviewer_id === STATE.user.id), myApp = approversOf(d).find(a => a.approver_id === STATE.user.id);
+    let role = 'creator', color = '#333';
+    if(myRev){ role = 'reviewer'; color = myRev.color; } else if(myApp){ role = 'approver'; color = myApp.color || '#111'; }
+    const stage = ['submitted_for_approval','approver_requested_changes','reviewers_finalized','reviewers_satisfied'].includes(d.workflow_status) ? 'approval' : 'review';
+    const full = (sec ? `[Section: ${sec}] ` : '') + text;
+    const r = await sb().from('document_workflow_comments').insert({ organisation_id:STATE.org.id, document_id:docId, stage, author_id:STATE.user.id, author_role:role, color, comment_text:full });
+    if(r.error){ toast('Could not post comment: ' + r.error.message, 'error'); return; }
+    el.value = '';
+    await notifyDocumentUsers([d.created_by, d.owner_id, ...approversOf(d).map(a => a.approver_id), ...(reviewers || []).map(x => x.reviewer_id)], `New comment on ${d.doc_number}`,
+      `${memberName(STATE.user.id)} (${role}) commented on "${d.title}" (${d.doc_number}):\n\n${full}` + link());
+    openDocumentDetail(docId);
+  };
+
+  /* ---------- approvers: each clicks Approve; the last one completes the workflow ---------- */
+  window.approverSignOff = async function(docId){
+    const d = documentById(docId); if(!d) return;
+    await loadApprovers(docId);
+    const apps = STATE._docApprovers[docId];
+    if(d.created_by === STATE.user.id){
+      if(STATE.myRole !== 'admin'){ toast('The person who wrote this document cannot approve it.', 'error'); return; }
+      if(!confirm('You wrote this document. Approving it yourself breaks separation of duties and will be recorded. Continue?')) return;
+    }
+    if(!apps || !apps.length){ return window.approveDocumentRevision(docId, { sodAsked:true }); } // older document with a single approver
+    const mine = apps.find(a => a.approver_id === STATE.user.id);
+    if(!mine){ toast('You are not an approver of this document.', 'error'); return; }
+    const u = await sb().from('document_approvers').update({ approved_at:new Date().toISOString() }).eq('id', mine.id);
+    if(u.error){ toast('Could not record your approval: ' + u.error.message, 'error'); return; }
+    const rows = await loadApprovers(docId), left = rows.filter(a => !a.approved_at);
+    if(left.length){
+      await notifyDocumentUsers([d.created_by, d.owner_id, ...left.map(a => a.approver_id)], `Approval recorded: ${d.doc_number}`,
+        `${memberName(STATE.user.id)} has approved "${d.title}" (${d.doc_number}). Still waiting for: ${left.map(a => memberName(a.approver_id)).join(', ')}.` + link());
+      await loadDocuments(); openDocumentDetail(docId); renderDocumentsTable();
+      toast(`Your approval is recorded. Waiting for ${left.length} more approver${left.length === 1 ? '' : 's'}.`, 'success');
+      return;
+    }
+    await window.approveDocumentRevision(docId, { sodAsked:true });
+  };
+  window.sendDocumentForApproval = async function(docId){ return window.markReviewerSatisfied(docId); };
+
+  window.approverRequestChanges = async function(docId){
+    const d = documentById(docId);
+    const e = await sb().from('documents').update({ workflow_status:'approver_requested_changes' }).eq('id', docId);
+    if(e.error){ toast('Could not update: ' + e.error.message, 'error'); return; }
+    await sb().from('document_reviewers').update({ finalized_at:null }).eq('document_id', docId);
+    await sb().from('document_approvers').update({ approved_at:null }).eq('document_id', docId);
+    const { data: reviewers } = await sb().from('document_reviewers').select('*').eq('document_id', docId);
+    await loadApprovers(docId);
+    await notifyDocumentUsers([...(reviewers || []).map(r => r.reviewer_id), ...approversOf(d).map(a => a.approver_id), d.created_by, d.owner_id], `Changes requested: ${d.doc_number}`,
+      `${memberName(STATE.user.id)} has asked for changes on "${d.title}" (${d.doc_number}). Reviewers: please read the comments and click Release for approval once you agree.` + link(), { includeSelf:true });
+    await loadDocuments(); openDocumentDetail(docId); renderDocumentsTable();
+    toast('Sent back to the reviewers.', 'success');
+  };
+  window.reviewerFinalize = async function(docId){
+    await sb().from('document_reviewers').update({ finalized_at:new Date().toISOString() }).eq('document_id', docId).eq('reviewer_id', STATE.user.id);
+    const { data: reviewers } = await sb().from('document_reviewers').select('*').eq('document_id', docId);
+    const d = documentById(docId), all = (reviewers || []).length && reviewers.every(r => r.finalized_at);
+    if(all){
+      await sb().from('documents').update({ workflow_status:'reviewers_finalized' }).eq('id', docId);
+      await loadApprovers(docId);
+      await notifyDocumentUsers(approversOf(d).map(a => a.approver_id), `Review complete, ready for approval: ${d.doc_number}`,
+        `Every reviewer has released "${d.title}" (${d.doc_number}) again. Please open Document Management and click Approve.` + link(), { includeSelf:true });
+    }
+    await loadDocuments(); openDocumentDetail(docId); renderDocumentsTable();
+    toast(all ? 'Released: the review is complete and the approvers have been emailed.' : 'Released for approval.', 'success');
+  };
+
+  /* ---------- approval complete: file the PDF into All Documents ---------- */
+  { const _a = window.approveDocumentRevision; window.approveDocumentRevision = async function(id, opts){
+      const before = documentById(id);
+      const r = await _a.apply(this, arguments);
+      try{
+        await loadDocuments();
+        const d = documentById(id);
+        if(d && d.approval_status === 'approved' && before && before.approval_status !== 'approved'){
+          const blob = await downloadDocumentPdf(id, 'blob');
+          if(blob && blob.size){
+            const safe = String(d.doc_number).replace(/[^A-Za-z0-9._-]+/g, '_');
+            const path = `${STATE.org.id}/${id}/approved/${safe}-rev${d.current_revision}.pdf`;
+            const up = await sb().storage.from('documents').upload(path, blob, { contentType:'application/pdf', upsert:true });
+            if(!up.error){
+              await sb().from('documents').update({ storage_path:path }).eq('id', id);
+              await sb().from('document_revisions').update({ storage_path:path }).eq('document_id', id).eq('revision_code', String(d.current_revision));
+              await loadDocuments();
+              if(document.getElementById('doc-detail-slot') && document.getElementById('doc-detail-slot').innerHTML.trim()) openDocumentDetail(id);
+              toast('Approved. The PDF has been filed in All Documents and the Master Documents Register.', 'success');
+            } else console.warn('b79 pdf filing', up.error.message);
+          }
+        }
+      }catch(e){ console.warn('b79 pdf filing', e); }
+      return r;
+    }; }
+
+  window.withdrawDocument = async function(id){
+    const d = documentById(id); if(!d || STATE.myRole !== 'admin') return;
+    const why = prompt('Why is this document being withdrawn? (kept on the document record)'); if(!why || !why.trim()) return;
+    const e = await sb().from('documents').update({ status:'withdrawn' }).eq('id', id);
+    if(e.error){ toast('Could not withdraw: ' + e.error.message, 'error'); return; }
+    await sb().from('document_workflow_comments').insert({ organisation_id:STATE.org.id, document_id:id, stage:'approval', author_id:STATE.user.id, author_role:'creator', color:'#c0392b', comment_text:'[Recorded] Document withdrawn by ' + memberName(STATE.user.id) + '. Reason: ' + why.trim() });
+    await loadDocuments(); renderDocumentsTable(); openDocumentDetail(id);
+    toast('Document withdrawn.', 'success');
+  };
+
+  /* ---------- request an update from the Master Documents Register / All Documents: opens it in Document Management ---------- */
+  async function openInDM(req){
+    const canAct = STATE.myRole === 'admin' || STATE.myRole === 'manager' || req.controller_id === STATE.user.id;
+    if(!canAct) return false;
+    await loadDocReviewRequests();
+    const fresh = (STATE.docReviewRequests || []).find(x => x.id === req.id) || req;
+    if(fresh.bulk_document_id){ showModule('documents'); setTimeout(() => window.actionReviewRequestPromote(fresh.id), 0); }
+    else { showModule('documents'); setTimeout(() => window.actionReviewRequestOpenDocument(fresh.id), 0); }
+    return true;
+  }
+  window.mrRequestUpdate = async function(kind, id){
+    const bulk = kind === 'b', doc = bulk ? (STATE.bulkDocuments || []).find(x => x.id === id) : documentById(id);
+    if(!doc) return;
+    const reason = prompt('What needs to change in ' + (doc.doc_number || 'this document') + '? The request opens the document in Document Management for review, update and approval.');
+    if(!reason || !reason.trim()) return;
+    const dept = (STATE.docDepartments || []).find(x => x.id === doc.department_id);
+    const payload = { organisation_id:STATE.org.id, source_type:bulk ? 'bulk_document' : 'document', bulk_document_id:bulk ? id : null, document_id:bulk ? null : id,
+      department_id:doc.department_id || null, document_type_id:(bulk ? doc.document_type_id : (doc.type_id || doc.document_type_id)) || null,
+      reason:reason.trim(), requested_by:STATE.user.id, controller_id:dept ? dept.controller_id : null };
+    const r = await sb().from('document_review_requests').insert(payload).select().single();
+    if(r.error){ toast('Could not submit the request: ' + r.error.message, 'error'); return; }
+    toast('Request logged.', 'success');
+    if(dept && dept.controller_id) await notifyDocumentUsers([dept.controller_id], `Update requested: ${doc.doc_number || ''}`, `${memberName(STATE.user.id)} has asked for a review or update of ${doc.doc_number || 'a document'}: ${reason.trim()}` + link());
+    if(await openInDM(r.data)) toast('Opened in Document Management: follow the review and update from here, with the AI assistant to help redraft.', 'success');
+  };
+  { const _s = window.submitReviewRequest; window.submitReviewRequest = async function(sourceType, id, deptId, typeId){
+      const before = (STATE.docReviewRequests || []).length;
+      await _s.apply(this, arguments);
+      try{
+        await loadDocReviewRequests();
+        const req = (STATE.docReviewRequests || []).filter(x => (sourceType === 'document' ? x.document_id === id : x.bulk_document_id === id)).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+        if(req && (STATE.docReviewRequests || []).length > before && req.status === 'pending') await openInDM(req);
+      }catch(e){ console.warn('b79 open request', e); }
+    }; }
 })();
 </script>
 </body>
