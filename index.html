@@ -46664,6 +46664,103 @@ add('personnel', 'tour', [['Onboarding status','Next to the photo and QR code, a
 add('personnel', 'tips', ['Aim for 100% onboarding before a new person works unsupervised.']);
 })(window.WMLESSONS);
 
+
+/* ===== b85: one front page: sign-in first, features, standards, tutorial and footer below ===== */
+(function(){
+  const css = document.createElement('style'); css.textContent = `
+  #view-landing{display:none!important}
+  #gate-auth.active{grid-template-rows:auto minmax(calc(100vh - 74px),auto) auto auto!important;display:grid!important}
+  #gate-auth .ga-top{position:sticky;top:0;z-index:30}
+  #gate-auth .ga-foot{display:none!important}
+  .ga-nav a.gt{cursor:pointer}
+  .gate-top{grid-column:1/-1;position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 5vw;height:64px;background:rgba(255,255,255,.96);backdrop-filter:blur(8px);border-bottom:1px solid #E3E0DB;font-family:Arial,Helvetica,sans-serif}
+  .gate-top .gt-brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:16px;color:#1c1c1c;text-decoration:none;cursor:pointer}
+  .gate-top .gt-brand span{color:#B21616}
+  .gate-top nav{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .gate-top nav a,.gate-top nav button{font:700 13px Arial,Helvetica,sans-serif;color:#333;text-decoration:none;padding:9px 14px;border-radius:999px;border:0;background:none;cursor:pointer}
+  .gate-top nav a:hover,.gate-top nav button:hover{background:#F0EEEA}
+  .gate-top nav .gt-cta{background:#B21616;color:#fff}.gate-top nav .gt-cta:hover{background:#8F1010}
+  .gate-below{grid-column:1/-1;grid-row:3;background:#fff;font-family:Arial,Helvetica,sans-serif;color:#1c1c1c}
+  .gb-wrap{max-width:1180px;margin:0 auto;padding:72px 5vw 20px}
+  .gb-eye{font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#B21616;margin:0 0 10px}
+  .gb-wrap h2{font-size:clamp(26px,3vw,38px);line-height:1.15;margin:0 0 12px;letter-spacing:-.01em}
+  .gb-lead{font-size:16.5px;line-height:1.6;color:#555;max-width:760px;margin:0 0 30px}
+  .gb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+  .gb-card{border:1px solid #E3E0DB;border-radius:18px;padding:22px 22px 18px;background:#fff}
+  .gb-card h3{font-size:16.5px;margin:0 0 4px}.gb-card small{display:block;color:#888;font-size:12.5px;margin-bottom:10px}
+  .gb-card ul{margin:0;padding:0 0 0 18px;font-size:13.5px;line-height:1.65;color:#444}
+  .gb-card .gb-i{width:40px;height:40px;border-radius:12px;background:#B21616;display:flex;align-items:center;justify-content:center;margin-bottom:12px}
+  .gb-card .gb-i svg{width:21px;height:21px;stroke:#fff;fill:none;stroke-width:1.9}
+  .gb-band{background:#14171F;color:#fff;margin-top:56px}
+  .gb-band .gb-wrap{padding:56px 5vw}
+  .gb-band h2{color:#fff}.gb-band .gb-lead{color:#C9CFDB}
+  .gb-std{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px}
+  .gb-std span{border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:8px 16px;font-size:13px;font-weight:700;background:rgba(255,255,255,.06)}
+  .gb-steps{margin-top:26px!important;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:8px}
+  .gb-step{border:1px solid #E3E0DB;border-radius:18px;padding:20px}.gb-step b{display:flex;width:34px;height:34px;border-radius:50%;background:#B21616;color:#fff;align-items:center;justify-content:center;margin-bottom:10px}
+  .gb-step h3{margin:0 0 4px;font-size:15.5px}.gb-step p{margin:0;font-size:13.5px;line-height:1.55;color:#555}
+  .gb-tut{display:flex;gap:18px;flex-wrap:wrap;align-items:center;justify-content:space-between;border-radius:22px;padding:28px 32px;background:linear-gradient(135deg,#1c1c1c,#3a0a0a 70%,#B21616 170%);color:#fff;margin-top:56px}
+  .gb-tut h3{margin:0 0 6px;font-size:22px}.gb-tut p{margin:0;max-width:640px;font-size:14.5px;line-height:1.55;color:#E7E2E0}
+  .gb-btn{border:0;border-radius:999px;padding:13px 24px;font:800 14px Arial,Helvetica,sans-serif;cursor:pointer;background:#fff;color:#B21616}
+  .gb-btn.red{background:#B21616;color:#fff}
+  #gate-auth .land-footer{grid-column:1/-1;grid-row:4;margin:0;background:#0E1118;border-top:1px solid rgba(255,255,255,.08);color:#8E97A8;padding:24px 5vw;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;font-size:12px}#gate-auth .land-footer a{color:#C9CFDB!important}
+  .ga-foot .ga-more{color:#FF8A80;text-decoration:none;font-weight:700;cursor:pointer}
+  @media(max-width:960px){#gate-auth.active{grid-template-rows:auto auto auto auto!important}.ga-nav a.gt.keep{display:inline!important}.gb-wrap{padding-top:48px}}
+  `; document.head.appendChild(css);
+  const I = {
+    dash:'<path d="M4 20V4M4 20h16M8 16v-5M12 16V7M16 16v-8"/>', ctl:'<path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17v.01"/>', doc:'<path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>',
+    perf:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/>', ppl:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5M16 5a3.5 3.5 0 010 7M18 14.8c1.9.7 3.2 2.4 3.5 5.2"/>',
+    biz:'<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V4h8v3M3 13h18"/>', leg:'<path d="M12 3v18M5 8l-3 6a3.5 3.5 0 007 0zM19 8l-3 6a3.5 3.5 0 007 0zM3 8h6M15 8h6M9 21h6"/>',
+    sec:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/>', ops:'<path d="M14.7 6.3a4 4 0 00-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 005.4-5.4l-2.5 2.5-2.5-.5-.5-2.5z"/>', adm:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>' };
+  const G = [
+    ['dash','Dashboards and Oversight','Know where the business stands today',['Overview with everything due across every module','Compliance Dashboard: one live health score, drill from tile to item','Business Health Validation across every discipline','Management Review: ISO 9.3 agenda fed by live data, standards coverage table and signed minutes']],
+    ['ctl','Control and Improvement','Find it, fix it, prove it',['Nonconformances and Opportunities for Improvement with root cause, evidence and effectiveness checks','Incidents, accidents and near misses, RAGA alerts, with participation and print reports','Deficiency Control: failed inspections and audits raise records automatically','Tasks, audits, risk and opportunity, objectives and targets','Project Management for ISO certification, construction, client orders and BMS Upgrade programmes']],
+    ['doc','Documents and Templates','Controlled, numbered and ready to use',['Document workflow: draft, review, approve, issue, withdraw','Master register, all documents library and site files','Template library with generic processes and forms','Policies with acknowledgement and review dates']],
+    ['perf','Processes and Performance','Measure what matters',['Process register, step and KPI editor, flowcharts','Checklists and 5S inspections','Process performance flowing to the Management Review']],
+    ['ppl','People and Competence','Competent people, appointed and accountable',['Personnel with an onboarding ring and QR ID tag','Job descriptions, key roles and succession planning','KPIs and Appraisals, training plans and competence matrix','Org charts and legal letters of appointment','Disciplinary Action: notice, hearing minutes, verdict and record','HR attendance and leave, bulletins and toolbox talks']],
+    ['biz','Suppliers, Customers and Commercial','Control the supply chain and grow the account',['Suppliers and subcontractors with approval, certificates and re-assessment','Customers, satisfaction surveys and CRM','Quotations and Invoices: quote, client order, project and invoice, with collections in view']],
+    ['leg','Legal and Governance','Stay compliant and above reproach',['Legal register, legal documents and certificates','Governance and Ethics: conflicts of interest, gifts and delegations','Privacy (POPIA) and records retention','Business Planning and Continuity: business plan, goals linked to objectives and risks, continuity tests and succession']],
+    ['sec','Information Security','Protect the information that runs the business',['Statement of Applicability for ISO/IEC 27001','Information asset register and threat intelligence','Security incidents linked to nonconformances']],
+    ['ops','Assets and Specialist Modules','Equipment, condition and welding',['Assets, inspections, calibration and maintenance','Asset Watchman: condition and performance monitoring','Welding management to ISO 3834']],
+    ['adm','Administration and Trust','Access, audit trail and set-up',['Departments, branches, people and access per module','Append-only change log and authenticator app sign-in','Each organisation\'s data kept separate','Modules switched on per client, with your branding']],
+  ];
+  const card = ([k, t, s, li]) => `<div class="gb-card"><div class="gb-i"><svg viewBox="0 0 24 24">${I[k]}</svg></div><h3>${t}</h3><small>${s}</small><ul>${li.map(x => `<li>${x}</li>`).join('')}</ul></div>`;
+  const below = () => `<section class="gate-below" id="gate-below">
+    <div class="gb-wrap" id="gb-features"><p class="gb-eye">Everything in one system</p><h2>One platform behind your whole management system.</h2><p class="gb-lead">QaSHE Watchman is Group QaSHE CG's integrated business management system. Quality, safety, environment, risk, information security and governance share one set of records, so every figure on the dashboard and in the Management Review comes from the work being done.</p>
+      <div class="gb-grid">${G.map(card).join('')}</div></div>
+    <div class="gb-band" id="gb-standards"><div class="gb-wrap"><p class="gb-eye" style="color:#FF8A80">Standards</p><h2>Built around the standards your business is measured against.</h2><p class="gb-lead">Records, reviews and reports are structured to the clauses an auditor will ask for.</p>
+      <div class="gb-std"><span>ISO 9001 Quality</span><span>ISO 14001 Environment</span><span>ISO 45001 Health and Safety</span><span>ISO/IEC 27001 Information Security</span><span>ISO 37001 Anti-bribery</span><span>ISO 37000 Governance</span><span>ISO 22301 Continuity</span><span>ISO 3834 Welding</span><span>POPIA</span></div></div></div>
+    <div class="gb-wrap" style="padding-top:56px"><p class="gb-eye">How it works</p><h2>From sign-in to audit ready.</h2><div class="gb-steps">
+      <div class="gb-step"><b>1</b><h3>Sign in</h3><p>Use the account your administrator invited you with, with the authenticator code.</p></div>
+      <div class="gb-step"><b>2</b><h3>See what needs you</h3><p>The Overview and reminders list what is overdue or due, module by module.</p></div>
+      <div class="gb-step"><b>3</b><h3>Work the records</h3><p>Raise, fix and close with owners, dates, evidence and notifications.</p></div>
+      <div class="gb-step"><b>4</b><h3>Review and evidence</h3><p>The dashboard and Management Review turn the records into decisions and proof.</p></div></div>
+      <div class="gb-tut"><div><h3>Watch the tutorial</h3><p>A narrated tutorial of about 30 minutes plays like a short film. Pause at any time, or open the index to choose particular modules for a shorter presentation.</p></div><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="gb-btn" onclick="WMTutorial.open({narrate:true})">&#9654; Watch the tutorial</button><button class="gb-btn" style="background:transparent;color:#fff;border:1.5px solid rgba(255,255,255,.5)" onclick="window.scrollTo({top:0,behavior:'smooth'})">Sign in</button></div></div>
+      <p style="margin:34px 0 0;font-size:14px;color:#555;text-align:center">New to Watchman? Ask your organisation administrator for an invitation, or email <a href="mailto:info@groupqashecg.com" style="color:#B21616;font-weight:700">info@groupqashecg.com</a>.</p></div></section>`;
+  function build(){
+    const g = document.getElementById('gate-auth'); if(!g || document.getElementById('gate-below')) return;
+    if(!g.querySelector('.gate-main')){ setTimeout(build, 50); return; }   // wait for the split layout to be applied
+    const nv = g.querySelector('.ga-nav'); if(!nv){ setTimeout(build, 80); return; }
+    nv.insertAdjacentHTML('afterbegin', '<a class="gt keep" onclick="WMTutorial.open({narrate:true})">Tutorial</a><a class="gt" onclick="document.getElementById(\'gb-features\').scrollIntoView({behavior:\'smooth\'})">Features</a><a class="gt" onclick="document.getElementById(\'gb-standards\').scrollIntoView({behavior:\'smooth\'})">Standards</a>');
+    const web = nv.querySelector('a[href*="groupqashecg.com"]:not(.cta)'); if(web) nv.insertBefore(web, nv.firstChild), web.classList.add('keep');
+    g.insertAdjacentHTML('beforeend', below());
+    const foot = document.querySelector('#view-landing .land-footer');
+    if(foot) g.appendChild(foot);
+    const gf = g.querySelector('.ga-foot'); if(gf && !gf.querySelector('.ga-more')) gf.insertAdjacentHTML('beforeend', '<a class="ga-more" onclick="document.getElementById(\'gb-features\').scrollIntoView({behavior:\'smooth\'})">Explore all features &darr;</a>');
+  }
+  build(); document.addEventListener('DOMContentLoaded', build); setTimeout(build, 300);
+  { const _g = goTo; goTo = window.goTo = function(view){ if(view === 'landing'){ showGate('gate-auth'); window.scrollTo({ top:0, behavior:'instant' }); return; } return _g.apply(this, arguments); }; }
+  /* signed-out visitors open straight to sign-in */
+  document.addEventListener('DOMContentLoaded', async () => {
+    try{
+      const q = new URLSearchParams(location.search); if(q.get('sp') || q.get('sv') || q.get('sq') || q.get('g') || q.get('nr') || q.get('ss') || q.has('tutorial')) return;
+      await ensureSupabaseLib(); if(!STATE.supabase) initSupabase(SUPABASE_URL, SUPABASE_ANON_KEY);
+      const { data:{ session } } = await STATE.supabase.auth.getSession();
+      if(!session || !session.user){ if(!document.getElementById('view-dashboard').classList.contains('active')) showGate('gate-auth'); }
+    }catch(e){ showGate('gate-auth'); }
+  });
+})();
+
 </script>
 </body>
 </html>
