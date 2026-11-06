@@ -46761,6 +46761,178 @@ add('personnel', 'tips', ['Aim for 100% onboarding before a new person works uns
   });
 })();
 
+/* ===== Release 18: Processes register first, process links, Assets register only, sidebar order ===== */
+(function(){
+  const E = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const st = document.createElement('style'); st.id = 'r18-style';
+  st.textContent = `
+    #asset-summary{display:none!important}
+    .pgx-wrap{display:none}.pgx-wrap.open{display:block}
+    .r18-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;background:var(--grey-tint);font-size:11.5px;font-weight:600;cursor:pointer;border:1px solid transparent;margin:2px 4px 2px 0;font-family:Arial,Helvetica,sans-serif}
+    .r18-chip.auto{background:#fff;border:1px dashed var(--border,#ccc);color:var(--text-dim)}
+    .r18-chip.doc{background:#1c1c1c;color:#fff}
+    .r18-flow{font-size:12px;color:var(--text-dim);line-height:1.55;margin:6px 0 10px;font-family:Arial,Helvetica,sans-serif}
+    .r18-row{display:flex;align-items:center;gap:10px;padding:7px 10px;border:1px solid var(--border,#e4e4e4);border-radius:10px;margin-bottom:6px;font-size:13px;font-family:Arial,Helvetica,sans-serif}
+    .r18-row b{flex:1}.r18-row button{padding:2px 9px}
+  `;
+  document.head.appendChild(st);
+
+  /* ---- 1. Processes: register only until the generic panel is opened ---- */
+  ['appraisals','projects','quotes','bplan','disciplinary','welding','master_register','orgchart','governance','privacy','retention','business_health'].forEach(k => { if(!PC_LINKABLE_MODULES.includes(k)) PC_LINKABLE_MODULES.push(k); });
+  window.pgxToggle = function(force){
+    const w = document.getElementById('pgx-wrap'); if(!w) return;
+    const open = typeof force === 'boolean' ? force : !w.classList.contains('open');
+    w.classList.toggle('open', open);
+    const b = document.getElementById('pgx-toggle'); if(b){ b.classList.toggle('primary', open); b.textContent = open ? 'Close generic processes' : 'Start from a generic process'; }
+    if(open){ const s = document.getElementById('pgx-search'); if(s) s.focus(); }
+  };
+  { const _pu = window.pgxUse; window.pgxUse = async function(){ try { return await _pu.apply(this, arguments); } finally { pgxToggle(false); } }; }
+  { const _rpr = renderProcessRegister;
+    renderProcessRegister = window.renderProcessRegister = function(root, dueKpis){
+      _rpr(root, dueKpis);
+      const panel = root.querySelector('.pgx'); if(!panel || panel.parentElement.id === 'pgx-wrap') return;
+      const wrap = document.createElement('div'); wrap.id = 'pgx-wrap'; wrap.className = 'pgx-wrap';
+      panel.parentNode.insertBefore(wrap, panel); wrap.appendChild(panel);
+      const tb = root.querySelector('.toolbar');
+      if(tb && !document.getElementById('pgx-toggle')){
+        const btn = document.createElement('button'); btn.id = 'pgx-toggle'; btn.className = 'btn-small'; btn.style.marginLeft = '8px'; btn.textContent = 'Start from a generic process'; btn.onclick = () => pgxToggle();
+        const target = tb.querySelector('div[style*="flex"]') || tb; target.insertBefore(btn, target.firstChild);
+      }
+    }; }
+
+  /* ---- 2. Process links to modules and procedure documents ---- */
+  const AUTO_MAP = [
+    [/apprais|kpi|performance/i, ['appraisals']], [/nonconform|corrective|deficien/i, ['nonconformances']], [/incident|accident|near miss|investigat/i, ['raga']],
+    [/audit|inspection/i, ['audits']], [/risk|opportunit/i, ['risks']], [/legal|complian|regulat/i, ['legal']], [/certificate|licen[cs]e/i, ['legal_certs']],
+    [/train|competen|induction|onboard/i, ['training','personnel']], [/recruit|employ|personnel|people|discipline|disciplinary/i, ['personnel','hr']],
+    [/disciplin|grievance|misconduct/i, ['disciplinary']], [/asset|maintenance|calibrat|equipment/i, ['assets']], [/supplier|procure|purchas|subcontract|vendor/i, ['suppliers']],
+    [/customer|complaint|satisfaction|sales|contract review/i, ['customers']], [/quot|invoice|billing|order/i, ['quotes']], [/project/i, ['projects']],
+    [/business plan|continuity|strategic|succession/i, ['bplan']], [/objective|target/i, ['objectives']], [/management review/i, ['management_review']],
+    [/weld/i, ['welding']], [/site (file|safety)|contractor/i, ['site_files']], [/5s|housekeeping/i, ['five_s']], [/bulletin|toolbox|communicat/i, ['bulletins']],
+    [/action|task/i, ['tasks']], [/document|record|control of/i, ['documents','all_documents','master_register']], [/organi[sz]ation|appointment|structure/i, ['orgchart']]
+  ];
+  window.pcAutoModules = function(p){
+    const txt = [p.name, p.purpose, p.about].filter(Boolean).join(' ');
+    const out = new Set(['documents','all_documents','master_register']); // every process is described by a procedure
+    AUTO_MAP.forEach(([re, ks]) => { if(re.test(txt)) ks.forEach(k => out.add(k)); });
+    (STATE.orgFlowchartSteps||[]).filter(s => p.flowchart_id && s.flowchart_id === p.flowchart_id && s.linked_module_key).forEach(s => out.add(s.linked_module_key));
+    return [...out].filter(k => MODULE_META[k]);
+  };
+  function effMods(p){ const saved = (p.linked_modules||[]).filter(k => MODULE_META[k]); const auto = pcAutoModules(p).filter(k => !saved.includes(k)); return { saved, auto }; }
+  const DOC_MODS = ['documents','all_documents','master_register'];
+  function chip(k, auto){ return `<span class="r18-chip ${auto?'auto':''}" title="${auto?'Suggested, not saved yet':'Linked'}" onclick="event.stopPropagation();showModule('${k}')">${E(pcModuleLabel(k))}</span>`; }
+
+  { const _rt = window.renderProcessesTable;
+    renderProcessesTable = window.renderProcessesTable = function(){
+      _rt.apply(this, arguments);
+      const wrap = document.getElementById('process-table-wrap'); const tbl = wrap && wrap.querySelector('table'); if(!tbl) return;
+      const rows = tbl.querySelectorAll('tr'); const th = document.createElement('th'); th.textContent = 'Linked modules'; rows[0].insertBefore(th, rows[0].children[6]);
+      const fStatus = (document.getElementById('proc-filter-status')||{}).value;
+      const list = STATE.processes.filter(p => !fStatus || p.status === fStatus);
+      for(let i = 1; i < rows.length; i++){
+        const p = list[i-1]; if(!p) continue; const m = effMods(p);
+        const td = document.createElement('td'); td.style.maxWidth = '260px';
+        const mods = [...m.saved, ...m.auto].filter(k => !DOC_MODS.includes(k));
+        td.innerHTML = (mods.slice(0,3).map(k => chip(k, !m.saved.includes(k))).join('') + (mods.length > 3 ? `<span style="font-size:11px;color:var(--text-faint)">+${mods.length-3}</span>` : '')) || '<span style="color:var(--text-faint)">—</span>';
+        rows[i].insertBefore(td, rows[i].children[6]);
+      }
+    }; }
+
+  { const _ds = window.pcDetailSectionHtml;
+    pcDetailSectionHtml = window.pcDetailSectionHtml = function(p){
+      const base = _ds.apply(this, arguments); const m = effMods(p), editable = canEditFlowchart();
+      const docs = pcDocLinksOf(p).length;
+      const card = `<div class="detail-card" style="padding:16px; margin-bottom:16px;">
+        <div class="panel-head" style="margin-bottom:6px;"><h3 style="font-family:Arial,Helvetica,sans-serif; font-size:15px; font-weight:600;">Where this process lives in Watchman</h3>
+          ${editable ? `<button class="btn-small" onclick="pcModulesEditor('${p.id}')">Edit links</button>` : ''}</div>
+        <div style="margin-bottom:6px;">${m.saved.filter(k=>!DOC_MODS.includes(k)).map(k=>chip(k,false)).join('')}${m.auto.filter(k=>!DOC_MODS.includes(k)).map(k=>chip(k,true)).join('') || ''}</div>
+        <div style="font-size:11px;color:var(--text-faint);margin-bottom:8px;">Solid: linked. Dashed: suggested from the process name and steps; open Edit links to save them.</div>
+        <div class="r18-flow"><b>Procedure documents:</b> the procedure is written and reviewed in <a href="#" onclick="showModule('documents');return false;">Document Management</a>. When approved it transfers to <a href="#" onclick="showModule('all_documents');return false;">All Documents</a> and the <a href="#" onclick="showModule('master_register');return false;">Documents Register</a>, the two repositories. ${docs} document${docs===1?'':'s'} linked to this process.</div>
+      </div>`;
+      return base + card;
+    }; }
+
+  window.pcModulesEditor = function(pid){
+    const p = STATE.processes.find(x=>x.id===pid); if(!p) return; const m = effMods(p); const on = new Set([...m.saved, ...m.auto]);
+    const all = pcUsableModules();
+    kpiOverlay(`<h3 style="font-family:Arial,Helvetica,sans-serif;margin:0 0 6px;">Link ${E(p.name)} to modules</h3>
+      <p style="font-size:12px;color:var(--text-faint);margin-bottom:10px;">Ticked modules are saved against the process. Suggestions from the name and steps are ticked for you.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px 14px;max-height:360px;overflow:auto;">${all.map(k=>`<label style="font-size:12.5px;display:flex;gap:6px;"><input type="checkbox" class="pcm-mod" value="${k}" ${on.has(k)?'checked':''}>${E(pcModuleLabel(k))}</label>`).join('')}</div>
+      <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" onclick="pcModulesSave('${pid}')">Save links</button></div>`);
+  };
+  window.pcModulesSave = async function(pid){
+    const mods = [...document.querySelectorAll('.pcm-mod:checked')].map(e=>e.value);
+    const { error } = await STATE.supabase.from('processes').update({ linked_modules: mods }).eq('id', pid);
+    if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+    kpiCloseOverlay(); await loadProcesses(); renderProcessesTable(); openProcessDetail(pid); toast('Links saved.', 'success');
+  };
+  window.pcAutoLinkAll = async function(){
+    const todo = (STATE.processes||[]).filter(p => effMods(p).auto.length); if(!todo.length){ toast('Every process is already linked.', 'success'); return; }
+    if(!confirm('Save suggested module links for ' + todo.length + ' process' + (todo.length===1?'':'es') + '?')) return;
+    showLoader('Linking processes to modules…');
+    try {
+      for(const p of todo){ const { error } = await STATE.supabase.from('processes').update({ linked_modules: [...new Set([...(p.linked_modules||[]), ...pcAutoModules(p)])] }).eq('id', p.id); if(error) throw new Error(error.message); }
+      await loadProcesses(); renderProcessesTable(); toast('Linked ' + todo.length + ' processes.', 'success');
+    } catch(e){ toast(e.message, 'error'); } finally { try{ hideLoader(); }catch(e){} }
+  };
+  { const _r = renderProcessRegister;
+    renderProcessRegister = window.renderProcessRegister = function(root){
+      _r.apply(this, arguments);
+      const tools = root.querySelector('.pgx-tools');
+      if(tools && !tools.querySelector('.r18-al')) tools.insertAdjacentHTML('beforeend', '<button class="r18-al" onclick="pcAutoLinkAll()">Link all processes to their modules</button>');
+    }; }
+
+  /* ---- 3. Assets: the register only; the data lives on each asset and the Compliance Dashboard ---- */
+  renderAssetSummary = window.renderAssetSummary = function(){ const el = document.getElementById('asset-summary'); if(el) el.innerHTML = ''; };
+
+  /* ---- 4. Sidebar order: Project Management, Welding, Site SHERQ Files below Business Planning; per-organisation custom order ---- */
+  const FIXED = ['overview','compliance','administration'];
+  function navHost(){ const a = document.querySelector('.nav-item[data-mod="administration"]'); return a ? a.parentElement : null; }
+  function navItems(){ const h = navHost(); return h ? [...h.querySelectorAll(':scope > .nav-item[data-mod]')].filter(e => !FIXED.includes(e.dataset.mod)) : []; }
+  function moveAfter(arr, k, after){ const i = arr.indexOf(k); if(i < 0 || arr.indexOf(after) < 0) return; arr.splice(i,1); arr.splice(arr.indexOf(after)+1, 0, k); }
+  window.navDefaultOrder = function(){ const arr = navItems().map(e => e.dataset.mod); moveAfter(arr,'projects','bplan'); moveAfter(arr,'welding','projects'); moveAfter(arr,'site_files','welding'); return arr; };
+  window.navOrderNow = function(){
+    const cur = navItems().map(e => e.dataset.mod), def = navDefaultOrder();
+    const custom = (STATE.org && Array.isArray(STATE.org.nav_order)) ? STATE.org.nav_order.filter(k => cur.includes(k)) : [];
+    return custom.length ? [...custom, ...def.filter(k => !custom.includes(k))] : def;
+  };
+  window.navApplyOrder = function(){
+    const h = navHost(); if(!h) return; const admin = h.querySelector(':scope > .nav-item[data-mod="administration"]'); if(!admin) return;
+    const order = navOrderNow(), cur = navItems().map(e => e.dataset.mod);
+    if(order.join() === cur.join()) return;
+    order.forEach(k => { const el = h.querySelector(':scope > .nav-item[data-mod="'+k+'"]'); if(el) h.insertBefore(el, admin); });
+  };
+  { const _a = applyModuleAccessToNav; applyModuleAccessToNav = window.applyModuleAccessToNav = function(){ const r = _a.apply(this, arguments); try{ navApplyOrder(); }catch(e){} return r; }; }
+  setTimeout(() => { try{ navApplyOrder(); }catch(e){} }, 300);
+
+  const navLabel = k => { const el = document.querySelector('.nav-item[data-mod="'+k+'"]'); return el ? el.textContent.replace(/\s+/g,' ').trim() : ((MODULE_META[k]||{}).title || k); };
+  window.navOrderEditor = function(){
+    const all = navOrderNow(); window.__navHidden = all.filter(k => !(MODULE_META[k] && canAccessModule(k)));
+    window.__navDraft = all.filter(k => !window.__navHidden.includes(k));
+    navDraw();
+  };
+  function navDraw(){
+    const d = window.__navDraft;
+    kpiOverlay(`<h3 style="font-family:Arial,Helvetica,sans-serif;margin:0 0 6px;">Arrange the sidebar</h3>
+      <p style="font-size:12px;color:var(--text-faint);margin-bottom:10px;">Move modules up or down to group them as you like. Overview, Compliance Dashboard and Administration stay where they are. The order applies to everyone in this organisation.</p>
+      <div style="max-height:380px;overflow:auto;">${d.map((k,i)=>`<div class="r18-row"><b>${E(navLabel(k))}</b><button class="btn-small" ${i===0?'disabled':''} onclick="navMove(${i},-1)">Up</button><button class="btn-small" ${i===d.length-1?'disabled':''} onclick="navMove(${i},1)">Down</button></div>`).join('')}</div>
+      <div class="form-actions"><button class="btn-cancel" onclick="navReset()">Reset to default</button><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" onclick="navSave()">Save order</button></div>`);
+  }
+  window.navMove = function(i, dir){ const d = window.__navDraft, j = i + dir; if(j < 0 || j >= d.length) return; [d[i], d[j]] = [d[j], d[i]]; navDraw(); };
+  window.navReset = async function(){ await navPersist(null); kpiCloseOverlay(); };
+  window.navSave = async function(){ await navPersist(window.__navDraft.concat(window.__navHidden||[])); kpiCloseOverlay(); };
+  async function navPersist(arr){
+    const { error } = await STATE.supabase.from('organisations').update({ nav_order: arr }).eq('id', STATE.org.id);
+    if(error){ toast('Could not save the order: ' + error.message + (/nav_order/.test(error.message) ? ' (run the Release 18 SQL first)' : ''), 'error'); return; }
+    STATE.org.nav_order = arr; navApplyOrder(); toast(arr ? 'Sidebar order saved.' : 'Sidebar order reset.', 'success');
+  }
+  { const _rac = renderAdminConsole;
+    renderAdminConsole = window.renderAdminConsole = function(){
+      _rac.apply(this, arguments); const wrap = document.getElementById('admin-subtab-content'); if(!wrap || wrap.querySelector('#nav-order-card')) return;
+      wrap.insertAdjacentHTML('beforeend', `<div class="detail-card" id="nav-order-card"><div class="panel-head"><h3>Sidebar order</h3><button class="btn-small primary" onclick="navOrderEditor()">Arrange the sidebar</button></div>
+        <p style="font-size:12.5px;color:var(--text-faint);">Group the modules in the order this organisation wants as more are added. The same tool is in the Group QaSHE CG Admin Console.</p></div>`);
+    }; }
+})();
 </script>
 </body>
 </html>
