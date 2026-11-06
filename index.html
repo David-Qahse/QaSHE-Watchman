@@ -7221,7 +7221,7 @@ function renderEvidenceSection(entityType, entityId, files){
   const rowsHtml = files.length
     ? files.map(f => {
         const isImage = (f.file_type||'').startsWith('image/');
-        const showSection = isImage && entityType === 'nonconformance';
+        const showSection = isImage && (entityType === 'nonconformance' || entityType === 'raga_alert');
         return `
       <div class="evidence-row">
         <div class="ev-icon">${fileIconSvg(f.file_type)}</div>
@@ -7236,6 +7236,7 @@ function renderEvidenceSection(entityType, entityId, files){
               <option value="description" ${f.print_section==='description'?'selected':''}>Appears with: Description</option>
               <option value="rca" ${f.print_section==='rca'?'selected':''}>Appears with: Root Cause Analysis</option>
               <option value="corrective_action" ${f.print_section==='corrective_action'?'selected':''}>Appears with: Corrective Action</option>
+              ${entityType==='raga_alert' ? `<option value="immediate" ${f.print_section==='immediate'?'selected':''}>Appears with: Immediate Action Taken</option><option value="preventive" ${f.print_section==='preventive'?'selected':''}>Appears with: Preventive Action</option>` : ''}
             </select>` : ''}
             <button class="btn-small primary" onclick="saveEvidenceLabel('${f.id}','${entityType}','${entityId}')" style="margin-left:4px;">Save</button>
           </div>
@@ -7261,7 +7262,7 @@ function renderEvidenceSection(entityType, entityId, files){
   </div>`;
 }
 
-const PRINT_SECTION_LABELS = { description:'Description', rca:'Root Cause Analysis', corrective_action:'Corrective Action' };
+const PRINT_SECTION_LABELS = { description:'Description', rca:'Root Cause Analysis', corrective_action:'Corrective Action', immediate:'Immediate Action Taken', preventive:'Preventive Action' };
 
 window.toggleEvidenceLabelEdit = function(fileId){
   const editEl = document.getElementById('ev-label-edit-'+fileId);
@@ -7278,6 +7279,7 @@ window.saveEvidenceLabel = async function(fileId, entityType, entityId){
   if(entityType === 'nonconformance') openNCDetail(entityId);
   if(entityType === 'audit') openAuditDetail(entityId);
   if(entityType === 'five_s_inspection') openFiveSDetail(entityId);
+  if(entityType === 'raga_alert') openRagaDetail(entityId);
   toast('Saved.', 'success');
 };
 
@@ -44905,6 +44907,870 @@ Prices must be in ${doc.currency}. If you are unsure of a price, set it to your 
     await printRecord(kind === 'quote' ? 'Quotation' : 'Tax Invoice', no, meta, body, null, 'quotes');
   };
 })();
+
+/* ============================================================================
+   Release 15: Project Management
+   Any type of project, started from any record, tasks shared with Task Management.
+   ============================================================================ */
+(function(){
+  const E = s => escapeHtml(s == null ? '' : String(s));
+  const off = () => !!(STATE.org && STATE.org._modOff && STATE.org._modOff.has('projects'));
+  const canW = () => ['admin','manager','contributor'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const nz = n => Number(n) || 0;
+  const day = d => d ? String(d).slice(0,10) : '';
+  const tdy = () => todayISO();
+  const addDays = (iso, n) => { const d = new Date((iso || tdy()) + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0,10); };
+  const diffDays = (a, b) => Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 86400000);
+  const D = () => STATE._pm = STATE._pm || { projects:[], phases:[], members:[], risks:[], costs:[], links:[], updates:[], loaded:false, broken:false };
+
+  const TYPES = { general:'General project', iso_certification:'ISO standard certification', client_order:'Client order delivery', corrective:'Corrective action programme', audit_followup:'Audit follow-up', construction:'Construction', relocation:'Relocation', development:'Development (product or software)', improvement:'Improvement or BMS Upgrade', event:'Event or campaign' };
+  const STATUS = { proposed:['Proposed','#8A8785'], approved:['Approved','#2E5AA8'], active:['Active','#2E7D4F'], on_hold:['On hold','#B26A16'], completed:['Completed','#4B3F72'], cancelled:['Cancelled','#6B6B6B'] };
+  const HEALTH = { green:['On track','#2E7D4F'], amber:['At risk','#B26A16'], red:['Off track','#B3261E'], none:['Not started','#8A8785'] };
+  const PHSTATUS = { not_started:'Not started', in_progress:'In progress', done:'Done' };
+  const SRC = { nonconformance:'Nonconformance', raga:'RAGA alert', audit:'Audit', management_review:'Management review', risk:'Risk register', objective:'Objective', quote:'Quotation', purchase_order:'Client purchase order', document:'Document', other:'Other' };
+  const pill = (map, k) => { const m = map[k] || [k, '#888']; return `<span class="sev-badge" style="background:${m[1]};color:#fff;">${E(m[0])}</span>`; };
+
+  /* ---------- templates: phases with durations (days) and starter tasks ---------- */
+  const TEMPLATES = {
+    blank:{ label:'Blank project', type:'general', phases:[] },
+    iso_certification:{ label:'ISO standard certification (9001, 14001, 45001, 27001 and others)', type:'iso_certification', phases:[
+      { n:'Gap analysis and planning', d:21, t:['Confirm scope and certification body','Conduct gap analysis against the standard','Agree implementation plan, resources and budget'] },
+      { n:'Documentation and processes', d:45, t:['Define context, interested parties and risks','Develop policy and objectives','Draft procedures and records','Approve documents in Document Management'] },
+      { n:'Implementation and training', d:45, t:['Roll out processes and records','Train staff and top management','Appoint and train internal auditors'] },
+      { n:'Internal audit and management review', d:21, m:false, t:['Complete internal audit programme','Close internal audit findings','Hold management review'] },
+      { n:'Stage 1 audit', d:14, m:true, t:['Submit documentation to certification body','Complete stage 1 audit','Close stage 1 opportunities for improvement'] },
+      { n:'Stage 2 audit and certification', d:30, m:true, t:['Complete stage 2 audit','Close findings within the agreed time','Receive certificate and communicate it'] } ] },
+    client_order:{ label:'Deliver a client order (from a quotation or purchase order)', type:'client_order', phases:[
+      { n:'Confirm scope and kick-off', d:7, t:['Confirm scope against the quotation and purchase order','Hold kick-off with the client','Agree the delivery plan and reporting'] },
+      { n:'Mobilise', d:7, t:['Assign the team and resources','Prepare documents, tools and templates'] },
+      { n:'Deliver', d:30, t:['Deliver the agreed scope','Weekly progress update to the client'] },
+      { n:'Quality review and handover', d:7, m:true, t:['Internal quality review of deliverables','Hand over to the client and obtain sign-off'] },
+      { n:'Invoice and close', d:7, t:['Raise the invoice against the purchase order','Collect client feedback','Record lessons learned'] } ] },
+    corrective:{ label:'Corrective action programme (from a nonconformance or RAGA alert)', type:'corrective', phases:[
+      { n:'Contain', d:3, t:['Contain the problem and protect people and customers','Record containment evidence'] },
+      { n:'Root cause', d:7, t:['Complete root cause analysis','Agree corrective actions with owners'] },
+      { n:'Implement actions', d:30, t:['Implement corrective actions','Update documents, training and risk assessments'] },
+      { n:'Verify effectiveness', d:30, m:true, t:['Verify the actions are effective','Close the source record with evidence'] } ] },
+    audit_followup:{ label:'Audit follow-up', type:'audit_followup', phases:[
+      { n:'Analyse findings', d:7, t:['Group findings by root cause','Assign owners and dates'] },
+      { n:'Close findings', d:45, t:['Implement corrective actions','Upload evidence'] },
+      { n:'Verify and report', d:14, m:true, t:['Verify closure','Report to management review'] } ] },
+    construction:{ label:'Construction project', type:'construction', phases:[
+      { n:'Initiation and design', d:30, t:['Confirm brief, budget and approvals','Complete design and specifications','Appoint principal contractor and obtain SHE file'] },
+      { n:'Procurement and mobilisation', d:21, t:['Procure materials and subcontractors','Site establishment, induction and risk assessments'] },
+      { n:'Construction', d:90, t:['Execute works to programme','Weekly site meetings and inspections','Manage variations'] },
+      { n:'Commissioning and inspection', d:14, m:true, t:['Snagging and defect rectification','Commissioning and certificates of compliance'] },
+      { n:'Handover and close-out', d:14, t:['Handover documentation and as-built drawings','Final account and lessons learned'] } ] },
+    relocation:{ label:'Relocation project', type:'relocation', phases:[
+      { n:'Plan', d:14, t:['Confirm requirements, budget and timeline','Select and approve the new premises','Notify clients, suppliers and authorities'] },
+      { n:'Prepare', d:21, t:['Fit-out or prepare the new premises','Plan IT, utilities and security','Pack plan and movers booked'] },
+      { n:'Move', d:7, m:true, t:['Execute the move','Test systems and utilities'] },
+      { n:'Settle and close', d:14, t:['Update registrations, insurance and legal documents','Update addresses on documents and certificates','Lessons learned'] } ] },
+    development:{ label:'Development project (product, service or software)', type:'development', phases:[
+      { n:'Discovery and requirements', d:14, t:['Define users, problem and requirements','Agree scope and acceptance criteria'] },
+      { n:'Design', d:21, t:['Design solution and review risks','Approve design'] },
+      { n:'Build', d:60, t:['Build in increments','Review each increment'] },
+      { n:'Test and verify', d:21, m:true, t:['Test against requirements','Fix defects and retest'] },
+      { n:'Release and review', d:14, t:['Release and train users','Post-release review and lessons learned'] } ] },
+    improvement:{ label:'Improvement or BMS Upgrade', type:'improvement', phases:[
+      { n:'Diagnose', d:14, t:['Assess the current state and baseline','Agree the improvement objectives'] },
+      { n:'Design and plan', d:21, t:['Design the future state','Plan actions, owners and budget'] },
+      { n:'Implement', d:60, t:['Implement the changes','Train people and update documents'] },
+      { n:'Embed and review', d:30, m:true, t:['Measure results against the objectives','Management review and sustain'] } ] },
+  };
+
+  /* ---------- switch, navigation, access ---------- */
+  ADMIN_CONSOLE_TOGGLES.push({ field:'projects_module_enabled', label:'Project Management', note:'Projects of any kind: plan, phases, tasks (shared with Task Management), risks and issues, budget, linked records and status reports. Can be started from nonconformances, RAGA alerts, audits, management reviews, quotations and orders. On by default.' });
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ await _lc.apply(this, arguments); if(STATE.org) STATE.org.projects_module_enabled = !off(); try{ if(!off()) await loadPm(); }catch(e){} }; }
+  { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
+      if(field !== 'projects_module_enabled') return _t.apply(this, arguments);
+      const { error } = await STATE.supabase.from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:'projects', enabled:!!value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
+      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
+    }; }
+  { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){
+      if(mod === 'projects'){ if(off()) return false; return _c('tasks') || STATE.myRole === 'admin' || !!(STATE.profile && STATE.profile.is_platform_staff); }
+      return _c.apply(this, arguments); }; }
+  MODULE_META.projects = { title:'Project Management', sub:() => 'Plan, deliver and close projects of any kind: linked to tasks, risks, audits and orders' };
+  RENDERERS.projects = () => '<div id="pm-root"></div>';
+  { const nc = document.querySelector('.nav-item[data-mod="tasks"]');
+    if(nc && !document.querySelector('.nav-item[data-mod="projects"]')) nc.insertAdjacentHTML('afterend', '<div class="nav-item" data-mod="projects" onclick="showModule(\'projects\')"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h6M7 13h10M7 17h4"/></svg> Project Management</div>'); }
+  { const _a = applyModuleAccessToNav; applyModuleAccessToNav = window.applyModuleAccessToNav = function(){ const r = _a.apply(this, arguments);
+      const el = document.querySelector('.nav-item[data-mod="projects"]'); if(el) el.style.display = canAccessModule('projects') ? '' : 'none'; return r; }; }
+  { const _s = showModule; showModule = window.showModule = function(mod){ const r = _s.apply(this, arguments); if(mod === 'projects' && document.getElementById('pm-root')) pmInit(); return r; }; }
+  setTimeout(() => { try{ applyModuleAccessToNav(); }catch(e){} }, 0);
+
+  /* ---------- data ---------- */
+  async function loadPm(){
+    const d = D(), org = STATE.org.id, q = t => STATE.supabase.from(t).select('*').eq('organisation_id', org).limit(5000);
+    try {
+      const [p, ph, m, r, c, l, u] = await Promise.all([q('projects'), q('project_phases'), q('project_members'), q('project_risks'), q('project_costs'), q('project_links'), q('project_updates')]);
+      if(p.error){ d.broken = true; d.err = p.error.message; return; }
+      d.broken = false; d.projects = (p.data || []).sort((a,b) => String(b.created_at).localeCompare(String(a.created_at)));
+      d.phases = (ph.data || []).sort((a,b) => nz(a.sort_order) - nz(b.sort_order)); d.members = m.data || []; d.risks = r.data || []; d.costs = c.data || []; d.links = l.data || [];
+      d.updates = (u.data || []).sort((a,b) => String(b.created_at).localeCompare(String(a.created_at))); d.loaded = true;
+    } catch(e){ d.broken = true; d.err = e.message; }
+  }
+  window.pmReload = async function(){ await loadPm(); try{ await loadTasks(); }catch(e){} };
+  const byId = id => D().projects.find(p => p.id === id);
+  const tasksOf = id => (STATE.tasks || []).filter(t => t.project_id === id);
+  const phasesOf = id => D().phases.filter(p => p.project_id === id);
+  const riskScore = r => nz(r.likelihood) * nz(r.impact);
+
+  function stats(p){
+    const ts = tasksOf(p.id), done = ts.filter(t => t.status === 'done').length, today = tdy();
+    const overdue = ts.filter(t => t.status !== 'done' && t.due_date && t.due_date < today).length;
+    const phs = phasesOf(p.id), phDone = phs.filter(x => x.status === 'done').length;
+    const pct = ts.length ? Math.round(done * 100 / ts.length) : (phs.length ? Math.round(phDone * 100 / phs.length) : 0);
+    const risks = D().risks.filter(r => r.project_id === p.id && r.status === 'open'), hi = risks.filter(r => riskScore(r) >= 15).length;
+    const spent = D().costs.filter(c => c.project_id === p.id && c.kind === 'actual').reduce((s, c) => s + nz(c.amount), 0);
+    const bud = nz(p.budget) || D().costs.filter(c => c.project_id === p.id && c.kind === 'budget').reduce((s, c) => s + nz(c.amount), 0);
+    let health = 'none';
+    if(['active','approved'].includes(p.status) || ts.length){
+      health = 'green';
+      if(overdue > 0 || hi > 0 || (bud && spent > bud * 0.9) || (p.target_end_date && p.target_end_date < addDays(today, 7) && pct < 80 && p.status === 'active')) health = 'amber';
+      if(overdue >= 3 || hi >= 2 || (bud && spent > bud) || (p.target_end_date && p.target_end_date < today && p.status === 'active')) health = 'red';
+    }
+    if(['completed','cancelled'].includes(p.status)) health = 'none';
+    return { ts, done, overdue, pct, hi, risks, spent, bud, health, phs };
+  }
+  window.pmStats = stats;
+
+  /* ---------- shell ---------- */
+  async function pmInit(){
+    const root = document.getElementById('pm-root'); if(!root) return;
+    root.innerHTML = '<p style="color:var(--text-faint);font-size:13px;">Loading…</p>';
+    await loadPm(); try{ await loadTasks(); }catch(e){} pmDraw();
+  }
+  window.pmInit = pmInit;
+  const F = () => STATE._pmF = STATE._pmF || { status:'open', type:'', mine:false };
+  window.pmSetF = (k, v) => { F()[k] = v; pmDraw(); };
+  window.pmOpen = id => { STATE._pmView = id; STATE._pmTab = 'overview'; if(!document.getElementById('pm-root')) { showModule('projects'); } else pmDraw(); };
+  window.pmClose = () => { STATE._pmView = null; pmDraw(); };
+  window.pmTab = k => { STATE._pmTab = k; pmDraw(); };
+
+  function pmDraw(){
+    const root = document.getElementById('pm-root'); if(!root) return; const d = D();
+    if(d.broken){ root.innerHTML = `<div class="detail-card" style="padding:18px;"><b>Project Management is not set up yet.</b><p style="font-size:13px;color:var(--text-dim);">Run <b>qashe-watchman-schema-projects.sql</b> in the Supabase SQL editor, then reload.</p><p style="font-size:11px;color:var(--text-faint);">${E(d.err || '')}</p></div>`; return; }
+    if(STATE._pmView && byId(STATE._pmView)){ root.innerHTML = detailHtml(byId(STATE._pmView)); return; }
+    STATE._pmView = null; root.innerHTML = listHtml();
+  }
+
+  /* ---------- portfolio ---------- */
+  function listHtml(){
+    const d = D(), f = F(), today = tdy();
+    let rows = d.projects.filter(p => f.status === 'open' ? !['completed','cancelled'].includes(p.status) : (f.status === 'all' ? true : p.status === f.status));
+    if(f.type) rows = rows.filter(p => p.project_type === f.type);
+    if(f.mine) rows = rows.filter(p => p.owner_id === STATE.user.id || d.members.some(m => m.project_id === p.id && m.user_id === STATE.user.id));
+    const all = d.projects.filter(p => !['completed','cancelled'].includes(p.status)), sts = all.map(stats);
+    const tile = (l, v, c) => `<div class="detail-card" style="padding:12px 16px;flex:1;min-width:140px;"><div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;">${l}</div><div style="font-size:24px;font-weight:800;color:${c || 'inherit'};">${v}</div></div>`;
+    return `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+      ${tile('Open projects', all.length)}${tile('Off track', sts.filter(s => s.health === 'red').length, sts.some(s => s.health === 'red') ? '#B3261E' : '')}${tile('At risk', sts.filter(s => s.health === 'amber').length, sts.some(s => s.health === 'amber') ? '#B26A16' : '')}
+      ${tile('Overdue project tasks', sts.reduce((s, x) => s + x.overdue, 0), sts.some(s => s.overdue) ? '#B3261E' : '')}${tile('Completed', d.projects.filter(p => p.status === 'completed').length)}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+      ${canW() ? '<button class="btn-small primary" onclick="pmNew()">+ New project</button>' : ''}
+      <select onchange="pmSetF('status',this.value)" style="max-width:170px;"><option value="open" ${f.status === 'open' ? 'selected' : ''}>Open projects</option><option value="all" ${f.status === 'all' ? 'selected' : ''}>All</option>${Object.keys(STATUS).map(k => `<option value="${k}" ${f.status === k ? 'selected' : ''}>${STATUS[k][0]}</option>`).join('')}</select>
+      <select onchange="pmSetF('type',this.value)" style="max-width:240px;"><option value="">All types</option>${Object.keys(TYPES).map(k => `<option value="${k}" ${f.type === k ? 'selected' : ''}>${TYPES[k]}</option>`).join('')}</select>
+      <label style="font-size:12.5px;"><input type="checkbox" ${f.mine ? 'checked' : ''} onchange="pmSetF('mine',this.checked)"> My projects</label></div>
+    ${rows.length ? `<table><tr><th>Ref</th><th>Project</th><th>Type</th><th>Owner</th><th>Status</th><th>Health</th><th style="min-width:130px;">Progress</th><th>Target end</th><th>Source</th></tr>
+      ${rows.map(p => { const s = stats(p); return `<tr class="clickable" onclick="pmOpen('${p.id}')"><td class="mono-cell">${E(p.ref_code)}</td><td class="strong">${E(p.title)}</td><td>${E(TYPES[p.project_type] || p.project_type)}</td><td>${E(memberName(p.owner_id) || '—')}</td><td>${pill(STATUS, p.status)}</td><td>${pill(HEALTH, s.health)}</td>
+        <td><div style="background:#E8E6E3;border-radius:6px;height:8px;"><div style="background:#2E7D4F;height:8px;border-radius:6px;width:${s.pct}%;"></div></div><span style="font-size:11px;color:var(--text-faint);">${s.pct}% · ${s.done}/${s.ts.length} tasks${s.overdue ? ' · <b style="color:#B3261E;">' + s.overdue + ' overdue</b>' : ''}</span></td>
+        <td>${fmtDate(p.target_end_date)} ${p.target_end_date && !['completed','cancelled'].includes(p.status) ? dateStatusBadge(p.target_end_date, false) : ''}</td><td>${p.source_label ? E(p.source_label) : '—'}</td></tr>`; }).join('')}</table>`
+      : '<div class="empty-state"><p>No projects match. Start a project from here, or from a nonconformance, RAGA alert, audit, management review or accepted quotation.</p></div>'}`;
+  }
+
+  /* ---------- create ---------- */
+  function srcInfo(type, id){
+    const q = (STATE._qi && STATE._qi.quotes) || [];
+    try {
+      if(type === 'nonconformance'){ const n = ncById(id); return n && { ref:n.ref_code, title:n.title, desc:n.description || '', tpl:'corrective', due:n.target_close_date }; }
+      if(type === 'raga'){ const r = ragaById(id); return r && { ref:r.ref_code, title:r.title || r.alert_type || 'RAGA alert', desc:r.description || '', tpl:'corrective' }; }
+      if(type === 'audit'){ const a = (STATE.audits || []).find(x => x.id === id); return a && { ref:a.audit_ref, title:a.title, desc:a.scope || '', tpl:'audit_followup' }; }
+      if(type === 'management_review'){ const m = (STATE.managementReviews || []).find(x => x.id === id); return m && { ref:'Management review ' + fmtDate(m.meeting_date), title:'Management review actions ' + fmtDate(m.meeting_date), desc:'', tpl:'improvement' }; }
+      if(type === 'risk'){ const r = (STATE.risks || []).find(x => x.id === id); return r && { ref:r.ref_code, title:r.title, desc:r.description || '', tpl:'improvement' }; }
+      if(type === 'objective'){ const o = (STATE.objectives || []).find(x => x.id === id); return o && { ref:o.ref_code, title:(o.specific_statement || '').slice(0, 100), desc:o.specific_statement || '', tpl:'improvement', due:o.target_date }; }
+      if(type === 'quote'){ const x = q.find(y => y.id === id); return x && { ref:x.quote_number, title:(x.subject || 'Client order') + ' (' + (x.client_name || '') + ')', desc:'Delivery of the scope quoted in ' + x.quote_number, tpl:'client_order', customer:x.customer_id, budget:x.total, currency:x.currency }; }
+    } catch(e){}
+    return null;
+  }
+  window.pmStartFrom = async function(type, id){
+    if(!canW()){ toast('Only contributors and above can start projects.', 'error'); return; }
+    if(type === 'quote' && !(STATE._qi && STATE._qi.quotes)) { toast('Open Quotations and Invoicing first.', 'error'); return; }
+    const s = srcInfo(type, id); if(!s){ toast('That record could not be found.', 'error'); return; }
+    STATE._pmPrefill = { source_type:type, source_id:id, source_label:`${SRC[type] || type}: ${s.ref || ''}`.trim(), title:s.title, description:s.desc, tpl:s.tpl, target_end_date:s.due || '', customer_id:s.customer || '', budget:s.budget || '', currency:s.currency || 'ZAR' };
+    pmNew();
+  };
+  window.pmNew = function(){
+    const pf = STATE._pmPrefill || {}; STATE._pmPrefill = null;
+    const custs = (STATE.customers || []).map(c => `<option value="${c.id}" ${pf.customer_id === c.id ? 'selected' : ''}>${E(c.name)}</option>`).join('');
+    STATE._pmDraft = pf;
+    kpiOverlay(`<div style="padding:18px 20px;max-width:700px;"><h3 style="margin:0 0 4px;">New project</h3>${pf.source_label ? `<p style="font-size:12.5px;color:var(--text-dim);margin:0 0 8px;">Started from ${E(pf.source_label)}. The project stays linked to it.</p>` : ''}
+      <div class="form-grid">
+        <div class="field span3"><label>Project title</label><input id="np-title" value="${E(pf.title || '')}"></div>
+        <div class="field span2"><label>Start from a template</label><select id="np-tpl">${Object.keys(TEMPLATES).map(k => `<option value="${k}" ${(pf.tpl || 'blank') === k ? 'selected' : ''}>${E(TEMPLATES[k].label)}</option>`).join('')}</select></div>
+        <div class="field"><label>Priority</label><select id="np-prio"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></div>
+        <div class="field"><label>Project owner</label><select id="np-owner">${memberOptions(STATE.user.id)}</select></div>
+        <div class="field"><label>Sponsor (optional)</label><select id="np-sponsor"><option value="">None</option>${memberOptions('')}</select></div>
+        <div class="field"><label>Client (optional)</label><select id="np-cust"><option value="">None</option>${custs}</select></div>
+        <div class="field"><label>Start date</label><input type="date" id="np-start" value="${tdy()}"></div>
+        <div class="field"><label>Target end date</label><input type="date" id="np-end" value="${E(pf.target_end_date || '')}"></div>
+        <div class="field"><label>Budget (optional)</label><input type="number" step="any" id="np-budget" value="${E(pf.budget || '')}"></div>
+        <div class="field span3"><label>Objective and description</label><textarea id="np-desc">${E(pf.description || '')}</textarea></div></div>
+      <p style="font-size:12px;color:var(--text-faint);">A template adds phases and starter tasks, scheduled from the start date. You can edit or delete any of them. If you set a target end date, the phase durations are scaled to fit.</p>
+      <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" id="np-go" onclick="pmCreate()">Create project</button></div></div>`);
+  };
+  async function nextRef(){
+    const { data, error } = await STATE.supabase.rpc('pm_next_no', { p_org: STATE.org.id });
+    if(error || data == null) throw new Error('Could not get the project number: ' + (error ? error.message : 'no response'));
+    return 'PRJ-' + String(data).padStart(4, '0');
+  }
+  window.pmCreate = async function(){
+    const g = k => (document.getElementById(k) || {}).value || '', title = g('np-title').trim(); if(!title){ toast('Give the project a title.', 'error'); return; }
+    const pf = STATE._pmDraft || {}, tpl = TEMPLATES[g('np-tpl')] || TEMPLATES.blank, start = g('np-start') || tdy();
+    document.getElementById('np-go').disabled = true; showLoader('Creating the project…');
+    try {
+      const ref = await nextRef();
+      const row = { organisation_id:STATE.org.id, ref_code:ref, title, project_type:tpl.type, description:g('np-desc').trim() || null, status:'proposed', priority:g('np-prio'), owner_id:g('np-owner') || STATE.user.id, sponsor_id:g('np-sponsor') || null, customer_id:g('np-cust') || null,
+        start_date:start, target_end_date:g('np-end') || null, budget:g('np-budget') === '' ? null : nz(g('np-budget')), currency:pf.currency || 'ZAR', source_type:pf.source_type || null, source_id:pf.source_id || null, source_label:pf.source_label || null, created_by:STATE.user.id };
+      const { data: p, error } = await STATE.supabase.from('projects').insert(row).select().single(); if(error) throw new Error(error.message);
+      await STATE.supabase.from('project_members').insert({ organisation_id:STATE.org.id, project_id:p.id, user_id:row.owner_id, display_name:memberName(row.owner_id), role:'manager' });
+      if(pf.source_type && pf.source_id) await STATE.supabase.from('project_links').insert({ organisation_id:STATE.org.id, project_id:p.id, link_type:pf.source_type, link_id:pf.source_id, label:pf.source_label });
+      // template phases and tasks
+      if(tpl.phases.length){
+        const total = tpl.phases.reduce((s, x) => s + x.d, 0); let scale = 1;
+        if(row.target_end_date && row.target_end_date > start){ scale = diffDays(start, row.target_end_date) / total; }
+        let cursor = start; const phRows = [], taskPlan = [];
+        tpl.phases.forEach((ph, i) => { const len = Math.max(1, Math.round(ph.d * scale)), due = addDays(cursor, len);
+          phRows.push({ organisation_id:STATE.org.id, project_id:p.id, name:ph.n, sort_order:i, start_date:cursor, due_date:due, is_milestone:!!ph.m, status:'not_started' });
+          taskPlan.push({ i, due, start:cursor, titles:ph.t, len }); cursor = due; });
+        const { data: phs, error: pe } = await STATE.supabase.from('project_phases').insert(phRows).select(); if(pe) throw new Error(pe.message);
+        const phBy = {}; (phs || []).forEach(x => phBy[x.sort_order] = x.id);
+        const trows = []; taskPlan.forEach(tp => tp.titles.forEach((t, k) => trows.push({ organisation_id:STATE.org.id, title:t, description:`${ref}: ${title}`, linked_type:'project', linked_id:p.id, project_id:p.id, phase_id:phBy[tp.i] || null, assignee_id:row.owner_id, status:'todo', priority:'medium',
+          start_date:tp.start, due_date:addDays(tp.start, Math.max(1, Math.round(tp.len * (k + 1) / tp.titles.length))), created_by:STATE.user.id })));
+        if(trows.length){ const { error: te } = await STATE.supabase.from('tasks').insert(trows); if(te) throw new Error(te.message); }
+      }
+      kpiCloseOverlay(); await pmReload(); STATE._pmView = p.id; STATE._pmTab = 'overview';
+      if(!document.getElementById('pm-root')) showModule('projects'); else pmDraw();
+      toast('Project ' + ref + ' created.', 'success');
+    } catch(e){ const b = document.getElementById('np-go'); if(b) b.disabled = false; toast('Could not create the project: ' + e.message, 'error'); }
+    finally { hideLoader(); }
+  };
+
+  /* ---------- project page ---------- */
+  function detailHtml(p){
+    const s = stats(p), tab = STATE._pmTab || 'overview', tabs = [['overview','Overview'],['plan','Plan'],['tasks','Tasks (' + s.ts.length + ')'],['risks','Risks and issues (' + D().risks.filter(r => r.project_id === p.id && r.status === 'open').length + ')'],['budget','Budget'],['links','Linked records'],['updates','Status reports'],['team','Team']];
+    const next = { proposed:[['approved','Approve'],['active','Start now']], approved:[['active','Start']], active:[['on_hold','Put on hold'],['completed','Complete']], on_hold:[['active','Resume']], completed:[['active','Reopen']], cancelled:[['proposed','Reopen']] }[p.status] || [];
+    const body = ({ overview:ovHtml, plan:planHtml, tasks:tasksHtml, risks:risksHtml, budget:budgetHtml, links:linksHtml, updates:updatesHtml, team:teamHtml }[tab] || ovHtml)(p, s);
+    return `<div class="detail-card" style="padding:16px;margin-bottom:12px;"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <button class="btn-small" onclick="pmClose()">‹ All projects</button><span class="mono-cell">${E(p.ref_code)}</span><h3 style="margin:0;font-size:18px;">${E(p.title)}</h3>${pill(STATUS, p.status)}${pill(HEALTH, s.health)}
+        <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;">${canW() ? next.map(([k, l]) => `<button class="btn-small ${k === 'active' || k === 'completed' || k === 'approved' ? 'primary' : ''}" onclick="pmSetStatus('${p.id}','${k}')">${l}</button>`).join('') + (p.status !== 'cancelled' && p.status !== 'completed' ? `<button class="btn-small" onclick="pmSetStatus('${p.id}','cancelled')">Cancel project</button>` : '') + `<button class="btn-small" onclick="pmEditDetails('${p.id}')">Edit details</button>` : ''}<button class="btn-small" onclick="pmPrint('${p.id}')">Print report</button></span></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;">${tabs.map(([k, l]) => `<button class="btn-small ${tab === k ? 'primary' : ''}" onclick="pmTab('${k}')">${l}</button>`).join('')}</div></div>${body}`;
+  }
+  const kv = (l, v) => `<div class="dm-item"><div class="l">${l}</div><div class="v">${v}</div></div>`;
+  function ovHtml(p, s){
+    const cust = (STATE.customers || []).find(c => c.id === p.customer_id), last = D().updates.find(u => u.project_id === p.id && u.kind === 'status');
+    const nextPh = s.phs.find(x => x.status !== 'done');
+    return `<div class="detail-card" style="padding:16px;margin-bottom:12px;"><div style="background:#E8E6E3;border-radius:8px;height:12px;"><div style="background:#2E7D4F;height:12px;border-radius:8px;width:${s.pct}%;"></div></div>
+      <div style="font-size:12.5px;margin-top:6px;"><b>${s.pct}% complete</b> · ${s.done} of ${s.ts.length} tasks done${s.overdue ? ` · <b style="color:#B3261E;">${s.overdue} overdue</b>` : ''}${nextPh ? ` · Current phase: <b>${E(nextPh.name)}</b>` : ''}</div>
+      <div class="detail-meta" style="margin-top:10px;">${kv('Owner', E(memberName(p.owner_id) || '—'))}${kv('Sponsor', E(memberName(p.sponsor_id) || '—'))}${kv('Client', E(cust ? cust.name : '—'))}${kv('Type', E(TYPES[p.project_type] || ''))}${kv('Priority', E(p.priority))}
+        ${kv('Start', fmtDate(p.start_date))}${kv('Target end', fmtDate(p.target_end_date))}${p.actual_end_date ? kv('Completed', fmtDate(p.actual_end_date)) : ''}${kv('Budget', s.bud ? E(p.currency || '') + ' ' + s.bud.toLocaleString('en-ZA') + ' (spent ' + s.spent.toLocaleString('en-ZA') + ')' : '—')}
+        ${p.source_label ? kv('Started from', `<a href="#" onclick="pmOpenSource('${p.source_type}','${p.source_id}');return false;">${E(p.source_label)}</a>`) : ''}</div></div>
+    ${['description','objectives','scope','out_of_scope','success_criteria'].filter(k => p[k]).map(k => `<div class="detail-card" style="padding:14px 16px;margin-bottom:10px;"><div style="font-size:10px;color:var(--text-faint);text-transform:uppercase;margin-bottom:4px;">${{ description:'Description', objectives:'Objectives', scope:'Scope', out_of_scope:'Out of scope', success_criteria:'Success criteria' }[k]}</div><div style="font-size:13px;white-space:pre-wrap;">${E(p[k])}</div></div>`).join('')}
+    ${last ? `<div class="detail-card" style="padding:14px 16px;margin-bottom:10px;"><div style="font-size:10px;color:var(--text-faint);text-transform:uppercase;">Latest status report · ${fmtDate(day(last.created_at))}</div><div style="margin:4px 0;">${last.rag ? pill(HEALTH, last.rag) : ''}</div><div style="font-size:13px;white-space:pre-wrap;">${E(last.summary)}</div></div>` : ''}
+    ${p.lessons_learned ? `<div class="detail-card" style="padding:14px 16px;"><div style="font-size:10px;color:var(--text-faint);text-transform:uppercase;margin-bottom:4px;">Lessons learned</div><div style="font-size:13px;white-space:pre-wrap;">${E(p.lessons_learned)}</div></div>` : ''}`;
+  }
+  window.pmOpenSource = function(type, id){
+    const go = (mod, fn) => { showModule(mod); setTimeout(() => { try{ window[fn](id); }catch(e){} }, 400); };
+    ({ nonconformance:() => go('nonconformances', 'openNCDetail'), raga:() => go('raga', 'openRagaDetail'), audit:() => go('audits', 'openAuditDetail'), management_review:() => go('management_review', 'openMRDetail'), risk:() => go('risks', 'openRiskDetail'), objective:() => go('objectives', 'openObjectiveDetail'),
+      quote:() => { showModule('quotes'); setTimeout(() => { try{ qiOpen('quote', id); }catch(e){} }, 600); } }[type] || (() => {}))();
+  };
+  window.pmSetStatus = async function(id, status){
+    const p = byId(id), patch = { status, updated_at:new Date().toISOString() };
+    if(status === 'cancelled' && !confirm('Cancel this project? Open tasks stay in Task Management until you close them.')) return;
+    if(status === 'completed'){
+      const open = tasksOf(id).filter(t => t.status !== 'done').length;
+      if(open && !confirm(`${open} task${open === 1 ? ' is' : 's are'} not done. Complete the project anyway?`)) return;
+      const ll = prompt('Lessons learned (what worked, what to do differently). You can leave this empty and add it later.', p.lessons_learned || ''); if(ll === null) return;
+      patch.lessons_learned = ll || null; patch.actual_end_date = tdy();
+    }
+    if(status === 'active' && !p.start_date) patch.start_date = tdy();
+    const { error } = await STATE.supabase.from('projects').update(patch).eq('id', id); if(error){ toast(error.message, 'error'); return; }
+    await pmReload(); pmDraw();
+  };
+  window.pmEditDetails = function(id){
+    const p = byId(id), custs = (STATE.customers || []).map(c => `<option value="${c.id}" ${p.customer_id === c.id ? 'selected' : ''}>${E(c.name)}</option>`).join('');
+    kpiOverlay(`<div style="padding:18px 20px;max-width:700px;max-height:85vh;overflow:auto;"><h3 style="margin:0 0 10px;">Project details</h3><div class="form-grid">
+      <div class="field span3"><label>Title</label><input id="pe-title" value="${E(p.title)}"></div>
+      <div class="field"><label>Type</label><select id="pe-type">${Object.keys(TYPES).map(k => `<option value="${k}" ${p.project_type === k ? 'selected' : ''}>${TYPES[k]}</option>`).join('')}</select></div>
+      <div class="field"><label>Priority</label><select id="pe-prio">${['low','medium','high'].map(k => `<option ${p.priority === k ? 'selected' : ''}>${k}</option>`).join('')}</select></div>
+      <div class="field"><label>Owner</label><select id="pe-owner">${memberOptions(p.owner_id)}</select></div>
+      <div class="field"><label>Sponsor</label><select id="pe-sponsor"><option value="">None</option>${memberOptions(p.sponsor_id)}</select></div>
+      <div class="field"><label>Client</label><select id="pe-cust"><option value="">None</option>${custs}</select></div>
+      <div class="field"><label>Budget</label><input type="number" step="any" id="pe-budget" value="${p.budget == null ? '' : p.budget}"></div>
+      <div class="field"><label>Start</label><input type="date" id="pe-start" value="${day(p.start_date)}"></div><div class="field"><label>Target end</label><input type="date" id="pe-end" value="${day(p.target_end_date)}"></div>
+      <div class="field span3"><label>Description</label><textarea id="pe-desc">${E(p.description || '')}</textarea></div>
+      <div class="field span3"><label>Objectives</label><textarea id="pe-obj">${E(p.objectives || '')}</textarea></div>
+      <div class="field span3"><label>Scope</label><textarea id="pe-scope">${E(p.scope || '')}</textarea></div>
+      <div class="field span3"><label>Out of scope</label><textarea id="pe-oos">${E(p.out_of_scope || '')}</textarea></div>
+      <div class="field span3"><label>Success criteria</label><textarea id="pe-succ">${E(p.success_criteria || '')}</textarea></div>
+      <div class="field span3"><label>Lessons learned</label><textarea id="pe-ll">${E(p.lessons_learned || '')}</textarea></div></div>
+      <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" onclick="pmSaveDetails('${id}')">Save</button></div></div>`);
+  };
+  window.pmSaveDetails = async function(id){
+    const g = k => (document.getElementById(k) || {}).value || '';
+    if(!g('pe-title').trim()){ toast('Title is required.', 'error'); return; }
+    const patch = { title:g('pe-title').trim(), project_type:g('pe-type'), priority:g('pe-prio'), owner_id:g('pe-owner') || null, sponsor_id:g('pe-sponsor') || null, customer_id:g('pe-cust') || null, budget:g('pe-budget') === '' ? null : nz(g('pe-budget')),
+      start_date:g('pe-start') || null, target_end_date:g('pe-end') || null, description:g('pe-desc').trim() || null, objectives:g('pe-obj').trim() || null, scope:g('pe-scope').trim() || null, out_of_scope:g('pe-oos').trim() || null, success_criteria:g('pe-succ').trim() || null, lessons_learned:g('pe-ll').trim() || null, updated_at:new Date().toISOString() };
+    const { error } = await STATE.supabase.from('projects').update(patch).eq('id', id); if(error){ toast(error.message, 'error'); return; }
+    kpiCloseOverlay(); await pmReload(); pmDraw(); toast('Saved.', 'success');
+  };
+
+  /* ---------- plan: phases and a timeline ---------- */
+  function planHtml(p, s){
+    const phs = s.phs, ts = s.ts, today = tdy();
+    const dates = [p.start_date, p.target_end_date, ...phs.flatMap(x => [x.start_date, x.due_date]), ...ts.flatMap(t => [t.start_date, t.due_date])].filter(Boolean).sort();
+    let gantt = '<p style="font-size:12.5px;color:var(--text-faint);">Add phases and dated tasks to see the timeline.</p>';
+    if(dates.length >= 2){
+      const a = dates[0], b = dates[dates.length - 1], span = Math.max(1, diffDays(a, b)), pos = d => Math.max(0, Math.min(100, diffDays(a, d) * 100 / span));
+      const bar = (s0, e0, col, label, strong) => { const l = pos(s0 || e0), w = Math.max(1.2, pos(e0 || s0) - l); return `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;"><div style="width:220px;flex:none;font-size:11.5px;${strong ? 'font-weight:700;' : 'padding-left:14px;color:var(--text-dim);'}white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${E(label)}">${E(label)}</div><div style="position:relative;flex:1;height:14px;background:#F3F1EF;border-radius:4px;"><div style="position:absolute;left:${l}%;width:${w}%;height:14px;background:${col};border-radius:4px;"></div><div style="position:absolute;left:${pos(today)}%;top:-2px;bottom:-2px;width:2px;background:#B3261E;"></div></div></div>`; };
+      gantt = `<div style="font-size:11px;color:var(--text-faint);display:flex;justify-content:space-between;margin-left:228px;"><span>${fmtDate(a)}</span><span style="color:#B3261E;">today</span><span>${fmtDate(b)}</span></div>` +
+        phs.map(ph => bar(ph.start_date, ph.due_date, ph.status === 'done' ? '#2E7D4F' : (ph.is_milestone ? '#7d3fbf' : '#2E5AA8'), (ph.is_milestone ? '◆ ' : '') + ph.name, true) + ts.filter(t => t.phase_id === ph.id).map(t => bar(t.start_date || addDays(t.due_date, -2), t.due_date, t.status === 'done' ? '#9CC9AB' : (t.due_date < today ? '#E58A83' : '#9DB7E3'), t.title, false)).join('')).join('') +
+        ts.filter(t => !t.phase_id).map(t => bar(t.start_date || addDays(t.due_date, -2), t.due_date, t.status === 'done' ? '#9CC9AB' : '#9DB7E3', t.title, false)).join('');
+    }
+    return `<div class="detail-card" style="padding:16px;margin-bottom:12px;"><div class="panel-head"><h3>Timeline</h3></div><div style="overflow-x:auto;">${gantt}</div></div>
+    <div class="detail-card" style="padding:16px;"><div class="panel-head" style="display:flex;"><h3>Phases and milestones</h3>${canW() ? '<button class="btn-small primary" style="margin-left:auto;" onclick="pmPhaseForm(\'' + p.id + '\')">+ Phase or milestone</button>' : ''}</div>
+      ${phs.length ? `<table><tr><th>#</th><th>Phase</th><th>Start</th><th>Due</th><th>Tasks</th><th>Status</th><th></th></tr>${phs.map((ph, i) => { const pt = ts.filter(t => t.phase_id === ph.id);
+        return `<tr><td>${i + 1}</td><td class="strong">${ph.is_milestone ? '◆ ' : ''}${E(ph.name)}</td><td>${fmtDate(ph.start_date)}</td><td>${fmtDate(ph.due_date)} ${ph.due_date && ph.status !== 'done' ? dateStatusBadge(ph.due_date, false) : ''}</td><td>${pt.filter(t => t.status === 'done').length}/${pt.length}</td>
+          <td>${canW() ? `<select onchange="pmPhaseStatus('${ph.id}',this.value)">${Object.keys(PHSTATUS).map(k => `<option value="${k}" ${ph.status === k ? 'selected' : ''}>${PHSTATUS[k]}</option>`).join('')}</select>` : E(PHSTATUS[ph.status])}</td>
+          <td style="white-space:nowrap;">${canW() ? `<button class="btn-small" onclick="pmPhaseForm('${p.id}','${ph.id}')">Edit</button> <button class="btn-small" onclick="pmDelPhase('${ph.id}')">Delete</button>` : ''}</td></tr>`; }).join('')}</table>` : '<p style="font-size:12.5px;color:var(--text-faint);">No phases yet.</p>'}</div>`;
+  }
+  window.pmPhaseForm = function(pid, id){
+    const ph = id ? D().phases.find(x => x.id === id) : {};
+    kpiOverlay(`<div style="padding:18px 20px;max-width:520px;"><h3 style="margin:0 0 10px;">${id ? 'Edit' : 'Add'} phase or milestone</h3><div class="form-grid">
+      <div class="field span3"><label>Name</label><input id="ph-name" value="${E(ph.name || '')}"></div>
+      <div class="field"><label>Start</label><input type="date" id="ph-start" value="${day(ph.start_date)}"></div><div class="field"><label>Due</label><input type="date" id="ph-due" value="${day(ph.due_date)}"></div>
+      <div class="field"><label><input type="checkbox" id="ph-ms" ${ph.is_milestone ? 'checked' : ''}> Milestone</label></div></div>
+      <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" onclick="pmSavePhase('${pid}','${id || ''}')">Save</button></div></div>`);
+  };
+  window.pmSavePhase = async function(pid, id){
+    const g = k => (document.getElementById(k) || {}).value || '', name = g('ph-name').trim(); if(!name){ toast('Name the phase.', 'error'); return; }
+    const row = { name, start_date:g('ph-start') || null, due_date:g('ph-due') || null, is_milestone:document.getElementById('ph-ms').checked };
+    const { error } = id ? await STATE.supabase.from('project_phases').update(row).eq('id', id) : await STATE.supabase.from('project_phases').insert({ ...row, organisation_id:STATE.org.id, project_id:pid, sort_order:phasesOf(pid).length, status:'not_started' });
+    if(error){ toast(error.message, 'error'); return; } kpiCloseOverlay(); await loadPm(); pmDraw();
+  };
+  window.pmPhaseStatus = async function(id, st){ await STATE.supabase.from('project_phases').update({ status:st }).eq('id', id); await loadPm(); pmDraw(); };
+  window.pmDelPhase = async function(id){ if(!confirm('Delete this phase? Its tasks stay in the project without a phase.')) return; await STATE.supabase.from('tasks').update({ phase_id:null }).eq('phase_id', id); await STATE.supabase.from('project_phases').delete().eq('id', id); await pmReload(); pmDraw(); };
+
+  /* ---------- tasks ---------- */
+  function tasksHtml(p, s){
+    const phs = s.phs;
+    return `${canW() ? `<div class="detail-card" style="padding:14px 16px;margin-bottom:12px;"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;">
+      <div class="field" style="flex:2;min-width:220px;"><label>New task</label><input id="pt-title" placeholder="What needs to happen"></div>
+      <div class="field"><label>Phase</label><select id="pt-phase"><option value="">No phase</option>${phs.map(x => `<option value="${x.id}">${E(x.name)}</option>`).join('')}</select></div>
+      <div class="field"><label>Assignee</label><select id="pt-who">${memberOptions(STATE.user.id)}</select></div>
+      <div class="field"><label>Due</label><input type="date" id="pt-due" value="${addDays(tdy(), 7)}"></div>
+      <button class="btn-small primary" onclick="pmAddTask('${p.id}')">Add task</button></div></div>` : ''}
+    ${s.ts.length ? `<table><tr><th>Task</th><th>Phase</th><th>Assignee</th><th>Due</th><th>Status</th></tr>${[...s.ts].sort((a, b) => String(a.due_date || '9').localeCompare(String(b.due_date || '9'))).map(t => `<tr><td class="strong"><a href="#" onclick="pmOpenTask('${t.id}');return false;">${E(t.title)}</a></td><td>${E((phs.find(x => x.id === t.phase_id) || {}).name || '—')}</td><td>${E(memberName(t.assignee_id) || '—')}</td><td>${fmtDate(t.due_date)} ${dateStatusBadge(t.due_date, t.status === 'done')}</td>
+      <td>${canW() ? `<select onchange="pmTaskStatus('${t.id}',this.value)">${[['todo','To do'],['in_progress','In progress'],['blocked','Blocked'],['done','Done']].map(([k, l]) => `<option value="${k}" ${t.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select>` : E(t.status)}</td></tr>`).join('')}</table>` : '<div class="empty-state"><p>No tasks yet.</p></div>'}
+    <p style="font-size:12px;color:var(--text-faint);margin-top:8px;">These are the same tasks as in Task Management: assignees get the usual reminders, and comments and evidence work there.</p>`;
+  }
+  window.pmAddTask = async function(pid){
+    const g = k => (document.getElementById(k) || {}).value || '', title = g('pt-title').trim(); if(!title){ toast('Enter the task.', 'error'); return; }
+    const p = byId(pid);
+    const { error } = await STATE.supabase.from('tasks').insert({ organisation_id:STATE.org.id, title, description:`${p.ref_code}: ${p.title}`, linked_type:'project', linked_id:pid, project_id:pid, phase_id:g('pt-phase') || null, assignee_id:g('pt-who') || STATE.user.id, status:'todo', priority:'medium', start_date:tdy(), due_date:g('pt-due') || null, created_by:STATE.user.id });
+    if(error){ toast('Could not add: ' + error.message + (/column/.test(error.message) ? ' (run qashe-watchman-schema-projects.sql first)' : ''), 'error'); return; }
+    await pmReload(); pmDraw();
+  };
+  window.pmTaskStatus = async function(id, st){ const patch = { status:st }; if(st === 'done') patch.completed_at = new Date().toISOString(); await STATE.supabase.from('tasks').update(patch).eq('id', id); await pmReload(); pmDraw(); };
+  window.pmOpenTask = id => { showModule('tasks'); setTimeout(() => { try{ openTaskDetail(id); }catch(e){} }, 400); };
+
+  /* ---------- risks and issues ---------- */
+  function risksHtml(p){
+    const rs = D().risks.filter(r => r.project_id === p.id).sort((a, b) => (a.status === 'open' ? 0 : 1) - (b.status === 'open' ? 0 : 1) || riskScore(b) - riskScore(a));
+    const sel = (id, v) => `<select id="${id}">${[1,2,3,4,5].map(n => `<option ${n === v ? 'selected' : ''}>${n}</option>`).join('')}</select>`;
+    return `${canW() ? `<div class="detail-card" style="padding:14px 16px;margin-bottom:12px;"><div class="form-grid">
+      <div class="field"><label>Type</label><select id="pr-kind"><option value="risk">Risk (may happen)</option><option value="issue">Issue (has happened)</option></select></div>
+      <div class="field span2"><label>Title</label><input id="pr-title"></div>
+      <div class="field"><label>Likelihood (1 to 5)</label>${sel('pr-l', 3)}</div><div class="field"><label>Impact (1 to 5)</label>${sel('pr-i', 3)}</div><div class="field"><label>Owner</label><select id="pr-owner">${memberOptions(STATE.user.id)}</select></div>
+      <div class="field span3"><label>Mitigation or action</label><textarea id="pr-mit"></textarea></div><div class="field"><label>Due</label><input type="date" id="pr-due"></div></div>
+      <button class="btn-small primary" onclick="pmAddRisk('${p.id}')">Add</button></div>` : ''}
+    ${rs.length ? `<table><tr><th>Type</th><th>Title</th><th>Score</th><th>Mitigation</th><th>Owner</th><th>Due</th><th>Status</th></tr>${rs.map(r => { const sc = riskScore(r), col = sc >= 15 ? '#B3261E' : sc >= 8 ? '#B26A16' : '#2E7D4F';
+      return `<tr><td>${r.kind === 'issue' ? 'Issue' : 'Risk'}</td><td class="strong">${E(r.title)}</td><td><span class="sev-badge" style="background:${col};color:#fff;">${sc}</span></td><td style="max-width:260px;">${E(r.mitigation || '')}</td><td>${E(memberName(r.owner_id) || '—')}</td><td>${fmtDate(r.due_date)}</td>
+        <td>${canW() ? `<select onchange="pmRiskStatus('${r.id}',this.value)">${['open','mitigated','closed'].map(k => `<option ${r.status === k ? 'selected' : ''}>${k}</option>`).join('')}</select>` : E(r.status)}</td></tr>`; }).join('')}</table>` : '<div class="empty-state"><p>No risks or issues logged. A score of 15 or more makes the project show as at risk.</p></div>'}`;
+  }
+  window.pmAddRisk = async function(pid){
+    const g = k => (document.getElementById(k) || {}).value || '', title = g('pr-title').trim(); if(!title){ toast('Enter a title.', 'error'); return; }
+    const { error } = await STATE.supabase.from('project_risks').insert({ organisation_id:STATE.org.id, project_id:pid, kind:g('pr-kind'), title, likelihood:Number(g('pr-l')), impact:Number(g('pr-i')), mitigation:g('pr-mit').trim() || null, owner_id:g('pr-owner') || null, due_date:g('pr-due') || null, status:'open' });
+    if(error){ toast(error.message, 'error'); return; } await loadPm(); pmDraw();
+  };
+  window.pmRiskStatus = async function(id, st){ await STATE.supabase.from('project_risks').update({ status:st }).eq('id', id); await loadPm(); pmDraw(); };
+
+  /* ---------- budget ---------- */
+  function budgetHtml(p, s){
+    const cs = D().costs.filter(c => c.project_id === p.id).sort((a, b) => String(b.cost_date || '').localeCompare(String(a.cost_date || '')));
+    const cur = p.currency || 'ZAR', f = n => cur + ' ' + nz(n).toLocaleString('en-ZA', { minimumFractionDigits:2, maximumFractionDigits:2 });
+    const pct = s.bud ? Math.round(s.spent * 100 / s.bud) : 0;
+    return `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+      <div class="detail-card" style="padding:12px 16px;flex:1;"><div style="font-size:11px;color:var(--text-faint);">BUDGET</div><div style="font-size:20px;font-weight:800;">${f(s.bud)}</div></div>
+      <div class="detail-card" style="padding:12px 16px;flex:1;"><div style="font-size:11px;color:var(--text-faint);">SPENT</div><div style="font-size:20px;font-weight:800;color:${pct > 100 ? '#B3261E' : 'inherit'};">${f(s.spent)}</div><div style="font-size:11.5px;">${pct}% of budget</div></div>
+      <div class="detail-card" style="padding:12px 16px;flex:1;"><div style="font-size:11px;color:var(--text-faint);">REMAINING</div><div style="font-size:20px;font-weight:800;">${f(s.bud - s.spent)}</div></div></div>
+    ${canW() ? `<div class="detail-card" style="padding:14px 16px;margin-bottom:12px;"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;">
+      <div class="field"><label>Type</label><select id="pc-kind"><option value="actual">Actual cost</option><option value="budget">Budget line</option></select></div>
+      <div class="field"><label>Category</label><input id="pc-cat" placeholder="Labour, materials, travel"></div><div class="field" style="flex:1;min-width:160px;"><label>Description</label><input id="pc-desc"></div>
+      <div class="field"><label>Amount</label><input type="number" step="any" id="pc-amt" style="width:120px;"></div><div class="field"><label>Date</label><input type="date" id="pc-date" value="${tdy()}"></div><button class="btn-small primary" onclick="pmAddCost('${p.id}')">Add</button></div>
+      <p style="font-size:11.5px;color:var(--text-faint);margin:8px 0 0;">The overall budget is set in Edit details. Budget lines are used as the budget only when no overall budget is set.</p></div>` : ''}
+    ${cs.length ? `<table><tr><th>Date</th><th>Type</th><th>Category</th><th>Description</th><th style="text-align:right;">Amount</th><th></th></tr>${cs.map(c => `<tr><td>${fmtDate(c.cost_date)}</td><td>${c.kind === 'budget' ? 'Budget' : 'Actual'}</td><td>${E(c.category || '')}</td><td>${E(c.description || '')}</td><td style="text-align:right;">${f(c.amount)}</td><td>${canW() ? `<button class="btn-small" onclick="pmDelCost('${c.id}')">Delete</button>` : ''}</td></tr>`).join('')}</table>` : '<div class="empty-state"><p>No costs recorded.</p></div>'}`;
+  }
+  window.pmAddCost = async function(pid){
+    const g = k => (document.getElementById(k) || {}).value || '', amt = nz(g('pc-amt')); if(!amt){ toast('Enter the amount.', 'error'); return; }
+    const { error } = await STATE.supabase.from('project_costs').insert({ organisation_id:STATE.org.id, project_id:pid, kind:g('pc-kind'), category:g('pc-cat').trim() || null, description:g('pc-desc').trim() || null, amount:amt, cost_date:g('pc-date') || null, created_by:STATE.user.id });
+    if(error){ toast(error.message, 'error'); return; } await loadPm(); pmDraw();
+  };
+  window.pmDelCost = async function(id){ if(!confirm('Delete this line?')) return; await STATE.supabase.from('project_costs').delete().eq('id', id); await loadPm(); pmDraw(); };
+
+  /* ---------- linked records ---------- */
+  function linkTargets(type){
+    const q = (STATE._qi && STATE._qi.quotes) || [], po = (STATE._qi && STATE._qi.pos) || [];
+    return ({ nonconformance:(STATE.ncs || []).map(n => [n.id, `${n.ref_code}: ${n.title}`]), raga:(STATE.ragaAlerts || []).map(r => [r.id, `${r.ref_code || ''}: ${r.title || r.alert_type || ''}`]), audit:(STATE.audits || []).map(a => [a.id, `${a.audit_ref}: ${a.title}`]),
+      management_review:(STATE.managementReviews || []).map(m => [m.id, 'Management review ' + fmtDate(m.meeting_date)]), risk:(STATE.risks || []).map(r => [r.id, `${r.ref_code}: ${r.title}`]), objective:(STATE.objectives || []).map(o => [o.id, `${o.ref_code}: ${(o.specific_statement || '').slice(0, 60)}`]),
+      document:(STATE.documents || []).map(d => [d.id, `${d.doc_number || ''} ${d.title}`]), quote:q.map(x => [x.id, `${x.quote_number}: ${x.client_name || ''}`]), purchase_order:po.map(x => [x.id, `${x.po_number}: ${x.client_name || ''}`]) }[type]) || [];
+  }
+  window.pmLinkTargets = function(){ const t = document.getElementById('pl-type').value; document.getElementById('pl-target').innerHTML = linkTargets(t).map(([id, l]) => `<option value="${id}">${E(l)}</option>`).join('') || '<option value="">Nothing to link (open that module once to load it)</option>'; };
+  function linksHtml(p){
+    const ls = D().links.filter(l => l.project_id === p.id);
+    return `${canW() ? `<div class="detail-card" style="padding:14px 16px;margin-bottom:12px;"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;"><div class="field"><label>Record type</label><select id="pl-type" onchange="pmLinkTargets()">${Object.keys(SRC).filter(k => k !== 'other').map(k => `<option value="${k}">${SRC[k]}</option>`).join('')}</select></div>
+      <div class="field" style="flex:1;min-width:240px;"><label>Record</label><select id="pl-target"></select></div><button class="btn-small primary" onclick="pmAddLink('${p.id}')">Link</button></div></div>` : ''}
+    ${ls.length ? `<table><tr><th>Type</th><th>Record</th><th></th></tr>${ls.map(l => `<tr><td>${E(SRC[l.link_type] || l.link_type)}</td><td class="strong">${E(l.label || '')}</td><td style="white-space:nowrap;"><button class="btn-small" onclick="pmOpenSource('${l.link_type}','${l.link_id}')">Open</button> ${canW() ? `<button class="btn-small" onclick="pmDelLink('${l.id}')">Unlink</button>` : ''}</td></tr>`).join('')}</table>` : '<div class="empty-state"><p>Nothing linked. Link the nonconformances, audits, documents, quotations and other records this project relates to.</p></div>'}
+    <script>setTimeout(()=>{try{pmLinkTargets()}catch(e){}},0)<\/script>`;
+  }
+  window.pmAddLink = async function(pid){
+    const t = document.getElementById('pl-type').value, id = document.getElementById('pl-target').value; if(!id){ toast('Choose a record.', 'error'); return; }
+    const lab = (linkTargets(t).find(x => x[0] === id) || [])[1] || '';
+    const { error } = await STATE.supabase.from('project_links').insert({ organisation_id:STATE.org.id, project_id:pid, link_type:t, link_id:id, label:`${SRC[t]}: ${lab}` }); if(error){ toast(error.message, 'error'); return; } await loadPm(); pmDraw();
+  };
+  window.pmDelLink = async function(id){ await STATE.supabase.from('project_links').delete().eq('id', id); await loadPm(); pmDraw(); };
+  { const _d = pmDraw; /* run the link target filler after the links tab renders */ }
+
+  /* ---------- status reports ---------- */
+  function updatesHtml(p){
+    const us = D().updates.filter(u => u.project_id === p.id);
+    return `${canW() ? `<div class="detail-card" style="padding:14px 16px;margin-bottom:12px;"><div class="form-grid">
+      <div class="field"><label>Entry</label><select id="pu-kind"><option value="status">Status report</option><option value="change">Scope or schedule change</option><option value="decision">Decision</option></select></div>
+      <div class="field"><label>Reported status</label><select id="pu-rag"><option value="green">On track</option><option value="amber">At risk</option><option value="red">Off track</option></select></div>
+      <div class="field span3"><label>Summary</label><textarea id="pu-sum" placeholder="Progress since the last report, issues, what the sponsor needs to know"></textarea></div>
+      <div class="field span3"><label>Next steps</label><textarea id="pu-next"></textarea></div></div><button class="btn-small primary" onclick="pmAddUpdate('${p.id}')">Save entry</button></div>` : ''}
+    ${us.length ? us.map(u => `<div class="detail-card" style="padding:12px 16px;margin-bottom:8px;"><div style="font-size:11.5px;color:var(--text-faint);">${fmtDate(day(u.created_at))} · ${E(memberName(u.author_id) || '')} · ${{ status:'Status report', change:'Change', decision:'Decision' }[u.kind] || u.kind} ${u.rag ? pill(HEALTH, u.rag) : ''}</div><div style="font-size:13px;white-space:pre-wrap;margin-top:4px;">${E(u.summary)}</div>${u.next_steps ? `<div style="font-size:12.5px;margin-top:6px;"><b>Next steps:</b> ${E(u.next_steps)}</div>` : ''}</div>`).join('') : '<div class="empty-state"><p>No status reports yet.</p></div>'}`;
+  }
+  window.pmAddUpdate = async function(pid){
+    const g = k => (document.getElementById(k) || {}).value || '', sum = g('pu-sum').trim(); if(!sum){ toast('Write the summary.', 'error'); return; }
+    const kind = g('pu-kind');
+    const { error } = await STATE.supabase.from('project_updates').insert({ organisation_id:STATE.org.id, project_id:pid, kind, rag:kind === 'status' ? g('pu-rag') : null, summary:sum, next_steps:g('pu-next').trim() || null, author_id:STATE.user.id });
+    if(error){ toast(error.message, 'error'); return; } await loadPm(); pmDraw();
+  };
+
+  /* ---------- team ---------- */
+  function teamHtml(p){
+    const ms = D().members.filter(m => m.project_id === p.id);
+    return `${canW() ? `<div class="detail-card" style="padding:14px 16px;margin-bottom:12px;"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;"><div class="field"><label>Team member</label><select id="pm-user">${memberOptions('')}</select></div>
+      <div class="field"><label>Role</label><select id="pm-role"><option value="member">Team member</option><option value="manager">Project manager</option><option value="stakeholder">Stakeholder</option></select></div><button class="btn-small primary" onclick="pmAddMember('${p.id}')">Add</button></div></div>` : ''}
+    ${ms.length ? `<table><tr><th>Name</th><th>Role</th><th>Open tasks</th><th></th></tr>${ms.map(m => `<tr><td class="strong">${E(memberName(m.user_id) || m.display_name || '')}</td><td>${E({ member:'Team member', manager:'Project manager', stakeholder:'Stakeholder' }[m.role] || m.role)}</td><td>${tasksOf(p.id).filter(t => t.assignee_id === m.user_id && t.status !== 'done').length}</td><td>${canW() ? `<button class="btn-small" onclick="pmDelMember('${m.id}')">Remove</button>` : ''}</td></tr>`).join('')}</table>` : '<div class="empty-state"><p>No team members yet.</p></div>'}`;
+  }
+  window.pmAddMember = async function(pid){
+    const u = document.getElementById('pm-user').value; if(!u) return; if(D().members.some(m => m.project_id === pid && m.user_id === u)){ toast('Already on the team.', 'info'); return; }
+    const { error } = await STATE.supabase.from('project_members').insert({ organisation_id:STATE.org.id, project_id:pid, user_id:u, display_name:memberName(u), role:document.getElementById('pm-role').value }); if(error){ toast(error.message, 'error'); return; } await loadPm(); pmDraw();
+  };
+  window.pmDelMember = async function(id){ await STATE.supabase.from('project_members').delete().eq('id', id); await loadPm(); pmDraw(); };
+
+  /* the link tab needs its target list filled after it is drawn */
+  { const _pd = pmDraw; pmDraw = function(){ _pd.apply(this, arguments); if(STATE._pmView && STATE._pmTab === 'links' && document.getElementById('pl-type')) pmLinkTargets(); }; window.pmDraw = pmDraw; }
+
+  /* ---------- print: project status report ---------- */
+  window.pmPrint = async function(id){
+    const p = byId(id); if(!p) return; const s = stats(p), d = D();
+    const meta = [['Project', p.ref_code + ': ' + p.title], ['Type', TYPES[p.project_type] || ''], ['Status', STATUS[p.status][0]], ['Health', HEALTH[s.health][0]], ['Owner', memberName(p.owner_id) || '—'], ['Start', fmtDate(p.start_date)], ['Target end', fmtDate(p.target_end_date)], ['Progress', s.pct + '%']];
+    let body = '';
+    ['description','objectives','scope','out_of_scope','success_criteria'].forEach(k => { if(p[k]) body += printSectionTitle({ description:'Description', objectives:'Objectives', scope:'Scope', out_of_scope:'Out of scope', success_criteria:'Success criteria' }[k]) + `<p style="white-space:pre-wrap;">${E(p[k])}</p>`; });
+    if(s.phs.length) body += printSectionTitle('Phases and milestones') + printTable(['Phase','Start','Due','Tasks done','Status'], s.phs.map(ph => { const pt = s.ts.filter(t => t.phase_id === ph.id); return [E((ph.is_milestone ? '◆ ' : '') + ph.name), fmtDate(ph.start_date), fmtDate(ph.due_date), `${pt.filter(t => t.status === 'done').length}/${pt.length}`, E(PHSTATUS[ph.status])]; }));
+    const open = s.ts.filter(t => t.status !== 'done');
+    if(open.length) body += printSectionTitle('Open tasks') + printTable(['Task','Assignee','Due','Status'], open.sort((a, b) => String(a.due_date || '9').localeCompare(String(b.due_date || '9'))).map(t => [E(t.title), E(memberName(t.assignee_id) || '—'), fmtDate(t.due_date), E(t.status)]));
+    if(s.risks.length) body += printSectionTitle('Open risks and issues') + printTable(['Type','Title','Score','Mitigation'], s.risks.sort((a, b) => riskScore(b) - riskScore(a)).map(r => [r.kind === 'issue' ? 'Issue' : 'Risk', E(r.title), riskScore(r), E(r.mitigation || '')]));
+    if(s.bud || s.spent) body += printSectionTitle('Budget') + `<p>Budget ${E(p.currency || '')} ${s.bud.toLocaleString('en-ZA')}, spent ${s.spent.toLocaleString('en-ZA')}, remaining ${(s.bud - s.spent).toLocaleString('en-ZA')}.</p>`;
+    const ups = d.updates.filter(u => u.project_id === id).slice(0, 5);
+    if(ups.length) body += printSectionTitle('Recent status reports') + printTable(['Date','Entry','Status','Summary'], ups.map(u => [fmtDate(day(u.created_at)), E(u.kind), u.rag ? HEALTH[u.rag][0] : '—', E(u.summary)]));
+    if(p.lessons_learned) body += printSectionTitle('Lessons learned') + `<p style="white-space:pre-wrap;">${E(p.lessons_learned)}</p>`;
+    await printRecord('Project Status Report', p.ref_code, meta, body, null, 'projects');
+  };
+
+  /* ====== integration: tasks, reminders, home page, compliance dashboard, source records ====== */
+  { const _tl = taskLinkedRef; taskLinkedRef = window.taskLinkedRef = function(t){ if(t && t.project_id){ const p = byId(t.project_id); if(p) return p.ref_code + ' ' + p.title; } return _tl.apply(this, arguments); }; }
+  DATE_TRACKED_MODULES.push(
+    { key:'projects', label:'Projects: Target End Date', list:() => !off() ? D().projects.map(p => ({ ...p, _t:`${p.ref_code}: ${p.title}` })) : [], dateField:'target_end_date', isResolved:x => ['completed','cancelled'].includes(x.status), titleField:'_t', getPerson:x => memberName(x.owner_id) },
+    { key:'projects', label:'Projects: Phases and Milestones Due', list:() => !off() ? D().phases.filter(ph => { const p = byId(ph.project_id); return p && ['active','approved'].includes(p.status); }).map(ph => ({ ...ph, _t:`${(byId(ph.project_id) || {}).ref_code || ''}: ${ph.name}`, _owner:(byId(ph.project_id) || {}).owner_id })) : [], dateField:'due_date', isResolved:x => x.status === 'done', titleField:'_t', getPerson:x => memberName(x._owner) },
+    { key:'projects', label:'Projects: Risks and Issues Due', list:() => !off() ? D().risks.filter(r => r.status === 'open' && r.due_date).map(r => ({ ...r, _t:`${(byId(r.project_id) || {}).ref_code || ''}: ${r.title}` })) : [], dateField:'due_date', isResolved:x => x.status !== 'open', titleField:'_t', getPerson:x => memberName(x.owner_id) });
+
+  const panelStats = () => { const open = D().projects.filter(p => !['completed','cancelled'].includes(p.status)), ss = open.map(stats); return { open, red:ss.filter(x => x.health === 'red').length, amber:ss.filter(x => x.health === 'amber').length, overdue:ss.reduce((a, x) => a + x.overdue, 0), ss }; };
+  { const _o = RENDERERS.overview; RENDERERS.overview = function(){ let html = _o.apply(this, arguments);
+      try {
+        if(!canAccessModule('projects') || !D().loaded) return html;
+        const st = panelStats(); if(!st.open.length) return html;
+        const rows = st.open.map((p, i) => ({ p, s:st.ss[i] })).sort((a, b) => ({ red:0, amber:1, green:2, none:3 }[a.s.health] - { red:0, amber:1, green:2, none:3 }[b.s.health])).slice(0, 5);
+        const card = `<div class="ovx-card" style="margin-bottom:14px;"><h3>Projects<a onclick="showModule('projects')">View all</a></h3>
+          <div style="font-size:12.5px;margin-bottom:6px;">${st.open.length} open · <b style="color:#B3261E;">${st.red} off track</b> · <b style="color:#B26A16;">${st.amber} at risk</b> · ${st.overdue} overdue project tasks</div>
+          ${rows.map(({ p, s }) => `<div class="ovx-row" onclick="showModule('projects');setTimeout(()=>pmOpen('${p.id}'),400)"><span class="ref">${E(p.ref_code)}</span><span class="m">${E(p.title)}</span><span style="margin-left:auto;">${pill(HEALTH, s.health)} ${s.pct}%</span></div>`).join('')}</div>`;
+        const i = html.indexOf('<div class="ovx-grid">'); if(i >= 0) html = html.slice(0, i) + card + html.slice(i);
+      } catch(e){ console.warn('b82 overview', e); }
+      return html; }; }
+  { const _rc = renderComplianceDashboard; renderComplianceDashboard = window.renderComplianceDashboard = function(){ const r = _rc.apply(this, arguments);
+      try {
+        const wrap = document.getElementById('compliance-report'); if(!wrap || !canAccessModule('projects') || !D().loaded) return r;
+        const st = panelStats(), all = D().projects, done = all.filter(p => p.status === 'completed').length;
+        if(!all.length) return r;
+        const late = st.open.filter(p => p.target_end_date && p.target_end_date < tdy()).length;
+        wrap.insertAdjacentHTML('beforeend', mrSection('Projects', 'projects', `<div class="mr-stat-row">
+          ${mrStatCard(st.open.length, 'Open projects', null, null)}${mrStatCard(st.red, 'Off track', null, st.red ? 'var(--red)' : 'var(--green)')}${mrStatCard(st.amber, 'At risk', null, st.amber ? 'var(--amber, #B26A16)' : 'var(--green)')}
+          ${mrStatCard(st.overdue, 'Overdue project tasks', null, st.overdue ? 'var(--red)' : 'var(--green)')}${mrStatCard(late, 'Past target end date', null, late ? 'var(--red)' : 'var(--green)')}${mrStatCard(done, 'Completed', null, null)}</div>
+          ${st.open.map((p, i) => ({ p, s:st.ss[i] })).filter(x => x.s.health === 'red' || x.s.health === 'amber').map(({ p, s }) => `<p style="font-size:12.5px;margin:2px 0;"><b>${E(p.ref_code)}</b> ${E(p.title)}: ${HEALTH[s.health][0]}, ${s.pct}% complete${s.overdue ? ', ' + s.overdue + ' overdue tasks' : ''}</p>`).join('')}`));
+      } catch(e){ console.warn('b82 compliance', e); }
+      return r; }; }
+
+  /* "Projects" card on the source records, with a Start a project button */
+  function srcCard(type, id){
+    const d = D(), linked = d.links.filter(l => l.link_type === type && l.link_id === id).map(l => byId(l.project_id)).filter(Boolean);
+    const uniq = [...new Set(linked)];
+    return `<div class="detail-card pm-src-card" style="padding:14px 16px;margin-top:14px;"><div class="panel-head" style="display:flex;align-items:center;"><h3 style="font-size:14px;">Projects</h3>${canW() ? `<button class="btn-small primary" style="margin-left:auto;" onclick="pmStartFrom('${type}','${id}')">Start a project from this</button>` : ''}</div>
+      ${uniq.length ? uniq.map(p => `<div class="ovx-row" style="cursor:pointer;" onclick="showModule('projects');setTimeout(()=>pmOpen('${p.id}'),400)"><span class="ref">${E(p.ref_code)}</span><span class="m">${E(p.title)}</span> ${pill(STATUS, p.status)}</div>`).join('') : '<p style="font-size:12.5px;color:var(--text-faint);margin:0;">No project is linked to this record yet. Use a project when the response needs a plan, several people and a deadline.</p>'}</div>`;
+  }
+  [['openNCDetail','nonconformance','nc-detail-slot'],['openRagaDetail','raga','raga-detail-slot'],['openAuditDetail','audit','audit-detail-slot'],['openMRDetail','management_review','mr-detail-slot'],['openRiskDetail','risk','risk-detail-slot'],['openObjectiveDetail','objective','obj-detail-slot']].forEach(([fn, type, slot]) => {
+    const orig = window[fn]; if(typeof orig !== 'function') return;
+    const w = async function(id){ const r = await orig.apply(this, arguments);
+      try { if(off() || !canAccessModule('projects')) return r; const el = document.getElementById(slot); if(!el || !el.innerHTML.trim()) return r; el.querySelectorAll('.pm-src-card').forEach(n => n.remove());
+        const panel = el.querySelector('.detail-panel') || el; panel.insertAdjacentHTML('beforeend', srcCard(type, id)); } catch(e){}
+      return r; };
+    try { eval(fn + ' = w'); } catch(e){} window[fn] = w;
+  });
+  /* quotations: start a project from an accepted quotation (the delivery of the quoted scope) */
+  if(typeof window.qiOpen === 'function'){
+    const _qo = window.qiOpen;
+    window.qiOpen = async function(kind, id){ const r = await _qo.apply(this, arguments);
+      try { if(kind === 'quote' && !off() && canW()){ const q = ((STATE._qi || {}).quotes || []).find(x => x.id === id);
+          const card = document.querySelector('#qi-body .detail-card'); if(q && card && ['accepted','invoiced'].includes(q.status) && !card.querySelector('.pm-q-btn')){
+            const linked = D().links.some(l => l.link_type === 'quote' && l.link_id === id);
+            card.insertAdjacentHTML('beforeend', `<div class="pm-q-btn" style="border-top:1px solid var(--border-soft);margin-top:12px;padding-top:10px;font-size:12.5px;">${linked ? 'A project has been started for this order.' : '<button class="btn-small primary" onclick="pmStartFrom(\'quote\',\'' + id + '\')">Start a project to deliver this order</button> The quoted scope becomes the project; use the delivery template for phases.'}</div>`); } } } catch(e){}
+      return r; };
+  }
+})();
+
+
+/* ============================================================================
+   Release 16: RAGA print parity with nonconformances, participation loop for RAGA,
+   and Deficiency Control (every deficiency found in an inspection, audit or checklist
+   becomes a nonconformance or RAGA alert).
+   ============================================================================ */
+(function(){
+  const E = s => escapeHtml(s == null ? '' : String(s));
+  const arr = x => Array.isArray(x) ? x : [];
+  const addDaysISO = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0,10); };
+
+  /* ---------------- 1. RAGA print: every section selectable, photos placed by section ---------------- */
+  window.RAGA_PRINT_SECTIONS = RAGA_PRINT_SECTIONS.length ? [
+    { key:'immediate', label:'Immediate Action Taken', group:'Response' },
+    { key:'contact', label:'Contact Details of Involved Parties', group:'Response' },
+    { key:'people', label:'People Involved and Their Requested Input', group:'Response' },
+    { key:'rca', label:'Root Cause Analysis (5 Whys) with participants', group:'Investigation' },
+    { key:'rootcause', label:'Root Cause', group:'Investigation' },
+    { key:'earlier', label:'Could This Have Been Identified Earlier', group:'Investigation' },
+    { key:'repeated', label:'Repeated Issue', group:'Investigation' },
+    { key:'correction', label:'Correction / Corrective Action', group:'Actions' },
+    { key:'preventive', label:'Preventive Action', group:'Actions' },
+    { key:'effectiveness', label:'Effectiveness of Preventive Action', group:'Actions' },
+    { key:'tasks', label:'Linked Tasks', group:'Actions' },
+    { key:'projects', label:'Linked Projects', group:'Actions' },
+    { key:'risks', label:'Linked Risks & Opportunities', group:'Links' },
+    { key:'source', label:'Where this was raised from (audit, inspection)', group:'Links' },
+    { key:'photoDesc', label:'Photos and illustrations with the Description', group:'Pictures' },
+    { key:'photoImm', label:'Photos with Immediate Action', group:'Pictures' },
+    { key:'photoRca', label:'Photos and sketches with the Root Cause Analysis', group:'Pictures' },
+    { key:'photoCa', label:'Photos with the Corrective Action', group:'Pictures' },
+    { key:'photoPrev', label:'Photos with the Preventive Action', group:'Pictures' },
+    { key:'photoGen', label:'Other photos not assigned to a section', group:'Pictures' },
+    { key:'otherEvidence', label:'Other Evidence Attached (documents list)', group:'Evidence' },
+    { key:'history', label:'Change History', group:'Evidence' },
+    { key:'signatures', label:'Signature blocks', group:'Evidence' },
+  ] : RAGA_PRINT_SECTIONS;
+
+  window.printRaga = function(id){
+    const overlay = document.getElementById('print-options-overlay'), modal = document.getElementById('print-options-modal');
+    const groups = []; window.RAGA_PRINT_SECTIONS.forEach(s => { let g = groups.find(x => x.n === s.group); if(!g){ g = { n:s.group, items:[] }; groups.push(g); } g.items.push(s); });
+    modal.innerHTML = `
+      <button class="close-btn" style="position:absolute; top:20px; right:20px;" onclick="closePrintOptions()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      <h3 style="padding-right:36px;">What should this printout include?</h3>
+      <p class="sub" style="margin-bottom:10px;">The alert details and description always print. Tick the sections and pictures to include in this copy. Sections with nothing recorded are left out automatically.</p>
+      <div style="display:flex;gap:8px;margin-bottom:8px;"><button class="btn-small" onclick="document.querySelectorAll('.rps-cb').forEach(c=>c.checked=true)">Select all</button><button class="btn-small" onclick="document.querySelectorAll('.rps-cb').forEach(c=>c.checked=false)">Clear all</button></div>
+      <div style="max-height:360px; overflow-y:auto; margin-bottom:16px;">
+        ${groups.map(g => `<div style="font-size:10.5px;text-transform:uppercase;color:var(--text-faint);margin:10px 0 2px;letter-spacing:.06em;">${E(g.n)}</div>` + g.items.map(s => `<label style="display:flex; align-items:center; gap:8px; padding:5px 0; font-size:13px; cursor:pointer;"><input type="checkbox" class="rps-cb" id="rps-${s.key}" checked style="width:auto;"> ${E(s.label)}</label>`).join('')).join('')}
+      </div>
+      <div class="form-actions"><button class="btn-cancel" onclick="closePrintOptions()">Cancel</button><button class="btn-primary" onclick="confirmPrintRaga('${id}')">Print / PDF</button></div>`;
+    overlay.classList.add('active');
+  };
+  window.confirmPrintRaga = async function(id){
+    const sections = {}; window.RAGA_PRINT_SECTIONS.forEach(s => { const e = document.getElementById('rps-' + s.key); sections[s.key] = e ? e.checked : true; });
+    closePrintOptions(); await window.buildAndPrintRagaV2(id, sections);
+  };
+  /* keep the old name pointing at the new builder for any caller still using it */
+  window.buildAndPrintRaga = buildAndPrintRaga = function(id, sections){ return window.buildAndPrintRagaV2(id, sections || {}); };
+
+  window.buildAndPrintRagaV2 = async function(id, sec){
+    const r = ragaById(id); if(!r) return;
+    showLoader('Preparing the report…');
+    try {
+      const on = k => sec[k] !== false;
+      const isGreen = r.alert_type === 'green';
+      const typeLabel = { red:'Red Alert', orange:'Orange Alert', green:'Green Alert' };
+      const linkedTasks = STATE.tasks.filter(t => t.linked_type === 'raga_alert' && t.linked_id === id);
+      const sb = STATE.supabase;
+      const [riskQ, rcaQ, histQ, ppQ, linkQ] = await Promise.all([
+        sb.from('raga_risk_links').select('risk_id, risk_register(ref_code, title)').eq('raga_alert_id', id),
+        sb.from('root_cause_analyses').select('*').eq('raga_alert_id', id),
+        sb.from('raga_alert_history').select('*').eq('raga_alert_id', id).order('changed_at', { ascending:true }),
+        sb.from('record_people').select('*').eq('record_type', 'raga').eq('record_id', id).order('created_at', { ascending:true }),
+        sb.from('audit_findings').select('id, audit_id, clause_reference, audits(audit_ref, title)').eq('raga_alert_id', id),
+      ].map(p => Promise.resolve(p).catch(() => ({ data:null }))));
+      const riskLinks = arr(riskQ.data), rca = arr(rcaQ.data)[0] || null, hist = arr(histQ.data), people = arr(ppQ.data), srcFindings = arr(linkQ.data);
+      let rcaParts = []; if(rca){ try{ const q = await sb.from('rca_participants').select('user_id').eq('rca_id', rca.id); rcaParts = arr(q.data); }catch(e){} }
+      const { files: evidenceFiles } = await loadEvidence('raga_alert', id);
+      const imgs = arr(evidenceFiles).filter(f => (f.file_type || '').startsWith('image/'));
+      const by = { description:[], immediate:[], rca:[], corrective_action:[], preventive:[], general:[] };
+      for(const f of imgs){
+        const { data } = await sb.storage.from('evidence').createSignedUrl(f.storage_path, 3600);
+        if(!data || !data.signedUrl) continue;
+        (by[f.print_section] || by.general).push({ url:data.signedUrl, name:f.description || f.file_name });
+      }
+      const photos = (key, flag) => { const p = by[key]; if(!on(flag) || !p || !p.length) return '';
+        return `<div style="margin:14px 0; display:flex; flex-wrap:wrap; gap:16px;">${p.map(x => `<div style="text-align:center; background:#FAFAF9; border:1px solid #E3E1DF; border-radius:8px; padding:10px; page-break-inside:avoid;"><img src="${x.url}" style="max-width:280px; max-height:220px; object-fit:contain; border-radius:4px; display:block;"><div style="font-size:10.5px; color:#615C59; margin-top:8px; font-weight:600; max-width:280px;">${E(x.name)}</div></div>`).join('')}</div>`; };
+
+      const dept = r.department_id ? arr(STATE.docDepartments).find(x => x.id === r.department_id) : null;
+      const pers = r.personnel_id ? personById(r.personnel_id) : null;
+      const meta = isGreen
+        ? [['Alert type', typeLabel[r.alert_type]], ['Raised', `${fmtDate(r.raised_date)} by ${memberName(r.raised_by)}`], ['Recognised', r.recognised_person_id && personById(r.recognised_person_id) ? personById(r.recognised_person_id).full_name : '—']]
+        : [['Alert type', typeLabel[r.alert_type]], ['Status', label(r.status)], ['Owner', memberName(r.owner_id)], ['Raised', `${fmtDate(r.raised_date)} by ${memberName(r.raised_by)}`], ['Target close', fmtDate(r.target_close_date)]];
+      if(r.client_ref) meta.splice(1, 0, ['Internal unique reference', r.client_ref]);
+      if(dept) meta.push(['Department', dept.name]);
+      if(pers) meta.push(['Personnel concerned', pers.full_name]);
+      if(!isGreen && r.status === 'closed') meta.push(['Verified by', memberName(r.verified_by)], ['Verified date', fmtDate(r.verified_date)], ['Closure signature', r.closure_signature_name || '—']);
+      if(on('source') && srcFindings.length){ const f = srcFindings[0]; meta.push(['Raised from audit', f.audits ? `${f.audits.audit_ref}: ${f.audits.title}` : 'audit finding']); }
+
+      let body = `<p><b>Description</b><br>${E(r.description || 'No description recorded.')}</p>`;
+      body += photos('description', 'photoDesc');
+      if(!isGreen){
+        if(on('immediate') && r.immediate_action_taken){ body += printSectionTitle('Immediate Action Taken') + `<p>${E(r.immediate_action_taken)}</p>`; }
+        body += photos('immediate', 'photoImm');
+        if(on('contact') && r.contact_details) body += printSectionTitle('Contact Details of Involved Parties') + `<p>${E(r.contact_details)}</p>`;
+        if(on('people') && people.length){
+          const PURP = { participate:'Take part in the investigation', comment:'Add comments', info:'Provide information', upload:'Upload documents or evidence' };
+          body += printSectionTitle('People Involved') + printTable(['Person','Input requested','Contacted'], people.map(p => [E(p.person_name), E(arr(p.purposes).map(k => PURP[k] || k).join(', ') || '—'), p.notified_at ? fmtDate(String(p.notified_at).slice(0,10)) : 'Not emailed']));
+        }
+        if(on('rca') && rca){
+          const w = [1,2,3,4,5].filter(i => rca['why_' + i]);
+          if(w.length || rca.concluded_root_cause){
+            body += printSectionTitle('Cause of Failure: Root Cause Analysis (5 Whys)');
+            if(w.length) body += printTable(['#','Why'], w.map(i => [i, E(rca['why_' + i])]));
+            body += photos('rca', 'photoRca');
+            if(rca.concluded_root_cause) body += `<p style="margin-top:8px;"><b>Concluded root cause:</b> ${E(rca.concluded_root_cause)}</p>`;
+            if(rcaParts.length) body += `<p style="margin-top:6px;"><b>Participants:</b> ${rcaParts.map(p => E(memberName(p.user_id))).join(', ')}</p>`;
+          }
+        } else body += photos('rca', 'photoRca');
+        if(on('rootcause') && r.root_cause) body += printSectionTitle('Root Cause') + `<p>${E(r.root_cause)}</p>`;
+        if(on('earlier') && r.could_identify_earlier !== null && r.could_identify_earlier !== undefined) body += printSectionTitle('Could This Have Been Identified at an Earlier Stage?') + `<p>${r.could_identify_earlier ? 'Yes' : 'No'}${r.could_identify_earlier && r.earlier_stage ? ': ' + E(r.earlier_stage) : ''}</p>`;
+        if(on('repeated') && r.is_repeated !== null && r.is_repeated !== undefined) body += printSectionTitle('Repeated Issue') + `<p>${r.is_repeated ? `Yes: repeated ${r.repeated_count || '?'} time${r.repeated_count === 1 ? '' : 's'} before` : 'No, not a repeat of a previous issue'}</p>`;
+        if(on('correction') && r.correction) body += printSectionTitle('Correction / Corrective Action') + `<p>${E(r.correction)}</p>`;
+        body += photos('corrective_action', 'photoCa');
+        if(on('preventive') && r.preventive_action) body += printSectionTitle('Preventive Action') + `<p>${E(r.preventive_action)}</p>`;
+        body += photos('preventive', 'photoPrev');
+        if(on('effectiveness') && r.effectiveness) body += printSectionTitle('Effectiveness of Preventive Action') + `<p>${E(r.effectiveness)}</p>`;
+      }
+      body += photos('general', 'photoGen');
+      if(on('risks') && riskLinks.length) body += printSectionTitle('Linked Risks & Opportunities') + '<ul>' + riskLinks.filter(l => l.risk_register).map(l => `<li>${E(l.risk_register.ref_code)}: ${E(l.risk_register.title)}</li>`).join('') + '</ul>';
+      if(on('tasks') && linkedTasks.length) body += printSectionTitle('Linked Tasks') + printTable(['Task','Assignee','Due','Status'], linkedTasks.map(t => [E(t.title), E(memberName(t.assignee_id)), fmtDate(t.due_date), label(t.status)]));
+      if(on('projects') && STATE._pm && STATE._pm.loaded){
+        const ps = arr(STATE._pm.links).filter(l => l.link_type === 'raga' && l.link_id === id).map(l => arr(STATE._pm.projects).find(p => p.id === l.project_id)).filter(Boolean);
+        if(ps.length) body += printSectionTitle('Linked Projects') + '<ul>' + ps.map(p => `<li>${E(p.ref_code)}: ${E(p.title)} (${E(label(p.status))})</li>`).join('') + '</ul>';
+      }
+      if(on('otherEvidence')) body += buildPrintSupportingDocsList(evidenceFiles);
+      if(on('history') && hist.length) body += printSectionTitle('Change History') + printTable(['Date','Change','From','To','By'], hist.map(h => [fmtDate(String(h.changed_at).slice(0,10)), E(h.field_name), E(h.old_value || '—'), E(h.new_value || '—'), E(memberName(h.changed_by))]));
+      if(!isGreen && on('signatures')) body += `<div style="margin-top:32px; padding-top:16px; border-top:1px solid #E3E1DF; display:flex; gap:40px;">
+        <div style="flex:1;"><div style="font-size:10px; color:#9C9895; text-transform:uppercase; margin-bottom:22px;">Prepared By: Sign &amp; Date</div><div style="border-top:1px solid #545454; width:100%;"></div></div>
+        <div style="flex:1;"><div style="font-size:10px; color:#9C9895; text-transform:uppercase; margin-bottom:22px;">Verified By: Sign &amp; Date</div><div style="border-top:1px solid #545454; width:100%;"></div></div></div>`;
+      hideLoader();
+      await printRecord(r.title, r.ref_code, meta, body, '', 'raga');
+    } catch(e){ hideLoader(); toast('Could not prepare the report: ' + e.message, 'error'); }
+    finally { try{ hideLoader(); }catch(e){} }
+  };
+
+  /* ---------------- 2. participation loop for RAGA ---------------- */
+  { const _s = saveRagaDetail; saveRagaDetail = window.saveRagaDetail = async function(id){
+      const r = await _s.apply(this, arguments);
+      try {
+        const ppl = STATE._ppl, rows = (ppl && ppl.rt === 'raga' && ppl.rid === id) ? ppl.rows : [];
+        const me = rows.find(x => x.user_id === STATE.user.id);
+        if(me){ const a = ragaById(id) || {}; const body = `${(STATE.profile && STATE.profile.name) || 'A participant'} has added to RAGA alert ${a.ref_code || ''}, ${a.title || ''}, in QaSHE Watchman. Please sign in to review the update: ${location.origin + location.pathname}`;
+          [...new Set([a.owner_id, a.raised_by].filter(u => u && u !== STATE.user.id))].forEach(u => { try{ sendNotificationEmail(u, `Update from a participant: ${a.ref_code || 'RAGA alert'}`, body); }catch(e){} }); }
+      } catch(e){}
+      return r; }; }
+
+  /* ---------------- 3. Deficiency Control ---------------- */
+  ADMIN_CONSOLE_TOGGLES.push({ field:'auto_deficiency_enabled', label:'Automatic raising of deficiencies', note:'When an inspection, audit finding or checklist records a failure, a nonconformance (or RAGA alert where nonconformances are switched off) and a follow-up task are raised automatically. On by default.' });
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ await _lc.apply(this, arguments); if(STATE.org) STATE.org.auto_deficiency_enabled = !dfOff(); }; }
+  { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
+      if(field !== 'auto_deficiency_enabled') return _t.apply(this, arguments);
+      const { error } = await STATE.supabase.from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:'auto_deficiency', enabled:!!value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
+      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
+    }; }
+  function dfOff(){ return !!(STATE.org && STATE.org._modOff && STATE.org._modOff.has('auto_deficiency')); }
+  const usesNc = () => STATE.org.nc_enabled !== false;
+  const canRaise = () => ['admin','manager','contributor'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
+
+  const probeCache = {};
+  async function hasCol(table, col){
+    const k = table + '.' + col; if(k in probeCache) return probeCache[k];
+    let ok = false; try{ const r = await STATE.supabase.from(table).select(col).limit(1); ok = !r.error; }catch(e){}
+    return probeCache[k] = ok;
+  }
+  const busy = new Set();
+  const ncTypeFor = () => (arr(STATE.ncTypes).find(t => t.is_active && /internal/i.test(t.name)) || arr(STATE.ncTypes).find(t => t.is_active) || null);
+
+  /* Each finder returns candidate deficiencies that have no nonconformance or RAGA alert yet. */
+  async function findAll(scope){
+    scope = scope || {}; const sb = STATE.supabase, out = [];
+    const safe = async fn => { try{ await fn(); }catch(e){ console.warn('deficiency finder', e); } };
+    const ragaOn = async t => !usesNc() && await hasCol(t, 'raga_alert_id');
+    const open = async (q, t) => { q = q.is('nonconformance_id', null); if(await hasCol(t, 'raga_alert_id')) q = q.is('raga_alert_id', null); return q; };
+
+    if(!scope.kind || scope.kind === 'asset'){ await safe(async () => {
+      let q = sb.from('asset_inspection_responses').select('*').in('result', ['4','5','fail']); if(scope.id) q = q.eq('inspection_id', scope.id); q = await open(q, 'asset_inspection_responses');
+      const { data } = await q; const rows = arr(data); if(!rows.length) return;
+      const ids = [...new Set(rows.map(r => r.inspection_id))]; const ins = await sb.from('asset_inspections').select('id, asset_id, inspection_date, inspector_id').in('id', ids); const im = {}; arr(ins.data).forEach(i => im[i.id] = i);
+      rows.forEach(r => { const i = im[r.inspection_id] || {}; const a = i.asset_id ? assetById(i.asset_id) : null; const sev = (r.result === '4') ? 'minor' : 'major';
+        out.push({ key:'asset:' + r.id, src:'Asset inspection', table:'asset_inspection_responses', id:r.id, ragaOk:true, title:`Asset deviation: ${a ? a.description : 'inspection'}`.slice(0,120), desc:`${r.item_text}${r.notes ? ': ' + r.notes : ''}`, sev, source:'inspection', owner:i.inspector_id || STATE.user.id, where:a ? `${a.ref_code || ''} ${a.description || ''}`.trim() : 'Asset', refresh:'asset', assetId:i.asset_id, inspectionId:r.inspection_id }); }); }); }
+
+    if(!scope.kind || scope.kind === 'audit_checklist'){ await safe(async () => {
+      let q = sb.from('audit_checklist_item_responses').select('*').eq('result', 'nonconformance'); if(scope.id) q = q.eq(scope.by || 'audit_id', scope.id); q = await open(q, 'audit_checklist_item_responses');
+      const { data } = await q; arr(data).forEach(r => { const au = arr(STATE.audits).find(a => a.id === r.audit_id);
+        out.push({ key:'acl:' + r.id, src:'Audit checklist', table:'audit_checklist_item_responses', id:r.id, ragaOk:true, title:`Audit finding: ${au ? au.title : 'checklist'}`.slice(0,120), desc:`${r.item_text}${r.notes ? ': ' + r.notes : ''}`, sev:'major', source:'internal_audit', owner:STATE.user.id, where:au ? `${au.audit_ref || ''} ${au.title}`.trim() : 'Audit', refresh:'audit', auditId:r.audit_id }); }); }); }
+
+    if(!scope.kind || scope.kind === 'audit_finding'){ await safe(async () => {
+      let q = sb.from('audit_findings').select('*').is('nonconformance_id', null).is('raga_alert_id', null).in('finding_type', scope.withOfi ? ['major_nc','minor_nc','observation'] : ['major_nc','minor_nc']); if(scope.auditId) q = q.eq('audit_id', scope.auditId);
+      const { data } = await q; arr(data).forEach(f => { const au = arr(STATE.audits).find(a => a.id === f.audit_id); const ofi = f.finding_type === 'observation';
+        out.push({ key:'af:' + f.id, src:ofi ? 'Audit opportunity for improvement' : 'Audit finding', table:'audit_findings', id:f.id, ragaOk:true, ofi, title:`${f.clause_reference ? f.clause_reference + ': ' : ''}Audit finding`.slice(0,120), desc:f.description, clause:f.clause_reference || null, sev:f.finding_type === 'major_nc' ? 'major' : 'minor', source:'internal_audit', owner:f.raised_by || STATE.user.id, where:au ? `${au.audit_ref || ''} ${au.title}`.trim() : 'Audit', refresh:'audit', auditId:f.audit_id }); }); }); }
+
+    if(!scope.kind || scope.kind === 'five_s'){ await safe(async () => {
+      let q = sb.from('five_s_inspection_items').select('*, five_s_inspections(ref_code, area, inspector_id)').eq('result', 'nonconformance'); if(scope.id) q = q.eq('inspection_id', scope.id); q = await open(q, 'five_s_inspection_items');
+      const { data } = await q; arr(data).forEach(it => { const i = it.five_s_inspections || {};
+        out.push({ key:'5s:' + it.id, src:'5S inspection', table:'five_s_inspection_items', id:it.id, ragaOk:true, title:(ncTypeFor() ? ncTypeFor().name : '5S finding'), desc:`${it.item_text_snapshot}\n\nFound during 5S inspection ${i.ref_code || ''} (${i.area || ''}).${it.notes ? '\n\nNotes: ' + it.notes : ''}`, sev:'minor', source:'inspection', owner:i.inspector_id || STATE.user.id, where:`${i.ref_code || '5S'} ${i.area || ''}`.trim(), refresh:'fives', inspectionId:it.inspection_id }); }); }); }
+
+    if(!scope.kind || scope.kind === 'checklist_run'){ await safe(async () => {
+      if(!(await hasCol('org_checklist_run_items', 'nonconformance_id'))) return;
+      let q = sb.from('org_checklist_run_items').select('*').eq('result', 'nonconformance').is('nonconformance_id', null); if(scope.id) q = q.eq('run_id', scope.id); if(await hasCol('org_checklist_run_items', 'raga_alert_id')) q = q.is('raga_alert_id', null);
+      const { data } = await q; arr(data).forEach(it => { const run = arr(STATE.orgChecklistRuns).find(r => r.id === it.run_id); const c = run ? checklistById(run.checklist_id) : null;
+        out.push({ key:'clr:' + it.id, src:'Checklist run', table:'org_checklist_run_items', id:it.id, ragaOk:true, title:`Checklist failure: ${c ? c.name || c.title || '' : 'checklist'}`.slice(0,120), desc:`${it.item_text_snapshot}${it.comments ? ': ' + it.comments : ''}`, sev:'minor', source:'inspection', owner:(run && run.conducted_by) || STATE.user.id, where:c ? (c.name || c.title || 'Checklist') : 'Checklist', refresh:'checklist', runId:it.run_id }); }); }); }
+
+    if(!scope.kind || scope.kind === 'legal'){ await safe(async () => {
+      let q = sb.from('legal_register_checklist_items').select('*').eq('compliance_status', 'non_compliant'); if(scope.id) q = q.eq('id', scope.id); q = await open(q, 'legal_register_checklist_items');
+      const { data } = await q; arr(data).forEach(ci => { const l = legalById(ci.legal_register_id);
+        out.push({ key:'lg:' + ci.id, src:'Legal compliance checklist', table:'legal_register_checklist_items', id:ci.id, ragaOk:true, title:`Legal compliance: ${ci.clause_reference ? ci.clause_reference + ': ' : ''}${l ? l.title : ci.item_text}`.slice(0,120), desc:ci.item_text + (ci.notes ? `: ${ci.notes}` : ''), clause:ci.clause_reference || null, sev:'major', source:'internal_audit', owner:(l && l.owner_id) || STATE.user.id, days:30, where:l ? `${l.ref_code || ''} ${l.title}`.trim() : 'Legal register', refresh:'legal', legalId:ci.legal_register_id }); }); }); }
+
+    if(!scope.kind || scope.kind === 'weld'){ await safe(async () => {
+      if(!(await hasCol('welding_inspections', 'nonconformance_id'))) return;
+      let q = sb.from('welding_inspections').select('*').eq('result', 'fail').is('nonconformance_id', null); if(scope.id) q = q.eq('id', scope.id);
+      const { data } = await q; arr(data).forEach(i => { const job = STATE.wd && arr(STATE.wd.jobs).find(j => j.id === i.job_id);
+        out.push({ key:'wd:' + i.id, src:'Weld inspection', table:'welding_inspections', id:i.id, ragaOk:false, title:`Weld inspection failure${job ? ': ' + job.job_no : ''}`.slice(0,120), desc:`${i.kind || ''} ${i.stage || ''} inspection failed${i.report_ref ? ' (report ' + i.report_ref + ')' : ''}. ${i.notes || ''}`.trim(), sev:'major', source:'inspection', owner:STATE.user.id, where:job ? `Job ${job.job_no}` : 'Welding', refresh:'weld' }); }); }); }
+    return out.filter(c => !busy.has(c.key));
+  }
+
+  /* Raise one: nonconformance by default, RAGA alert where nonconformances are switched off. Links back to the source row and creates the follow-up task. */
+  async function raiseOne(c){
+    const sb = STATE.supabase; busy.add(c.key);
+    try {
+      const wantRaga = !usesNc() && c.ragaOk && await hasCol(c.table, 'raga_alert_id');
+      const days = c.days || 14, due = addDaysISO(days), note = `\n\nRaised automatically from: ${c.src}${c.where ? ', ' + c.where : ''}.`;
+      let rec, linkPatch, linkedType;
+      if(!wantRaga){
+        const payload = { organisation_id:STATE.org.id, title:c.title, description:c.desc + note, severity:c.sev, raised_by:STATE.user.id, owner_id:c.owner || STATE.user.id, target_close_date:due, source:c.source };
+        if(c.clause) payload.standard_clause = c.clause; const t = ncTypeFor(); if(t) payload.nc_type_id = t.id;
+        let r = await sb.from('nonconformances').insert(payload).select().single();
+        if(r.error && /column|constraint|schema cache/i.test(r.error.message || '')){ delete payload.source; delete payload.nc_type_id; r = await sb.from('nonconformances').insert(payload).select().single(); }
+        if(r.error) throw new Error(r.error.message);
+        rec = r.data; linkPatch = { nonconformance_id:rec.id }; linkedType = 'nonconformance';
+      } else {
+        const r = await sb.from('raga_alerts').insert({ organisation_id:STATE.org.id, alert_type:c.sev === 'minor' ? 'orange' : 'red', title:c.title, description:c.desc + note, raised_by:STATE.user.id, owner_id:c.owner || STATE.user.id, target_close_date:due }).select().single();
+        if(r.error) throw new Error(r.error.message);
+        rec = r.data; linkPatch = { raga_alert_id:rec.id }; linkedType = 'raga_alert';
+      }
+      const up = await sb.from(c.table).update(linkPatch).eq('id', c.id);
+      if(up.error){ // never leave an unlinked duplicate behind
+        await sb.from(linkedType === 'nonconformance' ? 'nonconformances' : 'raga_alerts').delete().eq('id', rec.id);
+        throw new Error('Could not link the record back: ' + up.error.message);
+      }
+      try{ await sb.from('tasks').insert({ organisation_id:STATE.org.id, title:`Close out: ${c.title}`.slice(0,120), description:c.desc, linked_type:linkedType, linked_id:rec.id, assignee_id:c.owner || STATE.user.id, priority:'high', due_date:due, created_by:STATE.user.id }); }catch(e){}
+      return { ok:true, ref:rec.ref_code || (linkedType === 'raga_alert' ? 'RAGA alert' : 'record'), kind:linkedType };
+    } catch(e){ return { ok:false, error:e.message }; }
+    finally { busy.delete(c.key); }
+  }
+  async function afterRaise(n){
+    try{ await loadNCs(); }catch(e){} try{ await loadRagaAlerts(); }catch(e){} try{ await loadTasks(); }catch(e){} try{ updateNavBadges(); }catch(e){} try{ renderNCTable && document.getElementById('nc-table-wrap') && renderNCTable(); }catch(e){} try{ document.getElementById('raga-table-wrap') && renderRagaTable(); }catch(e){}
+  }
+  async function auto(scope, quiet){
+    if(dfOff() || !canRaise()) return 0;
+    const list = (await findAll(scope)).filter(c => !c.ofi); if(!list.length) return 0;
+    const done = []; let fail = '';
+    for(const c of list){ const r = await raiseOne(c); if(r.ok) done.push(r); else fail = r.error; }
+    if(done.length){ await afterRaise(); if(!quiet) toast(`${done.length} deficienc${done.length === 1 ? 'y' : 'ies'} raised automatically as ${done.map(d => d.ref).join(', ')}, with follow-up tasks.`, 'success'); }
+    if(fail) toast('Some deficiencies could not be raised: ' + fail, 'error');
+    return done.length;
+  }
+  window.dfAuto = auto;
+
+  /* Hooks: raise as soon as the deficiency is recorded or the inspection is completed */
+  const wrapBefore = (name, scopeFn) => { const o = window[name]; if(typeof o !== 'function') return; const w = async function(){ try{ const sc = scopeFn.apply(this, arguments); if(sc) await auto(sc); }catch(e){ console.warn('df ' + name, e); } return o.apply(this, arguments); }; try{ eval(name + ' = w'); }catch(e){} window[name] = w; };
+  const wrapAfter = (name, scopeFn) => { const o = window[name]; if(typeof o !== 'function') return; const w = async function(){ const r = await o.apply(this, arguments); try{ const sc = scopeFn.apply(this, arguments); if(sc && await auto(sc)) { const m = sc.after; if(m) m(); } }catch(e){ console.warn('df ' + name, e); } return r; }; try{ eval(name + ' = w'); }catch(e){} window[name] = w; };
+  wrapBefore('completeInspection', (inspId) => ({ kind:'asset', id:inspId }));
+  wrapBefore('completeFiveSInspection', (id) => ({ kind:'five_s', id }));
+  wrapBefore('completeChecklistRun', (id) => ({ kind:'checklist_run', id }));
+  wrapBefore('approveAuditReport', (auditId) => ({ kind:'audit_finding', auditId }));
+  wrapAfter('saveAuditChecklistResult', (rid, aid) => ({ kind:'audit_checklist', id:aid, by:'audit_id', after:() => { try{ openAuditDetail(aid); }catch(e){} } }));
+  wrapAfter('submitFinding', (aid) => ({ kind:'audit_finding', auditId:aid, after:() => { try{ openAuditDetail(aid); }catch(e){} } }));
+  wrapAfter('saveLegalChecklistItem', (id) => ({ kind:'legal', id, after:() => { try{ const ci = arr(STATE.legalChecklistItems).find(x => x.id === id); loadLegalChecklistItems().then(() => ci && openLegalDetail(ci.legal_register_id)); }catch(e){} } }));
+
+  /* Sweep: anything recorded earlier or by other routes (mobile, external forms) that still has no nonconformance or RAGA alert */
+  window.dfSweep = async function(){
+    showLoader('Looking for deficiencies without a record…');
+    let list = []; try{ list = await findAll({ withOfi:true }); } finally { hideLoader(); }
+    STATE._dfList = list;
+    const rows = list.map((c, i) => `<tr><td><input type="checkbox" class="df-cb" data-i="${i}" ${c.ofi ? '' : 'checked'} style="width:auto;"></td><td>${E(c.src)}${c.ofi ? ' <span style="font-size:11px;color:var(--text-faint);">(opportunity for improvement)</span>' : ''}</td><td>${E(c.where || '')}</td><td style="max-width:360px;">${E(String(c.desc || '').slice(0, 220))}</td><td>${E(label(c.sev))}</td></tr>`).join('');
+    kpiOverlay(`<div style="padding:18px 20px;max-width:980px;max-height:86vh;overflow:auto;"><h3 style="margin:0 0 4px;">Deficiency sweep</h3>
+      <p style="font-size:12.5px;color:var(--text-dim);margin:0 0 10px;">${list.length ? `${list.length} deficienc${list.length === 1 ? 'y was' : 'ies were'} found in inspections, audits and checklists with no ${usesNc() ? 'nonconformance' : 'nonconformance or RAGA alert'} raised. Opportunities for improvement are listed but not ticked.` : 'Every recorded deficiency in inspections, audits and checklists already has a nonconformance or RAGA alert.'}</p>
+      ${list.length ? `<table><tr><th></th><th>Source</th><th>Where</th><th>Deficiency</th><th>Severity</th></tr>${rows}</table>
+      <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Close</button>${canRaise() ? '<button class="btn-primary" onclick="dfRaiseSelected()">Raise selected</button>' : ''}</div>` : '<div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Close</button></div>'}</div>`);
+  };
+  window.dfRaiseSelected = async function(){
+    const picks = [...document.querySelectorAll('.df-cb:checked')].map(c => (STATE._dfList || [])[Number(c.dataset.i)]).filter(Boolean);
+    if(!picks.length){ toast('Tick at least one.', 'error'); return; }
+    showLoader('Raising…'); const done = []; let fail = '';
+    try { for(const c of picks){ const r = await raiseOne(c); if(r.ok) done.push(r); else fail = r.error; } await afterRaise(); } finally { hideLoader(); }
+    kpiCloseOverlay(); toast(`${done.length} raised${done.length ? ': ' + done.map(d => d.ref).join(', ') : ''}.${fail ? ' Some failed: ' + fail : ''}`, fail ? 'error' : 'success');
+  };
+
+  /* Sweep buttons on the nonconformance and RAGA toolbars, with a count */
+  async function addSweepButton(mod){
+    try{
+      if(!canRaise()) return; const tb = [...document.querySelectorAll('.toolbar')].find(el => el.offsetParent); if(!tb || tb.querySelector('.df-sweep-btn')) return;
+      const list = await findAll({ withOfi:true }); const n = list.filter(c => !c.ofi).length;
+      const b = document.createElement('button'); b.className = 'btn-small df-sweep-btn' + (n ? ' primary' : ''); b.style.marginLeft = '8px'; b.textContent = n ? `Deficiency sweep (${n} unraised)` : 'Deficiency sweep'; b.onclick = () => dfSweep(); tb.appendChild(b);
+    }catch(e){}
+  }
+  { const _s = showModule; showModule = window.showModule = function(mod){ const r = _s.apply(this, arguments); if(mod === 'nonconformances' || mod === 'raga') setTimeout(() => addSweepButton(mod), 600); return r; }; }
+})();
+
 </script>
 </body>
 </html>
