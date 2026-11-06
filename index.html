@@ -32937,6 +32937,7 @@ window.brandFromLogo = function(){
 
   /* ---------- Overview: information security at a glance ---------- */
   function ismsPanel(){
+    return ''; /* Release 17: removed from Overview at David's request */
     const soa=soaRows(); const app=(window.SOA_CONTROLS||[]).map(c=>soa.find(r=>r.control_ref===c.ref)||{applicable:true,status:'not_started'}).filter(r=>r.applicable!==false);
     const done=app.filter(r=>['implemented','effective'].includes(r.status)).length; const pct=app.length&&soa.length?Math.round(done/app.length*100):null;
     const th=(STATE.threats||[]).filter(t=>!['closed','accepted'].includes(t.status)); const hi=th.filter(t=>(t.likelihood||0)*(t.impact||0)>=15).length; const unrev=(STATE.threats||[]).filter(t=>String(t.source||'').startsWith('ai')&&!t.reviewed_at).length;
@@ -35295,6 +35296,7 @@ window.brandFromLogo = function(){
   }
   const band = s => s == null ? { t:'Not applicable', c:'#7B7B7B' } : s >= 85 ? { t:'Healthy', c:'#1F6B52' } : s >= 65 ? { t:'Watch', c:'#B2650F' } : { t:'At risk', c:'#B21616' };
   const overall = ev => { const s = ev.filter(e => e.score != null); return s.length ? Math.round(s.reduce((a, e) => a + e.score, 0) / s.length) : null; };
+  window.__bhDomains = DOMAINS;
   window.bhEvaluate = evaluate;
   const ST = { pass:['Met','green'], partial:['Partly met','yellow'], fail:['Gap','red'], nodata:['No data yet','blue'], na:['Not applicable','blue'] };
   const badge = (t, c) => `<span class="date-badge ${c}"><span class="dd"></span>${esc(t)}</span>`;
@@ -40721,12 +40723,12 @@ const CHAPTERS = [
 ];
 const MODS = [
 {id:'overview',ch:'dash',n:'Overview',ic:'home',tag:'Your daily starting point: what needs attention today.',
- feat:['One home screen with a tile for every module you use','Reminders pop-up for actions, expiries and reviews that are due','Badges show open items without opening each module','Search and quick links to the registers you use most'],
+ feat:['One home screen with a tile for every module you use','Reminders pop-up for actions, expiries and reviews that are due','Badges show open items without opening each module','Search and quick links to the registers you use most','Nonconformances and tasks due across every module in one list'],
  iso:['ISO 9001 cl 5.1 leadership','ISO 45001 cl 5.4 consultation'],link:['compliance','tasks'],
  steps:['Sign in and land on the Overview','Read the reminders pop-up','Open any tile to go straight to that module','Use the Templates button inside a module for ready-made documents'],
  d:{a:'dash',tiles:[['Open actions','12'],['Due this week','5'],['Expiring in 30 days','3'],['Open alerts','4']],bars:[40,65,50,80,60,35]}},
 {id:'compliance',ch:'dash',n:'Compliance Dashboard',ic:'chart',tag:'A live compliance health score instead of a year-end surprise.',
- feat:['One health score built from every register you keep','Trends over time, so improvement is visible','Status of each register: current, due or overdue','Drill from the score to the item behind it'],
+ feat:['One health score built from every register you keep','Trends over time, so improvement is visible','Status of each register: current, due or overdue','Drill from the score to the item behind it','Projects, invoices, assets, documents, business planning and disciplinary cases now measured'],
  iso:['ISO 9001 cl 9.1 monitoring','ISO 45001 cl 9.1 evaluation','ISO 14001 cl 9.1'],link:['management_review','business_health'],
  steps:['Open the dashboard','Read the overall score','See which registers pull it down','Click through and fix the cause'],
  d:{a:'dash',tiles:[['Health score','86%'],['Registers current','21'],['Overdue items','4'],['Trend','+6']],bars:[55,60,62,70,78,86]}},
@@ -40771,7 +40773,7 @@ const MODS = [
  steps:['Set the objective and target','Link it to a process or risk','Record progress each period','Review at management review'],
  d:{a:'dash',tiles:[['On track','7'],['At risk','2'],['Achieved','4'],['Average progress','68%']],bars:[30,42,50,58,63,68]}},
 {id:'management_review',ch:'ctl',n:'Management Review',ic:'users',tag:'Quarterly management review with the data already on the agenda.',
- feat:['Agenda built from every module: audits, incidents, objectives, customers','Aligned to ISO 9.3 and Section 19 of the OHS Act','Minutes, decisions and actions recorded','Decisions flow into the Task module'],
+ feat:['Agenda built from every module: audits, incidents, objectives, customers','Aligned to ISO 9.3 and Section 19 of the OHS Act','Minutes, decisions and actions recorded','Decisions flow into the Task module','Agenda grouped from direction to decisions, with a standards coverage table','Corporate governance, projects, commercial, assets, people, continuity and document control items with live figures'],
  iso:['ISO 9001 cl 9.3','ISO 14001 cl 9.3','ISO 45001 cl 9.3','OHS Act s19'],link:['tasks','compliance','audits'],
  steps:['Open the review and pull in the data','Walk through the agenda','Record decisions','Actions become tracked tasks'],
  d:{a:'chk',title:'Management review agenda',items:['Previous actions','Audit results','Incident and nonconformance trends','Customer satisfaction','Objectives and risks','Resources and decisions'],fail:[]}},
@@ -40811,12 +40813,12 @@ const MODS = [
  steps:['Select the area','Score the five S','Add photos and notes','Raise actions and publish the scores'],
  d:{a:'chk',title:'5S inspection: Workshop',items:['Sort: unneeded items removed','Set in order: places labelled','Shine: area clean','Standardise: standards visible','Sustain: audited weekly'],fail:[2]}},
 {id:'appraisals',ch:'perf',n:'KPIs and Appraisals',ic:'star',tag:'Position KPIs, self-assessment and manager review.',
- feat:['KPIs for every position','Employee self-assessment','Manager review and rating','Development needs feed Training'],
+ feat:['KPIs for every position','Employee self-assessment','Manager review and rating','Development needs feed Training','Position KPIs form the measurable part of each job description'],
  iso:['ISO 9001 cl 7.2','ISO 45001 cl 7.2'],link:['personnel','training'],
  steps:['Set position KPIs','Employee completes self-assessment','Manager reviews and rates','Agree development actions'],
  d:{a:'flow',st:[['Set KPIs','start of year'],['Self-assess','employee'],['Review','manager'],['Agree','development'],['Train','needs fed on']]}},
 {id:'personnel',ch:'ppl',n:'Personnel and Competence',ic:'users',tag:'Know who is competent to do what.',
- feat:['Personnel register with positions and line managers','Competence matrix by position','Qualifications, certificates and expiry','Medical fitness and validity dates','Gaps feed Training'],
+ feat:['Personnel register with positions and line managers','Competence matrix by position','Qualifications, certificates and expiry','Medical fitness and validity dates','Gaps feed Training','Onboarding status ring with QR code and a full checklist','Job descriptions on every position, key roles and succession','People overview of onboarding, appraisals, training and discipline'],
  iso:['ISO 9001 cl 7.2','ISO 45001 cl 7.2','ISO 14001 cl 7.2'],link:['training','orgchart','appraisals'],
  steps:['Add the person and position','Record qualifications and certificates','See the competence matrix','Raise training for gaps'],
  d:{a:'mx',cols:['Welding','First aid','Working at height','Fire marshal'],rows:[['T. Mokoena','g,g,a,g'],['P. Naidoo','g,r,g,a'],['S. Dlamini','a,g,g,g']]}},
@@ -40826,7 +40828,7 @@ const MODS = [
  steps:['Set up departments and positions','Appoint a person to a role','They sign electronically','Renewal notice before it lapses'],
  d:{a:'org',root:['Managing Director','Section 16(1)'],kids:[['SHE Officer','Appointed'],['Quality Manager','Appointed'],['Operations Manager','Appointed']]}},
 {id:'training',ch:'ppl',n:'Training',ic:'cap',tag:'Needs, plans, completion and certificates in one place.',
- feat:['Training needs from gaps and appraisals','Planning and scheduling','Attendance and completion','Certificates stored with expiry','Effectiveness review'],
+ feat:['Training needs from gaps and appraisals','Planning and scheduling','Attendance and completion','Certificates stored with expiry','Effectiveness review','Training plan and completion count toward onboarding status'],
  iso:['ISO 9001 cl 7.2','ISO 45001 cl 7.2','ISO 14001 cl 7.2'],link:['personnel','appraisals','incidents'],
  steps:['Identify the need','Plan the course and date','Record attendance and results','Store the certificate and review effectiveness'],
  d:{a:'tl',items:[['12 Nov','First aid level 1: 6 people'],['03 Dec','Working at height: 4 people'],['15 Jan','Fire marshal refresher: 3 people']],warn:2,toast:'Reminder: certificate expires in 30 days'}},
@@ -40905,6 +40907,26 @@ const MODS = [
  iso:['ISO 3834','ISO 9606','ISO 15614'],link:['assets','documents','nonconformances'],
  steps:['Record the welding procedure','Qualify the welders','Release the job and inspect','Review against ISO 3834'],
  d:{a:'flow',st:[['Contract review','ISO 3834'],['WPS + welders','qualified'],['Weld','monitored'],['Inspect / NDT','recorded'],['Release','approved']]}},
+{id:'projects',ch:'ctl',n:'Project Management',ic:'flag',tag:'Plan, deliver and close projects of any kind, linked to the rest of the system.',
+ feat:['Start a project from a nonconformance, RAGA alert, audit, management review, quotation or client order','Templates for ISO certification, construction, relocation, client orders and more','Phases, milestones and tasks shared with Task Management','Risks, issues, budget and status updates','Health shown on the Overview, Compliance Dashboard and Management Review'],
+ iso:['ISO 9001 cl 8.1','ISO 9001 cl 6.1','ISO 21502'],link:['tasks','quotes','management_review'],
+ steps:['Create the project from its source','Review phases and assign tasks','Track risks, issues and cost','Post status updates and close'],
+ d:{a:'flow',st:[['Proposed','from source'],['Approved','sponsor'],['Active','tasks + risks'],['Reviewed','status updates'],['Completed','lessons learned']]}},
+{id:'quotes',ch:'scs',n:'Quotations and Invoices',ic:'doc',tag:'From quote to order to invoice, with collections in view.',
+ feat:['Price list, labour rates and tax set up once','Quotations that become client orders and projects','Invoices, payments and overdue tracking','Win rate and outstanding value on the dashboard and in the Management Review'],
+ iso:['ISO 9001 cl 8.2','ISO 9001 cl 9.1.2'],link:['customers','projects','crm'],
+ steps:['Set up company details and price list','Create and send the quotation','Convert the accepted quote to an order','Invoice and record payment'],
+ d:{a:'flow',st:[['Quote','priced'],['Sent','follow-up'],['Accepted','order'],['Invoiced','tax invoice'],['Paid','recorded']]}},
+{id:'bplan',ch:'leg',n:'Business Planning and Continuity',ic:'scale',tag:'Corporate governance: direction, continuity and succession, measured.',
+ feat:['Generic business plan with goals across the balanced scorecard','Goals create objectives and link to risks, legal items and projects','Business continuity plans with annual tests','Succession plans for key roles','Governance index on the dashboard, in Business Health and in the Management Review'],
+ iso:['ISO 37000','ISO 22301','ISO 9001 cl 5.1, 6.2','ISO 37001 cl 5.1'],link:['objectives','risks','management_review'],
+ steps:['Create and approve the business plan','Link goals to objectives, risks and legal','Write and test the continuity plan','Name successors for key roles'],
+ d:{a:'ctl',tiles:[['Plan','on'],['Goals','on'],['Objectives','on'],['Risks','on'],['Legal','on'],['Continuity','part'],['Succession','part'],['Review','on']]}},
+{id:'disciplinary',ch:'ppl',n:'Disciplinary Action',ic:'shield',tag:'Fair, recorded and linked to KPIs, kept on the personnel profile.',
+ feat:['Training presentation on managing disciplinary action','Register a case linked to KPIs, nonconformances and RAGA alerts','Notice by email, hearing minutes template, verdict and outcome','Sanction validity, appeal and closure','Confidential: administrators and managers only'],
+ iso:['ISO 9001 cl 7.3','ISO 37001 cl 7.3','ISO 45001 cl 7.3'],link:['personnel','appraisals','training'],
+ steps:['Register the case','Send notice of the hearing','Record the minutes','Issue the verdict and outcome'],
+ d:{a:'flow',st:[['Registered','allegation'],['Notice','emailed'],['Hearing','minutes'],['Verdict','reasons'],['Closed','on profile']]}},
 {id:'security',ch:'adm',n:'Audit Trail and Account Security',ic:'lock',tag:'Know who did what and when, and protect every sign-in.',
  feat:['Change log of creates, changes and deletes on key records','Append-only: nothing can be quietly rewritten','Authenticator app protection for sign-in','Data separated per organisation'],
  iso:['ISO/IEC 27001 Annex A 8.15','ISO 9001 cl 7.5.3'],link:['administration','infosec'],
@@ -45127,12 +45149,12 @@ Prices must be in ${doc.currency}. If you are unsure of a price, set it to your 
   window.pmCreate = async function(){
     const g = k => (document.getElementById(k) || {}).value || '', title = g('np-title').trim(); if(!title){ toast('Give the project a title.', 'error'); return; }
     const pf = STATE._pmDraft || {}, tpl = TEMPLATES[g('np-tpl')] || TEMPLATES.blank, start = g('np-start') || tdy();
-    document.getElementById('np-go').disabled = true; showLoader('Creating the project…');
+    document.getElementById('np-go').disabled = true; showLoader('Creating the project…'); let madeId = null;
     try {
       const ref = await nextRef();
       const row = { organisation_id:STATE.org.id, ref_code:ref, title, project_type:tpl.type, description:g('np-desc').trim() || null, status:'proposed', priority:g('np-prio'), owner_id:g('np-owner') || STATE.user.id, sponsor_id:g('np-sponsor') || null, customer_id:g('np-cust') || null,
         start_date:start, target_end_date:g('np-end') || null, budget:g('np-budget') === '' ? null : nz(g('np-budget')), currency:pf.currency || 'ZAR', source_type:pf.source_type || null, source_id:pf.source_id || null, source_label:pf.source_label || null, created_by:STATE.user.id };
-      const { data: p, error } = await STATE.supabase.from('projects').insert(row).select().single(); if(error) throw new Error(error.message);
+      const { data: p, error } = await STATE.supabase.from('projects').insert(row).select().single(); if(error) throw new Error(error.message); madeId = p.id;
       await STATE.supabase.from('project_members').insert({ organisation_id:STATE.org.id, project_id:p.id, user_id:row.owner_id, display_name:memberName(row.owner_id), role:'manager' });
       if(pf.source_type && pf.source_id) await STATE.supabase.from('project_links').insert({ organisation_id:STATE.org.id, project_id:p.id, link_type:pf.source_type, link_id:pf.source_id, label:pf.source_label });
       // template phases and tasks
@@ -45147,12 +45169,12 @@ Prices must be in ${doc.currency}. If you are unsure of a price, set it to your 
         const phBy = {}; (phs || []).forEach(x => phBy[x.sort_order] = x.id);
         const trows = []; taskPlan.forEach(tp => tp.titles.forEach((t, k) => trows.push({ organisation_id:STATE.org.id, title:t, description:`${ref}: ${title}`, linked_type:'project', linked_id:p.id, project_id:p.id, phase_id:phBy[tp.i] || null, assignee_id:row.owner_id, status:'todo', priority:'medium',
           start_date:tp.start, due_date:addDays(tp.start, Math.max(1, Math.round(tp.len * (k + 1) / tp.titles.length))), created_by:STATE.user.id })));
-        if(trows.length){ const { error: te } = await STATE.supabase.from('tasks').insert(trows); if(te) throw new Error(te.message); }
+        if(trows.length){ let { error: te } = await STATE.supabase.from('tasks').insert(trows); if(te && /linked_entity_type|enum/i.test(te.message)){ ({ error: te } = await STATE.supabase.from('tasks').insert(trows.map(r => { const c = { ...r }; delete c.linked_type; delete c.linked_id; return c; }))); } if(te) throw new Error(te.message); }
       }
       kpiCloseOverlay(); await pmReload(); STATE._pmView = p.id; STATE._pmTab = 'overview';
       if(!document.getElementById('pm-root')) showModule('projects'); else pmDraw();
       toast('Project ' + ref + ' created.', 'success');
-    } catch(e){ const b = document.getElementById('np-go'); if(b) b.disabled = false; toast('Could not create the project: ' + e.message, 'error'); }
+    } catch(e){ if(madeId){ try{ await STATE.supabase.from('tasks').delete().eq('project_id', madeId); await STATE.supabase.from('projects').delete().eq('id', madeId); }catch(x){} } const b = document.getElementById('np-go'); if(b) b.disabled = false; toast('Could not create the project: ' + e.message, 'error'); }
     finally { hideLoader(); }
   };
 
@@ -45163,7 +45185,7 @@ Prices must be in ${doc.currency}. If you are unsure of a price, set it to your 
     const body = ({ overview:ovHtml, plan:planHtml, tasks:tasksHtml, risks:risksHtml, budget:budgetHtml, links:linksHtml, updates:updatesHtml, team:teamHtml }[tab] || ovHtml)(p, s);
     return `<div class="detail-card" style="padding:16px;margin-bottom:12px;"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
         <button class="btn-small" onclick="pmClose()">‹ All projects</button><span class="mono-cell">${E(p.ref_code)}</span><h3 style="margin:0;font-size:18px;">${E(p.title)}</h3>${pill(STATUS, p.status)}${pill(HEALTH, s.health)}
-        <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;">${canW() ? next.map(([k, l]) => `<button class="btn-small ${k === 'active' || k === 'completed' || k === 'approved' ? 'primary' : ''}" onclick="pmSetStatus('${p.id}','${k}')">${l}</button>`).join('') + (p.status !== 'cancelled' && p.status !== 'completed' ? `<button class="btn-small" onclick="pmSetStatus('${p.id}','cancelled')">Cancel project</button>` : '') + `<button class="btn-small" onclick="pmEditDetails('${p.id}')">Edit details</button>` : ''}<button class="btn-small" onclick="pmPrint('${p.id}')">Print report</button></span></div>
+        <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;">${canW() ? next.map(([k, l]) => `<button class="btn-small ${k === 'active' || k === 'completed' || k === 'approved' ? 'primary' : ''}" onclick="pmSetStatus('${p.id}','${k}')">${l}</button>`).join('') + (p.status !== 'cancelled' && p.status !== 'completed' ? `<button class="btn-small" onclick="pmSetStatus('${p.id}','cancelled')">Cancel project</button>` : '') + `<button class="btn-small" onclick="pmEditDetails('${p.id}')">Edit details</button>` : ''}${['admin','manager'].includes(STATE.myRole) ? `<button class="btn-small" onclick="pmDelete('${p.id}')">Delete project</button>` : ''}<button class="btn-small" onclick="pmPrint('${p.id}')">Print report</button></span></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;">${tabs.map(([k, l]) => `<button class="btn-small ${tab === k ? 'primary' : ''}" onclick="pmTab('${k}')">${l}</button>`).join('')}</div></div>${body}`;
   }
   const kv = (l, v) => `<div class="dm-item"><div class="l">${l}</div><div class="v">${v}</div></div>`;
@@ -45179,6 +45201,13 @@ Prices must be in ${doc.currency}. If you are unsure of a price, set it to your 
     ${last ? `<div class="detail-card" style="padding:14px 16px;margin-bottom:10px;"><div style="font-size:10px;color:var(--text-faint);text-transform:uppercase;">Latest status report · ${fmtDate(day(last.created_at))}</div><div style="margin:4px 0;">${last.rag ? pill(HEALTH, last.rag) : ''}</div><div style="font-size:13px;white-space:pre-wrap;">${E(last.summary)}</div></div>` : ''}
     ${p.lessons_learned ? `<div class="detail-card" style="padding:14px 16px;"><div style="font-size:10px;color:var(--text-faint);text-transform:uppercase;margin-bottom:4px;">Lessons learned</div><div style="font-size:13px;white-space:pre-wrap;">${E(p.lessons_learned)}</div></div>` : ''}`;
   }
+  window.pmDelete = async function(id){
+    const p = byId(id); if(!p) return; const n = tasksOf(id).length;
+    if(!confirm(`Delete ${p.ref_code}: ${p.title}? This removes its phases, risks, costs, links, reports and ${n} task${n === 1 ? '' : 's'}. This cannot be undone.`)) return;
+    await STATE.supabase.from('tasks').delete().eq('project_id', id);
+    const { error } = await STATE.supabase.from('projects').delete().eq('id', id); if(error){ toast(error.message, 'error'); return; }
+    STATE._pmView = null; await pmReload(); pmDraw(); toast('Project deleted.', 'success');
+  };
   window.pmOpenSource = function(type, id){
     const go = (mod, fn) => { showModule(mod); setTimeout(() => { try{ window[fn](id); }catch(e){} }, 400); };
     ({ nonconformance:() => go('nonconformances', 'openNCDetail'), raga:() => go('raga', 'openRagaDetail'), audit:() => go('audits', 'openAuditDetail'), management_review:() => go('management_review', 'openMRDetail'), risk:() => go('risks', 'openRiskDetail'), objective:() => go('objectives', 'openObjectiveDetail'),
@@ -45277,7 +45306,9 @@ Prices must be in ${doc.currency}. If you are unsure of a price, set it to your 
   window.pmAddTask = async function(pid){
     const g = k => (document.getElementById(k) || {}).value || '', title = g('pt-title').trim(); if(!title){ toast('Enter the task.', 'error'); return; }
     const p = byId(pid);
-    const { error } = await STATE.supabase.from('tasks').insert({ organisation_id:STATE.org.id, title, description:`${p.ref_code}: ${p.title}`, linked_type:'project', linked_id:pid, project_id:pid, phase_id:g('pt-phase') || null, assignee_id:g('pt-who') || STATE.user.id, status:'todo', priority:'medium', start_date:tdy(), due_date:g('pt-due') || null, created_by:STATE.user.id });
+    const row = { organisation_id:STATE.org.id, title, description:`${p.ref_code}: ${p.title}`, linked_type:'project', linked_id:pid, project_id:pid, phase_id:g('pt-phase') || null, assignee_id:g('pt-who') || STATE.user.id, status:'todo', priority:'medium', start_date:tdy(), due_date:g('pt-due') || null, created_by:STATE.user.id };
+    let { error } = await STATE.supabase.from('tasks').insert(row);
+    if(error && /linked_entity_type|enum/i.test(error.message)){ delete row.linked_type; delete row.linked_id; ({ error } = await STATE.supabase.from('tasks').insert(row)); }
     if(error){ toast('Could not add: ' + error.message + (/column/.test(error.message) ? ' (run qashe-watchman-schema-projects.sql first)' : ''), 'error'); return; }
     await pmReload(); pmDraw();
   };
@@ -45770,6 +45801,868 @@ Prices must be in ${doc.currency}. If you are unsure of a price, set it to your 
   }
   { const _s = showModule; showModule = window.showModule = function(mod){ const r = _s.apply(this, arguments); if(mod === 'nonconformances' || mod === 'raga') setTimeout(() => addSweepButton(mod), 600); return r; }; }
 })();
+
+
+/* ===== b84b: Release 17, governance data layer, onboarding status, job descriptions, people hub ===== */
+(function(){
+  const E = s => escapeHtml(s == null ? '' : String(s));
+  const arr = x => Array.isArray(x) ? x : [];
+  const tdy = () => todayISO();
+  const mOff = k => !!(STATE.org && STATE.org._modOff && STATE.org._modOff.has(k));
+  const isMgr = () => ['admin','manager'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const G = () => STATE._gv = STATE._gv || { plans:[], goals:[], links:[], cont:[], tests:[], succ:[], disc:[], events:[], badges:new Set(), loaded:false, broken:false };
+  window.__gvOff = mOff;
+
+  /* ---------- switches (default on) ---------- */
+  ADMIN_CONSOLE_TOGGLES.push({ field:'bplan_module_enabled', label:'Business Planning and Continuity', note:'Business plan, goals linked to objectives, risks and legal items, business continuity plans and tests, and succession planning for key roles. Feeds the Compliance Dashboard, Business Health and Management Review. On by default.' });
+  ADMIN_CONSOLE_TOGGLES.push({ field:'disciplinary_module_enabled', label:'Disciplinary Action', note:'Register a disciplinary case, notify the employee, record hearing minutes, issue the verdict and outcome, and keep it on the personnel profile. Visible to administrators and managers only. On by default.' });
+  const SW = { bplan_module_enabled:'bplan', disciplinary_module_enabled:'disciplinary' };
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ await _lc.apply(this, arguments);
+      if(STATE.org){ STATE.org.bplan_module_enabled = !mOff('bplan'); STATE.org.disciplinary_module_enabled = !mOff('disciplinary'); }
+      try{ await loadGov(); }catch(e){ console.warn('b84 loadGov', e); } }; }
+  { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
+      if(!SW[field]) return _t.apply(this, arguments);
+      const { error } = await STATE.supabase.from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:SW[field], enabled:!!value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
+      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
+    }; }
+  { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){
+      if(mod === 'bplan'){ if(mOff('bplan')) return false; return _c('management_review') || isMgr(); }
+      if(mod === 'disciplinary'){ if(mOff('disciplinary')) return false; return isMgr() && (_c('personnel') || STATE.myRole === 'admin'); }
+      return _c.apply(this, arguments); }; }
+
+  /* ---------- data ---------- */
+  async function loadGov(){
+    const g = G(), org = STATE.org.id, q = t => STATE.supabase.from(t).select('*').eq('organisation_id', org).limit(5000);
+    const tryq = async t => { try{ const r = await q(t); return r.error ? null : (r.data || []); }catch(e){ return null; } };
+    const [plans, goals, links, cont, tests, succ] = await Promise.all(['business_plans','business_plan_goals','business_plan_links','continuity_plans','continuity_tests','succession_plans'].map(tryq));
+    g.broken = plans == null; g.plans = plans || []; g.goals = goals || []; g.links = links || []; g.cont = cont || []; g.tests = tests || []; g.succ = succ || [];
+    g.disc = isMgr() ? (await tryq('disciplinary_cases') || []) : []; g.events = isMgr() ? (await tryq('disciplinary_events') || []) : [];
+    try{ const b = await STATE.supabase.from('personnel_badges').select('personnel_id').limit(5000); g.badges = new Set(arr(b.data).map(x => x.personnel_id)); }catch(e){ g.badges = new Set(); }
+    g.loaded = true;
+  }
+  window.loadGov = loadGov;
+
+  /* ---------- onboarding status ---------- */
+  const MANUAL = [['contract','Employment contract signed'],['induction','Induction completed']];
+  function onboarding(personId){
+    const p = personById(personId); if(!p) return null;
+    const prim = primaryCompetenceFor(personId), pos = prim ? positionById(prim.position_id) : null;
+    const kp = pos ? arr(STATE.positionKpis).filter(k => k.position_id === pos.id) : [];
+    const aps = arr(STATE.appraisals).filter(a => a.personnel_id === personId);
+    const trn = arr(STATE.training).filter(t => t.personnel_id === personId);
+    const trnDone = trn.filter(t => t.status === 'completed').length, trnLate = trn.filter(t => !['completed','cancelled'].includes(t.status) && t.due_date && t.due_date < tdy()).length;
+    const docs = arr(STATE.persDocs).filter(d => d.personnel_id === personId), quals = arr(STATE.persQuals).filter(d => d.personnel_id === personId);
+    const man = p.onboarding_manual || {};
+    const items = [
+      { k:'photo', label:'Photo', ok:!!p.photo_path, hint:'Upload a photo' },
+      { k:'qr', label:'QR code ID tag', ok:G().badges.has(personId), hint:'Issue the ID tag' },
+      { k:'number', label:'Personnel number', ok:!!String(p.company_number || '').trim(), hint:'Enter the company number' },
+      { k:'position', label:'Position', ok:!!pos, hint:'Assign a primary position' },
+      { k:'email', label:'Email address', ok:!!String(p.email || '').trim(), hint:'Add an email address' },
+      { k:'mobile', label:'Mobile number', ok:!!String(p.mobile_number || '').trim(), hint:'Add a mobile number' },
+      { k:'quals', label:'Qualifications recorded', ok:!!String(p.qualifications_experience || '').trim() || quals.length > 0, hint:'Record qualifications' },
+      { k:'docs', label:'Supporting documents (CV, certificates)', ok:docs.length > 0, hint:'Upload a CV or certificates' },
+      { k:'jd', label:'Job description established', ok:!!(pos && String(pos.job_description || '').trim().length > 30), hint:'Write the job description for the position' },
+      { k:'kpis', label:'KPIs linked to the job description', ok:kp.length > 0, hint:'Define KPIs for the position' },
+      { k:'appraisal', label:'KPI assessment started', ok:aps.length > 0, hint:'Start an appraisal' },
+      { k:'training_plan', label:'Training plan in place', ok:trn.length > 0, hint:'Log the training needs' },
+      { k:'training_done', label:'Training completed, none overdue', ok:trn.length > 0 && trnDone > 0 && trnLate === 0, hint:trnLate ? trnLate + ' overdue' : 'Complete the first training' },
+      { k:'competence', label:'Competence validated', ok:!!(prim && prim.date_validated), hint:'Validate the competence level' },
+      { k:'manager', label:'Line manager assigned', ok:!!p.line_manager_id, hint:'Assign a line manager' },
+      { k:'dept', label:'Department or branch assigned', ok:arr(STATE.personnelDivisions).some(d => d.personnel_id === personId), hint:'Assign a department' },
+      ...MANUAL.map(([k, l]) => ({ k:'m_' + k, label:l, ok:!!man[k], manual:k, hint:'Tick when done' })),
+    ];
+    const done = items.filter(i => i.ok).length;
+    const links = {
+      nc: arr(STATE.ncs).filter(n => n.personnel_id === personId).length,
+      raga: arr(STATE.ragaAlerts).filter(x => x.recognised_person_id === personId).length,
+      tasks: arr(STATE.tasks).filter(x => x.personnel_id === personId && x.status !== 'done').length,
+      complaints: arr(STATE.ncs).filter(x => x.personnel_id === personId && x.source === 'customer_complaint').length,
+      disc: G().disc.filter(c => c.personnel_id === personId).length,
+    };
+    return { pct:Math.round(done / items.length * 100), done, total:items.length, items, links, pos, prim };
+  }
+  window.wbOnboarding = onboarding;
+  const activePeople = () => arr(STATE.personnel).filter(p => p.status !== 'inactive' && p.employment_type !== 'terminated');
+  function onboardingAvg(){ const ps = activePeople(); if(!ps.length) return null; return Math.round(ps.map(p => onboarding(p.id).pct).reduce((a, b) => a + b, 0) / ps.length); }
+  window.wbOnboardingAvg = onboardingAvg;
+  const ringCol = v => v >= 85 ? '#1B8E3E' : v >= 60 ? '#EF6C00' : '#D50000';
+  const ring = (pct, size) => `<div style="width:${size}px;height:${size}px;border-radius:50%;background:conic-gradient(${ringCol(pct)} ${pct * 3.6}deg,#e6e3e1 0);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><div style="width:${size - 14}px;height:${size - 14}px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;"><b style="font-size:${Math.round(size / 4)}px;line-height:1;">${pct}%</b><span style="font-size:9px;color:#777;">onboarded</span></div></div>`;
+
+  async function tokenFor(personId){ try{ const r = await STATE.supabase.from('personnel_badges').select('token').eq('personnel_id', personId).maybeSingle(); return r.data && r.data.token; }catch(e){ return null; } }
+  const qr = (t, px) => `https://api.qrserver.com/v1/create-qr-code/?size=${px}x${px}&margin=0&ecc=M&data=${encodeURIComponent(t)}`;
+
+  async function paintOnboarding(personId){
+    const panel = document.querySelector('#pers-detail-slot .detail-panel'); if(!panel) return;
+    const old = document.getElementById('wb-onb'); if(old) old.remove();
+    const o = onboarding(personId); if(!o) return;
+    const tok = G().badges.has(personId) ? await tokenFor(personId) : null;
+    const missing = o.items.filter(i => !i.ok);
+    const L = o.links;
+    const chip = (n, l, mod) => `<span onclick="${mod ? `showModule('${mod}')` : ''}" style="cursor:${mod ? 'pointer' : 'default'};padding:3px 10px;border-radius:12px;background:#f2efed;font-size:11.5px;"><b>${n}</b> ${l}</span>`;
+    const html = `<div id="wb-onb" class="detail-card" style="margin:0 0 14px;padding:16px;border:1px solid var(--border);border-radius:12px;">
+      <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;">
+        ${ring(o.pct, 96)}
+        ${tok ? `<div style="text-align:center;"><img src="${qr('WMB:' + tok, 96)}" width="96" height="96" alt="QR code" style="border:1px solid var(--border);border-radius:6px;"><div style="font-size:10px;color:#777;margin-top:2px;">ID tag QR</div></div>` : `<div style="text-align:center;width:96px;"><div style="height:96px;border:1px dashed var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#999;padding:6px;">No ID tag yet</div>${isMgr() ? `<button class="btn-small" style="margin-top:4px;" onclick="wbIssueTag('${personId}')">Issue tag</button>` : ''}</div>`}
+        <div style="flex:1;min-width:240px;">
+          <div style="font-weight:800;font-size:15px;">Onboarding: ${o.done} of ${o.total} steps complete</div>
+          <div style="font-size:12.5px;color:#666;margin:2px 0 8px;">${missing.length ? 'Still to do: ' + missing.slice(0, 5).map(i => E(i.label)).join(', ') + (missing.length > 5 ? ' and ' + (missing.length - 5) + ' more' : '') + '.' : 'Fully onboarded.'}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">${chip(L.nc, 'nonconformances', 'nonconformances')}${chip(L.raga, 'RAGA alerts', 'raga')}${chip(L.tasks, 'open tasks', 'tasks')}${chip(L.complaints, 'complaints', 'nonconformances')}${isMgr() && !mOff('disciplinary') ? chip(L.disc, 'disciplinary cases', 'disciplinary') : ''}</div>
+        </div>
+      </div>
+      <details style="margin-top:12px;"><summary style="cursor:pointer;font-weight:700;font-size:12.5px;">Show the full checklist</summary>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px 16px;margin-top:8px;">${o.items.map(i => `<div style="font-size:12.5px;display:flex;gap:8px;align-items:flex-start;"><span style="color:${i.ok ? '#1B8E3E' : '#D50000'};font-weight:900;">${i.ok ? '✓' : '○'}</span><span style="flex:1;${i.ok ? '' : 'font-weight:700;'}">${E(i.label)}${!i.ok && !i.manual ? `<small style="display:block;color:#999;font-weight:400;">${E(i.hint)}</small>` : ''}</span>${i.manual && isMgr() ? `<button class="btn-small" onclick="wbTick('${personId}','${i.manual}',${i.ok ? 'false' : 'true'})">${i.ok ? 'Undo' : 'Mark done'}</button>` : ''}</div>`).join('')}</div>
+        <p style="font-size:11.5px;color:#888;margin:8px 0 0;">The percentage counts every step above equally. Nonconformances, RAGA alerts, complaints and disciplinary cases are shown as links only, because a person with none is not less onboarded.</p>
+      </details></div>`;
+    const head = panel.querySelector('.detail-head'); if(head) head.insertAdjacentHTML('afterend', html);
+  }
+  window.wbTick = async function(pid, k, v){ const p = personById(pid); if(!p) return; const m = Object.assign({}, p.onboarding_manual || {}, { [k]: v });
+    const { error } = await STATE.supabase.from('personnel').update({ onboarding_manual: m }).eq('id', pid); if(error){ toast('Could not save: ' + error.message + ' (run the Release 17 SQL first).', 'error'); return; }
+    p.onboarding_manual = m; paintOnboarding(pid); };
+  window.wbIssueTag = async function(pid){ const r = await STATE.supabase.rpc('badge_issue', { p_personnel: pid, p_reissue: false }); if(r.error){ toast('Could not issue the tag: ' + r.error.message, 'error'); return; } G().badges.add(pid); paintOnboarding(pid); };
+
+  { const _o = openPersonDetail; openPersonDetail = window.openPersonDetail = async function(id){ const r = await _o.apply(this, arguments);
+      try{ await paintOnboarding(id); if(typeof window.wbDiscSection === 'function') window.wbDiscSection(id); }catch(e){ console.warn('b84 onboarding', e); } return r; }; }
+
+  /* ---------- job descriptions on positions ---------- */
+  { const _r = renderPositionsList; renderPositionsList = window.renderPositionsList = function(){ const r = _r.apply(this, arguments);
+      try{ arr(STATE.positions).forEach(p => { const row = document.getElementById('pos-row-' + p.id); if(!row) return; const ok = String(p.job_description || '').trim().length > 30;
+        const b = document.createElement('button'); b.className = 'btn-small'; b.textContent = ok ? 'Job description ✓' : 'Job description'; b.style.cssText = ok ? '' : 'border-color:#EF6C00;color:#B26A16;'; b.onclick = () => wbJd(p.id); row.insertBefore(b, row.querySelector('button')); if(p.is_key_role){ const k = document.createElement('span'); k.textContent = 'Key role'; k.style.cssText = 'font-size:10.5px;font-weight:800;background:#4B3F72;color:#fff;border-radius:8px;padding:1px 7px;margin-right:6px;'; row.querySelector('div').appendChild(k); } }); }catch(e){}
+      return r; }; }
+  window.wbJd = function(id){ const p = positionById(id); if(!p) return; const f = (k, l, rows, ph) => `<div class="field span3"><label>${l}</label><textarea id="jd-${k}" rows="${rows}" placeholder="${E(ph || '')}">${E(p[k] || '')}</textarea></div>`;
+    const kp = arr(STATE.positionKpis).filter(k => k.position_id === id);
+    kpiOverlay(`<div style="padding:6px 8px;"><h3 style="margin:0 0 2px;">Job description: ${E(p.title)}</h3><p style="font-size:12.5px;color:#666;margin:0 0 10px;">Once established, it counts toward onboarding for everyone in this position. KPIs defined for the position (${kp.length}) are the measurable part of the job description.</p>
+      <div class="form-grid">${f('purpose', 'Purpose of the role', 2, 'Why does this role exist?')}${f('job_description', 'Job description and main duties', 6, 'Describe the role, main duties and the standards expected')}${f('responsibilities', 'Responsibilities', 4, 'One per line. Include health, safety, quality, environmental and information security responsibilities')}${f('accountabilities', 'Accountabilities (what the role answers for)', 3)}${f('authorities', 'Authorities (decisions the role may take)', 3)}
+        <div class="field"><label>Reports to (position)</label><select id="jd-reports"><option value="">None</option>${arr(STATE.positions).filter(x => x.id !== id).map(x => `<option value="${x.id}" ${p.reports_to_position_id === x.id ? 'selected' : ''}>${E(x.title)}</option>`).join('')}</select></div>
+        <div class="field"><label>Version</label><input id="jd-ver" value="${E(p.jd_version || '1.0')}"></div>
+        <div class="field"><label>Approved on</label><input type="date" id="jd-appr" value="${E(p.jd_approved_at || '')}"></div>
+        <div class="field span3"><label class="sf-inline"><input type="checkbox" id="jd-key" ${p.is_key_role ? 'checked' : ''}> Key role: include in succession planning and the continuity review</label></div></div>
+      <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" onclick="wbJdSave('${id}')">Save job description</button></div></div>`); };
+  window.wbJdSave = async function(id){ const g = k => (document.getElementById(k) || {}).value || '';
+    const row = { purpose:g('jd-purpose').trim() || null, job_description:g('jd-job_description').trim() || null, responsibilities:g('jd-responsibilities').trim() || null, accountabilities:g('jd-accountabilities').trim() || null, authorities:g('jd-authorities').trim() || null, reports_to_position_id:g('jd-reports') || null, jd_version:g('jd-ver').trim() || '1.0', jd_approved_at:g('jd-appr') || null, jd_approved_by:g('jd-appr') ? STATE.user.id : null, is_key_role:!!document.getElementById('jd-key').checked };
+    const { error } = await STATE.supabase.from('positions').update(row).eq('id', id); if(error){ toast('Could not save: ' + error.message + ' (run the Release 17 SQL first).', 'error'); return; }
+    const p = positionById(id); Object.assign(p, row); kpiCloseOverlay(); toast('Job description saved.', 'success'); renderPositionsList(); };
+
+  /* ---------- people hub on Personnel, plus a shared sub-navigation ---------- */
+  const SUBNAV = [['personnel','Personnel'],['appraisals','KPIs and Appraisals'],['training','Training'],['orgchart','Org Charts'],['disciplinary','Disciplinary Action']];
+  function subnav(cur){ return `<div id="wb-subnav" style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px;">${SUBNAV.filter(([k]) => k === 'personnel' || canAccessModule(k)).map(([k, l]) => `<button class="btn-small ${k === cur ? 'primary' : ''}" onclick="showModule('${k}')">${l}</button>`).join('')}</div>`; }
+  function hub(){
+    const ps = activePeople(); if(!ps.length) return '';
+    const rows = ps.map(p => ({ p, o:onboarding(p.id) })).sort((a, b) => a.o.pct - b.o.pct);
+    const avg = Math.round(rows.reduce((s, r) => s + r.o.pct, 0) / rows.length), low = rows.filter(r => r.o.pct < 60).length;
+    const pos = arr(STATE.positions), noJd = pos.filter(x => !(String(x.job_description || '').trim().length > 30) && arr(STATE.competence).some(c => c.position_id === x.id)).length;
+    const apLate = arr(STATE.appraisals).filter(a => a.status !== 'completed' && a.period_end && a.period_end < tdy()).length;
+    const trLate = arr(STATE.training).filter(t => !['completed','cancelled'].includes(t.status) && t.due_date && t.due_date < tdy()).length;
+    const dOpen = G().disc.filter(c => c.status !== 'closed').length;
+    const tile = (n, l, c, m) => `<div onclick="${m}" style="cursor:pointer;padding:10px 14px;border-radius:10px;border:1px solid var(--border);border-top:4px solid ${c};min-width:130px;flex:1;"><div style="font-size:22px;font-weight:800;line-height:1;">${n}</div><div style="font-size:11.5px;color:#777;margin-top:4px;">${l}</div></div>`;
+    return `<div id="wb-hub" class="panel" style="margin-bottom:14px;"><div class="panel-head"><h3 style="margin-bottom:0;">People overview</h3></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">${tile(avg + '%', 'average onboarding', ringCol(avg), "document.getElementById('wb-onb-list').open=true")}${tile(low, 'people below 60% onboarded', low ? '#D50000' : '#1B8E3E', "document.getElementById('wb-onb-list').open=true")}${tile(noJd, 'positions without a job description', noJd ? '#EF6C00' : '#1B8E3E', "togglePositionsPanel()")}${tile(apLate, 'appraisals past period end', apLate ? '#EF6C00' : '#1B8E3E', "showModule('appraisals')")}${tile(trLate, 'overdue training', trLate ? '#D50000' : '#1B8E3E', "showModule('training')")}${canAccessModule('disciplinary') ? tile(dOpen, 'open disciplinary cases', dOpen ? '#EF6C00' : '#1B8E3E', "showModule('disciplinary')") : ''}</div>
+      <details id="wb-onb-list" style="margin-top:12px;"><summary style="cursor:pointer;font-weight:700;font-size:13px;">Onboarding by person, lowest first</summary>
+        <table style="width:100%;margin-top:8px;font-size:12.5px;border-collapse:collapse;"><tr style="text-align:left;color:#777;"><th>Person</th><th style="width:120px;">Onboarding</th><th>Still to do</th></tr>${rows.map(r => `<tr style="border-top:1px solid var(--border);cursor:pointer;" onclick="openPersonDetail('${r.p.id}')"><td style="padding:6px 0;"><b>${E(r.p.full_name)}</b></td><td><div style="background:#eee;border-radius:6px;height:8px;"><div style="width:${r.o.pct}%;background:${ringCol(r.o.pct)};height:8px;border-radius:6px;"></div></div><small>${r.o.pct}%</small></td><td style="color:#777;">${E(r.o.items.filter(i => !i.ok).slice(0, 3).map(i => i.label).join(', '))}</td></tr>`).join('')}</table></details></div>`;
+  }
+  { const _s = showModule; showModule = window.showModule = function(mod){ const r = _s.apply(this, arguments);
+      try{ const root = document.getElementById('content-root');
+        if(root && ['personnel','appraisals','training','orgchart'].includes(mod) && !document.getElementById('wb-subnav')){ root.insertAdjacentHTML('afterbegin', subnav(mod)); }
+        if(root && mod === 'personnel' && !document.getElementById('wb-hub')){ const sn = document.getElementById('wb-subnav'); const h = hub(); if(h && sn) sn.insertAdjacentHTML('afterend', h); }
+      }catch(e){ console.warn('b84 hub', e); } return r; }; }
+  window.__wbSubnav = subnav;
+})();
+
+
+/* ===== b84c: Release 17, Disciplinary Action (Personnel and Competence) ===== */
+(function(){
+  const E = s => escapeHtml(s == null ? '' : String(s));
+  const arr = x => Array.isArray(x) ? x : [];
+  const tdy = () => todayISO();
+  const day = d => d ? String(d).slice(0, 10) : '';
+  const addDays = (iso, n) => { const d = new Date((iso || tdy()) + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const off = () => !!(STATE.org && STATE.org._modOff && STATE.org._modOff.has('disciplinary'));
+  const mgr = () => ['admin','manager'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const D = () => STATE._gv = STATE._gv || { disc:[], events:[], plans:[], goals:[], links:[], cont:[], tests:[], succ:[], badges:new Set() };
+
+  const TYPES = { misconduct:'Misconduct', poor_performance:'Poor performance (incapacity)', absenteeism:'Absenteeism or timekeeping', safety:'Health and safety breach', policy:'Breach of policy or procedure', dishonesty:'Dishonesty or fraud', insubordination:'Insubordination', other:'Other' };
+  const STATUS = { registered:['Registered','#8A8785'], notified:['Notice issued','#2E5AA8'], hearing_held:['Hearing held','#B26A16'], verdict_issued:['Verdict issued','#4B3F72'], appealed:['Appeal lodged','#B3261E'], closed:['Closed','#2E7D4F'] };
+  const VERDICT = { guilty:'Guilty', not_guilty:'Not guilty', no_finding:'No finding: counselling only' };
+  const OUTCOME = { none:'No sanction', counselling:'Counselling or coaching', verbal:'Verbal warning', written:'Written warning', final:'Final written warning', suspension:'Suspension without pay', demotion:'Demotion', dismissal:'Dismissal', improvement:'Performance improvement plan' };
+  const VALID_MONTHS = { verbal:6, written:6, final:12, improvement:3 };
+  const pill = k => { const m = STATUS[k] || [k, '#888']; return `<span class="sev-badge" style="background:${m[1]};color:#fff;">${E(m[0])}</span>`; };
+  const byId = id => D().disc.find(c => c.id === id);
+  const pname = id => { const p = personById(id); return p ? p.full_name : 'Unknown'; };
+
+  /* ---------- navigation and access ---------- */
+  MODULE_META.disciplinary = { title:'Disciplinary Action', sub:() => 'Register, notify, hear, decide and record: kept on the personnel profile and linked to KPIs. Administrators and managers only' };
+  RENDERERS.disciplinary = () => '<div id="da-root"></div>';
+  { const pn = document.querySelector('.nav-item[data-mod="personnel"]');
+    if(pn && !document.querySelector('.nav-item[data-mod="disciplinary"]')) pn.insertAdjacentHTML('afterend', '<div class="nav-item" data-mod="disciplinary" onclick="showModule(\'disciplinary\')"><svg viewBox="0 0 24 24"><path d="M12 3l9 4v5c0 5-3.5 8-9 9-5.5-1-9-4-9-9V7z"/><path d="M12 8v5M12 16h.01"/></svg> Disciplinary Action</div>'); }
+  { const _a = applyModuleAccessToNav; applyModuleAccessToNav = window.applyModuleAccessToNav = function(){ const r = _a.apply(this, arguments);
+      const el = document.querySelector('.nav-item[data-mod="disciplinary"]'); if(el) el.style.display = canAccessModule('disciplinary') ? '' : 'none'; return r; }; }
+  { const _s = showModule; showModule = window.showModule = function(mod){ const r = _s.apply(this, arguments); if(mod === 'disciplinary' && document.getElementById('da-root')) daInit(); return r; }; }
+  setTimeout(() => { try{ applyModuleAccessToNav(); }catch(e){} }, 0);
+
+  /* ---------- the training presentation ---------- */
+  const SLIDES = [
+    { t:'Why disciplinary action matters', b:['Discipline protects people and the business: it sets the standard, corrects behaviour and shows that rules apply to everyone.','A badly run process is worse than none: an unfair procedure can turn a fair sanction into an unfair dismissal.','Everything here is recorded in Watchman so you can prove what was done, when, and why.'], n:'Treat discipline as corrective first and punitive last.' },
+    { t:'Conduct or capability: choose the right route', b:['Misconduct: the person knew the rule and broke it. Use the disciplinary route.','Poor performance (incapacity): the person tries but cannot meet the standard. Use counselling, training and a performance improvement plan, not a hearing for misconduct.','Link the case to the KPI that is not being met so the evidence is measurable.'], n:'KPIs and appraisals tell you which route applies.' },
+    { t:'Fairness has two parts', b:['Substantive fairness: was there a valid, reasonable rule, did the person know of it, and is the sanction consistent and appropriate?','Procedural fairness: was the person told the allegation, given time to prepare, allowed to respond and represented, and told the decision with reasons?','Both must be met. Record both.'], n:'In South Africa this rests on the Labour Relations Act and its Code of Good Practice: Dismissal. Check your own policy and sector agreements.' },
+    { t:'Step 1: Investigate and register', b:['Gather the facts before charging anyone: statements, records, photos, inspection or audit findings.','Register the case in Watchman with a clear, specific allegation: what, when, where, which rule.','Link it to the nonconformance, the RAGA alert or the KPI that triggered it.'], n:'Vague allegations are the most common reason hearings fail.' },
+    { t:'Step 2: Give notice', b:['Issue written notice of the allegation, the date, time and venue, the chairperson and the right to representation.','Allow reasonable time to prepare: at least 48 hours is common practice.','Use Send notice in the case: it emails the employee and records that it was sent.'], n:'If the employee has no email, the line manager is notified to deliver it.' },
+    { t:'Step 3: Hold the hearing', b:['The chairperson must be impartial and not the complainant or investigator.','Present the allegation and evidence, let the employee respond, call witnesses and test the evidence.','Allow a representative as your policy permits. Record attendance, interpreters and any objections.'], n:'Take minutes live. They are your record if the matter goes further.' },
+    { t:'Step 4: Record the minutes', b:['Who attended, what was alleged, the evidence presented, the employee\'s response, and the mitigating and aggravating factors.','Use the minutes template in the case to keep the structure consistent.','Minutes stay on the case file and cannot be edited by contributors.'], n:'Facts, not opinions.' },
+    { t:'Step 5: Verdict and outcome', b:['Decide on the balance of probabilities: is it more likely than not that the employee committed the offence?','Then choose a sanction that is consistent with past cases, proportionate, and considers service record and circumstances.','Progressive discipline: counselling, verbal warning, written warning, final written warning, then dismissal. Serious misconduct can justify going straight to dismissal.'], n:'Give written reasons for the verdict and the sanction.' },
+    { t:'Step 6: Communicate, appeal and follow up', b:['Issue the verdict and outcome in writing and state how long a warning remains valid and the appeal deadline.','Allow an appeal as per policy. Record the appeal and its result.','Follow up: create a task, log a training need, set a performance improvement plan, and review at the next appraisal.'], n:'A warning that is never followed up teaches nothing.' },
+    { t:'Keeping the record', b:['Closed cases stay on the personnel profile with the verdict, sanction, validity and appeal.','Expired warnings stay on file but are flagged as expired and are not counted against the person.','Cases feed the compliance dashboard and the management review, without names, as counts and overdue steps.'], n:'Treat the records as confidential. Only administrators and managers can see them.' },
+  ];
+  let slide = 0;
+  function slidesHtml(){ const s = SLIDES[slide];
+    return `<div style="max-width:900px;"><div style="background:linear-gradient(135deg,#1c1c1c,#3a0a0a 70%,#D50000 170%);color:#fff;border-radius:18px;padding:28px 32px;min-height:300px;">
+      <div style="font-size:11px;letter-spacing:.1em;opacity:.7;">DISCIPLINARY ACTION · ${slide + 1} OF ${SLIDES.length}</div>
+      <h2 style="margin:6px 0 14px;font-size:24px;">${E(s.t)}</h2>
+      <ul style="margin:0 0 14px 18px;padding:0;font-size:15px;line-height:1.55;">${s.b.map(x => `<li style="margin-bottom:8px;">${E(x)}</li>`).join('')}</ul>
+      <div style="background:rgba(255,255,255,.12);border-radius:10px;padding:10px 14px;font-size:13px;">${E(s.n)}</div></div>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:12px;flex-wrap:wrap;"><button class="btn-small" ${slide ? '' : 'disabled'} onclick="daSlide(-1)">Previous</button><button class="btn-small primary" ${slide < SLIDES.length - 1 ? '' : 'disabled'} onclick="daSlide(1)">Next</button>
+      <span style="margin-left:8px;">${SLIDES.map((_, i) => `<span onclick="daSlide(0,${i})" style="display:inline-block;width:9px;height:9px;border-radius:50%;margin:0 3px;cursor:pointer;background:${i === slide ? '#D50000' : '#d6d2cf'};"></span>`).join('')}</span>
+      <button class="btn-small" style="margin-left:auto;" onclick="WMTutorial&&WMTutorial.open({lesson:'disciplinary',narrate:true})">Play narrated lesson</button></div>
+      <p style="font-size:11.5px;color:#888;margin-top:10px;">General guidance for managers, not legal advice. Follow your own disciplinary code and take legal advice on serious cases.</p></div>`; }
+  window.daSlide = function(d, to){ slide = to != null ? to : Math.max(0, Math.min(SLIDES.length - 1, slide + d)); const b = document.getElementById('da-body'); if(b) b.innerHTML = slidesHtml(); };
+
+  /* ---------- page ---------- */
+  let tab = 'cases', fStatus = '';
+  window.daTab = function(t){ tab = t; daRender(); };
+  async function daInit(){ try{ if(window.loadGov) await window.loadGov(); }catch(e){} daRender(); }
+  function daRender(){
+    const root = document.getElementById('da-root'); if(!root) return;
+    const nav = window.__wbSubnav ? window.__wbSubnav('disciplinary') : '';
+    if(!mgr()){ root.innerHTML = nav + '<div class="panel"><p>Disciplinary records are visible to administrators and managers only.</p></div>'; return; }
+    const tabs = [['cases','Cases'],['train','How to manage disciplinary action']];
+    root.innerHTML = nav + `<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">${tabs.map(([k, l]) => `<button class="btn-small ${tab === k ? 'primary' : ''}" onclick="daTab('${k}')">${l}</button>`).join('')}<button class="btn-small primary" style="margin-left:auto;" onclick="daNew()">+ Register a case</button></div><div id="da-body"></div>`;
+    document.getElementById('da-body').innerHTML = tab === 'train' ? slidesHtml() : casesHtml();
+  }
+  function caseOverdue(c){ if(c.status === 'closed') return false; const now = tdy();
+    if(c.status === 'notified' && c.hearing_date && day(c.hearing_date) < addDays(now, -14)) return true;
+    if(c.status === 'hearing_held' && day(c.hearing_date) < addDays(now, -14)) return true;
+    if(c.status === 'registered' && day(c.created_at) < addDays(now, -14)) return true;
+    if(c.status === 'verdict_issued' && c.appeal_deadline && c.appeal_deadline < now && !c.appeal_lodged) return true;
+    return false; }
+  window.daOverdue = caseOverdue;
+  function casesHtml(){
+    const all = D().disc, open = all.filter(c => c.status !== 'closed'), od = open.filter(caseOverdue).length;
+    const live = all.filter(c => c.outcome && c.sanction_valid_until && c.sanction_valid_until >= tdy()).length;
+    const rows = all.filter(c => !fStatus || c.status === fStatus).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    const t = (n, l, c) => `<div style="padding:10px 14px;border-radius:10px;border:1px solid var(--border);border-top:4px solid ${c};min-width:130px;"><div style="font-size:22px;font-weight:800;line-height:1;">${n}</div><div style="font-size:11.5px;color:#777;margin-top:4px;">${l}</div></div>`;
+    return `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">${t(open.length, 'open cases', open.length ? '#EF6C00' : '#1B8E3E')}${t(od, 'with a step overdue', od ? '#D50000' : '#1B8E3E')}${t(live, 'sanctions still valid', '#4B3F72')}${t(all.length, 'cases on record', '#8A8785')}</div>
+      <div style="margin-bottom:10px;"><select onchange="daFilter(this.value)"><option value="">All statuses</option>${Object.keys(STATUS).map(k => `<option value="${k}" ${fStatus === k ? 'selected' : ''}>${STATUS[k][0]}</option>`).join('')}</select></div>
+      ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Ref</th><th>Employee</th><th>Type</th><th>Status</th><th>Hearing</th><th>Outcome</th><th>Linked KPI</th></tr></thead><tbody>${rows.map(c => `<tr style="cursor:pointer;" onclick="daOpen('${c.id}')"><td class="mono">${E(c.ref_code)}</td><td><b>${E(pname(c.personnel_id))}</b></td><td>${E(TYPES[c.case_type] || c.case_type)}</td><td>${pill(c.status)}${caseOverdue(c) ? ' <span style="color:#D50000;font-weight:800;font-size:11px;">overdue</span>' : ''}</td><td>${c.hearing_date ? fmtDate(day(c.hearing_date)) : '—'}</td><td>${c.outcome ? E(OUTCOME[c.outcome] || c.outcome) : '—'}</td><td>${E(c.linked_kpi || '—')}</td></tr>`).join('')}</tbody></table></div>`
+      : '<div class="panel"><p style="margin:0;">No cases yet. Use "Register a case" to start one, or open "How to manage disciplinary action" for the training presentation.</p></div>'}`;
+  }
+  window.daFilter = v => { fStatus = v; daRender(); };
+
+  /* ---------- register ---------- */
+  window.daNew = function(personId, ctx){ ctx = ctx || {};
+    const kpiOpts = pid => { const prim = pid ? primaryCompetenceFor(pid) : null; return '<option value="">None</option>' + arr(STATE.positionKpis).filter(k => prim && k.position_id === prim.position_id).map(k => `<option value="${E(k.title)}">${E(k.title)}</option>`).join(''); };
+    kpiOverlay(`<div style="padding:8px;max-width:700px;"><h3 style="margin:0 0 4px;">Register a disciplinary case</h3><p style="font-size:12.5px;color:#666;margin:0 0 10px;">Be specific: what happened, when, where and which rule or standard was broken. No notice is sent until you issue it.</p><div class="form-grid">
+      <div class="field"><label>Employee</label><select id="dn-person" onchange="document.getElementById('dn-kpi').innerHTML=daKpiOpts(this.value)"><option value="">Select…</option>${personnelOptions(personId)}</select></div>
+      <div class="field"><label>Type</label><select id="dn-type">${Object.keys(TYPES).map(k => `<option value="${k}" ${ctx.type === k ? 'selected' : ''}>${TYPES[k]}</option>`).join('')}</select></div>
+      <div class="field"><label>Date of the incident</label><input type="date" id="dn-date" value="${tdy()}"></div>
+      <div class="field span3"><label>Allegation</label><textarea id="dn-alleg" rows="4" placeholder="On [date] at [place], the employee [what happened], contrary to [rule, policy or instruction].">${E(ctx.allegation || '')}</textarea></div>
+      <div class="field"><label>Linked KPI (from their position)</label><select id="dn-kpi">${kpiOpts(personId)}</select></div>
+      <div class="field"><label>Linked nonconformance</label><select id="dn-nc"><option value="">None</option>${arr(STATE.ncs).slice(0, 300).map(n => `<option value="${n.id}" ${ctx.nc === n.id ? 'selected' : ''}>${E(n.ref_code)}: ${E((n.title || '').slice(0, 50))}</option>`).join('')}</select></div>
+      <div class="field"><label>Linked RAGA alert</label><select id="dn-raga"><option value="">None</option>${arr(STATE.ragaAlerts).slice(0, 300).map(n => `<option value="${n.id}">${E(n.ref_code || '')}: ${E((n.title || n.description || '').slice(0, 50))}</option>`).join('')}</select></div></div>
+      <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" id="dn-go" onclick="daCreate()">Register case</button></div></div>`);
+  };
+  window.daKpiOpts = pid => { const prim = pid ? primaryCompetenceFor(pid) : null; return '<option value="">None</option>' + arr(STATE.positionKpis).filter(k => prim && k.position_id === prim.position_id).map(k => `<option value="${E(k.title)}">${E(k.title)}</option>`).join(''); };
+  window.daCreate = async function(){
+    const g = k => (document.getElementById(k) || {}).value || '';
+    if(!g('dn-person')){ toast('Select the employee.', 'error'); return; } if(g('dn-alleg').trim().length < 15){ toast('Describe the allegation specifically.', 'error'); return; }
+    document.getElementById('dn-go').disabled = true;
+    try{
+      const n = await STATE.supabase.rpc('gov_next_no', { p_org:STATE.org.id, p_kind:'dc' }); if(n.error) throw new Error(n.error.message + ' (run the Release 17 SQL first)');
+      const row = { organisation_id:STATE.org.id, ref_code:'DA-' + String(n.data).padStart(4, '0'), personnel_id:g('dn-person'), case_type:g('dn-type'), allegation:g('dn-alleg').trim(), incident_date:g('dn-date') || null, status:'registered', linked_kpi:g('dn-kpi') || null, nonconformance_id:g('dn-nc') || null, raga_id:g('dn-raga') || null, created_by:STATE.user.id };
+      const { data, error } = await STATE.supabase.from('disciplinary_cases').insert(row).select().single(); if(error) throw new Error(error.message);
+      D().disc.unshift(data); await evt(data.id, 'registered', 'Case registered: ' + TYPES[data.case_type]);
+      kpiCloseOverlay(); toast('Case ' + data.ref_code + ' registered.', 'success'); daOpen(data.id);
+      if(document.getElementById('da-root')) daRender();
+    }catch(e){ toast('Could not register: ' + e.message, 'error'); const b = document.getElementById('dn-go'); if(b) b.disabled = false; }
+  };
+  async function evt(caseId, kind, note){ const row = { organisation_id:STATE.org.id, case_id:caseId, kind, note, author_id:STATE.user.id }; const { data } = await STATE.supabase.from('disciplinary_events').insert(row).select().single(); if(data) D().events.push(data); }
+  async function upd(id, patch){ const { error } = await STATE.supabase.from('disciplinary_cases').update(patch).eq('id', id); if(error){ toast('Could not save: ' + error.message, 'error'); return false; } Object.assign(byId(id), patch); return true; }
+
+  /* ---------- case file ---------- */
+  const MINUTES_TPL = 'DISCIPLINARY HEARING MINUTES\n\nDate, time and venue:\nChairperson:\nEmployee:\nRepresentative:\nOthers present (witnesses, interpreter, minute taker):\n\n1. Opening: the chairperson confirmed the allegation, the employee\'s rights and that notice was received.\n\n2. Allegation and evidence presented by the employer:\n\n3. Employee\'s response and evidence:\n\n4. Witnesses and cross-examination:\n\n5. Mitigating factors raised:\n\n6. Aggravating factors raised:\n\n7. Adjournment and decision date:\n';
+  window.daOpen = function(id){
+    const c = byId(id); if(!c) return; const p = personById(c.personnel_id), evs = D().events.filter(e => e.case_id === id).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+    const steps = ['registered','notified','hearing_held','verdict_issued','closed']; const at = steps.indexOf(c.status === 'appealed' ? 'verdict_issued' : c.status);
+    const dt = v => v ? String(v).slice(0, 16) : '';
+    const sec = (n, t, inner) => `<div style="border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:12px;"><div style="font-weight:800;margin-bottom:8px;">${n}. ${t}</div>${inner}</div>`;
+    const closed = c.status === 'closed';
+    kpiOverlay(`<div style="padding:6px 8px;max-height:86vh;overflow:auto;"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;"><div><span class="ref">${E(c.ref_code)}</span><h3 style="margin:2px 0;">${E(p ? p.full_name : 'Employee')}: ${E(TYPES[c.case_type] || '')}</h3></div><div>${pill(c.status)}</div></div>
+      <div style="display:flex;gap:4px;margin:10px 0 14px;">${steps.map((s, i) => `<div style="flex:1;text-align:center;font-size:10.5px;"><div style="height:6px;border-radius:4px;background:${i <= at ? '#D50000' : '#e3e0de'};"></div>${STATUS[s][0]}</div>`).join('')}</div>
+      ${sec(1, 'Allegation and links', `<p style="margin:0 0 6px;font-size:13px;white-space:pre-wrap;">${E(c.allegation)}</p><div style="font-size:12px;color:#666;">Incident: ${c.incident_date ? fmtDate(c.incident_date) : '—'}${c.linked_kpi ? ' · KPI: <b>' + E(c.linked_kpi) + '</b>' : ''}${c.nonconformance_id ? ' · <a class="sf-a" style="cursor:pointer" onclick="kpiCloseOverlay();showModule(\'nonconformances\');setTimeout(()=>openNCDetail(\'' + c.nonconformance_id + '\'),400)">Nonconformance</a>' : ''}${c.raga_id ? ' · <a class="sf-a" style="cursor:pointer" onclick="kpiCloseOverlay();showModule(\'raga\');setTimeout(()=>openRagaDetail(\'' + c.raga_id + '\'),400)">RAGA alert</a>' : ''}</div>`)}
+      ${sec(2, 'Notice of hearing', `<div class="form-grid"><div class="field"><label>Hearing date and time</label><input type="datetime-local" id="dc-hd" value="${dt(c.hearing_date)}" ${closed ? 'disabled' : ''}></div><div class="field"><label>Venue</label><input id="dc-venue" value="${E(c.hearing_venue || '')}"></div><div class="field"><label>Chairperson</label><select id="dc-chair"><option value="">Select…</option>${memberOptions(c.chair_id)}</select></div><div class="field span3"><label>Representation allowed</label><input id="dc-rep" value="${E(c.representative || 'The employee may be represented by a fellow employee or shop steward, as per our disciplinary code.')}"></div></div>
+        <button class="btn-small" onclick="daSaveNotice('${id}',false)">Save details</button> <button class="btn-small primary" onclick="daSaveNotice('${id}',true)">${c.notice_sent_at ? 'Resend notice' : 'Send notice to employee'}</button>${c.notice_sent_at ? `<span style="font-size:12px;color:#2E7D4F;margin-left:8px;">Notice sent ${fmtDate(day(c.notice_sent_at))}</span>` : ''}`)}
+      ${sec(3, 'Hearing minutes', `<textarea id="dc-min" rows="9" style="width:100%;" placeholder="Record the hearing">${E(c.minutes || '')}</textarea><div style="margin-top:6px;"><button class="btn-small" onclick="document.getElementById('dc-min').value=document.getElementById('dc-min').value||daTpl()">Insert minutes template</button> <button class="btn-small primary" onclick="daSaveMinutes('${id}')">Save minutes</button></div>`)}
+      ${sec(4, 'Verdict and outcome', `<div class="form-grid"><div class="field"><label>Verdict</label><select id="dc-verdict"><option value="">Select…</option>${Object.keys(VERDICT).map(k => `<option value="${k}" ${c.verdict === k ? 'selected' : ''}>${VERDICT[k]}</option>`).join('')}</select></div><div class="field"><label>Sanction or outcome</label><select id="dc-outcome" onchange="daOutcomeDates()"><option value="">Select…</option>${Object.keys(OUTCOME).map(k => `<option value="${k}" ${c.outcome === k ? 'selected' : ''}>${OUTCOME[k]}</option>`).join('')}</select></div><div class="field"><label>Outcome date</label><input type="date" id="dc-od" value="${E(c.outcome_date || tdy())}"></div><div class="field"><label>Sanction valid until</label><input type="date" id="dc-valid" value="${E(c.sanction_valid_until || '')}"></div><div class="field"><label>Appeal deadline</label><input type="date" id="dc-appeal" value="${E(c.appeal_deadline || '')}"></div><div class="field span3"><label>Reasons for the verdict and sanction (mitigating and aggravating factors)</label><textarea id="dc-reasons" rows="4">${E(c.verdict_reasons || '')}</textarea></div></div>
+        <button class="btn-small primary" onclick="daIssue('${id}')">${c.verdict ? 'Update and re-issue verdict' : 'Issue verdict and outcome'}</button>${c.verdict ? ` <button class="btn-small" onclick="daFollowTask('${id}')">+ Follow-up task</button> <button class="btn-small" onclick="kpiCloseOverlay();prefillTrainingFromPerson('${c.personnel_id}')">+ Training need</button>` : ''}`)}
+      ${sec(5, 'Appeal and closure', `<div style="font-size:13px;margin-bottom:8px;">${c.appeal_lodged ? '<b style="color:#B3261E;">Appeal lodged.</b> ' : 'No appeal lodged. '}${c.appeal_outcome ? 'Result: ' + E(c.appeal_outcome) : ''}</div>${closed ? `<span style="color:#2E7D4F;font-weight:700;">Closed ${fmtDate(c.closed_at)}</span> <button class="btn-small" onclick="daReopen('${id}')">Reopen</button>` : `<div class="field" style="margin-bottom:8px;"><input id="dc-appres" placeholder="Appeal result (if lodged)" value="${E(c.appeal_outcome || '')}"></div><button class="btn-small" onclick="daAppeal('${id}')">${c.appeal_lodged ? 'Save appeal result' : 'Record appeal lodged'}</button> <button class="btn-small primary" onclick="daClose('${id}')">Close the case</button>`}`)}
+      ${sec(6, 'Timeline', `<div style="font-size:12.5px;">${evs.map(e => `<div style="padding:4px 0;border-top:1px solid var(--border);"><b>${fmtDate(day(e.created_at))}</b> · ${E(e.kind)}: ${E(e.note || '')}</div>`).join('') || 'Nothing recorded yet.'}</div><div style="display:flex;gap:6px;margin-top:8px;"><input id="dc-note" placeholder="Add a note to the timeline" style="flex:1;"><button class="btn-small" onclick="daNote('${id}')">Add</button></div>`)}
+      <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Close</button><button class="btn-small" onclick="daPrint('${id}')">Print case file</button>${mgr() && STATE.myRole === 'admin' ? `<button class="btn-small" style="color:#B3261E;" onclick="daDelete('${id}')">Delete case</button>` : ''}</div></div>`);
+  };
+  window.daTpl = () => MINUTES_TPL;
+  window.daOutcomeDates = function(){ const o = (document.getElementById('dc-outcome') || {}).value, od = (document.getElementById('dc-od') || {}).value || tdy(), v = document.getElementById('dc-valid'), a = document.getElementById('dc-appeal');
+    if(v && !v.value && VALID_MONTHS[o]){ const d = new Date(od + 'T00:00:00Z'); d.setUTCMonth(d.getUTCMonth() + VALID_MONTHS[o]); v.value = d.toISOString().slice(0, 10); } if(a && !a.value && o) a.value = addDays(od, 7); };
+  window.daSaveNotice = async function(id, send){ const c = byId(id), g = k => (document.getElementById(k) || {}).value || '';
+    const patch = { hearing_date:g('dc-hd') ? new Date(g('dc-hd')).toISOString() : null, hearing_venue:g('dc-venue').trim() || null, chair_id:g('dc-chair') || null, representative:g('dc-rep').trim() || null };
+    if(send){ if(!patch.hearing_date){ toast('Set the hearing date and time first.', 'error'); return; } const hrs = (new Date(patch.hearing_date) - Date.now()) / 36e5; if(hrs < 48 && !confirm('The hearing is less than 48 hours away. Reasonable notice is usually at least 48 hours. Send the notice anyway?')) return; }
+    if(!(await upd(id, patch))) return;
+    if(!send){ toast('Saved.', 'success'); return; }
+    const p = personById(c.personnel_id), when = new Date(patch.hearing_date).toLocaleString('en-ZA', { dateStyle:'full', timeStyle:'short' });
+    const msg = `Dear ${p.full_name},\n\nThis is formal notice of a disciplinary hearing (${c.ref_code}).\n\nAllegation:\n${c.allegation}\n\nDate and time: ${when}\nVenue: ${patch.hearing_venue || 'To be confirmed'}\nChairperson: ${patch.chair_id ? memberName(patch.chair_id) : 'To be confirmed'}\n\nYou have the right to prepare, to call witnesses, to respond to the allegation and to be represented as follows: ${patch.representative || 'as per the disciplinary code'}.\n\nPlease confirm receipt. This notice is confidential.\n\n${STATE.org.name}`;
+    showLoader('Sending the notice…'); let r; try{ r = await notifyPerson({ personnelId:c.personnel_id, subject:`Notice of disciplinary hearing ${c.ref_code}`, message:msg, kind:'Disciplinary' }); }finally{ hideLoader(); }
+    if(patch.chair_id) { try{ await notifyPerson({ userId:patch.chair_id, subject:`You are chairing disciplinary hearing ${c.ref_code}`, message:`You have been appointed to chair the hearing for ${p.full_name} on ${when}. Allegation: ${c.allegation}`, kind:'Disciplinary' }); }catch(e){} }
+    await upd(id, { notice_sent_at:new Date().toISOString(), status:c.status === 'registered' ? 'notified' : c.status });
+    await evt(id, 'notice', (r && r.ok ? 'Notice sent to ' : 'Notice recorded, but the email could not be sent to ') + p.full_name + ' for ' + when + (r && r.via ? ' (via ' + r.via + ')' : ''));
+    toast(r && r.ok ? 'Notice sent and recorded.' : 'Notice recorded. ' + ((r && r.error) || 'Email not sent.'), r && r.ok ? 'success' : 'error'); daOpen(id); if(document.getElementById('da-root')) daRender(); };
+  window.daSaveMinutes = async function(id){ const c = byId(id), v = (document.getElementById('dc-min') || {}).value || ''; if(v.trim().length < 20){ toast('Record the minutes first.', 'error'); return; }
+    if(!(await upd(id, { minutes:v, minutes_recorded_by:STATE.user.id, status:['registered','notified'].includes(c.status) ? 'hearing_held' : c.status }))) return;
+    await evt(id, 'minutes', 'Hearing minutes saved'); toast('Minutes saved.', 'success'); daOpen(id); if(document.getElementById('da-root')) daRender(); };
+  window.daIssue = async function(id){ const c = byId(id), g = k => (document.getElementById(k) || {}).value || '';
+    if(!g('dc-verdict') || !g('dc-outcome')){ toast('Choose the verdict and the outcome.', 'error'); return; } if(g('dc-reasons').trim().length < 15){ toast('Give written reasons.', 'error'); return; }
+    if(!c.minutes || c.minutes.trim().length < 20){ if(!confirm('No hearing minutes are recorded. A verdict without minutes is hard to defend. Continue anyway?')) return; }
+    const patch = { verdict:g('dc-verdict'), outcome:g('dc-outcome'), outcome_date:g('dc-od') || tdy(), sanction_valid_until:g('dc-valid') || null, appeal_deadline:g('dc-appeal') || null, verdict_reasons:g('dc-reasons').trim(), status:c.appeal_lodged ? 'appealed' : 'verdict_issued' };
+    if(!(await upd(id, patch))) return;
+    const p = personById(c.personnel_id);
+    const msg = `Dear ${p.full_name},\n\nThe outcome of disciplinary hearing ${c.ref_code} is as follows.\n\nVerdict: ${VERDICT[patch.verdict]}\nOutcome: ${OUTCOME[patch.outcome]}\n${patch.sanction_valid_until ? 'Valid until: ' + patch.sanction_valid_until + '\n' : ''}Reasons:\n${patch.verdict_reasons}\n\n${patch.appeal_deadline ? 'You may appeal in writing by ' + patch.appeal_deadline + '.\n\n' : ''}This communication is confidential.\n\n${STATE.org.name}`;
+    showLoader('Issuing the outcome…'); let r; try{ r = await notifyPerson({ personnelId:c.personnel_id, subject:`Outcome of disciplinary hearing ${c.ref_code}`, message:msg, kind:'Disciplinary' }); }finally{ hideLoader(); }
+    await evt(id, 'verdict', `${VERDICT[patch.verdict]}; ${OUTCOME[patch.outcome]}${r && r.ok ? '; outcome emailed' : '; outcome not emailed'}`);
+    toast('Verdict and outcome issued and recorded on the profile.', 'success'); daOpen(id); if(document.getElementById('da-root')) daRender(); };
+  window.daFollowTask = async function(id){ const c = byId(id), p = personById(c.personnel_id);
+    const { error } = await STATE.supabase.from('tasks').insert({ organisation_id:STATE.org.id, title:`Follow up ${c.ref_code}: ${p ? p.full_name : ''} (${OUTCOME[c.outcome] || 'outcome'})`, personnel_id:c.personnel_id, assignee_id:(p && p.line_manager_id && (personById(p.line_manager_id) || {}).linked_profile_id) || STATE.user.id, due_date:addDays(tdy(), 30), created_by:STATE.user.id });
+    if(error){ toast('Could not create the task: ' + error.message, 'error'); return; } await evt(id, 'task', 'Follow-up task created, due in 30 days'); toast('Follow-up task created.', 'success'); };
+  window.daAppeal = async function(id){ const c = byId(id), res = (document.getElementById('dc-appres') || {}).value || '';
+    if(!(await upd(id, { appeal_lodged:true, appeal_outcome:res.trim() || null, status:c.status === 'closed' ? c.status : 'appealed' }))) return; await evt(id, 'appeal', res.trim() ? 'Appeal result: ' + res.trim() : 'Appeal lodged'); toast('Saved.', 'success'); daOpen(id); if(document.getElementById('da-root')) daRender(); };
+  window.daClose = async function(id){ const c = byId(id); if(!c.verdict){ toast('Issue the verdict first.', 'error'); return; } if(!(await upd(id, { status:'closed', closed_at:tdy() }))) return; await evt(id, 'closed', 'Case closed'); toast('Case closed. It stays on the personnel profile.', 'success'); daOpen(id); if(document.getElementById('da-root')) daRender(); };
+  window.daReopen = async function(id){ if(!(await upd(id, { status:'verdict_issued', closed_at:null }))) return; await evt(id, 'reopened', 'Case reopened'); daOpen(id); if(document.getElementById('da-root')) daRender(); };
+  window.daNote = async function(id){ const v = (document.getElementById('dc-note') || {}).value || ''; if(!v.trim()) return; await evt(id, 'note', v.trim()); daOpen(id); };
+  window.daDelete = async function(id){ if(!confirm('Delete this disciplinary case permanently? This cannot be undone.')) return; const { error } = await STATE.supabase.from('disciplinary_cases').delete().eq('id', id); if(error){ toast('Could not delete: ' + error.message, 'error'); return; } D().disc = D().disc.filter(c => c.id !== id); D().events = D().events.filter(e => e.case_id !== id); kpiCloseOverlay(); toast('Deleted.', 'success'); if(document.getElementById('da-root')) daRender(); };
+  window.daPrint = function(id){ const c = byId(id), p = personById(c.personnel_id); if(!c) return;
+    const evs = D().events.filter(e => e.case_id === id).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+    const meta = [['Employee', p ? p.full_name : ''], ['Type', TYPES[c.case_type]], ['Status', (STATUS[c.status] || [c.status])[0]], ['Hearing', c.hearing_date ? new Date(c.hearing_date).toLocaleString('en-ZA') : '—'], ['Chairperson', c.chair_id ? memberName(c.chair_id) : '—'], ['Linked KPI', c.linked_kpi || '—']];
+    const body = `${printSectionTitle('Allegation')}<p>${E(c.allegation)}</p>${printSectionTitle('Hearing Minutes')}<pre style="white-space:pre-wrap;font-family:Arial,Helvetica,sans-serif;">${E(c.minutes || 'No minutes recorded.')}</pre>${printSectionTitle('Verdict and Outcome')}<p><b>Verdict:</b> ${E(VERDICT[c.verdict] || '—')}<br><b>Outcome:</b> ${E(OUTCOME[c.outcome] || '—')}<br><b>Valid until:</b> ${c.sanction_valid_until ? fmtDate(c.sanction_valid_until) : '—'}<br><b>Appeal deadline:</b> ${c.appeal_deadline ? fmtDate(c.appeal_deadline) : '—'}</p><p>${E(c.verdict_reasons || '')}</p>${printSectionTitle('Timeline')}${printTable(['Date','Step','Note'], evs.map(e => [fmtDate(day(e.created_at)), e.kind, e.note || '']))}`;
+    printRecord('Disciplinary Case File (Confidential)', c.ref_code, meta, body, null, 'disciplinary'); };
+
+  /* ---------- on the personnel profile ---------- */
+  window.wbDiscSection = function(personId){
+    if(off() || !mgr()) return; const panel = document.querySelector('#pers-detail-slot .detail-panel'); if(!panel || document.getElementById('wb-disc')) return;
+    const cs = D().disc.filter(c => c.personnel_id === personId).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    const html = `<div id="wb-disc" class="detail-card" style="margin:14px 0;padding:14px 16px;border:1px solid var(--border);border-radius:12px;"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><b>Disciplinary record</b><span style="font-size:11px;color:#999;">Confidential: administrators and managers only</span><button class="btn-small primary" style="margin-left:auto;" onclick="daNew('${personId}')">+ Register a case</button></div>
+      ${cs.length ? `<table style="width:100%;font-size:12.5px;border-collapse:collapse;">${cs.map(c => { const live = c.outcome && c.sanction_valid_until && c.sanction_valid_until >= tdy(); return `<tr style="border-top:1px solid var(--border);cursor:pointer;" onclick="daOpen('${c.id}')"><td style="padding:6px 0;" class="mono">${E(c.ref_code)}</td><td>${E(TYPES[c.case_type])}</td><td>${pill(c.status)}</td><td>${c.outcome ? E(OUTCOME[c.outcome]) : '—'}${c.outcome && c.sanction_valid_until ? (live ? ` <small style="color:#B26A16;">valid to ${fmtDate(c.sanction_valid_until)}</small>` : ' <small style="color:#999;">expired</small>') : ''}</td><td>${E(c.linked_kpi || '')}</td></tr>`; }).join('')}</table>` : '<span style="font-size:12.5px;color:#777;">No disciplinary cases on record.</span>'}</div>`;
+    const ob = document.getElementById('wb-onb'); if(ob) ob.insertAdjacentHTML('afterend', html); else { const head = panel.querySelector('.detail-head'); if(head) head.insertAdjacentHTML('afterend', html); }
+  };
+
+  /* ---------- reminders ---------- */
+  DATE_TRACKED_MODULES.push(
+    { key:'disciplinary', label:'Disciplinary: Hearings and Appeal Deadlines', list:() => (!off() && mgr()) ? D().disc.filter(c => c.status !== 'closed').map(c => ({ ...c, _d:c.status === 'verdict_issued' && c.appeal_deadline ? c.appeal_deadline : day(c.hearing_date), _t:`${c.ref_code}: ${pname(c.personnel_id)}` })).filter(c => c._d) : [], dateField:'_d', isResolved:x => x.status === 'closed' || (x.status === 'verdict_issued' && x.appeal_lodged), titleField:'_t', getPerson:x => pname(x.personnel_id) }
+  );
+})();
+
+
+/* ===== b84d: Release 17, Business Planning, Continuity and Succession; governance metrics ===== */
+(function(){
+  const E = s => escapeHtml(s == null ? '' : String(s));
+  const arr = x => Array.isArray(x) ? x : [];
+  const tdy = () => todayISO();
+  const day = d => d ? String(d).slice(0, 10) : '';
+  const off = () => !!(STATE.org && STATE.org._modOff && STATE.org._modOff.has('bplan'));
+  const mgr = () => ['admin','manager'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const G = () => STATE._gv = STATE._gv || { plans:[], goals:[], links:[], cont:[], tests:[], succ:[], disc:[], events:[], badges:new Set() };
+  const addDays = (iso, n) => { const d = new Date((iso || tdy()) + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const col = v => v >= 85 ? '#1B8E3E' : v >= 60 ? '#EF6C00' : '#D50000';
+
+  const CAT = { financial:'Financial', customer:'Customer', process:'Internal process', people:'People and learning', compliance:'Compliance and legal', risk:'Risk and continuity', growth:'Growth and innovation' };
+  const PSTATUS = { draft:['Draft','#8A8785'], approved:['Approved','#2E5AA8'], active:['Active','#2E7D4F'], superseded:['Superseded','#6B6B6B'], archived:['Archived','#6B6B6B'] };
+  const READY = { ready_now:'Ready now', one_two:'Ready in 1 to 2 years', three_plus:'Ready in 3 or more years', none:'No successor identified' };
+  const RISK = { low:['Low','#2E7D4F'], medium:['Medium','#B26A16'], high:['High','#B3261E'] };
+  const pill = (m, k) => { const x = m[k] || [k, '#888']; return `<span class="sev-badge" style="background:${x[1]};color:#fff;">${E(x[0])}</span>`; };
+  const SECT = [['vision','Vision'],['mission','Mission'],['core_values','Core values'],['strengths','Strengths'],['weaknesses','Weaknesses'],['opportunities','Opportunities'],['threats','Threats'],['market_analysis','Market and customer analysis'],['products_services','Products and services'],['marketing_strategy','Marketing and sales strategy'],['operations_plan','Operations plan'],['people_plan','People and organisation plan'],['financial_summary','Financial summary'],['governance_notes','Governance: board or ownership oversight, delegations, reporting']];
+  const GENERIC = {
+    vision:'Where we want to be in five years, in one sentence.', mission:'What we do, for whom, and how we are different.', core_values:'Integrity, safety first, quality, accountability, respect, continual improvement.',
+    strengths:'What we do well: people, reputation, certifications, relationships, systems.', weaknesses:'Where we are exposed: capacity, concentration of customers, skills gaps, cash flow.',
+    opportunities:'New markets, services, partnerships, technology, regulatory change that favours us.', threats:'Competitors, economic conditions, loss of key people or customers, supply or power disruption, cyber attack, regulatory change.',
+    market_analysis:'Who our customers are, what they need, market size and trends, and our competitors.', products_services:'What we sell, pricing approach, and what we plan to add or stop.',
+    marketing_strategy:'How we win and keep customers: channels, partners, tenders, proposals and referrals.', operations_plan:'How we deliver: processes, facilities, equipment, suppliers and the management system (ISO 9001, 14001, 45001, 27001).',
+    people_plan:'Organisation structure, key roles, recruitment, training, succession and retention.', financial_summary:'Revenue and profit targets, budget, cash flow and capital needs.', governance_notes:'Who oversees the plan, how often it is reviewed (at least annually, and at each management review), and how performance is reported.' };
+  const GOALS = [
+    ['financial','Achieve the annual revenue and profit target','Per plan'],['customer','Customer satisfaction at or above target','95%'],['customer','Win and retain key customers','Per plan'],
+    ['process','Close nonconformances on time','100% on time'],['process','Deliver projects on time and within budget','90%'],['people','Complete planned training and keep competence current','100%'],['people','Every key role has a successor identified','100%'],
+    ['compliance','Maintain full legal compliance and certification','100%'],['risk','Keep high risks under control and test the continuity plan annually','1 test a year'],['growth','Introduce one new service, market or improvement project','1 per year'] ];
+  const BCP = { critical_functions:'List the activities that must continue or resume first, for example: delivering to customers, invoicing and collections, payroll, site safety, IT and data access, communication.',
+    threats_considered:'Loss of premises or site, IT failure or cyber attack, power outage or load shedding, loss of key personnel, supplier or subcontractor failure, severe weather or flood, fire, pandemic, civil unrest, loss of key customer.',
+    recovery_strategy:'For each critical function: how it continues (alternate site, remote work, backup supplier, manual workaround), who is responsible, and in what order recovery happens.',
+    communication_plan:'Who tells staff, customers, suppliers, authorities and insurers, how, and within what time. Include the emergency call tree.', key_contacts:'Emergency services, insurer, IT support, key suppliers, landlord, legal adviser, board members.', alternate_site:'Where operations move to if the main site is unavailable.' };
+
+  /* ---------- governance metrics ---------- */
+  function currentPlan(){ return arr(G().plans).filter(p => p.status === 'active' && (!p.period_end || p.period_end >= tdy())).sort((a, b) => String(b.period_start).localeCompare(String(a.period_start)))[0]; }
+  function keyRoles(){ return arr(STATE.positions).filter(p => p.is_key_role); }
+  function metrics(){
+    const out = [], plan = currentPlan(), t = tdy(), g = G();
+    if(!off()){
+      const drafts = arr(g.plans).some(p => ['draft','approved'].includes(p.status));
+      out.push({ k:'plan', label:'Business plan approved and current', value:plan ? (plan.next_review_date && plan.next_review_date < t ? 60 : 100) : (drafts ? 40 : 0), detail:plan ? (plan.next_review_date && plan.next_review_date < t ? 'Review was due ' + plan.next_review_date : plan.ref_code + ' is active') : (drafts ? 'A plan exists but is not yet active' : 'No business plan'), mod:'bplan' });
+      const goals = plan ? arr(g.goals).filter(x => x.plan_id === plan.id) : [];
+      if(goals.length){ const avg = Math.round(goals.reduce((s, x) => s + (x.status === 'achieved' ? 100 : Number(x.progress) || 0), 0) / goals.length), late = goals.filter(x => x.status !== 'achieved' && x.due_date && x.due_date < t).length;
+        out.push({ k:'goals', label:'Business plan goals progress', value:Math.max(0, avg - Math.min(30, late * 10)), detail:`${avg}% average progress, ${late} overdue`, mod:'bplan' });
+        const linked = goals.filter(x => arr(g.links).some(l => l.goal_id === x.id)).length;
+        out.push({ k:'align', label:'Goals linked to objectives, risks and legal', value:Math.round(linked / goals.length * 100), detail:`${linked} of ${goals.length} goals linked`, mod:'bplan' }); }
+      const cps = arr(g.cont).filter(c => c.status === 'active');
+      let cv = 0, cd = 'No active continuity plan';
+      if(cps.length){ const ok = cps.filter(c => c.last_test_date && c.last_test_date >= addDays(t, -365)).length; cv = 50 + Math.round(ok / cps.length * 50); cd = `${cps.length} active plan${cps.length === 1 ? '' : 's'}, ${ok} tested in the last 12 months`; }
+      out.push({ k:'bcp', label:'Business continuity readiness', value:cv, detail:cd, mod:'bplan' });
+      const kr = keyRoles();
+      if(kr.length){ const cov = kr.filter(p => { const s = arr(g.succ).find(x => x.position_id === p.id); return s && s.successor_id && s.readiness !== 'none'; }).length;
+        out.push({ k:'succ', label:'Succession cover for key roles', value:Math.round(cov / kr.length * 100), detail:`${cov} of ${kr.length} key roles have a successor`, mod:'bplan' }); }
+      else out.push({ k:'succ', label:'Succession cover for key roles', value:0, detail:'No key roles identified yet', mod:'bplan' });
+    }
+    const held = arr(STATE.positions).filter(p => arr(STATE.competence).some(c => c.position_id === p.id));
+    if(held.length){ const ok = held.filter(p => String(p.job_description || '').trim().length > 30).length; out.push({ k:'jd', label:'Roles with an established job description', value:Math.round(ok / held.length * 100), detail:`${ok} of ${held.length} positions`, mod:'personnel' }); }
+    const av = window.wbOnboardingAvg ? window.wbOnboardingAvg() : null; if(av != null) out.push({ k:'onb', label:'Personnel onboarding completion', value:av, detail:av + '% average', mod:'personnel' });
+    if(!(STATE.org._modOff && STATE.org._modOff.has('disciplinary')) && mgr() && arr(g.disc).length){ const open = arr(g.disc).filter(c => c.status !== 'closed'), od = open.filter(c => window.daOverdue && window.daOverdue(c)).length;
+      out.push({ k:'disc', label:'Disciplinary cases handled on time', value:open.length ? Math.round((open.length - od) / open.length * 100) : 100, detail:`${open.length} open, ${od} with a step overdue`, mod:'disciplinary' }); }
+    return out;
+  }
+  function index(){ const m = metrics().filter(x => x.value != null); return m.length ? Math.round(m.reduce((s, x) => s + x.value, 0) / m.length) : null; }
+  function gaps(){ const out = [], t = tdy(), plan = currentPlan(), g = G();
+    if(!off()){
+      if(!plan) out.push(['No active business plan: start from the generic template and approve it.', 'bplan']);
+      else { if(plan.next_review_date && plan.next_review_date < t) out.push(['The business plan review is overdue.', 'bplan']); const noObj = arr(g.goals).filter(x => x.plan_id === plan.id && !arr(g.links).some(l => l.goal_id === x.id && l.link_type === 'objective')).length; if(noObj) out.push([noObj + ' plan goal(s) are not yet measured by an objective.', 'bplan']); }
+      if(!arr(g.cont).some(c => c.status === 'active')) out.push(['No active business continuity plan.', 'bplan']);
+      else if(!arr(g.cont).some(c => c.status === 'active' && c.last_test_date && c.last_test_date >= addDays(t, -365))) out.push(['No continuity plan has been tested in the last 12 months.', 'bplan']);
+      const kr = keyRoles(); if(!kr.length) out.push(['Identify the key roles for succession planning.', 'bplan']);
+      kr.forEach(p => { const s = arr(g.succ).find(x => x.position_id === p.id); if(!s || !s.successor_id) out.push(['Key role without a successor: ' + p.title, 'bplan']); if(!arr(STATE.competence).some(c => c.position_id === p.id && c.is_primary)) out.push(['Key role is vacant: ' + p.title, 'bplan']); });
+    }
+    return out; }
+  window.wbGov = { metrics, index, gaps, currentPlan, keyRoles };
+
+  /* ---------- navigation and access ---------- */
+  MODULE_META.bplan = { title:'Business Planning and Continuity', sub:() => 'Business plan, goals linked to objectives, risks and legal, continuity, succession and corporate governance measures' };
+  RENDERERS.bplan = () => '<div id="bp-root"></div>';
+  { const mr = document.querySelector('.nav-item[data-mod="management_review"]');
+    if(mr && !document.querySelector('.nav-item[data-mod="bplan"]')) mr.insertAdjacentHTML('beforebegin', '<div class="nav-item" data-mod="bplan" onclick="showModule(\'bplan\')"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg> Business Planning</div>'); }
+  { const _a = applyModuleAccessToNav; applyModuleAccessToNav = window.applyModuleAccessToNav = function(){ const r = _a.apply(this, arguments);
+      const el = document.querySelector('.nav-item[data-mod="bplan"]'); if(el) el.style.display = canAccessModule('bplan') ? '' : 'none'; return r; }; }
+  { const _s = showModule; showModule = window.showModule = function(mod){ const r = _s.apply(this, arguments); if(mod === 'bplan' && document.getElementById('bp-root')) bpInit(); return r; }; }
+  setTimeout(() => { try{ applyModuleAccessToNav(); }catch(e){} }, 0);
+
+  /* ---------- page ---------- */
+  let tab = 'overview', planId = null;
+  async function bpInit(){ try{ if(window.loadGov) await window.loadGov(); }catch(e){} bpRender(); }
+  window.bpTab = t => { tab = t; bpRender(); };
+  function bpRender(){
+    const root = document.getElementById('bp-root'); if(!root) return;
+    if(G().broken){ root.innerHTML = '<div class="panel"><h3>Database update needed</h3><p>Run <b>qashe-watchman-schema-governance-people.sql</b> in the Supabase SQL editor, then reload.</p></div>'; return; }
+    const tabs = [['overview','Governance scorecard'],['plan','Business plan'],['cont','Business continuity'],['succ','Succession and key roles']];
+    root.innerHTML = `<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">${tabs.map(([k, l]) => `<button class="btn-small ${tab === k ? 'primary' : ''}" onclick="bpTab('${k}')">${l}</button>`).join('')}</div><div id="bp-body"></div>`;
+    document.getElementById('bp-body').innerHTML = ({ overview:overviewHtml, plan:planHtml, cont:contHtml, succ:succHtml })[tab]();
+  }
+  const tile = (n, l, c, on) => `<div ${on ? `onclick="${on}"` : ''} style="${on ? 'cursor:pointer;' : ''}padding:12px 14px;border-radius:10px;border:1px solid var(--border);border-top:4px solid ${c};"><div style="font-size:24px;font-weight:800;line-height:1;">${n}</div><div style="font-size:11.5px;color:#777;margin-top:5px;">${l}</div></div>`;
+
+  function overviewHtml(){
+    const m = metrics(), ix = index(), gp = gaps();
+    return `<div class="panel"><div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;"><div style="width:110px;height:110px;border-radius:50%;background:conic-gradient(${ix == null ? '#ccc' : col(ix)} ${(ix || 0) * 3.6}deg,#e6e3e1 0);display:flex;align-items:center;justify-content:center;"><div style="width:90px;height:90px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;"><b style="font-size:28px;line-height:1;">${ix == null ? '—' : ix + '%'}</b><span style="font-size:9.5px;color:#777;">governance index</span></div></div>
+      <div style="flex:1;min-width:260px;"><h3 style="margin:0 0 4px;">Corporate governance at a glance</h3><p style="margin:0;font-size:13px;color:#666;">Direction (business plan and goals), accountability (roles, job descriptions, succession), resilience (continuity), and discipline (people records). The index is the plain average of the measures below, and each measure also appears on the Compliance Dashboard, in Business Health and in the Management Review.</p></div></div></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:14px 0;">${m.map(x => tile(Math.round(x.value) + '%', E(x.label) + '<br><span style="color:#999;">' + E(x.detail) + '</span>', col(x.value), `showModule('${x.mod}')`)).join('')}</div>
+      <div class="panel"><h3 style="margin-top:0;">What to improve next</h3>${gp.length ? '<ul style="margin:0 0 0 18px;font-size:13.5px;line-height:1.7;">' + gp.map(([t, mod]) => `<li><a class="sf-a" style="cursor:pointer" onclick="showModule('${mod}')">${E(t)}</a></li>`).join('') + '</ul>' : '<p style="color:#1B8E3E;font-weight:700;margin:0;">✓ No governance gaps found.</p>'}</div>
+      <div class="panel"><h3 style="margin-top:0;">How governance is measured in Watchman</h3><table style="width:100%;font-size:12.5px;border-collapse:collapse;"><tr style="text-align:left;color:#777;"><th>Governance question</th><th>Where it lives</th><th>Standard reference</th></tr>
+        ${[['Is there a direction and are we delivering it?','Business plan, goals, objectives','ISO 37000 purpose and strategy; ISO 9001 4.1, 6.2; ISO 9.3.2'],['Do we know and manage the risks and legal duties behind the plan?','Risk register, legal register, goal links','ISO 31000; ISO 9001 6.1; ISO 14001 6.1.3; ISO 45001 6.1.3'],['Are roles, responsibilities and accountabilities defined?','Job descriptions, org charts, appointments','ISO 9001 5.3; ISO 14001 5.3; ISO 45001 5.3; ISO 27001 5.3'],['Can we continue if something goes wrong?','Continuity plans and tests','ISO 22301; ISO 27001 A.5.29, A.5.30'],['Will key roles survive the loss of a key person?','Succession plans','ISO 37000 organisational resilience; ISO 9001 7.1.2'],['Is conduct managed fairly and consistently?','Disciplinary action, KPIs, appraisals','ISO 37001 7.3, 8.8; ISO 9001 7.2'],['Does top management review it all?','Management Review, dashboard snapshot','ISO 9.3 of every standard in scope']].map(r => `<tr style="border-top:1px solid var(--border);"><td style="padding:6px 0;">${r[0]}</td><td>${r[1]}</td><td style="color:#777;">${r[2]}</td></tr>`).join('')}</table></div>`;
+  }
+
+  /* ---------- business plan ---------- */
+  const ownerName = id => id ? memberName(id) : '—';
+  function planHtml(){
+    const plans = arr(G().plans).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    if(!planId || !plans.find(p => p.id === planId)) planId = (currentPlan() || plans[0] || {}).id || null;
+    const p = plans.find(x => x.id === planId);
+    const top = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">${plans.length ? `<select onchange="bpPick(this.value)">${plans.map(x => `<option value="${x.id}" ${x.id === planId ? 'selected' : ''}>${E(x.ref_code)}: ${E(x.title)} (${PSTATUS[x.status] ? PSTATUS[x.status][0] : x.status})</option>`).join('')}</select>` : ''}<button class="btn-small primary" onclick="bpNewPlan()">+ New business plan</button></div>`;
+    if(!p) return top + '<div class="panel"><h3 style="margin-top:0;">Start your business plan</h3><p style="font-size:13.5px;">Begin with the generic business plan. It gives you the sections a lender, a board or an ISO auditor expects, and a starter set of goals across financial, customer, process, people, compliance and risk. Link each goal to an objective, a risk or a legal item and its progress then shows on the Compliance Dashboard and in the Management Review.</p></div>';
+    const goals = arr(G().goals).filter(x => x.plan_id === p.id).sort((a, b) => String(a.due_date || '9').localeCompare(String(b.due_date || '9')));
+    const edit = mgr();
+    return top + `<div class="panel"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;"><div><span class="ref">${E(p.ref_code)}</span><h3 style="margin:2px 0;">${E(p.title)}</h3><div style="font-size:12.5px;color:#666;">${E(p.plan_type === 'generic' ? 'Generic business plan' : p.plan_type)} · ${p.period_start ? fmtDate(p.period_start) : '—'} to ${p.period_end ? fmtDate(p.period_end) : '—'} · Owner ${E(ownerName(p.owner_id))}${p.approved_at ? ' · Approved ' + fmtDate(p.approved_at) : ''}</div></div><div>${pill(PSTATUS, p.status)}</div></div>
+      <div class="form-grid" style="margin-top:12px;"><div class="field"><label>Title</label><input id="bp-title" value="${E(p.title)}"></div><div class="field"><label>Period start</label><input type="date" id="bp-ps" value="${E(p.period_start || '')}"></div><div class="field"><label>Period end</label><input type="date" id="bp-pe" value="${E(p.period_end || '')}"></div>
+        <div class="field"><label>Revenue target</label><input type="number" step="any" id="bp-rev" value="${E(p.revenue_target ?? '')}"></div><div class="field"><label>Profit target</label><input type="number" step="any" id="bp-prof" value="${E(p.profit_target ?? '')}"></div><div class="field"><label>Next review due</label><input type="date" id="bp-rv" value="${E(p.next_review_date || '')}"></div>
+        <div class="field"><label>Owner</label><select id="bp-owner">${memberOptions(p.owner_id)}</select></div>
+        ${SECT.map(([k, l]) => `<div class="field span3"><label>${l}</label><textarea id="bp-${k}" rows="3" placeholder="${E(GENERIC[k] || '')}">${E(p[k] || '')}</textarea></div>`).join('')}</div>
+      ${edit ? `<div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn-small primary" onclick="bpSavePlan('${p.id}')">Save plan</button>${p.status !== 'active' ? `<button class="btn-small" onclick="bpStatus('${p.id}','active')">Approve and activate</button>` : `<button class="btn-small" onclick="bpStatus('${p.id}','superseded')">Mark superseded</button>`}<button class="btn-small" onclick="bpPrintPlan('${p.id}')">Print / PDF</button><button class="btn-small" style="color:#B3261E;" onclick="bpDelPlan('${p.id}')">Delete plan</button></div>` : ''}</div>
+      <div class="panel"><div class="panel-head"><h3 style="margin-bottom:0;">Goals and measures</h3>${edit ? `<button class="btn-small primary" onclick="bpGoal('${p.id}')">+ Add goal</button>` : ''}</div>
+        ${goals.length ? `<div class="table-wrap"><table><thead><tr><th>Goal</th><th>Area</th><th>Target</th><th>Progress</th><th>Due</th><th>Linked to</th><th></th></tr></thead><tbody>${goals.map(gl => { const ls = arr(G().links).filter(l => l.goal_id === gl.id); const late = gl.status !== 'achieved' && gl.due_date && gl.due_date < tdy();
+          return `<tr><td><b>${E(gl.title)}</b>${gl.description ? `<div style="font-size:11.5px;color:#777;">${E(gl.description)}</div>` : ''}</td><td>${E(CAT[gl.category] || gl.category)}</td><td>${E(gl.target_value || '')}${gl.current_value ? `<div style="font-size:11px;color:#777;">now ${E(gl.current_value)}</div>` : ''}</td><td style="min-width:110px;"><div style="background:#eee;border-radius:6px;height:8px;"><div style="width:${gl.status === 'achieved' ? 100 : gl.progress}%;background:${col(gl.status === 'achieved' ? 100 : gl.progress)};height:8px;border-radius:6px;"></div></div><small>${gl.status === 'achieved' ? 'Achieved' : gl.progress + '%'}</small></td><td style="${late ? 'color:#D50000;font-weight:800;' : ''}">${gl.due_date ? fmtDate(gl.due_date) : '—'}</td>
+            <td>${ls.map(l => `<span style="display:inline-block;margin:1px 3px 1px 0;padding:1px 8px;border-radius:10px;background:#f2efed;font-size:11px;cursor:pointer;" onclick="bpOpenLink('${l.link_type}','${l.link_id}')" title="${E(l.label || '')}">${E(l.link_type)}: ${E((l.label || '').slice(0, 26))}</span>`).join('') || '<span style="color:#aaa;font-size:11px;">None yet</span>'}</td>
+            <td style="white-space:nowrap;">${edit ? `<button class="btn-small" onclick="bpGoal('${p.id}','${gl.id}')">Edit</button> <button class="btn-small" onclick="bpLinkDlg('${gl.id}')">Link</button> <button class="btn-small" onclick="bpMakeObjective('${gl.id}')">+ Objective</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>` : '<p style="font-size:13px;color:#777;">No goals yet.</p>'}</div>`;
+  }
+  window.bpPick = id => { planId = id; bpRender(); };
+  window.bpNewPlan = function(){ const y = new Date().getFullYear(); kpiOverlay(`<div style="padding:8px;max-width:640px;"><h3 style="margin:0 0 6px;">New business plan</h3><div class="form-grid"><div class="field span3"><label>Title</label><input id="np-t" value="${E(STATE.org.name)} Business Plan ${y}"></div><div class="field"><label>Period start</label><input type="date" id="np-s" value="${y}-01-01"></div><div class="field"><label>Period end</label><input type="date" id="np-e" value="${y}-12-31"></div><div class="field"><label>Owner</label><select id="np-o">${memberOptions(STATE.user.id)}</select></div>
+      <div class="field span3"><label class="sf-inline"><input type="checkbox" id="np-g" checked> Add the generic starter goals (financial, customer, process, people, compliance, risk and growth)</label></div></div><div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" id="np-go" onclick="bpCreatePlan()">Create plan</button></div></div>`); };
+  window.bpCreatePlan = async function(){ const g = k => (document.getElementById(k) || {}).value || ''; if(!g('np-t').trim()){ toast('Give the plan a title.', 'error'); return; } document.getElementById('np-go').disabled = true;
+    try{ const n = await STATE.supabase.rpc('gov_next_no', { p_org:STATE.org.id, p_kind:'bp' }); if(n.error) throw new Error(n.error.message + ' (run the Release 17 SQL first)');
+      const row = { organisation_id:STATE.org.id, ref_code:'BP-' + String(n.data).padStart(3, '0'), title:g('np-t').trim(), plan_type:'generic', status:'draft', period_start:g('np-s') || null, period_end:g('np-e') || null, owner_id:g('np-o') || STATE.user.id, next_review_date:g('np-e') ? addDays(g('np-e'), -30) : null, created_by:STATE.user.id };
+      const { data, error } = await STATE.supabase.from('business_plans').insert(row).select().single(); if(error) throw new Error(error.message); G().plans.unshift(data);
+      if(document.getElementById('np-g').checked){ const end = g('np-e') || addDays(tdy(), 365); const rows = GOALS.map(x => ({ organisation_id:STATE.org.id, plan_id:data.id, title:x[1], category:x[0], target_value:x[2], progress:0, due_date:end, owner_id:row.owner_id, status:'open' })); const r = await STATE.supabase.from('business_plan_goals').insert(rows).select(); if(r.data) G().goals.push(...r.data); }
+      planId = data.id; kpiCloseOverlay(); toast('Plan ' + data.ref_code + ' created. Complete the sections and approve it.', 'success'); bpRender();
+    }catch(e){ toast('Could not create: ' + e.message, 'error'); const b = document.getElementById('np-go'); if(b) b.disabled = false; } };
+  window.bpSavePlan = async function(id){ const g = k => (document.getElementById(k) || {}).value || ''; const row = { title:g('bp-title').trim() || 'Business plan', period_start:g('bp-ps') || null, period_end:g('bp-pe') || null, revenue_target:g('bp-rev') === '' ? null : Number(g('bp-rev')), profit_target:g('bp-prof') === '' ? null : Number(g('bp-prof')), next_review_date:g('bp-rv') || null, owner_id:g('bp-owner') || null, updated_at:new Date().toISOString() };
+    SECT.forEach(([k]) => row[k] = g('bp-' + k).trim() || null);
+    const { error } = await STATE.supabase.from('business_plans').update(row).eq('id', id); if(error){ toast('Could not save: ' + error.message, 'error'); return; } Object.assign(G().plans.find(p => p.id === id), row); toast('Plan saved.', 'success'); bpRender(); };
+  window.bpStatus = async function(id, st){ const row = { status:st }; if(st === 'active'){ row.approved_at = tdy(); row.approved_by = STATE.user.id; }
+    if(st === 'active'){ for(const o of G().plans.filter(p => p.id !== id && p.status === 'active')){ await STATE.supabase.from('business_plans').update({ status:'superseded' }).eq('id', o.id); o.status = 'superseded'; } }
+    const { error } = await STATE.supabase.from('business_plans').update(row).eq('id', id); if(error){ toast('Could not update: ' + error.message, 'error'); return; } Object.assign(G().plans.find(p => p.id === id), row); toast(st === 'active' ? 'Plan approved and active.' : 'Updated.', 'success'); bpRender(); };
+  window.bpDelPlan = async function(id){ if(!confirm('Delete this business plan, its goals and links? Objectives already created from goals are not deleted.')) return; const { error } = await STATE.supabase.from('business_plans').delete().eq('id', id); if(error){ toast('Could not delete: ' + error.message, 'error'); return; } const g = G(); g.plans = g.plans.filter(p => p.id !== id); g.goals = g.goals.filter(x => x.plan_id !== id); g.links = g.links.filter(x => x.plan_id !== id); planId = null; bpRender(); };
+  window.bpGoal = function(pid, gid){ const x = gid ? G().goals.find(y => y.id === gid) : {}; kpiOverlay(`<div style="padding:8px;max-width:640px;"><h3 style="margin:0 0 6px;">${gid ? 'Edit' : 'Add'} goal</h3><div class="form-grid"><div class="field span3"><label>Goal</label><input id="bg-t" value="${E(x.title || '')}"></div><div class="field span3"><label>Description</label><textarea id="bg-d" rows="2">${E(x.description || '')}</textarea></div>
+      <div class="field"><label>Area</label><select id="bg-c">${Object.keys(CAT).map(k => `<option value="${k}" ${x.category === k ? 'selected' : ''}>${CAT[k]}</option>`).join('')}</select></div><div class="field"><label>Target</label><input id="bg-tv" value="${E(x.target_value || '')}"></div><div class="field"><label>Current value</label><input id="bg-cv" value="${E(x.current_value || '')}"></div>
+      <div class="field"><label>Progress (%)</label><input type="number" min="0" max="100" id="bg-p" value="${E(x.progress ?? 0)}"></div><div class="field"><label>Due</label><input type="date" id="bg-due" value="${E(x.due_date || '')}"></div><div class="field"><label>Owner</label><select id="bg-o">${memberOptions(x.owner_id || STATE.user.id)}</select></div>
+      <div class="field"><label>Status</label><select id="bg-s"><option value="open" ${x.status !== 'achieved' ? 'selected' : ''}>Open</option><option value="achieved" ${x.status === 'achieved' ? 'selected' : ''}>Achieved</option></select></div></div>
+      <div class="form-actions">${gid ? `<button class="btn-small" style="color:#B3261E;" onclick="bpDelGoal('${gid}')">Delete</button>` : ''}<button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" onclick="bpSaveGoal('${pid}','${gid || ''}')">Save goal</button></div></div>`); };
+  window.bpSaveGoal = async function(pid, gid){ const g = k => (document.getElementById(k) || {}).value || ''; if(!g('bg-t').trim()){ toast('Give the goal a title.', 'error'); return; }
+    const row = { title:g('bg-t').trim(), description:g('bg-d').trim() || null, category:g('bg-c'), target_value:g('bg-tv').trim() || null, current_value:g('bg-cv').trim() || null, progress:Math.max(0, Math.min(100, Number(g('bg-p')) || 0)), due_date:g('bg-due') || null, owner_id:g('bg-o') || null, status:g('bg-s') };
+    if(row.status === 'achieved') row.progress = 100;
+    if(gid){ const { error } = await STATE.supabase.from('business_plan_goals').update(row).eq('id', gid); if(error){ toast('Could not save: ' + error.message, 'error'); return; } Object.assign(G().goals.find(y => y.id === gid), row); }
+    else { const { data, error } = await STATE.supabase.from('business_plan_goals').insert({ ...row, organisation_id:STATE.org.id, plan_id:pid }).select().single(); if(error){ toast('Could not save: ' + error.message, 'error'); return; } G().goals.push(data); }
+    kpiCloseOverlay(); bpRender(); };
+  window.bpDelGoal = async function(gid){ if(!confirm('Delete this goal?')) return; await STATE.supabase.from('business_plan_goals').delete().eq('id', gid); const g = G(); g.goals = g.goals.filter(x => x.id !== gid); g.links = g.links.filter(x => x.goal_id !== gid); kpiCloseOverlay(); bpRender(); };
+  const LINKS = () => ({
+    objective:['Objective', arr(STATE.objectives).map(o => [o.id, `${o.ref_code || ''}: ${(o.specific_statement || '').slice(0, 60)}`]), 'objectives'],
+    risk:['Risk or opportunity', arr(STATE.risks).map(r => [r.id, `${r.ref_code || ''}: ${r.title}`]), 'risks'],
+    legal:['Legal or compliance item', arr(STATE.legalRegister).map(l => [l.id, `${l.ref_code || ''}: ${l.title}`]), 'legal'],
+    project:['Project', arr((STATE._pm || {}).projects).map(p => [p.id, `${p.ref_code}: ${p.title}`]), 'projects'] });
+  window.bpLinkDlg = function(gid){ const L = LINKS(); kpiOverlay(`<div style="padding:8px;max-width:560px;"><h3 style="margin:0 0 6px;">Link this goal</h3><p style="font-size:12.5px;color:#666;margin:0 0 8px;">Linked items are measured in the Compliance Dashboard and Management Review as part of this goal.</p><div class="form-grid"><div class="field"><label>Type</label><select id="bl-t" onchange="bpLinkFill()">${Object.keys(L).map(k => `<option value="${k}">${L[k][0]}</option>`).join('')}</select></div><div class="field span2"><label>Item</label><select id="bl-i"></select></div></div><div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" onclick="bpLinkSave('${gid}')">Link</button></div></div>`); bpLinkFill(); };
+  window.bpLinkFill = function(){ const L = LINKS(), t = document.getElementById('bl-t').value; document.getElementById('bl-i').innerHTML = L[t][1].map(([id, l]) => `<option value="${id}">${E(l)}</option>`).join('') || '<option value="">Nothing to link yet</option>'; };
+  window.bpLinkSave = async function(gid){ const t = document.getElementById('bl-t').value, i = document.getElementById('bl-i'), id = i.value; if(!id) return; const goal = G().goals.find(x => x.id === gid); const label = i.options[i.selectedIndex].text;
+    const { data, error } = await STATE.supabase.from('business_plan_links').insert({ organisation_id:STATE.org.id, plan_id:goal.plan_id, goal_id:gid, link_type:t, link_id:id, label }).select().single(); if(error){ toast('Could not link: ' + error.message, 'error'); return; } G().links.push(data); kpiCloseOverlay(); bpRender(); };
+  window.bpOpenLink = function(t, id){ const L = LINKS(); if(L[t]) showModule(L[t][2]); };
+  window.bpMakeObjective = async function(gid){ const gl = G().goals.find(x => x.id === gid); if(!gl.due_date){ toast('Set a due date on the goal first: an objective needs a target date.', 'error'); return; }
+    const map = { financial:'business', customer:'business', process:'quality', people:'business', compliance:'business', risk:'business', growth:'business' };
+    const { data, error } = await STATE.supabase.from('objectives').insert({ organisation_id:STATE.org.id, category:map[gl.category] || 'business', specific_statement:gl.title, measurable_metric:gl.target_value || 'Per business plan goal', target_value:gl.target_value || 'Achieved', baseline_value:gl.current_value || '', achievability_notes:'From the business plan goal', relevance_notes:'Business plan: ' + (G().plans.find(p => p.id === gl.plan_id) || {}).title, target_date:gl.due_date, action_plan:gl.description || '', owner_id:gl.owner_id || STATE.user.id, status:'active', created_by:STATE.user.id }).select().single();
+    if(error){ toast('Could not create the objective: ' + error.message, 'error'); return; }
+    if(Array.isArray(STATE.objectives)) STATE.objectives.push(data);
+    const l = await STATE.supabase.from('business_plan_links').insert({ organisation_id:STATE.org.id, plan_id:gl.plan_id, goal_id:gid, link_type:'objective', link_id:data.id, label:`${data.ref_code || ''}: ${gl.title}`.slice(0, 80) }).select().single(); if(l.data) G().links.push(l.data);
+    toast('Objective created and linked: it now appears in Objectives and Targets.', 'success'); bpRender(); };
+  window.bpPrintPlan = function(id){ const p = G().plans.find(x => x.id === id), goals = G().goals.filter(x => x.plan_id === id);
+    const body = SECT.filter(([k]) => p[k]).map(([k, l]) => `${printSectionTitle(l)}<p style="white-space:pre-wrap;">${E(p[k])}</p>`).join('') + printSectionTitle('Goals and Measures') + printTable(['Goal','Area','Target','Progress','Due'], goals.map(x => [x.title, CAT[x.category] || x.category, x.target_value || '', (x.status === 'achieved' ? 100 : x.progress) + '%', x.due_date ? fmtDate(x.due_date) : '']));
+    printRecord('Business Plan', p.ref_code, [['Title', p.title], ['Period', (p.period_start || '') + ' to ' + (p.period_end || '')], ['Owner', ownerName(p.owner_id)], ['Status', (PSTATUS[p.status] || [p.status])[0]], ['Revenue target', p.revenue_target ?? '—'], ['Profit target', p.profit_target ?? '—']], body, null, 'bplan'); };
+
+  /* ---------- continuity ---------- */
+  function contHtml(){
+    const cps = arr(G().cont).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    return `<div style="margin-bottom:12px;"><button class="btn-small primary" onclick="bpCont()">+ New continuity plan</button></div>` + (cps.length ? cps.map(c => { const ts = arr(G().tests).filter(t => t.plan_id === c.id).sort((a, b) => String(b.test_date).localeCompare(String(a.test_date))); const due = c.next_test_date && c.next_test_date < tdy();
+      return `<div class="panel"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;"><div><span class="ref">${E(c.ref_code)}</span><h3 style="margin:2px 0;">${E(c.title)}</h3><div style="font-size:12.5px;color:#666;">${E(c.scope || '')}</div></div><div>${pill({ draft:['Draft','#8A8785'], active:['Active','#2E7D4F'], retired:['Retired','#6B6B6B'] }, c.status)}</div></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0;font-size:12.5px;"><span>RTO <b>${c.rto_hours ?? '—'}h</b></span><span>RPO <b>${c.rpo_hours ?? '—'}h</b></span><span>Owner <b>${E(ownerName(c.owner_id))}</b></span><span>Last test <b>${c.last_test_date ? fmtDate(c.last_test_date) : 'never'}</b></span><span style="${due ? 'color:#D50000;font-weight:800;' : ''}">Next test <b>${c.next_test_date ? fmtDate(c.next_test_date) : '—'}</b></span></div>
+        ${ts.length ? `<table style="width:100%;font-size:12.5px;border-collapse:collapse;">${ts.slice(0, 4).map(t => `<tr style="border-top:1px solid var(--border);"><td style="padding:5px 0;">${fmtDate(t.test_date)}</td><td>${E(t.test_type)}</td><td><b style="color:${t.result === 'passed' ? '#1B8E3E' : t.result === 'partial' ? '#B26A16' : '#D50000'};">${E(t.result)}</b></td><td style="color:#777;">${E(t.findings || '')}</td></tr>`).join('')}</table>` : ''}
+        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;"><button class="btn-small" onclick="bpCont('${c.id}')">Open and edit</button><button class="btn-small primary" onclick="bpTest('${c.id}')">Record a test</button><button class="btn-small" onclick="bpPrintCont('${c.id}')">Print / PDF</button></div></div>`; }).join('')
+      : '<div class="panel"><h3 style="margin-top:0;">No continuity plan yet</h3><p style="font-size:13.5px;">A continuity plan sets out how the business keeps its critical functions running, or restores them within an agreed time, when something goes wrong. Start from the generic template and test it at least once a year.</p></div>');
+  }
+  window.bpCont = function(id){ const c = id ? G().cont.find(x => x.id === id) : {}; const f = (k, l, r) => `<div class="field span3"><label>${l}</label><textarea id="bc-${k}" rows="${r || 3}" placeholder="${E(BCP[k] || '')}">${E(c[k] || '')}</textarea></div>`;
+    kpiOverlay(`<div style="padding:8px;max-height:86vh;overflow:auto;"><h3 style="margin:0 0 6px;">${id ? 'Business continuity plan' : 'New business continuity plan'}</h3><div class="form-grid"><div class="field span2"><label>Title</label><input id="bc-title" value="${E(c.title || 'Business Continuity Plan')}"></div><div class="field"><label>Status</label><select id="bc-status">${['draft','active','retired'].map(s => `<option value="${s}" ${c.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
+      <div class="field span3"><label>Scope</label><input id="bc-scope" value="${E(c.scope || 'All sites, people, systems and suppliers needed to deliver our services')}"></div>${f('critical_functions', 'Critical functions', 3)}${f('threats_considered', 'Threats considered', 3)}${f('recovery_strategy', 'Recovery strategy', 4)}
+      <div class="field"><label>Recovery time objective (hours)</label><input type="number" step="any" id="bc-rto" value="${E(c.rto_hours ?? '')}"></div><div class="field"><label>Recovery point objective (hours)</label><input type="number" step="any" id="bc-rpo" value="${E(c.rpo_hours ?? '')}"></div><div class="field"><label>Owner</label><select id="bc-owner">${memberOptions(c.owner_id || STATE.user.id)}</select></div>
+      ${f('communication_plan', 'Communication plan', 3)}${f('key_contacts', 'Key contacts', 3)}${f('alternate_site', 'Alternate site', 2)}<div class="field"><label>Next test due</label><input type="date" id="bc-next" value="${E(c.next_test_date || addDays(tdy(), 365))}"></div><div class="field"><label>Review due</label><input type="date" id="bc-rev" value="${E(c.review_date || addDays(tdy(), 365))}"></div></div>
+      <div class="form-actions">${id ? `<button class="btn-small" style="color:#B3261E;" onclick="bpDelCont('${id}')">Delete</button>` : ''}<button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" onclick="bpSaveCont('${id || ''}')">Save</button></div></div>`); };
+  window.bpSaveCont = async function(id){ const g = k => (document.getElementById(k) || {}).value || ''; const row = { title:g('bc-title').trim() || 'Business Continuity Plan', status:g('bc-status'), scope:g('bc-scope').trim() || null, rto_hours:g('bc-rto') === '' ? null : Number(g('bc-rto')), rpo_hours:g('bc-rpo') === '' ? null : Number(g('bc-rpo')), owner_id:g('bc-owner') || null, next_test_date:g('bc-next') || null, review_date:g('bc-rev') || null };
+    ['critical_functions','threats_considered','recovery_strategy','communication_plan','key_contacts','alternate_site'].forEach(k => row[k] = g('bc-' + k).trim() || null);
+    if(id){ const { error } = await STATE.supabase.from('continuity_plans').update(row).eq('id', id); if(error){ toast('Could not save: ' + error.message, 'error'); return; } Object.assign(G().cont.find(x => x.id === id), row); }
+    else { const n = await STATE.supabase.rpc('gov_next_no', { p_org:STATE.org.id, p_kind:'bc' }); if(n.error){ toast('Could not number the plan: ' + n.error.message, 'error'); return; } const { data, error } = await STATE.supabase.from('continuity_plans').insert({ ...row, organisation_id:STATE.org.id, ref_code:'BCP-' + String(n.data).padStart(3, '0'), created_by:STATE.user.id }).select().single(); if(error){ toast('Could not save: ' + error.message, 'error'); return; } G().cont.unshift(data); }
+    kpiCloseOverlay(); toast('Saved.', 'success'); bpRender(); };
+  window.bpDelCont = async function(id){ if(!confirm('Delete this continuity plan and its test history?')) return; await STATE.supabase.from('continuity_plans').delete().eq('id', id); const g = G(); g.cont = g.cont.filter(x => x.id !== id); g.tests = g.tests.filter(x => x.plan_id !== id); kpiCloseOverlay(); bpRender(); };
+  window.bpTest = function(id){ kpiOverlay(`<div style="padding:8px;max-width:560px;"><h3 style="margin:0 0 6px;">Record a continuity test</h3><div class="form-grid"><div class="field"><label>Date</label><input type="date" id="bt-d" value="${tdy()}"></div><div class="field"><label>Type</label><select id="bt-t"><option value="desktop">Desktop walk-through</option><option value="simulation">Simulation</option><option value="failover">Technical failover or restore</option><option value="full">Full exercise</option></select></div><div class="field"><label>Result</label><select id="bt-r"><option value="passed">Passed</option><option value="partial">Partly met objectives</option><option value="failed">Failed</option></select></div><div class="field span3"><label>Findings</label><textarea id="bt-f" rows="3"></textarea></div><div class="field span3"><label>Actions to improve the plan</label><textarea id="bt-a" rows="2"></textarea></div></div><div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" onclick="bpSaveTest('${id}')">Save test</button></div></div>`); };
+  window.bpSaveTest = async function(id){ const g = k => (document.getElementById(k) || {}).value || ''; const row = { organisation_id:STATE.org.id, plan_id:id, test_date:g('bt-d') || tdy(), test_type:g('bt-t'), result:g('bt-r'), findings:g('bt-f').trim() || null, actions:g('bt-a').trim() || null, conducted_by:STATE.user.id };
+    const { data, error } = await STATE.supabase.from('continuity_tests').insert(row).select().single(); if(error){ toast('Could not save: ' + error.message, 'error'); return; } G().tests.push(data);
+    const upd = { last_test_date:row.test_date, next_test_date:addDays(row.test_date, 365) }; await STATE.supabase.from('continuity_plans').update(upd).eq('id', id); Object.assign(G().cont.find(x => x.id === id), upd);
+    if(row.actions && row.result !== 'passed'){ await STATE.supabase.from('tasks').insert({ organisation_id:STATE.org.id, title:'Continuity plan improvement: ' + row.actions.slice(0, 100), assignee_id:(G().cont.find(x => x.id === id) || {}).owner_id || STATE.user.id, due_date:addDays(tdy(), 30), created_by:STATE.user.id }); }
+    kpiCloseOverlay(); toast('Test recorded. The next test is due in 12 months.', 'success'); bpRender(); };
+  window.bpPrintCont = function(id){ const c = G().cont.find(x => x.id === id), ts = G().tests.filter(t => t.plan_id === id);
+    const body = [['critical_functions','Critical Functions'],['threats_considered','Threats Considered'],['recovery_strategy','Recovery Strategy'],['communication_plan','Communication Plan'],['key_contacts','Key Contacts'],['alternate_site','Alternate Site']].filter(([k]) => c[k]).map(([k, l]) => `${printSectionTitle(l)}<p style="white-space:pre-wrap;">${E(c[k])}</p>`).join('') + printSectionTitle('Test History') + printTable(['Date','Type','Result','Findings'], ts.map(t => [fmtDate(t.test_date), t.test_type, t.result, t.findings || '']));
+    printRecord('Business Continuity Plan', c.ref_code, [['Title', c.title], ['Scope', c.scope || ''], ['RTO (hours)', c.rto_hours ?? '—'], ['RPO (hours)', c.rpo_hours ?? '—'], ['Owner', ownerName(c.owner_id)], ['Status', c.status]], body, null, 'bplan'); };
+
+  /* ---------- succession and key roles ---------- */
+  function succHtml(){
+    const pos = arr(STATE.positions).slice().sort((a, b) => (b.is_key_role ? 1 : 0) - (a.is_key_role ? 1 : 0) || String(a.title).localeCompare(String(b.title)));
+    const holders = pid => arr(STATE.competence).filter(c => c.position_id === pid && c.is_primary).map(c => personById(c.personnel_id)).filter(Boolean);
+    const rows = pos.filter(p => p.is_key_role);
+    return `<div class="panel"><h3 style="margin-top:0;">Key roles</h3><p style="font-size:12.5px;color:#666;">Tick the positions whose loss would seriously affect delivery, compliance or safety. Each key role needs an established job description, an identified successor and a development plan.</p>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">${pos.map(p => `<label style="font-size:12.5px;border:1px solid var(--border);border-radius:16px;padding:3px 10px;cursor:pointer;background:${p.is_key_role ? '#efe9f7' : '#fff'};"><input type="checkbox" ${p.is_key_role ? 'checked' : ''} ${mgr() ? '' : 'disabled'} onchange="bpKey('${p.id}',this.checked)"> ${E(p.title)}</label>`).join('') || '<span style="color:#999;">No positions yet.</span>'}</div></div>
+      ${rows.length ? `<div class="panel"><h3 style="margin-top:0;">Succession plan and accountabilities</h3><div class="table-wrap"><table><thead><tr><th>Key role</th><th>Current holder</th><th>Job description</th><th>KPIs</th><th>Successor</th><th>Readiness</th><th>Risk</th><th></th></tr></thead><tbody>${rows.map(p => { const s = arr(G().succ).find(x => x.position_id === p.id) || {}, h = holders(p.id), jd = String(p.job_description || '').trim().length > 30, k = arr(STATE.positionKpis).filter(x => x.position_id === p.id).length;
+        return `<tr><td><b>${E(p.title)}</b>${p.accountabilities ? `<div style="font-size:11px;color:#777;max-width:240px;">${E(p.accountabilities.slice(0, 90))}</div>` : ''}</td><td>${h.length ? h.map(x => E(x.full_name)).join(', ') : '<b style="color:#D50000;">Vacant</b>'}</td><td>${jd ? '<span style="color:#1B8E3E;">✓</span>' : `<a class="sf-a" style="cursor:pointer;color:#B26A16;" onclick="showModule('personnel');setTimeout(()=>{togglePositionsPanel();wbJd('${p.id}')},500)">Missing</a>`}</td><td>${k || '<span style="color:#B26A16;">None</span>'}</td><td>${s.successor_id ? E((personById(s.successor_id) || {}).full_name || '') : '<span style="color:#D50000;">None</span>'}</td><td>${E(READY[s.readiness || 'none'])}</td><td>${pill(RISK, s.risk || (s.successor_id ? 'medium' : 'high'))}</td><td>${mgr() ? `<button class="btn-small" onclick="bpSucc('${p.id}')">Plan</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div></div>` : ''}`;
+  }
+  window.bpKey = async function(id, v){ const { error } = await STATE.supabase.from('positions').update({ is_key_role:!!v }).eq('id', id); if(error){ toast('Could not save: ' + error.message, 'error'); return; } positionById(id).is_key_role = !!v; bpRender(); };
+  window.bpSucc = function(pid){ const p = positionById(pid), s = arr(G().succ).find(x => x.position_id === pid) || {}, holder = arr(STATE.competence).find(c => c.position_id === pid && c.is_primary);
+    kpiOverlay(`<div style="padding:8px;max-width:640px;"><h3 style="margin:0 0 6px;">Succession plan: ${E(p.title)}</h3><div class="form-grid"><div class="field"><label>Successor</label><select id="bs-s"><option value="">None identified</option>${personnelOptions(s.successor_id)}</select></div><div class="field"><label>Second option</label><select id="bs-s2"><option value="">None</option>${personnelOptions(s.second_successor_id)}</select></div><div class="field"><label>Readiness</label><select id="bs-r">${Object.keys(READY).map(k => `<option value="${k}" ${(s.readiness || 'none') === k ? 'selected' : ''}>${READY[k]}</option>`).join('')}</select></div>
+      <div class="field"><label>Risk if the role is lost</label><select id="bs-k">${Object.keys(RISK).map(k => `<option value="${k}" ${(s.risk || 'medium') === k ? 'selected' : ''}>${RISK[k][0]}</option>`).join('')}</select></div><div class="field"><label>Review date</label><input type="date" id="bs-d" value="${E(s.review_date || addDays(tdy(), 365))}"></div><div class="field span3"><label>Development actions for the successor</label><textarea id="bs-a" rows="3">${E(s.development_actions || '')}</textarea></div><div class="field span3"><label>Interim cover if the role becomes vacant suddenly</label><textarea id="bs-i" rows="2">${E(s.interim_cover || '')}</textarea></div></div>
+      <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" onclick="bpSaveSucc('${pid}','${holder ? holder.personnel_id : ''}')">Save</button></div></div>`); };
+  window.bpSaveSucc = async function(pid, inc){ const g = k => (document.getElementById(k) || {}).value || ''; const row = { organisation_id:STATE.org.id, position_id:pid, incumbent_id:inc || null, successor_id:g('bs-s') || null, second_successor_id:g('bs-s2') || null, readiness:g('bs-s') ? g('bs-r') : 'none', risk:g('bs-k'), review_date:g('bs-d') || null, development_actions:g('bs-a').trim() || null, interim_cover:g('bs-i').trim() || null };
+    const { data, error } = await STATE.supabase.from('succession_plans').upsert(row, { onConflict:'organisation_id,position_id' }).select().single(); if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+    const gg = G(); gg.succ = gg.succ.filter(x => x.position_id !== pid); gg.succ.push(data || row); kpiCloseOverlay(); toast('Succession plan saved.', 'success'); bpRender(); };
+
+  /* ---------- reminders ---------- */
+  DATE_TRACKED_MODULES.push(
+    { key:'bplan', label:'Business Plan: Review and Goal Dates', list:() => { if(off()) return []; const out = []; arr(G().plans).filter(p => p.status === 'active' && p.next_review_date).forEach(p => out.push({ ...p, _d:p.next_review_date, _t:p.ref_code + ': plan review', _done:false })); arr(G().goals).filter(x => x.due_date && x.status !== 'achieved').forEach(x => out.push({ ...x, _d:x.due_date, _t:'Goal: ' + x.title, _done:false })); return out; }, dateField:'_d', isResolved:x => !!x._done, titleField:'_t', getPerson:x => ownerName(x.owner_id) },
+    { key:'bplan', label:'Business Continuity: Tests and Reviews Due', list:() => off() ? [] : arr(G().cont).filter(c => c.status === 'active' && c.next_test_date).map(c => ({ ...c, _d:c.next_test_date, _t:c.ref_code + ': continuity test' })), dateField:'_d', isResolved:() => false, titleField:'_t', getPerson:x => ownerName(x.owner_id) },
+    { key:'bplan', label:'Succession Plans: Reviews Due', list:() => off() ? [] : arr(G().succ).filter(s => s.review_date).map(s => ({ ...s, _d:s.review_date, _t:'Succession review: ' + ((positionById(s.position_id) || {}).title || '') })), dateField:'_d', isResolved:() => false, titleField:'_t', getPerson:() => '' }
+  );
+})();
+
+
+/* ===== b84e: Release 17, integration: dashboard tiles and health score, Business Health domains, Management Review flow and coverage ===== */
+(function(){
+  const E = s => escapeHtml(s == null ? '' : String(s));
+  const arr = x => Array.isArray(x) ? x : [];
+  const tdy = () => todayISO();
+  const soon = () => new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+  const nz = n => Number(n) || 0;
+  const mOff = k => !!(STATE.org && STATE.org._modOff && STATE.org._modOff.has(k));
+  const seg = (label, count, color) => ({ label, count:Math.max(0, count), color });
+  const PM = () => STATE._pm || { projects:[], phases:[], risks:[], loaded:false };
+  const QI = () => STATE._qi || { quotes:[], invoices:[], loaded:false };
+  const GV = () => window.wbGov || { metrics:() => [], index:() => null, gaps:() => [] };
+  const pct = (n, d) => d ? Math.round(n / d * 100) : null;
+
+  /* ---------- shared figures ---------- */
+  function projectFigs(){ const d = PM(); const open = arr(d.projects).filter(p => !['completed','cancelled'].includes(p.status)); const late = open.filter(p => p.target_end_date && p.target_end_date < tdy()).length;
+    const tasks = arr(STATE.tasks).filter(t => t.project_id && t.status !== 'done'), odT = tasks.filter(t => t.due_date && t.due_date < tdy()).length; const done = arr(d.projects).filter(p => p.status === 'completed').length;
+    const hot = arr(d.risks).filter(r => r.status === 'open' && nz(r.score || (nz(r.likelihood) * nz(r.impact))) >= 12).length;
+    return { all:arr(d.projects).length, open:open.length, late, odT, done, hot }; }
+  function commercialFigs(){ const d = QI(); const q = arr(d.quotes), inv = arr(d.invoices); const sent = q.filter(x => ['sent','accepted','declined','expired'].includes(x.status)), won = q.filter(x => x.status === 'accepted').length;
+    const od = inv.filter(i => ['issued','part_paid'].includes(i.status) && i.due_date && i.due_date < tdy() && nz(i.amount_paid) < nz(i.total));
+    const open = inv.filter(i => ['issued','part_paid'].includes(i.status)); const stale = q.filter(x => x.status === 'sent' && x.valid_until && x.valid_until < tdy()).length;
+    return { quotes:q.length, sent:sent.length, won, win:pct(won, sent.length), invoices:inv.length, open:open.length, od:od.length, odValue:od.reduce((s, i) => s + nz(i.total) - nz(i.amount_paid), 0), stale }; }
+  function assetFigs(){ const a = arr(STATE.assets), t = tdy(), s = soon(); const insp = a.filter(x => x.next_inspection_date && x.next_inspection_date < t).length, inspSoon = a.filter(x => x.next_inspection_date && x.next_inspection_date >= t && x.next_inspection_date <= s).length;
+    const cert = a.filter(x => x.certificate_expiry_date && x.certificate_expiry_date < t).length, certSoon = a.filter(x => x.certificate_expiry_date && x.certificate_expiry_date >= t && x.certificate_expiry_date <= s).length, q = a.filter(x => x.current_status === 'quarantine').length;
+    return { total:a.length, insp, inspSoon, cert, certSoon, q }; }
+  function docFigs(){ const d = arr(STATE.documents).filter(x => !['withdrawn','superseded'].includes(x.status)); const od = d.filter(x => x.next_review_date && x.next_review_date < tdy()).length; let draft = 0; try{ draft = d.filter(x => documentWorkflowBadge(x).key === 'draft').length; }catch(e){}
+    return { total:d.length, od, draft }; }
+  function taskFigs(){ const t = arr(STATE.tasks), open = t.filter(x => x.status !== 'done'); return { total:t.length, open:open.length, od:open.filter(x => x.due_date && x.due_date < tdy()).length, done:t.length - open.length }; }
+  function apprFigs(){ const a = arr(STATE.appraisals); return { total:a.length, done:a.filter(x => x.status === 'completed').length, late:a.filter(x => x.status !== 'completed' && x.period_end && x.period_end < tdy()).length }; }
+  function ragaFigs(){ const r = arr(STATE.ragaAlerts); return { total:r.length, open:r.filter(x => !['closed','resolved'].includes(x.status)).length }; }
+
+  /* ---------- dashboard tiles ---------- */
+  if(window.__wdExtra){
+    const X = window.__wdExtra, has = k => X.some(e => e[0] === k);
+    const add = (k, title, fn) => { if(!has(k)) X.push([k, title, fn]); };
+    add('bplan', 'Business Planning and Continuity', () => { if(mOff('bplan')) return null; const m = GV().metrics().filter(x => ['plan','goals','align','bcp','succ'].includes(x.k)); if(!m.length) return null; return m.map(x => seg(x.label, 1, x.value >= 85 ? 'green' : x.value >= 50 ? 'amber' : 'red')); });
+    add('projects', 'Project Management', () => { if(mOff('projects')) return null; const f = projectFigs(); if(!f.all) return null; return [seg('Completed', f.done, 'green'), seg('Open and on schedule', f.open - f.late, 'green'), seg('Open and past target date', f.late, 'red'), seg('Overdue project tasks', f.odT, 'amber'), seg('High project risks', f.hot, 'red')]; });
+    add('quotes', 'Quotations and Invoices', () => { if(mOff('quotes')) return null; const f = commercialFigs(); if(!f.quotes && !f.invoices) return null; return [seg('Quotes accepted', f.won, 'green'), seg('Quotes lapsed without a reply', f.stale, 'amber'), seg('Invoices awaiting payment', f.open - f.od, 'amber'), seg('Invoices overdue', f.od, 'red')]; });
+    add('assets', 'Assets and Maintenance', () => { const f = assetFigs(); if(!f.total) return null; return [seg('Assets in order', f.total - f.insp - f.cert - f.q, 'green'), seg('Inspection due within 30 days', f.inspSoon, 'amber'), seg('Inspection overdue', f.insp, 'red'), seg('Certificate expired', f.cert, 'red'), seg('Quarantined', f.q, 'red')]; });
+    add('tasks', 'Task Management', () => { const f = taskFigs(); if(!f.total) return null; return [seg('Completed', f.done, 'green'), seg('Open and on time', f.open - f.od, 'amber'), seg('Overdue', f.od, 'red')]; });
+    add('appraisals', 'KPIs and Appraisals', () => { const f = apprFigs(); if(!f.total) return null; return [seg('Completed', f.done, 'green'), seg('In progress', f.total - f.done - f.late, 'amber'), seg('Past period end', f.late, 'red')]; });
+    add('documents', 'Document Management', () => { const f = docFigs(); if(!f.total) return null; return [seg('Current', f.total - f.od - f.draft, 'green'), seg('Draft or in review', f.draft, 'amber'), seg('Past review date', f.od, 'red')]; });
+    add('disciplinary', 'Disciplinary Action', () => { if(mOff('disciplinary') || !window.daOverdue) return null; const c = arr((STATE._gv || {}).disc); if(!c.length) return null; const open = c.filter(x => x.status !== 'closed'); const od = open.filter(window.daOverdue).length; return [seg('Closed', c.length - open.length, 'green'), seg('Open and on time', open.length - od, 'amber'), seg('Step overdue', od, 'red')]; });
+  }
+
+  /* ---------- compliance health score ---------- */
+  { const _h = computeComplianceHealthScore; computeComplianceHealthScore = window.computeComplianceHealthScore = function(){ const h = _h.apply(this, arguments);
+      try{
+        const comps = (h.components || []).slice(); const add = (label, v) => { if(v != null && Number.isFinite(v) && !comps.some(c => c.label === label)) comps.push({ label, value:Math.max(0, Math.min(100, v)) }); };
+        if(!mOff('bplan')){ const ix = GV().index(); if(ix != null) add('Corporate governance and planning', ix); }
+        const pf = projectFigs(); if(!mOff('projects') && pf.open) add('Project delivery', 100 - Math.min(100, (pf.late / pf.open) * 60 + Math.min(40, pf.odT * 5)));
+        const cf = commercialFigs(); if(!mOff('quotes') && cf.open) add('Invoice collection', 100 - Math.min(100, (cf.od / cf.open) * 100));
+        const af = assetFigs(); if(af.total) add('Asset and maintenance control', 100 - Math.min(100, ((af.insp + af.cert + af.q) / af.total) * 100));
+        const df = docFigs(); if(df.total) add('Document control', 100 - Math.min(100, (df.od / df.total) * 100));
+        const tf = taskFigs(); if(tf.total) add('Task discipline', 100 - Math.min(100, (tf.od / Math.max(1, tf.open)) * 100));
+        const ob = window.wbOnboardingAvg ? window.wbOnboardingAvg() : null; if(ob != null) add('Personnel onboarding', ob);
+        if(comps.length === (h.components || []).length) return h;
+        const score = Math.round(Math.max(0, Math.min(100, comps.reduce((s, c) => s + (Number.isFinite(c.value) ? c.value : 0), 0) / comps.length)));
+        return { score, color:score >= 85 ? 'green' : score >= 60 ? 'amber' : 'red', components:comps };
+      }catch(e){ console.warn('b84e health', e); return h; } }; }
+
+  /* ---------- attention items ---------- */
+  { const _w = wdAttentionItems; wdAttentionItems = window.wdAttentionItems = function(){ const out = _w.apply(this, arguments);
+      try{
+        const add = (label, count, mod) => { if(count > 0 && !out.some(o => o.label === label)) out.push({ label, count, mod }); };
+        GV().gaps().forEach(([t, mod]) => add(t, 1, mod));
+        const cf = commercialFigs(); if(!mOff('quotes')) add('Overdue invoices', cf.od, 'quotes');
+        const ob = window.wbOnboardingAvg ? arr(STATE.personnel).filter(p => p.status !== 'inactive' && p.employment_type !== 'terminated' && window.wbOnboarding(p.id).pct < 50).length : 0; add('People less than 50% onboarded', ob, 'personnel');
+        if(window.daOverdue) add('Disciplinary cases with a step overdue', arr((STATE._gv || {}).disc).filter(window.daOverdue).length, 'disciplinary');
+      }catch(e){ console.warn('b84e attention', e); } return out; }; }
+
+  /* ---------- Business Health domains ---------- */
+  if(window.__bhDomains){
+    const D = window.__bhDomains; const C = (label, status, detail, mod) => ({ label, status, detail:detail || '', mod:mod || null });
+    const fromMetric = x => C(x.label, x.value >= 85 ? 'pass' : x.value >= 50 ? 'partial' : 'fail', x.detail, x.mod);
+    const zero = (label, n, detail, mod, warn) => C(label, n === 0 ? 'pass' : (warn != null && n <= warn) ? 'partial' : 'fail', detail, mod);
+    const addDom = d => { if(!D.some(x => x.k === d.k)) D.push(d); };
+    addDom({ k:'planning', label:'Business Planning, Continuity and Succession', mod:'bplan', checks:() => { if(mOff('bplan')) return [C('Business planning', 'na', 'Business Planning and Continuity is switched off.', 'bplan')]; return GV().metrics().filter(x => ['plan','goals','align','bcp','succ'].includes(x.k)).map(fromMetric); } });
+    addDom({ k:'projects', label:'Projects and Delivery', mod:'projects', checks:() => { if(mOff('projects')) return [C('Projects', 'na', 'Project Management is switched off.', 'projects')]; const f = projectFigs(); if(!f.all) return [C('Projects', 'nodata', 'No projects recorded.', 'projects')];
+        return [zero('Open projects past their target end date', f.late, f.open + ' open projects.', 'projects', 1), zero('Overdue project tasks', f.odT, '', 'projects', 3), zero('High scoring open project risks', f.hot, '', 'projects', 1), C('Projects completed', f.done ? 'pass' : 'nodata', f.done + ' completed of ' + f.all + '.', 'projects')]; } });
+    addDom({ k:'commercial', label:'Commercial: Quotations and Invoices', mod:'quotes', checks:() => { if(mOff('quotes')) return [C('Commercial', 'na', 'Quotations and Invoices is switched off.', 'quotes')]; const f = commercialFigs(); if(!f.quotes && !f.invoices) return [C('Quotations and invoices', 'nodata', 'None recorded.', 'quotes')];
+        return [f.sent ? C('Quote win rate', f.win >= 40 ? 'pass' : f.win >= 20 ? 'partial' : 'fail', f.won + ' of ' + f.sent + ' sent quotes accepted (' + f.win + '%).', 'quotes') : C('Quote win rate', 'nodata', 'No quotes sent yet.', 'quotes'), zero('Quotes lapsed without a reply', f.stale, 'Follow up or close them.', 'quotes', 2), zero('Overdue invoices', f.od, f.od ? 'Value outstanding: ' + Math.round(f.odValue).toLocaleString('en-ZA') : '', 'quotes', 1)]; } });
+    addDom({ k:'assets', label:'Assets and Maintenance', mod:'assets', checks:() => { const f = assetFigs(); if(!f.total) return [C('Assets', 'nodata', 'No assets recorded.', 'assets')];
+        return [zero('Assets with an overdue inspection', f.insp, '', 'assets', 2), zero('Assets with an expired certificate', f.cert, '', 'assets', 1), zero('Assets in quarantine', f.q, '', 'assets', 1), C('Inspections due within 30 days', f.inspSoon ? 'partial' : 'pass', f.inspSoon + ' coming up.', 'assets')]; } });
+    addDom({ k:'documents', label:'Document Control', mod:'documents', checks:() => { const f = docFigs(); if(!f.total) return [C('Controlled documents', 'nodata', 'None recorded.', 'documents')];
+        return [f.total ? C('Documents within their review date', pct(f.total - f.od, f.total) >= 90 ? 'pass' : pct(f.total - f.od, f.total) >= 70 ? 'partial' : 'fail', (f.total - f.od) + ' of ' + f.total + ' current.', 'documents') : C('Documents', 'nodata', '', 'documents'), zero('Documents stuck in draft or review', f.draft, '', 'documents', 3)]; } });
+    const emp = D.find(x => x.k === 'employee');
+    if(emp && !emp.__b84){ emp.__b84 = true; const _c = emp.checks; emp.checks = function(){ const out = _c.apply(this, arguments).slice();
+        try{ GV().metrics().filter(x => ['jd','onb','disc'].includes(x.k)).forEach(x => out.push(fromMetric(x))); }catch(e){} return out; }; }
+  }
+
+  /* ---------- Management Review: flow, groups, ISO coverage ---------- */
+  const A = window.MGMT_REVIEW_AGENDA || MGMT_REVIEW_AGENDA;
+  const FLOW = [
+    ['Direction and governance', [
+      ['ims_health', 'ISO 9001, 14001, 45001, 27001 and 37001 9.3.2; ISO 37000'], ['previous_actions', 'ISO 9.3.2(a): all standards'], ['external_internal_issues', 'ISO 4.1 and 9.3.2(b): all standards'],
+      ['interested_parties', 'ISO 4.2 and 9.3.2(c): all standards; legal and other requirements'], ['governance_planning', 'ISO 37000; ISO 9001 5.1, 6.2; ISO 37001 5.1, 9.3', 'Corporate Governance, Business Plan and Strategic Direction']]],
+    ['Performance and delivery', [
+      ['customer_satisfaction', 'ISO 9001 9.1.2 and 9.3.2(c)'], ['objectives', 'ISO 9001, 14001, 45001 6.2 and 9.3.2(c); ISO 27001 6.2'], ['process_performance', 'ISO 9001 9.1, 9.3.2(c)'],
+      ['projects_delivery', 'ISO 9001 8.1, 8.5.1; ISO 21502 project management', 'Project Delivery and Performance'], ['commercial_performance', 'ISO 9001 8.2, 9.1.2', 'Commercial Performance: Quotations, Orders and Invoices'], ['supplier_performance', 'ISO 9001 8.4, 9.3.2(c); ISO 27001 A.5.19 to A.5.22'],
+      ['assets_maintenance', 'ISO 9001 7.1.3, 7.1.5; ISO 45001 8.1.2; ISO 14001 8.1', 'Assets, Equipment and Maintenance']]],
+    ['Compliance, risk and assurance', [
+      ['nonconformances', 'ISO 9001 10.2 and 9.3.2(c); ISO 14001, 45001 10.2'], ['incidents_performance', 'ISO 45001 10.2 and 9.3; ISO 14001 8.2'], ['audits', 'ISO 9.3.2(c) and 9.2: all standards'],
+      ['risk_opportunity', 'ISO 9001, 14001, 45001, 27001 6.1 and 9.3.2(e)'], ['legal_compliance', 'ISO 14001 9.1.2; ISO 45001 9.1.2; ISO 9001 4.2; ISO 37001 4.5'], ['information_security', 'ISO/IEC 27001 9.3.2 and A.5.35']]],
+    ['People and competence', [
+      ['resources_training', 'ISO 9001 7.1, 7.2, 9.3.2(d); ISO 45001 7.2'], ['people_participation', 'ISO 45001 5.4 and 9.3; ISO 14001 7.4'],
+      ['people_governance', 'ISO 9001 5.3, 7.1.2, 7.2, 7.3; ISO 45001 5.3; ISO 37001 7.2, 7.3', 'People Governance: Roles, Onboarding, Succession and Discipline']]],
+    ['Resilience and documented information', [
+      ['business_continuity', 'ISO 22301 9.3; ISO/IEC 27001 A.5.29, A.5.30; ISO 14001 8.2; ISO 45001 8.2', 'Business Continuity and Emergency Preparedness'], ['document_control', 'ISO 9001, 14001, 45001, 27001 7.5', 'Documented Information and Document Control']]],
+    ['Conclusions and decisions', [['continual_improvement', 'ISO 9.3.3(a) to (d): all standards'], ['other_business', null]]],
+  ];
+  { const old = {}; A.forEach(a => old[a.key] = a); const next = [];
+    FLOW.forEach(([grp, list]) => list.forEach(([k, iso, title]) => { const a = old[k] || { key:k, title:title || k }; a.grp = grp; if(iso) a.iso = iso; if(title && !old[k]) a.title = title; next.push(a); }));
+    A.forEach(a => { if(!next.includes(a)) { a.grp = a.grp || 'Other'; next.push(a); } }); A.length = 0; next.forEach(a => A.push(a)); }
+
+  const card = (v, l, s, c) => mrStatCard(v, l, s, c);
+  const col = (ok, warn) => ok ? 'var(--green)' : warn ? 'var(--amber)' : 'var(--red)';
+  { const _st = computeMRAgendaStats; computeMRAgendaStats = window.computeMRAgendaStats = function(key){
+      try{
+        if(key === 'governance_planning'){ if(mOff('bplan')) return '<p style="font-size:12.5px;color:var(--text-faint)">Business Planning and Continuity is not switched on for this organisation.</p>';
+          const m = GV().metrics(), ix = GV().index(), pl = GV().currentPlan(), goals = pl ? arr((STATE._gv || {}).goals).filter(x => x.plan_id === pl.id) : [];
+          const links = pl ? arr((STATE._gv || {}).links).filter(l => l.plan_id === pl.id) : [];
+          const lk = t => links.filter(l => l.link_type === t).length;
+          return `<div class="mr-stat-row">${card(ix == null ? '—' : ix + '%', 'Governance index', 'average of the measures below', ix == null ? null : col(ix >= 85, ix >= 60))}${card(pl ? pl.ref_code : 'None', 'Active business plan', pl ? 'Review ' + (pl.next_review_date ? fmtDate(pl.next_review_date) : 'not set') : 'Approve a plan', pl ? 'var(--green)' : 'var(--red)')}${card(goals.length, 'Plan goals', goals.filter(x => x.status === 'achieved').length + ' achieved', null)}${card(lk('objective') + ' / ' + lk('risk') + ' / ' + lk('legal'), 'Goals linked: objectives / risks / legal', null, null)}</div>
+            <div class="mr-stat-row" style="margin-top:8px;">${m.filter(x => !['jd','onb','disc'].includes(x.k)).map(x => card(Math.round(x.value) + '%', x.label, x.detail, col(x.value >= 85, x.value >= 50))).join('')}</div>`; }
+        if(key === 'projects_delivery'){ if(mOff('projects')) return '<p style="font-size:12.5px;color:var(--text-faint)">Project Management is not switched on.</p>'; const f = projectFigs(); if(!f.all) return '<p style="font-size:12.5px;color:var(--text-faint)">No projects recorded.</p>';
+          return `<div class="mr-stat-row">${card(f.open, 'Open projects', f.all + ' in total', null)}${card(f.late, 'Past target end date', null, f.late ? 'var(--red)' : 'var(--green)')}${card(f.odT, 'Overdue project tasks', null, f.odT ? 'var(--amber)' : 'var(--green)')}${card(f.hot, 'High project risks', null, f.hot ? 'var(--red)' : 'var(--green)')}${card(f.done, 'Completed', null, 'var(--green)')}</div>`; }
+        if(key === 'commercial_performance'){ if(mOff('quotes')) return '<p style="font-size:12.5px;color:var(--text-faint)">Quotations and Invoices is not switched on.</p>'; const f = commercialFigs(); if(!f.quotes && !f.invoices) return '<p style="font-size:12.5px;color:var(--text-faint)">No quotations or invoices recorded.</p>';
+          return `<div class="mr-stat-row">${card(f.quotes, 'Quotations', f.sent + ' sent', null)}${card(f.win == null ? '—' : f.win + '%', 'Win rate', f.won + ' accepted', f.win == null ? null : col(f.win >= 40, f.win >= 20))}${card(f.stale, 'Lapsed without a reply', null, f.stale ? 'var(--amber)' : 'var(--green)')}${card(f.open, 'Invoices awaiting payment', null, null)}${card(f.od, 'Overdue invoices', f.od ? Math.round(f.odValue).toLocaleString('en-ZA') + ' outstanding' : null, f.od ? 'var(--red)' : 'var(--green)')}</div>`; }
+        if(key === 'assets_maintenance'){ const f = assetFigs(); if(!f.total) return '<p style="font-size:12.5px;color:var(--text-faint)">No assets recorded.</p>';
+          return `<div class="mr-stat-row">${card(f.total, 'Assets', null, null)}${card(f.insp, 'Inspection overdue', f.inspSoon + ' due within 30 days', f.insp ? 'var(--red)' : 'var(--green)')}${card(f.cert, 'Certificate expired', f.certSoon + ' expiring soon', f.cert ? 'var(--red)' : 'var(--green)')}${card(f.q, 'Quarantined', null, f.q ? 'var(--amber)' : 'var(--green)')}</div>`; }
+        if(key === 'document_control'){ const f = docFigs(); if(!f.total) return '<p style="font-size:12.5px;color:var(--text-faint)">No controlled documents recorded.</p>';
+          return `<div class="mr-stat-row">${card(f.total, 'Controlled documents', null, null)}${card(pct(f.total - f.od, f.total) + '%', 'Within review date', f.od + ' overdue', col(f.od === 0, pct(f.total - f.od, f.total) >= 70))}${card(f.draft, 'Draft or in review', null, f.draft > 3 ? 'var(--amber)' : null)}</div>`; }
+        if(key === 'business_continuity'){ if(mOff('bplan')) return '<p style="font-size:12.5px;color:var(--text-faint)">Business Planning and Continuity is not switched on.</p>'; const g = STATE._gv || {}, cps = arr(g.cont).filter(c => c.status === 'active'); const last = cps.map(c => c.last_test_date).filter(Boolean).sort().pop();
+          return `<div class="mr-stat-row">${card(cps.length, 'Active continuity plans', null, cps.length ? 'var(--green)' : 'var(--red)')}${card(last ? fmtDate(last) : 'Never', 'Last test', last && last >= new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10) ? 'within 12 months' : 'older than 12 months or none', last && last >= new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10) ? 'var(--green)' : 'var(--red)')}${card(arr(g.tests).length, 'Tests on record', null, null)}${card(arr(g.tests).filter(t => t.result !== 'passed').length, 'Tests with findings', null, null)}</div>`; }
+        if(key === 'people_governance'){ const m = GV().metrics().filter(x => ['jd','onb','succ','disc'].includes(x.k)); const kr = arr(STATE.positions).filter(p => p.is_key_role).length;
+          return `<div class="mr-stat-row">${m.map(x => card(Math.round(x.value) + '%', x.label, x.detail, col(x.value >= 85, x.value >= 50))).join('')}${card(kr, 'Key roles identified', null, kr ? null : 'var(--amber)')}</div>`; }
+      }catch(e){ console.warn('b84e mr stats', key, e); }
+      return _st.apply(this, arguments); }; }
+
+  /* group headings and ISO coverage panel in the live review */
+  const COVER = [
+    ['ISO 9001:2015 clause 9.3.2', [['previous_actions','a'],['external_internal_issues','b'],['customer_satisfaction','c1'],['objectives','c2'],['process_performance','c3'],['nonconformances','c4'],['audits','c6'],['supplier_performance','c7'],['resources_training','d'],['risk_opportunity','e'],['continual_improvement','f']]],
+    ['ISO 14001:2015 clause 9.3', [['previous_actions','a'],['external_internal_issues','b'],['legal_compliance','c'],['objectives','c'],['incidents_performance','c'],['audits','c'],['risk_opportunity','d'],['continual_improvement','e']]],
+    ['ISO 45001:2018 clause 9.3', [['previous_actions','a'],['external_internal_issues','b'],['objectives','c'],['incidents_performance','c'],['legal_compliance','c'],['people_participation','d'],['risk_opportunity','e'],['continual_improvement','f']]],
+    ['ISO/IEC 27001:2022 clause 9.3.2', [['previous_actions','a'],['external_internal_issues','b'],['information_security','c'],['audits','c'],['risk_opportunity','e'],['continual_improvement','f']]],
+    ['ISO 37001:2016 clause 9.3 (top management and governing body)', [['governance_planning','a'],['legal_compliance','b'],['people_governance','c'],['audits','d']]],
+    ['ISO 22301:2019 clause 9.3 and ISO 37000:2021 governance', [['business_continuity','a'],['governance_planning','b'],['people_governance','c'],['ims_health','d']]],
+  ];
+  { const _o = openMRDetail; openMRDetail = window.openMRDetail = async function(id){ const r = await _o.apply(this, arguments);
+      try{
+        const grid = document.querySelector('#mr-detail-slot .mrx-grid'); if(!grid || document.getElementById('mrx-coverage')) return r;
+        let last = null; A.forEach(a => { if(a.grp !== last){ last = a.grp; const c = document.getElementById('mrx-card-' + a.key); if(c) c.insertAdjacentHTML('beforebegin', `<div class="mrx-grp" style="margin:18px 0 6px;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#D50000;">${E(a.grp)}</div>`); const n = document.getElementById('mrx-nav-' + a.key); if(n) n.insertAdjacentHTML('beforebegin', `<div style="margin:10px 0 3px;font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#999;">${E(a.grp)}</div>`); } });
+        const done = k => { const t = document.getElementById('mr-comment-' + k); return t ? !!t.value.trim() : !!(document.getElementById('mrx-card-' + k) && document.querySelector('#mrx-card-' + k + ' .mrx-notes')); };
+        const rows = COVER.map(([std, items]) => { const nd = items.filter(([k]) => done(k)).length; return `<tr style="border-top:1px solid var(--border);"><td style="padding:6px 8px 6px 0;font-weight:700;">${E(std)}</td><td>${items.map(([k, c]) => { const a = A.find(x => x.key === k); return `<a href="#" onclick="document.getElementById('mrx-card-${k}').scrollIntoView({behavior:'smooth'});return false;" title="${E(a ? a.title : k)}" style="display:inline-block;margin:1px 3px 1px 0;padding:1px 8px;border-radius:10px;font-size:11px;text-decoration:none;background:${done(k) ? '#e3f4e8' : '#f6e9e9'};color:${done(k) ? '#1B6B3A' : '#8a2a2a'};">${c} ${done(k) ? '✓' : '○'}</a>`; }).join('')}</td><td style="white-space:nowrap;font-weight:800;color:${nd === items.length ? '#1B8E3E' : '#B26A16'};">${nd}/${items.length}</td></tr>`; }).join('');
+        grid.insertAdjacentHTML('beforebegin', `<div class="mrx-card" id="mrx-coverage"><div class="mrx-ch">Standards coverage: required review inputs against the agenda</div><p style="font-size:12px;color:#777;margin:0 0 6px;">Each chip is a required input and the agenda item that covers it. It turns green when discussion notes are recorded. Every figure on the agenda is read live from the modules, and the Corporate Governance item carries the business plan, goals, objectives, risks, legal, continuity and succession measures.</p><table style="width:100%;font-size:12.5px;border-collapse:collapse;">${rows}</table></div>`);
+      }catch(e){ console.warn('b84e mr coverage', e); } return r; }; }
+
+  /* dashboard snapshot of governance kept with the minutes */
+  { const _f = window.finalizeMR; window.finalizeMR = async function(id){ const ok = await _f.apply(this, arguments);
+      try{ const after = arr(STATE.managementReviews).find(r => r.id === id); if(after && after.status === 'finalized' && !mOff('bplan')){
+        const m = GV().metrics(), ix = GV().index(); const snap = 'Governance snapshot at finalisation (' + new Date().toLocaleDateString('en-GB') + '): governance index ' + (ix == null ? 'not available' : ix + '%') + '. ' + m.map(x => x.label + ' ' + Math.round(x.value) + '% (' + x.detail + ')').join('; ') + '.';
+        const ex = await STATE.supabase.from('management_review_items').select('comments').eq('review_id', id).eq('agenda_key', 'governance_planning').maybeSingle(); const cur = (ex && ex.data && ex.data.comments) || '';
+        if(cur.indexOf('Governance snapshot at finalisation') < 0) await STATE.supabase.from('management_review_items').upsert({ review_id:id, agenda_key:'governance_planning', comments:(cur ? cur + '\n\n' : '') + snap }, { onConflict:'review_id,agenda_key' }); } }catch(e){} return ok; }; }
+})();
+
+
+/* ===== b84a: Release 17, Overview: due items across all modules ===== */
+(function(){
+  const E = s => escapeHtml(String(s == null ? '' : s));
+  { const _o = RENDERERS.overview; RENDERERS.overview = function(){
+      let html = _o.apply(this, arguments);
+      try {
+        const i = html.indexOf('<div class="ovx-card"><h3>Tasks due soonest');
+        const today = todayISO();
+        const sum = (typeof computeDueSummary === 'function') ? computeDueSummary() : [];
+        const ncs = sum.filter(m => m.key === 'nonconformances');
+        const rest = sum.filter(m => m.key !== 'nonconformances');
+        const tot = sum.reduce((a, m) => a + m.overdue + m.dueSoon, 0), od = sum.reduce((a, m) => a + m.overdue, 0);
+        const rowOf = (m, x) => { const it = x.item, d = it[m.dateField], red = x.state === 'red';
+          return `<div class="ovx-row" onclick="showModule('${m.key}')"><span class="ref" style="min-width:120px;">${E(m.label.split(':')[0])}</span><span class="m">${E(it[m.titleField] || it.title || it.name || '')}</span><span class="d" style="color:${red ? '#D50000' : '#EF6C00'};font-weight:800;">${d ? fmtDate(d) : ''}${red ? ' · overdue' : ''}</span></div>`; };
+        const mods = [...ncs, ...rest].map(m => `<div style="margin-bottom:10px;"><div style="display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="showModule('${m.key}')"><b style="font-size:13px;">${E(m.label)}</b>${m.overdue ? `<span class="rm-chip red" style="background:#fde8e8;color:#B3261E;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:800;">${m.overdue} overdue</span>` : ''}${m.dueSoon ? `<span style="background:#fff0dc;color:#B26A16;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:800;">${m.dueSoon} due soon</span>` : ''}</div>${m.items.sort((a, b) => String(a.item[m.dateField]).localeCompare(String(b.item[m.dateField]))).slice(0, 3).map(x => rowOf(m, x)).join('')}</div>`).join('');
+        const card = `<div class="ovx-card"><h3>Nonconformances and tasks due across all modules<a onclick="showReminderPopup()">Open reminders</a></h3>
+          <div style="font-size:12.5px;margin-bottom:8px;color:#666;">${tot ? `<b style="color:#D50000;">${od} overdue</b> · ${tot - od} due within 30 days, across ${sum.length} register${sum.length === 1 ? '' : 's'}` : 'Nothing is overdue or due soon in any module.'}</div>${mods || '<p style="color:#1B8E3E;font-weight:800;margin:0;">✓ All clear.</p>'}</div>`;
+        if(i >= 0){ const tail = html.lastIndexOf('</div>'); html = html.slice(0, i) + card + html.slice(tail); }
+        else html += card;
+      } catch(e){ console.warn('b84a overview', e); }
+      return html; }; }
+})();
+
+
+/* ===== b84f: Release 17, training lessons for new modules and updates to existing lessons ===== */
+(function(W){
+W.projects = {
+why:'Work that matters, such as an ISO certification, a client order, a relocation or a corrective action programme, is a project. Watchman keeps the plan, the tasks, the risks and the budget in one place and shows the health on your dashboard.',
+who:'Project owners and managers, sponsors, and everyone who has project tasks.',
+tour:[['Start from anywhere','A project can start from a nonconformance, RAGA alert, audit, management review, quotation or client order, and stays linked to its source.',['chain','Sources',['Nonconformance','Audit','Management review','Quotation','Project']]],
+ ['Phases and tasks','Choose a template. It adds phases and starter tasks, scheduled from the start date. Tasks are shared with Task Management.',['table','Plan',['Phase','Due','Status'],[['Initiate','12 Nov','Done'],['*Plan','30 Nov','In progress'],['Deliver','28 Feb','Not started']]]],
+ ['Health at a glance','Every project shows on track, at risk or off track, and the numbers feed the Compliance Dashboard and the Management Review.',['stats','Projects',[['Open','6'],['Off track','1','red'],['At risk','2'],['Overdue tasks','4','red']],'Updated live']]],
+steps:[['Create the project','Give it a title, type, owner and dates. Pick a template that matches the kind of work.',['form','New project',[['Title','ISO 45001 certification'],['*Type','ISO standard certification'],['Target end','30 June']],'Create project']],
+ ['Review the phases','Adjust phases and milestones. Delete what you do not need.',['table','Phases',['Phase','Due'],[['Gap analysis','20 Nov'],['*Implementation','28 Feb'],['Audit','30 Apr']]]],
+ ['Work the tasks','Assign tasks with owners and dates. They also appear in Task Management and on the Overview.',['cards','Tasks',[['Complete the legal register','S. Dlamini · 25 Nov','Open'],['Train internal auditors','P. Naidoo · 10 Dec','Open']]]],
+ ['Track risks, issues and cost','Log project risks and issues, and record budget against actual cost.',['stats','Budget',[['Budget','R250 000'],['Spent','R110 000'],['Open risks','3','red']]]],
+ ['Report and close','Post status updates, then complete the project and record lessons learned.',['chain','Close',['Status update','Review','Complete','Lessons learned']]]],
+tips:['Always start a project from its source so the trail is complete.','Update the status weekly: a stale project is an unmanaged project.','Report open projects at management review.'],
+ask:'Show me a project, its plan, who owns it, and how you know it is on track.'};
+W.quotes = {
+why:'Winning work and getting paid is part of the management system. Quotations and Invoices turns a quote into an order, a project and an invoice, with the numbers in one place.',
+who:'Sales and contracts staff, project managers and finance.',
+tour:[['Items, rates and tax','Set up your price list, labour rates and tax once. Every quote and invoice uses them.',['table','Price list',['Item','Unit','Price'],[['Site inspection','day','R3 500'],['*Training session','day','R6 000']]]],
+ ['From quote to invoice','A quote is sent, accepted, becomes a client order, can start a project and is invoiced.',['chain','Flow',['Quote','Accepted','Order','Project','Invoice','Paid']]],
+ ['Collections and win rate','See quotes won and lost, invoices overdue and the value outstanding.',['stats','Commercial',[['Win rate','42%','grn'],['Invoices open','9'],['Overdue','2','red']]]]],
+steps:[['Set up the company details','Enter your legal name, bank details, currency and tax. They print on every document.',['form','Settings',[['Legal name','Company (Pty) Ltd'],['*Currency','ZAR'],['Tax','15%']],'Save']],
+ ['Create a quotation','Choose the client, add lines from the price list and set the validity.',['table','Quote Q-0042',['Item','Qty','Total'],[['Inspection','2','R7 000'],['*Report','1','R2 000']]]],
+ ['Send and follow up','Email the quote. Watchman flags quotes that lapse without a reply.',['cards','Quotes',[['Q-0042 Delta Steel','Sent 3 Nov','Open'],['Q-0039 Apex Lifting','Lapsed','Follow up']]]],
+ ['Convert to an order and a project','When the client accepts, record the client order and start a project from it.',['chain','Convert',['Accepted','Client order','Project']]],
+ ['Invoice and record payment','Issue the invoice, record payments and watch overdue invoices.',['stats','Invoices',[['Issued','R84 000'],['Paid','R60 000','grn'],['Overdue','R9 000','red']]]]],
+tips:['Record every payment so overdue invoices are accurate.','Follow up quotes before they lapse.','Review win rate and collections at management review.'],
+ask:'How do you control quotations, client orders and invoicing, and how do you know what is overdue?'};
+W.bplan = {
+why:'Corporate governance starts with direction. A business plan sets what the organisation intends to achieve, and Watchman turns it into goals, objectives, risks and legal duties that are measured and reviewed by top management.',
+who:'Owners, directors, top management and the management system owner.',
+tour:[['The business plan','Start from the generic plan: vision, mission, SWOT, market, operations, people, finance and governance.',['check','Sections',['Vision and mission','SWOT','Market and customers','Operations','People','Finance and governance']]],
+ ['Goals linked to the system','Each goal can create an objective, and be linked to risks, legal items and projects. Their progress is then measured.',['chain','Links',['Business plan','Goal','Objective','Risk and legal','Dashboard']]],
+ ['Continuity and succession','Business continuity plans are tested every year. Key roles each have a successor and a development plan.',['stats','Governance',[['Governance index','79%','grn'],['Plans tested','1'],['Key roles without a successor','2','red']]]]],
+steps:[['Create the plan','Use the generic template. It adds the sections and a starter set of goals across the balanced scorecard.',['form','New business plan',[['Title','Business Plan 2027'],['*Period','Jan to Dec'],['Owner','Managing director']],'Create plan']],
+ ['Complete and approve','Fill in the sections, set the next review date and approve. The plan becomes active.',['cards','Plan',[['BP-001 Business Plan 2027','Approved 6 Nov','Active']]]],
+ ['Turn goals into objectives','Create an objective from a goal. It appears in Objectives and Targets and is measured there.',['table','Goals',['Goal','Linked'],[['Customer satisfaction 95%','Objective'],['*Full legal compliance','Legal'],['Keep high risks controlled','Risk']]]],
+ ['Plan continuity and succession','Write the continuity plan, record the annual test, mark key roles and name successors.',['table','Key roles',['Role','Successor','Readiness'],[['Site manager','S. Dlamini','1 to 2 years'],['*SHEQ officer','None','Gap']]]],
+ ['Review it with management','The governance index, goals and gaps appear on the Compliance Dashboard, in Business Health and in the Management Review minutes.',['bars','Governance index',[40,52,61,68,75,79],'Improving']]],
+tips:['Review the plan at least annually and at every management review.','A goal without an objective, risk or legal link is not yet measured.','Test the continuity plan once a year and fix what you find.'],
+ask:'Show me your business plan, how it is measured, and who takes over your key roles.'};
+W.disciplinary = {
+why:'Fair, consistent discipline protects people and the business. Watchman guides each step, records the evidence and keeps the outcome on the personnel profile.',
+who:'Administrators and managers only. Records are confidential.',
+tour:[['The six steps','Register, give notice, hold the hearing, record minutes, issue the verdict and outcome, then appeal and close.',['chain','Process',['Register','Notice','Hearing','Minutes','Verdict','Close']]],
+ ['Linked to KPIs','Link the case to the KPI that is not being met, to the nonconformance or to the RAGA alert that started it.',['table','Case DA-0004',['Item','Link'],[['KPI','Zero lost time injuries'],['*Nonconformance','NC-0114']]]],
+ ['On the profile','Every case stays on the personnel profile with the sanction, how long it is valid and the appeal.',['cards','Disciplinary record',[['DA-0004 Safety breach','Written warning','Valid to May 2027']]]]],
+steps:[['Learn the process','Open the training presentation in the module. It covers fairness, the hearing, the verdict and the record.',['check','Presentation',['Why it matters','Conduct or capability','Notice and hearing','Minutes','Verdict and appeal']]],
+ ['Register the case','Choose the employee, type, date and write a specific allegation.',['form','Register a case',[['Employee','P. Naidoo'],['*Type','Health and safety breach'],['Allegation','Entered exclusion zone without PPE']],'Register case']],
+ ['Send the notice','Set the date, venue and chairperson. Send notice: the employee is emailed and it is recorded.',['cards','Notice',[['Hearing 20 Nov, 09:00','Boardroom','Sent']]]],
+ ['Record the minutes','Use the minutes template to capture attendance, evidence, response and mitigating factors.',['form','Minutes',[['Attendance','Chair, employee, representative'],['*Evidence','Photos and statement'],['Response','Admitted']]]],
+ ['Issue the verdict and outcome','Choose the verdict and sanction with written reasons. Validity and appeal dates are suggested. The employee is notified.',['table','Outcome',['Verdict','Sanction','Valid until'],[['Guilty','*Written warning','6 May 2027']]]]],
+tips:['Never skip the notice or the minutes: they are your proof of a fair process.','Poor performance is handled through counselling and KPIs, not a misconduct hearing.','Follow up every sanction with a task or a training need.'],
+ask:'Walk me through your last disciplinary case and show me the notice, minutes and outcome.'};
+/* updates to existing lessons */
+const add = (id, key, arr) => { if(W[id] && Array.isArray(W[id][key])) arr.forEach(x => W[id][key].push(x)); };
+add('overview', 'tour', [['Due across all modules','The Overview now lists nonconformances, tasks and every other date that is overdue or due within 30 days, module by module.',['table','Due soon',['Register','Overdue','Soon'],[['Nonconformances','1','2'],['*Tasks','3','4'],['Assets: Inspection','0','2']]]]]);
+add('compliance', 'tour', [['Every module is measured','Projects, quotations and invoices, assets, documents, tasks, business planning and continuity, and disciplinary cases now appear as tiles and as components of the score.',['stats','New measures',[['Governance index','79%','grn'],['Overdue invoices','2','red'],['Projects off track','1','red']]]]]);
+add('management_review', 'tour', [['Flow and standards coverage','The agenda is grouped: direction and governance, performance, compliance and risk, people, resilience, and decisions. A coverage table shows which ISO inputs are covered.',['table','Coverage',['Standard','Covered'],[['ISO 9001 9.3.2','11 of 11'],['ISO 45001 9.3','6 of 8'],['*ISO 22301 9.3','2 of 4']]]]]);
+add('management_review', 'tips', ['Open the Corporate Governance item: it carries the business plan, goals, continuity and succession measures.']);
+add('personnel', 'tour', [['Onboarding status','Next to the photo and QR code, a ring shows how complete the onboarding is: photo, ID tag, number, position, contact details, qualifications, documents, job description, KPIs, appraisal, training and more.',['stats','Onboarding',[['Onboarding','78%','grn'],['Steps complete','14 of 18'],['Still to do','Job description']],'Click Show the full checklist']],
+ ['Job descriptions and the people overview','Each position has a job description with responsibilities, accountabilities and authorities, and can be marked as a key role. The Personnel page opens with an overview of onboarding, job descriptions, appraisals, training and discipline.',['cards','People overview',[['People below 60% onboarded','3','Act'],['Positions without a job description','2','Act']]]]]);
+add('personnel', 'tips', ['Aim for 100% onboarding before a new person works unsupervised.']);
+})(window.WMLESSONS);
 
 </script>
 </body>
