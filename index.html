@@ -4532,7 +4532,6 @@ const RENDERERS = {
         <button class="btn-small ${STATE._adminSubtab==='masterregister'?'primary':''}" onclick="switchAdminSubtab('masterregister')">Master Documents Register</button>
         <button class="btn-small ${STATE._adminSubtab==='orgprofile'?'primary':''}" onclick="switchAdminSubtab('orgprofile')">Organisation Profile</button>
         ${STATE.profile.is_platform_staff ? `<button class="btn-small ${STATE._adminSubtab==='templatelibrary'?'primary':''}" onclick="switchAdminSubtab('templatelibrary')">Template Library</button>` : ''}
-        ${STATE.profile.is_platform_staff ? `<button class="btn-small ${STATE._adminSubtab==='adminconsole'?'primary':''}" onclick="switchAdminSubtab('adminconsole')">Admin Console</button>` : ''}
       </div>
     </div>
     <div id="admin-subtab-content"></div>
@@ -46166,6 +46165,9 @@ Prices must be in ${doc.currency}. If you are unsure of a price, set it to your 
     const html = `<div id="wb-disc" class="detail-card" style="margin:14px 0;padding:14px 16px;border:1px solid var(--border);border-radius:12px;"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><b>Disciplinary record</b><span style="font-size:11px;color:#999;">Confidential: administrators and managers only</span><button class="btn-small primary" style="margin-left:auto;" onclick="daNew('${personId}')">+ Register a case</button></div>
       ${cs.length ? `<table style="width:100%;font-size:12.5px;border-collapse:collapse;">${cs.map(c => { const live = c.outcome && c.sanction_valid_until && c.sanction_valid_until >= tdy(); return `<tr style="border-top:1px solid var(--border);cursor:pointer;" onclick="daOpen('${c.id}')"><td style="padding:6px 0;" class="mono">${E(c.ref_code)}</td><td>${E(TYPES[c.case_type])}</td><td>${pill(c.status)}</td><td>${c.outcome ? E(OUTCOME[c.outcome]) : '—'}${c.outcome && c.sanction_valid_until ? (live ? ` <small style="color:#B26A16;">valid to ${fmtDate(c.sanction_valid_until)}</small>` : ' <small style="color:#999;">expired</small>') : ''}</td><td>${E(c.linked_kpi || '')}</td></tr>`; }).join('')}</table>` : '<span style="font-size:12.5px;color:#777;">No disciplinary cases on record.</span>'}</div>`;
     const ob = document.getElementById('wb-onb'); if(ob) ob.insertAdjacentHTML('afterend', html); else { const head = panel.querySelector('.detail-head'); if(head) head.insertAdjacentHTML('afterend', html); }
+    /* sits directly after the attendance card, which ends with the manager exceptions for the period */
+    const place = () => { const d = document.getElementById('wb-disc'), at = document.getElementById('pers-att-card'); if(d && at && at.nextElementSibling !== d) at.insertAdjacentElement('afterend', d); };
+    place(); setTimeout(place, 700); setTimeout(place, 2000);
   };
 
   /* ---------- reminders ---------- */
@@ -48249,6 +48251,62 @@ ${STATE.org.name}${s.tel ? '\nTel: ' + s.tel : ''}`;
   const start = () => { const root = document.getElementById('content-root'); if(root) obs.observe(root, { childList:true, subtree:true }); else setTimeout(start, 500); };
   start();
   { const _s = showModule; showModule = window.showModule = function(){ const r = _s.apply(this, arguments); setTimeout(() => { try{ r21Strip(); }catch(e){} }, 60); return r; }; }
+})();
+
+/* ===== Release 23: invite to Watchman from the person's page; module switches stay with Group QaSHE CG ===== */
+(function(){
+  const E = s => escapeHtml(s == null ? '' : String(s));
+  const isAdm = () => STATE.myRole === 'admin' || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const personBy = id => (STATE.personnel || []).find(p => p.id === id);
+  const pendingFor = email => email && (STATE.invites || []).find(i => i.status === 'pending' && String(i.email).toLowerCase() === String(email).toLowerCase());
+
+  /* clients can no longer switch modules on or off: that stays in the Group QaSHE CG Admin Console */
+  { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = function(){
+      if(!(STATE.profile && STATE.profile.is_platform_staff)){ toast('Module switches are managed by Group QaSHE CG. Please contact us to change the modules on your system.', 'error'); return Promise.resolve(); }
+      return _t.apply(this, arguments); }; }
+
+  window.wpInviteBtn = function(id){
+    const row = document.getElementById('pd-linked-user'); if(!row || !isAdm()) return; const host = row.closest('.status-row'); if(!host || host.querySelector('.wp-inv')) return;
+    const p = personBy(id); const pend = p && pendingFor(p.email);
+    host.insertAdjacentHTML('beforeend', `<button class="btn-small wp-inv" style="margin-left:6px" onclick="wpInviteOpen('${id}')">${pend ? 'Invite pending: resend' : 'Invite to Watchman'}</button>`);
+  };
+  { const _o = openPersonDetail; openPersonDetail = window.openPersonDetail = async function(id){ const r = await _o.apply(this, arguments); try{ if(!STATE.invites) await loadInvites(); wpInviteBtn(id); }catch(e){} return r; }; }
+
+  window.wpInviteOpen = async function(id){
+    if(!isAdm()){ toast('Only administrators can invite people.', 'error'); return; }
+    const p = personBy(id); if(!p) return; try{ await loadInvites(); }catch(e){}
+    const mods = adminInviteModules();
+    kpiOverlay(`<h3 style="font-family:Arial,Helvetica,sans-serif;margin:0 0 4px;">Invite ${E(p.full_name || p.name || 'this person')} to Watchman</h3>
+      <p style="font-size:12px;color:var(--text-faint);margin-bottom:10px;">They receive an email with a link to set up their login. Choose their user level and the modules they will see.</p>
+      <div class="field"><label>Email address</label><input id="wpi-email" type="email" value="${E(p.email || '')}" placeholder="name@company.com"></div>
+      <div class="field"><label>User level</label><select id="wpi-role" onchange="wpInviteRole()"><option value="contributor" selected>Contributor: records and updates</option><option value="manager">Manager: contributor plus management actions</option><option value="viewer">Viewer: read only</option><option value="admin">Admin: everything, including inviting people</option></select></div>
+      <div class="field"><label>Modules <span style="text-transform:none;font-weight:400;color:var(--text-faint)">(Admins see every module; others see only what is ticked)</span></label>
+        <div style="margin:4px 0"><button class="btn-small" onclick="wpiAll(true)">Tick all</button> <button class="btn-small" onclick="wpiAll(false)">Clear</button></div>
+        <div id="wpi-mods" style="display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;max-height:260px;overflow:auto;">${mods.map(m => `<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer"><input type="checkbox" class="wpi-cb" value="${m.key}" style="width:auto"> ${E(m.label)}</label>`).join('')}</div></div>
+      <div id="wpi-result"></div>
+      <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Close</button><button class="btn-primary" id="wpi-go" onclick="wpInviteSend('${id}')">Send invite</button></div>`);
+  };
+  window.wpiAll = on => document.querySelectorAll('.wpi-cb').forEach(c => { if(!c.disabled) c.checked = on; });
+  window.wpInviteRole = function(){ const admin = document.getElementById('wpi-role').value === 'admin'; document.querySelectorAll('.wpi-cb').forEach(c => { c.disabled = admin; if(admin) c.checked = true; }); };
+  window.wpInviteSend = async function(id){
+    const email = (document.getElementById('wpi-email').value || '').trim().toLowerCase(), role = document.getElementById('wpi-role').value;
+    const mods = role === 'admin' ? adminInviteModules().map(m => m.key) : [...document.querySelectorAll('.wpi-cb:checked')].map(c => c.value);
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)){ toast('Enter a valid email address.', 'error'); return; }
+    if(role !== 'admin' && !mods.length){ toast('Tick at least one module, otherwise this person will have nothing to work in.', 'error'); return; }
+    const btn = document.getElementById('wpi-go'); btn.disabled = true; btn.textContent = 'Sending…';
+    try{
+      const p = personBy(id);
+      if(p && !p.email){ await STATE.supabase.from('personnel').update({ email }).eq('id', id).then(() => { p.email = email; }, () => {}); }
+      const { data: inv, error } = await STATE.supabase.from('invites').insert({ organisation_id:STATE.org.id, email, role, module_access:wmCal(mods), invited_by:STATE.user.id }).select().single();
+      if(error) throw error;
+      const link = `${window.location.origin}${window.location.pathname.replace(/index\.html$/, '')}accept-invite.html?token=${inv.token}`;
+      const sent = await sendEmailToAddress(email, `You've been invited to QaSHE Watchman`, `You've been invited to join ${STATE.org.name} on QaSHE Watchman.\n\nClick the link below to accept and set up your account:\n\n${link}\n\nThis link expires in 30 days and works once.`);
+      document.getElementById('wpi-result').innerHTML = `<div style="background:var(--grey-tint);border-radius:8px;padding:12px;margin-top:8px;"><div style="font-size:12.5px;font-weight:600;color:${sent ? 'var(--green)' : 'var(--red)'};margin-bottom:6px;">${sent ? '✓ Invite email sent to ' + E(email) : 'The email could not be sent automatically: use the link below.'}</div>
+        <div style="display:flex;gap:6px;"><input readonly id="wpi-link" value="${E(link)}" style="flex:1;font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;"><button class="btn-small primary" onclick="navigator.clipboard.writeText(document.getElementById('wpi-link').value);toast('Copied.','success')">Copy</button></div>
+        <div style="font-size:11px;color:var(--text-faint);margin-top:6px;">Once they have accepted, choose their login in the Watchman login list on this page and press Save link.</div></div>`;
+      btn.textContent = 'Sent'; try{ await loadInvites(); }catch(e){}
+    }catch(e){ toast('Invite failed: ' + (e.message || e), 'error'); btn.disabled = false; btn.textContent = 'Send invite'; }
+  };
 })();
 
 </script>
