@@ -47892,6 +47892,148 @@ var WT = (function(){
   { const _w = wdAttentionItems; wdAttentionItems = window.wdAttentionItems = function(){ const out = _w.apply(this, arguments); try{ gapsWt().forEach(([label, count]) => { if(!out.some(o => o.label === label)) out.push({ label, count, mod:'wt' }); }); }catch(e){} return out; }; }
 })();
 
+/* ===== Release 21: Compliance Dashboard shows only the client's modules; summary strips above the registers ===== */
+(function(){
+  const arr = x => Array.isArray(x) ? x : [], tdy = () => todayISO(), E = s => escapeHtml(s == null ? '' : String(s));
+  const mgr = () => ['admin','manager'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
+
+  /* ---- 1. Dashboard visibility: a module that is switched off never shows; the administrator can also untick any module ---- */
+  const hiddenSet = () => new Set(arr(STATE.org && STATE.org.dash_hidden));
+  window.dashShown = function(mod){
+    if(!mod) return true;
+    if(MODULE_META[mod] && !canAccessModule(mod)) return false;
+    return !hiddenSet().has(mod);
+  };
+  { const _c = complianceCard; complianceCard = window.complianceCard = function(title, mod){ return dashShown(mod) ? _c.apply(this, arguments) : ''; }; }
+  { const _m = mrSection; mrSection = window.mrSection = function(title, mod){ return (!mod || dashShown(mod)) ? _m.apply(this, arguments) : ''; }; }
+  { const _w = wdAttentionItems; wdAttentionItems = window.wdAttentionItems = function(){ return arr(_w.apply(this, arguments)).filter(x => !x.mod || dashShown(x.mod)); }; }
+  const HEALTH_MOD = { 'Nonconformance closure':'nonconformances', 'Audit completion':'audits', 'Legal compliance':'legal', 'Training completion':'training', 'Objectives achieved':'objectives', 'Checklist conformance':'audits', 'Policy currency':'policies', 'Risk control':'risks', 'Accreditation readiness':'edu' };
+  { const _h = computeComplianceHealthScore; computeComplianceHealthScore = window.computeComplianceHealthScore = function(){
+      const r = _h.apply(this, arguments); if(!r || !r.components) return r;
+      const comps = r.components.filter(c => dashShown(HEALTH_MOD[c.label]));
+      if(comps.length === r.components.length) return r;
+      if(!comps.length) return { score:null, color:'grey', components:[] };
+      const score = Math.round(Math.max(0, Math.min(100, comps.reduce((s, c) => s + (Number.isFinite(c.value) ? c.value : 0), 0) / comps.length)));
+      return { score, color:score >= 85 ? 'green' : score >= 60 ? 'amber' : 'red', components:comps };
+    }; }
+  { const _r = renderComplianceDashboard; renderComplianceDashboard = window.renderComplianceDashboard = function(){
+      (window.__wdExtra || []).forEach(e => { if(e._r21) return; e._r21 = true; const f = e[2]; e[2] = function(){ return dashShown(e[0]) ? f.apply(this, arguments) : null; }; });
+      const r = _r.apply(this, arguments);
+      try{
+        const wrap = document.getElementById('compliance-report'); if(!wrap || dashShown('nonconformances')) return r;
+        const hero = wrap.querySelector('.wd-hero'), p = hero && [...hero.children].find(c => !c.classList.contains('wd-dial-card'));
+        if(p){ const kids = [...p.children], lg = kids.findIndex(k => k.classList.contains('trend-legend')); if(lg >= 0) kids.slice(0, lg + 1).forEach(k => k.remove()); if(!p.children.length){ p.remove(); hero.style.gridTemplateColumns = '1fr'; } }
+        wrap.querySelectorAll('.wd-panel').forEach(pn => { const h = pn.querySelector('h3'); if(h && /^Nonconformance Pareto/.test(h.textContent)) pn.remove(); });
+      }catch(e){}
+      return r;
+    }; }
+
+
+  /* ---- the per-organisation settings are read separately, so a missing column can never block sign-in ---- */
+  async function loadOrgExtras(){
+    if(!STATE.org) return;
+    for(const col of ['nav_order','dash_hidden']){
+      try{ const r = await STATE.supabase.from('organisations').select(col).eq('id', STATE.org.id).maybeSingle(); if(r && !r.error && r.data) STATE.org[col] = r.data[col]; }catch(e){}
+    }
+    try{ if(typeof navApplyOrder === 'function') navApplyOrder(); }catch(e){}
+  }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const r = await _lc.apply(this, arguments); await loadOrgExtras(); return r; }; }
+  /* ---- the tick list, in Administration (Admin Console tab) ---- */
+  const BASE = [['nonconformances','Nonconformances'],['raga','RAGA'],['incidents','Incidents, Accidents and Near Miss'],['tasks','Tasks'],['audits','Audits and Checklists'],['risks','Risk and Opportunity'],['legal','Legal Compliance'],['training','Training'],['objectives','Objectives and Targets'],['process_flowcharts','Process KPIs'],['suppliers','Suppliers and Subcontractors'],['customers','Customers'],['site_files','Site SHERQ Files']];
+  window.dashList = function(){
+    const seen = new Set(), out = [];
+    BASE.concat(arr(window.__wdExtra).map(e => [e[0], e[1]])).forEach(([k, l]) => { if(seen.has(k)) return; seen.add(k); if(MODULE_META[k] && !canAccessModule(k)) return; out.push([k, l]); });
+    return out;
+  };
+  window.dashEditor = function(){
+    const hid = hiddenSet(), L = dashList();
+    kpiOverlay(`<h3 style="font-family:Arial,Helvetica,sans-serif;margin:0 0 6px;">Compliance Dashboard modules</h3>
+      <p style="font-size:12px;color:var(--text-faint);margin-bottom:10px;">Tick the modules this organisation wants on the Compliance Dashboard. Modules that are switched off for the organisation never appear. Unticked modules are also left out of the compliance average and the attention list.</p>
+      <div style="max-height:380px;overflow:auto;">${L.map(([k, l]) => `<label class="r18-row" style="cursor:pointer;"><input type="checkbox" class="dsh-cb" data-k="${k}" style="width:auto" ${hid.has(k) ? '' : 'checked'}> <b style="flex:1">${E(l)}</b></label>`).join('')}</div>
+      <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" onclick="dashSave()">Save</button></div>`);
+  };
+  window.dashSave = async function(){
+    const keep = arrFrom(arr(STATE.org.dash_hidden)).filter(k => !dashList().some(x => x[0] === k));
+    const hid = [...document.querySelectorAll('.dsh-cb')].filter(c => !c.checked).map(c => c.dataset.k).concat(keep);
+    const { error } = await STATE.supabase.from('organisations').update({ dash_hidden: hid.length ? hid : null }).eq('id', STATE.org.id);
+    if(error){ toast('Could not save: ' + error.message + (/dash_hidden/.test(error.message) ? ' (run the Release 21 SQL first)' : ''), 'error'); return; }
+    STATE.org.dash_hidden = hid.length ? hid : null; kpiCloseOverlay(); toast('Dashboard modules saved.', 'success');
+    try{ if(document.getElementById('compliance-report')) renderComplianceDashboard(); }catch(e){}
+  };
+  const arrFrom = a => a.slice();
+  { const _rac = renderAdminConsole;
+    renderAdminConsole = window.renderAdminConsole = function(){
+      _rac.apply(this, arguments); const wrap = document.getElementById('admin-subtab-content'); if(!wrap || wrap.querySelector('#dash-mod-card')) return;
+      wrap.insertAdjacentHTML('beforeend', `<div class="detail-card" id="dash-mod-card"><div class="panel-head"><h3>Compliance Dashboard modules</h3><button class="btn-small primary" onclick="dashEditor()">Choose modules</button></div>
+        <p style="font-size:12.5px;color:var(--text-faint);">Choose which modules show on the Compliance Dashboard. Modules that are switched off never show. The same choice is in the Group QaSHE CG Admin Console.</p></div>`);
+    }; }
+
+  /* ---- 2. Summary strip above the register on each module home page ---- */
+  const sc = (v, l, c, sub) => mrStatCard(v, l, sub || null, c ? 'var(--' + c + ')' : null);
+  const cnt = (a, f) => a.filter(f).length;
+  const od = (d, t) => !!d && String(d).slice(0, 10) < (t || tdy());
+  const soon = (d, n) => { if(!d) return false; const t = tdy(), x = String(d).slice(0, 10), e = new Date(t + 'T00:00:00Z'); e.setUTCDate(e.getUTCDate() + (n || 30)); return x >= t && x <= e.toISOString().slice(0, 10); };
+  const isIanRec = n => ['incident','accident','near_miss'].includes(n.record_class);
+  const incOn = () => !(STATE.org && STATE.org._modOff && STATE.org._modOff.has('incidents'));
+  const STRIPS = {
+    nonconformances(){ let a = arr(STATE.ncs); if(incOn()) a = a.filter(n => !isIanRec(n)); const t = tdy(), op = a.filter(n => n.status !== 'closed'), ov = cnt(op, n => od(n.target_close_date, t));
+      return [sc(a.length, 'Total'), sc(op.length, 'Open', op.length ? 'amber' : 'green'), sc(ov, 'Overdue', ov ? 'red' : 'green'), sc(cnt(a, n => n.status === 'pending_verification'), 'Pending verification'), sc(cnt(op, n => n.severity === 'critical' || n.severity === 'major'), 'Open, critical or major', 'red'), sc(cnt(a, n => n.status === 'closed'), 'Closed', 'green')]; },
+    raga(){ const a = arr(STATE.ragaAlerts), op = a.filter(r => r.status !== 'closed');
+      return [sc(a.length, 'Total'), sc(op.length, 'Open', op.length ? 'amber' : 'green'), sc(cnt(op, r => r.alert_type === 'red'), 'Red alerts open', 'red'), sc(cnt(op, r => r.alert_type === 'orange'), 'Orange alerts open', 'amber'), sc(cnt(a, r => r.status === 'pending_verification'), 'Pending verification'), sc(cnt(a, r => r.status === 'closed'), 'Closed', 'green')]; },
+    incidents(){ const a = arr(STATE.ncs).filter(isIanRec), op = a.filter(n => n.status !== 'closed'), yr = String(new Date().getFullYear()), t = tdy();
+      return [sc(a.length, 'Total recorded'), sc(cnt(a, n => String(n.occurred_at || n.raised_date || n.created_at || '').slice(0, 4) === yr), 'This year'), sc(cnt(a, n => n.record_class === 'accident'), 'Accidents', 'red'), sc(cnt(a, n => n.record_class === 'near_miss'), 'Near misses', 'amber'), sc(op.length, 'Open', op.length ? 'amber' : 'green'), sc(cnt(op, n => od(n.target_close_date, t)), 'Overdue', 'red')]; },
+    tasks(){ const a = arr(STATE.tasks), op = a.filter(t => t.status !== 'done'), t0 = tdy(), ov = cnt(op, t => od(t.due_date, t0));
+      return [sc(a.length, 'Total'), sc(cnt(a, t => t.status === 'todo'), 'To do'), sc(cnt(a, t => t.status === 'in_progress'), 'In progress', 'amber'), sc(cnt(a, t => t.status === 'blocked'), 'Blocked', 'red'), sc(ov, 'Overdue', ov ? 'red' : 'green'), sc(cnt(op, t => soon(t.due_date, 7)), 'Due in 7 days', 'amber'), sc(cnt(a, t => t.status === 'done'), 'Done', 'green')]; },
+    audits(){ const sub = STATE._auditSubtab || 'plan', all = arr(STATE.audits), ext = a => a.origin === 'external', t = tdy(), yr = String(new Date().getFullYear());
+      if(sub === 'plan'){ const p = all.filter(a => a.status === 'planned'); return [sc(p.length, 'Planned audits'), sc(cnt(p, a => od(a.planned_date, t)), 'Overdue to start', 'red'), sc(cnt(p, a => soon(a.planned_date, 30)), 'Due in 30 days', 'amber'), sc(cnt(all, a => a.status === 'in_progress'), 'In progress', 'amber'), sc(cnt(all, a => ['completed','report_issued'].includes(a.status) && String(a.planned_date || '').slice(0, 4) === yr), 'Completed this year', 'green')]; }
+      if(sub === 'board' || sub === 'external'){ const d = all.filter(a => ['completed','report_issued'].includes(a.status) && (sub === 'external' ? ext(a) : !ext(a)));
+        return [sc(d.length, sub === 'external' ? 'External reports' : 'Completed audit reports'), sc(cnt(d, a => a.status === 'report_issued'), 'Report issued', 'green'), sc(cnt(d, a => !a.closed_at), 'Awaiting close-out', 'amber'), sc(cnt(d, a => !!a.closed_at), 'Closed out', 'green'), sc(cnt(d, a => String(a.planned_date || '').slice(0, 4) === yr), 'This year')]; }
+      return null; },
+    risks(){ const a = arr(STATE.risks), op = a.filter(r => r.status !== 'closed'), crit = op.filter(r => (r.residual_score != null ? r.residual_score : r.inherent_score) >= 8);
+      return [sc(a.length, 'Total'), sc(cnt(a, r => r.entry_type === 'risk'), 'Risks'), sc(cnt(a, r => r.entry_type === 'opportunity'), 'Opportunities'), sc(op.length, 'Open', op.length ? 'amber' : 'green'), sc(crit.length, 'Open, critical', crit.length ? 'red' : 'green'), sc(cnt(op, r => od(r.review_date)), 'Reviews overdue', 'red'), sc(cnt(a, r => r.status === 'closed'), 'Closed', 'green')]; },
+    suppliers(){ const a = arr(STATE.suppliers);
+      return [sc(a.length, 'Total'), sc(cnt(a, s => s.status === 'approved'), 'Approved', 'green'), sc(cnt(a, s => ['pending_qualification','conditional'].includes(s.status)), 'Pending or conditional', 'amber'), sc(cnt(a, s => ['suspended','removed'].includes(s.status)), 'Suspended or removed', 'red'), sc(cnt(a, s => s.risk_classification === 'high'), 'High risk', 'red'), sc(cnt(a, s => s.status !== 'removed' && od(s.next_review_date)), 'Reviews overdue', 'red')]; },
+    customers(){ const a = arr(STATE.customers), sv = arr(STATE.customerSurveys).filter(s => s.status === 'completed' || s.overall_rating != null), avg = sv.length ? Math.round(sv.reduce((s, x) => s + Number(x.overall_rating || 0), 0) / sv.length / 5 * 100) : null;
+      return [sc(a.length, 'Total'), sc(cnt(a, c => c.status === 'active'), 'Active', 'green'), sc(cnt(a, c => c.status === 'inactive'), 'Inactive'), sc(sv.length, 'Surveys completed'), sc(avg == null ? '—' : avg + '%', 'Average satisfaction', avg == null ? null : avg >= 95 ? 'green' : avg >= 80 ? 'amber' : 'red')]; },
+    objectives(){ const a = arr(STATE.objectives);
+      return [sc(a.length, 'Total'), sc(cnt(a, o => o.status === 'achieved'), 'Achieved', 'green'), sc(cnt(a, o => ['draft','active'].includes(o.status)), 'On track', 'amber'), sc(cnt(a, o => ['not_achieved','discontinued'].includes(o.status)), 'Not achieved or discontinued', 'red')]; },
+    legal(){ const a = arr(STATE.legalRegister), n = cnt(a, l => od(l.next_review_due_date));
+      return [sc(a.length, 'Total'), sc(cnt(a, l => l.current_status === 'compliant'), 'Compliant', 'green'), sc(cnt(a, l => l.current_status === 'semi_compliant'), 'Semi-compliant', 'amber'), sc(cnt(a, l => l.current_status === 'non_compliant'), 'Non-compliant', 'red'), sc(cnt(a, l => !l.current_status), 'Not yet reviewed'), sc(n, 'Reviews overdue', n ? 'red' : 'green')]; },
+    training(){ const a = arr(STATE.training), live = a.filter(t => !['completed','cancelled'].includes(t.status)), ov = cnt(live, t => od(t.due_date));
+      return [sc(a.length, 'Total'), sc(cnt(a, t => t.status === 'completed'), 'Completed', 'green'), sc(live.length - ov, 'Outstanding', 'amber'), sc(ov, 'Overdue', ov ? 'red' : 'green'), sc(cnt(live, t => soon(t.due_date, 30)), 'Due in 30 days', 'amber')]; },
+    five_s(){ const a = arr(STATE.fiveSInspections), t = tdy();
+      return [sc(a.length, 'Total inspections'), sc(cnt(a, i => i.status === 'scheduled'), 'Scheduled'), sc(cnt(a, i => i.status === 'scheduled' && od(i.scheduled_date, t)), 'Overdue', 'red'), sc(cnt(a, i => i.status === 'in_progress'), 'In progress', 'amber'), sc(cnt(a, i => i.status === 'completed'), 'Completed', 'green')]; },
+    process_flowcharts(){ if((STATE._pfTab || 'register') !== 'register') return null; const a = arr(STATE.processes), ks = (typeof kpiPortfolioStats === 'function' && arr(STATE.orgKpis).some(k => k.is_active)) ? kpiPortfolioStats() : null;
+      const r = [sc(a.length, 'Processes'), sc(cnt(a, p => p.flowchart_id), 'With a flowchart', 'green'), sc(cnt(a, p => !p.flowchart_id), 'No flowchart yet', 'amber'), sc(cnt(a, p => !p.owner_id), 'No owner', 'red')];
+      if(ks) r.push(sc(ks.green, 'KPIs on target', 'green'), sc(ks.red, 'KPIs off target', ks.red ? 'red' : null), sc(ks.overdue, 'Readings overdue', ks.overdue ? 'red' : 'green')); return r; }
+  };
+  const curMod = () => { const a = document.querySelector('.nav-item.active[data-mod]'); return a ? a.dataset.mod : null; };
+  const modKey = m => m === 'processes' ? 'process_flowcharts' : m === 'checklists' ? 'audits' : m;
+  window.r21Strip = function(){
+    const root = document.getElementById('content-root'); if(!root) return;
+    const mod = modKey(curMod()); let cards = null;
+    if(mod && STRIPS[mod] && canAccessModule(mod)){ try{ cards = STRIPS[mod](); }catch(e){ cards = null; } }
+    const cur = document.getElementById('r21-strip');
+    if(!cards || !cards.length){ if(cur) cur.remove(); return; }
+    const html = `<div class="mr-stat-row" style="margin-bottom:14px;">${cards.join('')}</div>`;
+    if(cur && cur.dataset.mod === mod && cur.innerHTML === html && cur.isConnected) return;
+    let host = null, before = null;
+    if(mod === 'audits'){ host = document.getElementById('audit-subtab-content'); if(host) before = host.firstChild; }
+    else if(mod === 'incidents'){ host = document.getElementById('ian-root'); if(host) before = host.firstChild; }
+    else { before = root.querySelector('.toolbar'); host = before ? before.parentNode : root; if(!before) before = root.firstChild; }
+    if(!host) return; if(cur) cur.remove();
+    const d = document.createElement('div'); d.id = 'r21-strip'; d.dataset.mod = mod; d.innerHTML = html; host.insertBefore(d, before);
+  };
+  let tm = null;
+  const obs = new MutationObserver(muts => {
+    if(muts.every(m => { const t = m.target; return t && t.closest && t.closest('#r21-strip'); })) return;
+    clearTimeout(tm); tm = setTimeout(() => { try{ r21Strip(); }catch(e){} }, 150);
+  });
+  const start = () => { const root = document.getElementById('content-root'); if(root) obs.observe(root, { childList:true, subtree:true }); else setTimeout(start, 500); };
+  start();
+  { const _s = showModule; showModule = window.showModule = function(){ const r = _s.apply(this, arguments); setTimeout(() => { try{ r21Strip(); }catch(e){} }, 60); return r; }; }
+})();
+
 </script>
 </body>
 </html>
