@@ -46933,6 +46933,406 @@ add('personnel', 'tips', ['Aim for 100% onboarding before a new person works uns
         <p style="font-size:12.5px;color:var(--text-faint);">Group the modules in the order this organisation wants as more are added. The same tool is in the Group QaSHE CG Admin Console.</p></div>`);
     }; }
 })();
+/* ===== Release 19: Educational Institution Compliance (Umalusi accreditation and monitoring) ===== */
+(function(){
+  const E = s => escapeHtml(s == null ? '' : String(s));
+  const arr = x => Array.isArray(x) ? x : [];
+  const tdy = () => todayISO();
+  const day = d => d ? String(d).slice(0, 10) : '';
+  const addDays = (iso, n) => { const d = new Date((iso || tdy()) + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const off = () => !(STATE.org && STATE.org._eduOn);
+  const mgr = () => ['admin','manager'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const D = () => STATE._edu = STATE._edu || { profile:null, enrol:[], ind:[], ev:[], staff:[], mod:[], irr:[], res:[], loaded:false, broken:false };
+
+  const CRIT = { 1:'Leadership, management and communication', 2:'School ethos', 3:'Teaching and learning', 4:'School results' };
+  const RATE = { 3:['Level 3','#2E7D4F'], 2:['Level 2','#B26A16'], 1:['Level 1','#B3261E'], 0:['Not applicable','#6B6B6B'] };
+  /* The 24 core indicators of Umalusi Table 5 (Guideline v11, 2022), with the evidence an evaluator looks for and the Watchman modules that hold it */
+  const IND = [
+    { k:'C1a', c:1, t:'Leadership and governance provide strategic direction, and consult and communicate with all relevant stakeholders.', ev:['Strategic plan and annual operational plan','Governing body or board minutes','Stakeholder and parent communication records','Organisation chart'], mods:['bplan','governance','management_review','bulletins','orgchart'] },
+    { k:'C1b', c:1, t:'The Head of the school has a professional teaching qualification and current registration with SACE.', ev:['Certified ID and qualification','Current SACE registration','Employment contract and appointment letter'], mods:['personnel','orgchart'] },
+    { k:'C1c', c:1, t:'The offering of the school is in line with its registration: name, physical address and grades offered.', ev:['Provincial Education Department registration certificate','EMIS number','Proof of physical address and grades registered'], mods:['legal_certs'] },
+    { k:'C1d', c:1, t:'The school is financially sustainable and able to meet its financial obligations as they fall due.', ev:['Audited Annual Financial Statements','Operational budget','Lease contract or proof of ownership','Group statements must show the school is included'], mods:['bplan'] },
+    { k:'C1e', c:1, t:'Management strategies, policies and processes are effective in achieving the school\'s and national objectives and raising performance.', ev:['General school policy, staff and learner codes of conduct, data management policy','Objectives and targets with progress','Internal audit and management review records'], mods:['process_flowcharts','policies','objectives','audits','management_review'] },
+    { k:'C1f', c:1, t:'The management of learner records is comprehensive, authentic and reliable.', ev:['Learner records procedure','Admission and mark records','Retention and POPIA arrangements'], mods:['privacy','retention','documents'] },
+    { k:'C1g', c:1, t:'A valid current Health and Safety Certificate (not older than 2 years) exists for the school AND the hostel.', ev:['Health and Safety certificate for the school','Health and Safety certificate for the hostel (if any)','Where issued by a private company: the audit report and proof the auditor is accredited (for example SAIOSH)'], mods:['legal_certs','legal','audits'] },
+    { k:'C1h', c:1, t:'There is adequate serviced fire equipment (serviced within 12 months).', ev:['Fire equipment service certificate','Fire equipment register and inspections','Evacuation plan and drill records'], mods:['assets'] },
+    { k:'C1i', c:1, t:'The Health and Safety Committee is active and ensures the implementation of policy.', ev:['Committee appointments','Meeting minutes and actions','Safety representatives and first aiders'], mods:['orgchart','tasks','raga'] },
+    { k:'C1j', c:1, t:'Facilities (school and hostel where applicable) are suitable, safe and sufficient for the vision and mission.', ev:['Facilities inspection records','Maintenance plan and records','Risk assessments'], mods:['assets','risks'] },
+    { k:'C2a', c:2, t:'The vision and mission promote an ethos that is not in conflict with the South African Constitution.', ev:['Vision and mission statement','Admissions policy'], mods:['policies','documents'] },
+    { k:'C2b', c:2, t:'In applying its ethos, the school promotes the values of the Constitution, applicable legislation and the principles of the NQF.', ev:['Code of conduct for learners and staff','Safety and discipline policy','Evidence of alignment with NQF principles'], mods:['legal','policies','disciplinary'] },
+    { k:'C2c', c:2, t:'There is no form of unfair discrimination evident in the school.', ev:['Admission and employment equity practice','Complaints and grievance records','Learner and staff surveys'], mods:['legal','raga','nonconformances','disciplinary'] },
+    { k:'C3a', c:3, t:'At least 80% of the teachers hold a professional teaching qualification and current registration with SACE.', ev:['Staff establishment with qualifications and SACE numbers','Certified qualifications and IDs','Employment contracts'], mods:['personnel','training'] },
+    { k:'C3b', c:3, t:'The school can develop and implement learning programmes, lesson plans and assessment programmes in line with the minimum outcomes of CAPS.', ev:['Master timetable','Annual Teaching Plans per subject','Lesson plans','Policy for monitoring teaching quality'], mods:['process_flowcharts','appraisals','documents'] },
+    { k:'C3c', c:3, t:'The school is sufficiently resourced and sustainable, with adequate teaching and learning resources, facilities, premises and finances.', ev:['Resource and textbook register','Facilities and premises evidence','Budget for teaching and learning'], mods:['assets','bplan'] },
+    { k:'C3d', c:3, t:'The school can administer quality assessment in line with CAPS and the NSC regulations, with developmental feedback to learners.', ev:['Assessment policy','Academic committee minutes','Internal and external moderation records','Learner mark sheets'], mods:['documents','audits'] },
+    { k:'C3e', c:3, t:'Teachers show capacity in internal assessment and in developing School Based Assessment tasks of acceptable standard.', ev:['Assessment programme per grade','SBA tasks with memoranda','Moderation reports and educator portfolios'], mods:['training','appraisals'] },
+    { k:'C3f', c:3, t:'The outcomes of the curriculum are aligned with the National Curriculum Statement at exit grades 3, 6, 9 and 12.', ev:['Curriculum mapping to CAPS','Exit grade assessment evidence for grades 3, 6, 9 and 12'], mods:['documents'] },
+    { k:'C3g', c:3, t:'Records of learner achievement are aligned at grades 3, 6, 9 and 12.', ev:['Learner achievement records for the exit grades','Reports and promotion schedules'], mods:['documents','retention'] },
+    { k:'C3h', c:3, t:'The school provides appropriate learner support.', ev:['Learner support policy and procedure','Support and referral records','Remedial programmes'], mods:['process_flowcharts','tasks'] },
+    { k:'C3i', c:3, t:'Learners have adequate opportunities for co-curricular and extra-curricular participation in line with the vision and mission.', ev:['Extra-curricular programme','Participation records'], mods:['bulletins','tasks'] },
+    { k:'C4a', c:4, t:'The school\'s Grade 12 results are not inferior to the national average.', ev:['Grade 12 results for the last three years','National average pass rate for each year'], mods:['objectives'] },
+    { k:'C4b', c:4, t:'Learner results are analysed and used to inform improvement in provision and learner support.', ev:['Results analysis per subject','Improvement plan and actions','Stakeholder satisfaction results'], mods:['objectives','tasks','management_review'] },
+  ];
+  const indBy = k => IND.find(i => i.k === k);
+
+  /* ---------- helpers on data ---------- */
+  const rowFor = k => arr(D().ind).find(x => x.indicator_key === k);
+  const manual = k => { const r = rowFor(k); return r && r.rating != null ? r.rating : null; };
+  const evFor = k => arr(D().ev).filter(e => e.indicator_key === k);
+  const evCurrent = (e, days) => e.valid_until ? e.valid_until >= tdy() : (e.valid_from ? e.valid_from >= addDays(tdy(), -days) : false);
+  const hostel = () => !!(D().profile && D().profile.has_hostel);
+  const saceOk = s => !!String(s.sace_number || '').trim() && (!s.sace_expiry || s.sace_expiry >= tdy());
+  function staffStats(){
+    const t = arr(D().staff).filter(s => s.role_type === 'teacher'), n = t.length;
+    const prof = t.filter(s => s.qualification_status === 'professional' && saceOk(s)).length;
+    const prov = t.filter(s => (s.qualification_status === 'professional' || s.qualification_status === 'degree_studying') && saceOk(s)).length;
+    return { n, prof, prov, p80:n ? Math.round(prof / n * 100) : null, p70:n ? Math.round(prov / n * 100) : null };
+  }
+  function resultsOf(){ return arr(D().res).filter(r => r.grade === '12').sort((a, b) => b.year - a.year); }
+  const rate = r => (r.learners_wrote > 0 && r.learners_passed != null) ? Math.round(r.learners_passed / r.learners_wrote * 1000) / 10 : null;
+  function resultsAuto(){
+    const rs = resultsOf(); if(!rs.length) return null;
+    const l = rs[0], pr = rate(l); if(pr == null || l.national_pass_rate == null) return { r:null, d:'Enter the pass rate and the national average for ' + l.year + '.' };
+    if(pr >= Number(l.national_pass_rate)) return { r:3, d:l.year + ': ' + pr + '% against a national average of ' + l.national_pass_rate + '%.' };
+    const last3 = rs.slice(0, 3).filter(x => rate(x) != null && x.national_pass_rate != null && rate(x) >= Number(x.national_pass_rate)).length;
+    if(last3 >= 2) return { r:2, d:'Below average in ' + l.year + ', but on par in 2 of the last 3 years (concession).' };
+    if(l.learners_wrote <= 5 && l.learners_wrote > 0 && Math.round((l.learners_passed + 1) / l.learners_wrote * 1000) / 10 >= Number(l.national_pass_rate)) return { r:2, d:'Five or fewer candidates and one learner decides the result (concession).' };
+    return { r:1, d:l.year + ': ' + pr + '% against a national average of ' + l.national_pass_rate + '%.' };
+  }
+  function auto(k){
+    const s = arr(D().staff);
+    if(k === 'C1b'){ const h = s.filter(x => x.role_type === 'head'); if(!h.length) return { r:null, d:'Add the Head in Staff establishment.' }; return h.some(x => x.qualification_status === 'professional' && saceOk(x)) ? { r:3, d:'Head holds a professional qualification and current SACE registration.' } : { r:1, d:'The Head record has no professional qualification or no current SACE registration.' }; }
+    if(k === 'C3a'){ const q = staffStats(); if(!q.n) return { r:null, d:'Add the teachers in Staff establishment.' };
+      if(q.p80 >= 80) return { r:3, d:q.prof + ' of ' + q.n + ' teachers (' + q.p80 + '%) are professionally qualified and SACE registered.' };
+      if(q.p70 >= 70) return { r:2, d:q.p70 + '% qualify for provisional (70%) status. Grade 12 schools also need an NSC pass rate of at least 80% for this rating.' };
+      return { r:1, d:'Only ' + q.p70 + '% of teachers meet even the 70% provisional threshold.' }; }
+    if(k === 'C1g'){ const c = evFor(k).filter(e => e.evidence_type === 'certificate' && evCurrent(e, 730)).length, need = hostel() ? 2 : 1; if(!evFor(k).length) return null; return c >= need ? { r:3, d:c + ' current certificate' + (c === 1 ? '' : 's') + ' on file (' + need + ' needed).' } : { r:1, d:c + ' current certificate' + (c === 1 ? '' : 's') + ' on file, ' + need + ' needed' + (hostel() ? ' (school and hostel)' : '') + '.' }; }
+    if(k === 'C1h'){ if(!evFor(k).length) return null; return evFor(k).some(e => e.evidence_type === 'certificate' && evCurrent(e, 365)) ? { r:3, d:'A fire equipment service certificate is current.' } : { r:1, d:'No fire equipment service certificate within the last 12 months.' }; }
+    if(k === 'C3d'){ const m = arr(D().mod); if(!m.length) return null; const od = m.filter(x => x.status === 'open' && x.due_date && x.due_date < tdy()).length, rec = m.filter(x => x.moderation_date && x.moderation_date >= addDays(tdy(), -365)).length; return rec && !od ? { r:3, d:rec + ' moderation record' + (rec === 1 ? '' : 's') + ' in the last 12 months, none overdue.' } : { r:2, d:od ? od + ' moderation task' + (od === 1 ? '' : 's') + ' overdue.' : 'No moderation recorded in the last 12 months.' }; }
+    if(k === 'C4a') return resultsAuto();
+    if(k === 'C4b'){ const rs = resultsOf(); if(!rs.length) return null; return rs[0].analysis && rs[0].improvement_actions ? { r:3, d:'Results analysis and improvement actions recorded for ' + rs[0].year + '.' } : { r:1, d:'Record the analysis and improvement actions for ' + rs[0].year + '.' }; }
+    return null;
+  }
+  const eff = k => manual(k);
+  function critRating(c){ const v = IND.filter(i => i.c === c).map(i => eff(i.k)).filter(x => x != null && x > 0); return v.length ? Math.min(...v) : null; }
+  function counts(){ const o = { 3:0, 2:0, 1:0, na:0, none:0 }; IND.forEach(i => { const r = eff(i.k); if(r == null) o.none++; else if(r === 0) o.na++; else o[r]++; }); return o; }
+  function projection(){
+    const cr = [1,2,3,4].map(critRating), n = counts();
+    if(cr.some(x => x === 1)) return { k:'risk', t:'At risk: a criterion is at Level 1', d:'A Level 1 in any criterion leads to a window period and then no accreditation if it is not corrected.', c:'#B3261E' };
+    if(n.none) return { k:'incomplete', t:'Assessment incomplete: ' + n.none + ' indicator' + (n.none === 1 ? '' : 's') + ' not yet rated', d:'Rate every indicator to see the projected outcome.', c:'#6B6B6B' };
+    if(cr.every(x => x === 3 || x == null)) return { k:'accred', t:'Projected outcome: Accreditation', d:'All criteria are at Level 3.', c:'#2E7D4F' };
+    return { k:'prov', t:'Projected outcome: Two years provisional accreditation', d:'All criteria are at Level 2 or better, but not all are at Level 3.', c:'#B26A16' };
+  }
+  const indexNow = () => { const v = IND.map(i => eff(i.k)).filter(x => x !== 0); if(!v.length) return null; return Math.round(v.reduce((s, r) => s + (r === 3 ? 100 : r === 2 ? 60 : r === 1 ? 20 : 0), 0) / v.length); };
+  function evidenceAlerts(){ const t = tdy(), s = addDays(t, 60); return arr(D().ev).filter(e => e.valid_until && e.valid_until <= s).map(e => ({ e, expired:e.valid_until < t })); }
+  function gaps(){
+    const out = [], t = tdy();
+    if(off() || !D().loaded) return out;
+    const n = counts();
+    if(n.none) out.push(['Educational accreditation: ' + n.none + ' indicator(s) not yet rated.', 'edu']);
+    IND.filter(i => eff(i.k) === 1).forEach(i => out.push(['Accreditation indicator at Level 1: ' + i.k.replace('C', '') .toUpperCase() + ' ' + i.t.slice(0, 70), 'edu']));
+    const ea = evidenceAlerts().filter(x => x.expired); if(ea.length) out.push([ea.length + ' accreditation evidence item(s) expired.', 'edu']);
+    const od = arr(D().mod).filter(x => x.status === 'open' && x.due_date && x.due_date < t); if(od.length) out.push([od.length + ' assessment moderation task(s) overdue.', 'edu']);
+    const ir = arr(D().irr).filter(x => !['resolved','closed'].includes(x.status)); if(ir.length) out.push([ir.length + ' open assessment irregularit' + (ir.length === 1 ? 'y' : 'ies') + '.', 'edu']);
+    const sx = arr(D().staff).filter(s => s.sace_expiry && s.sace_expiry < t); if(sx.length) out.push([sx.length + ' educator(s) with an expired SACE registration.', 'edu']);
+    const p = D().profile; if(p && p.accreditation_expiry && p.accreditation_expiry < addDays(t, 120)) out.push(['Accreditation expires on ' + fmtDate(p.accreditation_expiry) + '.', 'edu']);
+    return out;
+  }
+  window.wbEdu = { index:indexNow, projection, gaps, counts, IND };
+
+  /* ---------- data loading ---------- */
+  async function loadEdu(){
+    const d = D(), org = STATE.org.id, q = t => STATE.supabase.from(t).select('*').eq('organisation_id', org).limit(5000);
+    const tryq = async t => { try{ const r = await q(t); return r.error ? null : (r.data || []); }catch(e){ return null; } };
+    const [prof, enrol, ind, ev, mod, res] = await Promise.all(['edu_profile','edu_enrolment','edu_indicators','edu_evidence','edu_moderation','edu_results'].map(tryq));
+    d.broken = prof == null; d.profile = (prof || [])[0] || null; d.enrol = enrol || []; d.ind = ind || []; d.ev = ev || []; d.mod = mod || []; d.res = res || [];
+    d.staff = mgr() ? (await tryq('edu_staff') || []) : []; d.irr = mgr() ? (await tryq('edu_irregularities') || []) : [];
+    d.loaded = true;
+  }
+  window.loadEdu = loadEdu;
+  async function loadFlag(){
+    if(!STATE.org) return; STATE.org._eduOn = false;
+    try { const r = await STATE.supabase.from('org_modules').select('enabled').eq('organisation_id', STATE.org.id).eq('module_key', 'edu').maybeSingle(); if(r && !r.error && r.data) STATE.org._eduOn = r.data.enabled === true; } catch(e){}
+    STATE.org.edu_module_enabled = STATE.org._eduOn;
+    try { applyModuleAccessToNav(); } catch(e){}
+    if(STATE.org._eduOn && !D().loaded){ try{ await loadEdu(); }catch(e){} }
+  }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const r = await _lc.apply(this, arguments); await loadFlag(); return r; }; }
+  ADMIN_CONSOLE_TOGGLES.push({ field:'edu_module_enabled', label:'Educational Institution Compliance (Umalusi)', note:'For schools and other educational institutions: accreditation readiness against the four Umalusi criteria, staff establishment (SACE), assessment moderation and irregularities, results analysis and a printable Portfolio of Evidence. Off by default; use the School IMS preset to switch on the modules a school needs.' });
+  { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
+      if(field !== 'edu_module_enabled') return _t.apply(this, arguments);
+      const { error } = await STATE.supabase.from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:'edu', enabled:!!value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
+      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
+    }; }
+  { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){ if(mod === 'edu'){ if(off()) return false; return mgr() || _c('management_review'); } return _c.apply(this, arguments); }; }
+  MODULE_META.edu = { title:'Educational Institution Compliance', sub:() => 'Umalusi accreditation readiness, staff establishment, assessment integrity, results analysis and the Portfolio of Evidence' };
+  RENDERERS.edu = () => '<div id="edu-root"></div>';
+  { const mr = document.querySelector('.nav-item[data-mod="management_review"]');
+    if(mr && !document.querySelector('.nav-item[data-mod="edu"]')) mr.insertAdjacentHTML('beforebegin', '<div class="nav-item" data-mod="edu" onclick="showModule(\'edu\')"><svg viewBox="0 0 24 24"><path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11.5V17c0 1.5 3 3 6 3s6-1.5 6-3v-5.5"/></svg> Educational Compliance</div>'); }
+  { const _a = applyModuleAccessToNav; applyModuleAccessToNav = window.applyModuleAccessToNav = function(){ const r = _a.apply(this, arguments);
+      const el = document.querySelector('.nav-item[data-mod="edu"]'); if(el) el.style.display = canAccessModule('edu') ? '' : 'none'; return r; }; }
+  { const _s = showModule; showModule = window.showModule = function(mod){ const r = _s.apply(this, arguments); if(mod === 'edu' && document.getElementById('edu-root')) eduInit(); return r; }; }
+  setTimeout(() => { try{ applyModuleAccessToNav(); }catch(e){} }, 0);
+
+  /* ---------- page ---------- */
+  let tab = 'ready', openCrit = 1;
+  async function eduInit(){ try{ await loadEdu(); }catch(e){} eduRender(); }
+  window.eduTab = t => { tab = t; eduRender(); };
+  window.eduCrit = c => { openCrit = openCrit === c ? 0 : c; eduRender(); };
+  const pill = (r) => { const x = RATE[r]; return x ? `<span class="sev-badge" style="background:${x[1]};color:#fff;">${x[0]}</span>` : '<span class="sev-badge" style="background:#999;color:#fff;">Not rated</span>'; };
+  const modChips = ks => ks.filter(k => MODULE_META[k] && canAccessModule(k)).map(k => `<span class="linked-task-chip" style="cursor:pointer;margin:2px 4px 2px 0;" onclick="event.stopPropagation();showModule('${k}')">${E(MODULE_META[k].title)}</span>`).join('');
+  function eduRender(){
+    const root = document.getElementById('edu-root'); if(!root) return;
+    if(D().broken){ root.innerHTML = '<div class="detail-card" style="padding:20px"><h3>Database update needed</h3><p>Run <b>qashe-watchman-schema-education.sql</b> in the Supabase SQL editor, then reload.</p></div>'; return; }
+    const tabs = [['ready','Accreditation readiness'],['crit','Criteria and evidence'],['staff','Staff establishment'],['assess','Assessment integrity'],['results','Results and enrolment'],['profile','Institution profile']];
+    const body = { ready:readyHtml, crit:critHtml, staff:staffHtml, assess:assessHtml, results:resultsHtml, profile:profileHtml }[tab]();
+    root.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">${tabs.map(([k, l]) => `<button class="btn-small ${tab === k ? 'primary' : ''}" onclick="eduTab('${k}')">${l}</button>`).join('')}<span style="flex:1"></span><button class="btn-small" onclick="eduPrintPoe()">Print Portfolio of Evidence</button></div>${body}`;
+  }
+
+  /* ---------- readiness ---------- */
+  function readyHtml(){
+    const pr = projection(), n = counts(), p = D().profile, ix = indexNow(), t = tdy();
+    const tiles = [1,2,3,4].map(c => { const r = critRating(c), cnt = IND.filter(i => i.c === c), done = cnt.filter(i => eff(i.k) != null).length;
+      return `<div class="detail-card" style="padding:14px;cursor:pointer" onclick="eduTab('crit');eduCrit(${c})"><div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;">Criterion ${c}</div><div style="font-weight:700;margin:4px 0 8px;">${E(CRIT[c])}</div>${pill(r)}<div style="font-size:12px;color:var(--text-faint);margin-top:6px;">${done} of ${cnt.length} indicators rated</div></div>`; }).join('');
+    const dates = [['Accreditation status', p ? ({ not_applicable:'Not applicable', applied:'Applied', provisional:'Two years provisional', accredited:'Accredited', window_period:'Window period', no_accreditation:'No accreditation' }[p.accreditation_status] || p.accreditation_status) : 'Complete the institution profile'],
+      ['Accreditation expires', p && p.accreditation_expiry ? fmtDate(p.accreditation_expiry) : '—'], ['Next site visit', p && p.next_site_visit_date ? fmtDate(p.next_site_visit_date) : '—'], ['Biennial fee due', p && p.biennial_fee_due ? fmtDate(p.biennial_fee_due) : '—']];
+    const gp = gaps();
+    const al = evidenceAlerts();
+    return `<div class="detail-card" style="padding:18px;margin-bottom:14px;border-left:6px solid ${pr.c}"><div style="font-size:18px;font-weight:800;color:${pr.c};">${E(pr.t)}</div><p style="font-size:13px;color:var(--text-dim);margin:6px 0 0;">${E(pr.d)} Readiness score: <b>${ix == null ? '—' : ix + '%'}</b>. Level 3 in every criterion is needed for full accreditation; Level 2 in every criterion gives two years provisional accreditation.</p></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:14px;">${tiles}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px;">${dates.map(([l, v]) => `<div class="detail-card" style="padding:12px"><div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;">${l}</div><div style="font-weight:700;margin-top:4px;">${E(v)}</div></div>`).join('')}</div>
+      <div class="detail-card" style="padding:16px"><h3 style="font-size:15px;margin:0 0 8px;">Priority actions</h3>${gp.length ? gp.map(([t2]) => `<div style="padding:6px 0;border-bottom:1px solid var(--border,#eee);font-size:13px;">${E(t2)}</div>`).join('') : '<p style="font-size:13px;color:var(--text-faint);">Nothing outstanding.</p>'}
+      ${al.length ? `<h4 style="margin:14px 0 6px;font-size:13px;">Evidence expiring or expired</h4>` + al.map(x => `<div style="font-size:12.5px;padding:3px 0;">${x.expired ? '<b style="color:#B3261E">Expired</b>' : '<b style="color:#B26A16">Expires</b>'} ${fmtDate(x.e.valid_until)}: ${E(x.e.title)} (${x.e.indicator_key.replace('C', 'Criterion ').replace(/(\d)([a-z])/, '$1 ($2)')})</div>`).join('') : ''}</div>
+      <p style="font-size:11.5px;color:var(--text-faint);margin-top:10px;">Based on Umalusi's Guideline for Implementation of the Policy and Criteria for the Quality Assurance, Accreditation and Monitoring of Independent Schools in the GFETQSF (Version 11, 2022). Public schools are assessed against the same standard. Ratings are self-assessed; the Accreditation Committee of Council takes the final decision.</p>`;
+  }
+
+  /* ---------- criteria and evidence ---------- */
+  function critHtml(){
+    return [1,2,3,4].map(c => { const inds = IND.filter(i => i.c === c), open = openCrit === c;
+      return `<div class="detail-card" style="margin-bottom:12px;"><div style="padding:14px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="eduCrit(${c})"><b style="flex:1">Criterion ${c}: ${E(CRIT[c])}</b>${pill(critRating(c))}<span>${open ? '▾' : '▸'}</span></div>
+        ${open ? `<table><tr><th>Ref</th><th>Core indicator</th><th>Rating</th><th>Suggested</th><th>Evidence</th><th>Owner</th></tr>${inds.map(i => { const a = auto(i.k), ev = evFor(i.k), own = (rowFor(i.k) || {}).owner_id;
+          return `<tr class="clickable" onclick="eduIndicator('${i.k}')"><td class="mono-cell">${i.k.slice(1).toUpperCase()}</td><td style="max-width:420px;font-size:12.5px;">${E(i.t)}</td><td>${pill(eff(i.k))}</td><td style="font-size:12px;">${a && a.r != null ? RATE[a.r][0] : '<span style="color:var(--text-faint)">—</span>'}</td><td>${ev.length}</td><td style="font-size:12px;">${own ? E(memberName(own)) : '—'}</td></tr>`; }).join('')}</table>` : ''}</div>`; }).join('');
+  }
+  window.eduIndicator = function(k){
+    const i = indBy(k), r = rowFor(k) || {}, a = auto(k), ev = evFor(k), mem = Object.entries(STATE.memberMap || {});
+    kpiOverlay(`<h3 style="font-family:Arial,Helvetica,sans-serif;margin:0 0 4px;">${k.slice(1).toUpperCase()}: Criterion ${i.c}, ${E(CRIT[i.c])}</h3>
+      <p style="font-size:13px;margin:0 0 10px;">${E(i.t)}</p>
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:8px;"><b>What an evaluator looks for:</b> ${i.ev.map(E).join('; ')}.</div>
+      ${a ? `<div style="font-size:12px;padding:8px 10px;background:var(--grey-tint);border-radius:8px;margin-bottom:10px;"><b>Watchman suggests ${a.r != null ? RATE[a.r][0] : 'no rating yet'}:</b> ${E(a.d)} ${a.r != null ? `<button class="btn-small" onclick="document.getElementById('ei-rating').value='${a.r}'">Use</button>` : ''}</div>` : ''}
+      <div class="form-grid"><div class="field"><label>Rating</label><select id="ei-rating"><option value="">Not yet rated</option><option value="3" ${r.rating === 3 ? 'selected' : ''}>Level 3: meets the standard</option><option value="2" ${r.rating === 2 ? 'selected' : ''}>Level 2: partly meets</option><option value="1" ${r.rating === 1 ? 'selected' : ''}>Level 1: does not meet</option><option value="0" ${r.rating === 0 ? 'selected' : ''}>Not applicable</option></select></div>
+        <div class="field"><label>Owner</label><select id="ei-owner"><option value="">None</option>${mem.map(([id, n]) => `<option value="${id}" ${r.owner_id === id ? 'selected' : ''}>${E(n)}</option>`).join('')}</select></div>
+        <div class="field"><label>Next review</label><input type="date" id="ei-review" value="${day(r.review_date)}"></div></div>
+      <div class="field"><label>Notes and improvement actions</label><textarea id="ei-notes" rows="2">${E(r.notes || '')}</textarea></div>
+      <div style="margin:8px 0;">${modChips(i.mods) ? '<b style="font-size:12px;">Where the evidence lives in Watchman:</b><br>' + modChips(i.mods) : ''}</div>
+      <div style="display:flex;align-items:center;margin-top:8px;"><b style="font-size:13px;flex:1;">Portfolio of Evidence (${ev.length})</b><button class="btn-small" onclick="eduEdit('evid',null,'${k}')">Add evidence</button></div>
+      ${ev.map(e => `<div class="evidence-row" style="display:flex;gap:8px;align-items:center;padding:5px 0;font-size:12.5px;"><div style="flex:1">${E(e.title)}${e.doc_ref ? ' <span class="mono" style="font-size:10px;color:var(--text-faint)">' + E(e.doc_ref) + '</span>' : ''}${e.valid_until ? ' <span style="color:' + (e.valid_until < tdy() ? '#B3261E' : 'var(--text-faint)') + ';font-size:11px;">valid to ' + fmtDate(e.valid_until) + '</span>' : ''}</div><button class="btn-small" onclick="eduEdit('evid','${e.id}','${k}')">Edit</button><button class="btn-small" onclick="eduDel('edu_evidence','${e.id}','${k}')">Remove</button></div>`).join('') || '<p style="font-size:12px;color:var(--text-faint);">No evidence recorded yet.</p>'}
+      <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Close</button><button class="btn-primary" onclick="eduSaveInd('${k}')">Save rating</button></div>`);
+  };
+  window.eduSaveInd = async function(k){
+    if(!mgr()){ toast('Only administrators and managers can rate indicators.', 'error'); return; }
+    const v = document.getElementById('ei-rating').value;
+    const row = { organisation_id:STATE.org.id, indicator_key:k, rating:v === '' ? null : Number(v), owner_id:document.getElementById('ei-owner').value || null, review_date:document.getElementById('ei-review').value || null, notes:document.getElementById('ei-notes').value.trim() || null, updated_at:new Date().toISOString() };
+    const { error } = await STATE.supabase.from('edu_indicators').upsert(row, { onConflict:'organisation_id,indicator_key' });
+    if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+    kpiCloseOverlay(); await loadEdu(); eduRender(); toast('Rating saved.', 'success');
+  };
+
+  /* ---------- generic forms ---------- */
+  const SEL = {
+    evtype:[['document','Document'],['certificate','Certificate'],['policy','Policy'],['minutes','Minutes'],['record','Record or register'],['report','Report'],['other','Other']],
+    role:[['head','Head of school'],['teacher','Teacher'],['hostel','Hostel staff'],['support','Support staff']],
+    qual:[['professional','Professional teaching qualification'],['degree_studying','Three-year degree, studying towards professional qualification'],['other','Other qualification'],['none','No qualification recorded']],
+    atype:[['test','Test'],['exam','Examination'],['assignment','Assignment'],['practical','Practical'],['project','Project'],['oral','Oral'],['portfolio','Portfolio of evidence']],
+    mlevel:[['internal_hod','Internal: Head of Department'],['internal_school','Internal: school level'],['external','External moderator']],
+    mout:[['pending','Pending'],['approved','Approved'],['approved_with_changes','Approved with changes'],['rejected','Rejected']],
+    mstat:[['open','Open'],['closed','Closed']],
+    icat:[['learner_internal','Learner: internal assessment (copying, plagiarism, false authenticity)'],['educator_internal','Educator: internal assessment (altered marks, unfair assistance)'],['design_phase','Design phase (question papers, appointments, leaks)'],['exam_conduct','Conduct of examinations'],['marking','Marking'],['capture','Capturing and processing of marks']],
+    istat:[['reported','Reported'],['investigating','Investigating'],['referred','Referred'],['resolved','Resolved'],['closed','Closed']],
+  };
+  const FORMS = {
+    evid:{ table:'edu_evidence', title:'Evidence', fields:() => [['title','Evidence title','text'],['evidence_type','Type','select',SEL.evtype],['document_id','Controlled document (optional)','select',[['','None']].concat(arr(STATE.documents).filter(d => !['withdrawn','superseded'].includes(d.status)).map(d => [d.id, (d.doc_number || '') + ' ' + (d.title || '')]))],['doc_ref','Reference or file location','text'],['valid_from','Issued on','date'],['valid_until','Valid until','date'],['notes','Notes','textarea']] },
+    staff:{ table:'edu_staff', title:'Staff member', fields:() => [['full_name','Full name','text'],['personnel_id','Personnel record (optional)','select',[['','None']].concat(arr(STATE.personnel).map(p => [p.id, p.full_name]))],['role_type','Role','select',SEL.role],['teaching_area','Subjects or phase','text'],['qualification_status','Qualification','select',SEL.qual],['qualification_detail','Qualification detail','text'],['sace_number','SACE number','text'],['sace_expiry','SACE registration valid until','date'],['police_clearance_date','Police clearance date','date'],['child_protection_check_date','Child Protection Register check date','date'],['first_aid_expiry','First aid valid until','date'],['start_date','Start date','date'],['notes','Notes','textarea']] },
+    mod:{ table:'edu_moderation', title:'Moderation record', kind:'em', fields:() => [['task_title','Assessment task','text'],['grade','Grade','text'],['subject','Subject','text'],['term','Term','text'],['assessment_type','Type','select',SEL.atype],['moderation_level','Moderation level','select',SEL.mlevel],['moderator_name','Moderator','text'],['due_date','Due date','date'],['moderation_date','Moderated on','date'],['sample_size','Sample size','number'],['outcome','Outcome','select',SEL.mout],['adjustments','Adjustments made','textarea'],['actions','Follow-up actions','textarea'],['status','Status','select',SEL.mstat]] },
+    irr:{ table:'edu_irregularities', title:'Irregularity', kind:'ei', fields:() => [['category','Category','select',SEL.icat],['description','What happened','textarea'],['date_occurred','Date','date'],['grade','Grade','text'],['subject','Subject','text'],['learner_ref','Learner reference code (no names)','text'],['status','Status','select',SEL.istat],['investigation_notes','Investigation','textarea'],['outcome','Outcome','textarea'],['reported_to','Reported to (district, assessment body, Umalusi)','text'],['reported_date','Reported on','date']] },
+    res:{ table:'edu_results', title:'Results for a year', fields:() => [['year','Year','number'],['grade','Grade','text'],['learners_wrote','Learners who wrote','number'],['learners_passed','Learners who passed','number'],['bachelor_passes','Bachelor passes','number'],['national_pass_rate','National pass rate (%)','number'],['analysis','Analysis of the results','textarea'],['improvement_actions','Improvement actions','textarea']] },
+    enrol:{ table:'edu_enrolment', title:'Enrolment', fields:() => [['year','Year','number'],['grade','Grade (for example R, 1, 2 … 12)','text'],['boys','Boys','number'],['girls','Girls','number']] },
+  };
+  const listOf = { evid:'ev', staff:'staff', mod:'mod', irr:'irr', res:'res', enrol:'enrol' };
+  window.eduEdit = function(form, id, ctx){
+    if(!mgr()){ toast('Only administrators and managers can change these records.', 'error'); return; }
+    const F = FORMS[form], rec = id ? arr(D()[listOf[form]]).find(x => x.id === id) : null;
+    const dflt = { evidence_type:'document', role_type:'teacher', qualification_status:'professional', assessment_type:'test', moderation_level:'internal_hod', outcome:'pending', status:form === 'irr' ? 'reported' : 'open', category:'learner_internal', grade:form === 'res' ? '12' : '', year:new Date().getFullYear() };
+    const v = rec || dflt;
+    kpiOverlay(`<h3 style="font-family:Arial,Helvetica,sans-serif;margin:0 0 10px;">${id ? 'Edit' : 'Add'}: ${F.title}</h3><div class="form-grid">${F.fields().map(([k, l, t, o]) => {
+      const val = v[k] == null ? '' : v[k];
+      const inp = t === 'select' ? `<select id="ef-${k}">${o.map(([a, b]) => `<option value="${E(a)}" ${String(val) === String(a) ? 'selected' : ''}>${E(b)}</option>`).join('')}</select>` : t === 'textarea' ? `<textarea id="ef-${k}" rows="2">${E(val)}</textarea>` : `<input id="ef-${k}" type="${t}" value="${E(t === 'date' ? day(val) : val)}">`;
+      return `<div class="field" ${t === 'textarea' ? 'style="grid-column:1/-1"' : ''}><label>${l}</label>${inp}</div>`; }).join('')}</div>
+      <div class="form-actions"><button class="btn-cancel" onclick="${ctx && form === 'evid' ? `eduIndicator('${ctx}')` : 'kpiCloseOverlay()'}">Cancel</button><button class="btn-primary" onclick="eduSave('${form}','${id || ''}','${ctx || ''}')">Save</button></div>`);
+  };
+  window.eduSave = async function(form, id, ctx){
+    const F = FORMS[form], row = {};
+    for(const [k, , t] of F.fields()){ const el = document.getElementById('ef-' + k); let v = el ? el.value : ''; if(t === 'number') v = v === '' ? null : Number(v); else if(v === '') v = null; row[k] = v; }
+    const need = { evid:'title', staff:'full_name', mod:'task_title', irr:'description', res:'year', enrol:'year' }[form];
+    if(row[need] == null){ toast('Please complete the required field.', 'error'); return; }
+    if(form === 'evid') row.indicator_key = ctx;
+    try{
+      if(id){ const { error } = await STATE.supabase.from(F.table).update(row).eq('id', id); if(error) throw error; }
+      else { row.organisation_id = STATE.org.id; if(form === 'evid' || form === 'irr' || form === 'mod') row.created_by = STATE.user.id;
+        if(F.kind){ const r = await STATE.supabase.rpc('gov_next_no', { p_org:STATE.org.id, p_kind:F.kind }); if(!r.error && r.data != null) row.ref_code = (F.kind === 'em' ? 'MOD-' : 'IRR-') + String(r.data).padStart(4, '0'); }
+        const { error } = await STATE.supabase.from(F.table).insert(row); if(error) throw error; }
+    }catch(e){ toast('Could not save: ' + (e.message || e), 'error'); return; }
+    kpiCloseOverlay(); await loadEdu(); eduRender(); if(form === 'evid') eduIndicator(ctx); toast('Saved.', 'success');
+  };
+  window.eduDel = async function(table, id, ctx){
+    if(!confirm('Remove this record?')) return;
+    const { error } = await STATE.supabase.from(table).delete().eq('id', id); if(error){ toast('Could not remove: ' + error.message, 'error'); return; }
+    await loadEdu(); eduRender(); if(table === 'edu_evidence') eduIndicator(ctx); else kpiCloseOverlay();
+  };
+
+  /* ---------- staff ---------- */
+  function staffHtml(){
+    if(!mgr()) return '<div class="detail-card" style="padding:18px"><p>Staff records are confidential to administrators and managers.</p></div>';
+    const q = staffStats(), s = arr(D().staff).sort((a, b) => String(a.full_name).localeCompare(String(b.full_name))), t = tdy();
+    const flag = (d, days) => !d ? '<span style="color:var(--text-faint)">—</span>' : d < t ? `<b style="color:#B3261E">${fmtDate(d)}</b>` : d < addDays(t, days) ? `<b style="color:#B26A16">${fmtDate(d)}</b>` : fmtDate(d);
+    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:14px;">
+      <div class="detail-card" style="padding:14px"><div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;">Teachers professionally qualified and SACE registered</div><div style="font-size:26px;font-weight:800;">${q.p80 == null ? '—' : q.p80 + '%'}</div><div style="font-size:12px;color:var(--text-faint);">${q.prof} of ${q.n}. Full accreditation needs 80%.</div></div>
+      <div class="detail-card" style="padding:14px"><div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;">Including degree holders studying towards qualification</div><div style="font-size:26px;font-weight:800;">${q.p70 == null ? '—' : q.p70 + '%'}</div><div style="font-size:12px;color:var(--text-faint);">${q.prov} of ${q.n}. Provisional accreditation needs 70%.</div></div></div>
+      <div class="detail-card" style="padding:16px"><div class="panel-head"><h3 style="font-size:15px">Staff establishment</h3><button class="btn-small primary" onclick="eduEdit('staff')">Add staff member</button></div>
+      <table><tr><th>Name</th><th>Role</th><th>Qualification</th><th>SACE no.</th><th>SACE valid to</th><th>Police clearance</th><th>Child protection check</th><th>First aid to</th><th></th></tr>
+      ${s.map(x => `<tr><td class="strong">${E(x.full_name)}</td><td>${E((SEL.role.find(r => r[0] === x.role_type) || [0, x.role_type])[1])}</td><td style="font-size:12px;">${E((SEL.qual.find(r => r[0] === x.qualification_status) || [0, ''])[1])}</td><td>${E(x.sace_number || '—')}</td><td>${flag(x.sace_expiry, 60)}</td><td>${x.police_clearance_date ? fmtDate(x.police_clearance_date) : '—'}</td><td>${x.child_protection_check_date ? fmtDate(x.child_protection_check_date) : '—'}</td><td>${flag(x.first_aid_expiry, 60)}</td><td><button class="btn-small" onclick="eduEdit('staff','${x.id}')">Edit</button></td></tr>`).join('') || '<tr><td colspan="9" style="color:var(--text-faint)">No staff recorded yet.</td></tr>'}</table></div>
+      <p style="font-size:11.5px;color:var(--text-faint);margin-top:10px;">Personal and confidential: visible to administrators and managers only. Certified copies of IDs, qualifications and SACE registrations go in All Documents or Personnel documents and are listed as evidence against indicators 1b and 3a.</p>`;
+  }
+
+  /* ---------- assessment integrity ---------- */
+  function assessHtml(){
+    const m = arr(D().mod).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))), t = tdy();
+    const lv = k => (SEL.mlevel.find(x => x[0] === k) || [0, k])[1], out = k => (SEL.mout.find(x => x[0] === k) || [0, k])[1];
+    const mh = `<div class="detail-card" style="padding:16px;margin-bottom:14px"><div class="panel-head"><h3 style="font-size:15px">Moderation of internal assessment</h3>${mgr() ? '<button class="btn-small primary" onclick="eduEdit(\'mod\')">Add moderation record</button>' : ''}</div>
+      <p style="font-size:12px;color:var(--text-faint);margin:0 0 8px;">Internal assessment is moderated at school level (Head of Department), then externally by the assessment body (Umalusi directives, Chapter 3). Keep the moderation report with the sample.</p>
+      <table><tr><th>Ref</th><th>Grade and subject</th><th>Task</th><th>Level</th><th>Due</th><th>Moderated</th><th>Outcome</th><th>Status</th><th></th></tr>
+      ${m.map(x => { const od = x.status === 'open' && x.due_date && x.due_date < t; return `<tr><td class="mono-cell">${E(x.ref_code || '')}</td><td>${E((x.grade || '') + ' ' + (x.subject || ''))}</td><td>${E(x.task_title)}</td><td style="font-size:12px;">${E(lv(x.moderation_level))}</td><td>${x.due_date ? (od ? '<b style="color:#B3261E">' + fmtDate(x.due_date) + '</b>' : fmtDate(x.due_date)) : '—'}</td><td>${x.moderation_date ? fmtDate(x.moderation_date) : '—'}</td><td>${E(out(x.outcome))}</td><td>${E(x.status)}</td><td>${mgr() ? `<button class="btn-small" onclick="eduEdit('mod','${x.id}')">Edit</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="9" style="color:var(--text-faint)">No moderation recorded yet.</td></tr>'}</table></div>`;
+    let ih = '';
+    if(mgr()){ const ir = arr(D().irr).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))), cat = k => (SEL.icat.find(x => x[0] === k) || [0, k])[1];
+      ih = `<div class="detail-card" style="padding:16px"><div class="panel-head"><h3 style="font-size:15px">Assessment irregularities</h3><button class="btn-small primary" onclick="eduEdit('irr')">Report an irregularity</button></div>
+        <p style="font-size:12px;color:var(--text-faint);margin:0 0 8px;">Confidential to administrators and managers. Serious irregularities can lead to withdrawal of accreditation, so every one is recorded, investigated and, where required, reported to the assessment body or Umalusi. Identify learners by reference code only.</p>
+        <table><tr><th>Ref</th><th>Category</th><th>What happened</th><th>Date</th><th>Status</th><th>Reported to</th><th></th></tr>
+        ${ir.map(x => `<tr><td class="mono-cell">${E(x.ref_code || '')}</td><td style="font-size:12px;">${E(cat(x.category))}</td><td style="max-width:300px;font-size:12.5px;">${E(String(x.description).slice(0, 140))}</td><td>${x.date_occurred ? fmtDate(x.date_occurred) : '—'}</td><td>${E(x.status)}</td><td style="font-size:12px;">${E(x.reported_to || '—')}</td><td><button class="btn-small" onclick="eduEdit('irr','${x.id}')">Open</button> <button class="btn-small" onclick="showModule('${(STATE.org.nc_enabled !== false) ? 'nonconformances' : 'raga'}')">Raise Opportunity for Improvement</button></td></tr>`).join('') || '<tr><td colspan="7" style="color:var(--text-faint)">None recorded.</td></tr>'}</table></div>`; }
+    return mh + ih;
+  }
+
+  /* ---------- results and enrolment ---------- */
+  function resultsHtml(){
+    const rs = resultsOf(), au = resultsAuto(), en = arr(D().enrol), yrs = [...new Set(en.map(e => e.year))].sort((a, b) => b - a), yr = yrs[0];
+    const cur = en.filter(e => e.year === yr).sort((a, b) => String(a.grade).localeCompare(String(b.grade), undefined, { numeric:true }));
+    return `<div class="detail-card" style="padding:16px;margin-bottom:14px"><div class="panel-head"><h3 style="font-size:15px">Grade 12 results against the national average</h3>${mgr() ? '<button class="btn-small primary" onclick="eduEdit(\'res\')">Add a year</button>' : ''}</div>
+      ${au ? `<div style="font-size:13px;padding:8px 10px;background:var(--grey-tint);border-radius:8px;margin-bottom:10px;"><b>Criterion 4(a): ${au.r != null ? RATE[au.r][0] : 'incomplete'}.</b> ${E(au.d)}</div>` : '<p style="font-size:12.5px;color:var(--text-faint)">Add the Grade 12 results for the last three years.</p>'}
+      <table><tr><th>Year</th><th>Wrote</th><th>Passed</th><th>Pass rate</th><th>National</th><th>Difference</th><th>Analysis and actions</th><th></th></tr>
+      ${rs.map(r => { const p = rate(r), df = p != null && r.national_pass_rate != null ? Math.round((p - Number(r.national_pass_rate)) * 10) / 10 : null; return `<tr><td class="strong">${r.year}</td><td>${r.learners_wrote ?? '—'}</td><td>${r.learners_passed ?? '—'}</td><td>${p == null ? '—' : p + '%'}</td><td>${r.national_pass_rate ?? '—'}</td><td>${df == null ? '—' : '<b style="color:' + (df >= 0 ? '#2E7D4F' : '#B3261E') + '">' + (df > 0 ? '+' : '') + df + '</b>'}</td><td style="font-size:12px;">${r.analysis && r.improvement_actions ? 'Recorded' : '<span style="color:#B26A16">Missing</span>'}</td><td>${mgr() ? `<button class="btn-small" onclick="eduEdit('res','${r.id}')">Edit</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="8" style="color:var(--text-faint)">No results recorded.</td></tr>'}</table>
+      <p style="font-size:11.5px;color:var(--text-faint);margin-top:8px;">Concessions (Guideline paragraphs 64 and 65): a school below average that was on par in 2 of the last 3 years, or has five or fewer candidates where one learner decides the result, may be rated Level 2.</p></div>
+      <div class="detail-card" style="padding:16px"><div class="panel-head"><h3 style="font-size:15px">Enrolment${yr ? ' ' + yr : ''}, by grade and gender</h3>${mgr() ? '<button class="btn-small primary" onclick="eduEdit(\'enrol\')">Add grade</button>' : ''}</div>
+      <table><tr><th>Grade</th><th>Boys</th><th>Girls</th><th>Total</th><th></th></tr>${cur.map(e => `<tr><td class="strong">${E(e.grade)}</td><td>${e.boys}</td><td>${e.girls}</td><td>${e.boys + e.girls}</td><td>${mgr() ? `<button class="btn-small" onclick="eduEdit('enrol','${e.id}')">Edit</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" style="color:var(--text-faint)">No enrolment recorded.</td></tr>'}
+      ${cur.length ? `<tr><td class="strong">Total</td><td><b>${cur.reduce((s, e) => s + e.boys, 0)}</b></td><td><b>${cur.reduce((s, e) => s + e.girls, 0)}</b></td><td><b>${cur.reduce((s, e) => s + e.boys + e.girls, 0)}</b></td><td></td></tr>` : ''}</table></div>`;
+  }
+
+  /* ---------- institution profile ---------- */
+  const PF = [['school_name','School name','text'],['institution_type','Type','select',[['independent','Independent school'],['public','Public school'],['other','Other institution']]],['emis_number','EMIS number','text'],['registration_number','Provincial registration number','text'],['province','Province','text'],['ped_name','Provincial Education Department','text'],['district','District','text'],['physical_address','Physical address (accreditation is tied to this address)','text'],['grade_min','Lowest grade offered','text'],['grade_max','Highest grade offered','text'],['has_hostel','Hostel','select',[['false','No hostel'],['true','Has a hostel']]],['examining_body','Examining body (IEB, DBE, other)','text'],['exam_centre_number','Examination centre number','text'],['accreditation_status','Accreditation status','select',[['not_applicable','Not applicable'],['applied','Applied'],['provisional','Two years provisional'],['accredited','Accredited'],['window_period','Window period'],['no_accreditation','No accreditation']]],['accreditation_number','Accreditation number','text'],['accreditation_date','Accreditation date','date'],['accreditation_expiry','Accreditation expires','date'],['next_site_visit_date','Next site visit','date'],['biennial_fee_due','Biennial fee due','date'],['principal_name','Principal or Head','text'],['principal_sace_number','Principal SACE number','text'],['governing_body_chair','Governing body chair','text'],['contact_email','Contact email','text']];
+  function profileHtml(){
+    const p = D().profile || {}, ro = !mgr();
+    return `<div class="detail-card" style="padding:16px;margin-bottom:14px"><div class="panel-head"><h3 style="font-size:15px">Institution profile</h3>${ro ? '' : '<button class="btn-small primary" onclick="eduSaveProfile()">Save profile</button>'}</div>
+      <div class="form-grid">${PF.map(([k, l, t, o]) => { const v = p[k] == null ? '' : String(p[k]);
+        const inp = t === 'select' ? `<select id="ep-${k}" ${ro ? 'disabled' : ''}>${o.map(([a, b]) => `<option value="${a}" ${v === a ? 'selected' : ''}>${b}</option>`).join('')}</select>` : `<input id="ep-${k}" type="${t}" value="${E(t === 'date' ? day(v) : v)}" ${ro ? 'disabled' : ''}>`;
+        return `<div class="field"><label>${l}</label>${inp}</div>`; }).join('')}</div></div>
+      ${ro ? '' : `<div class="detail-card" style="padding:16px;margin-bottom:14px"><h3 style="font-size:15px;margin:0 0 6px;">Set up Watchman as a School IMS</h3><p style="font-size:12.5px;color:var(--text-dim);margin:0 0 10px;">Switches on the modules a school needs (personnel and competence, appointments, training, KPIs and appraisals, documents and registers, legal register, nonconformances or RAGA, audits, risks, objectives, assets, governance, privacy, business planning, disciplinary) and switches off industrial ones (welding, site files, asset watchman, quotations, CRM, information security). Nothing recorded is deleted and every switch can be changed afterwards.</p>
+        <button class="btn-small primary" onclick="eduPreset()">Apply the School IMS preset</button> <button class="btn-small" onclick="eduLegalStarter()">Add the education legal register starter</button></div>`}`;
+  }
+  window.eduSaveProfile = async function(){
+    const row = { organisation_id:STATE.org.id, updated_at:new Date().toISOString() };
+    PF.forEach(([k, , t]) => { const el = document.getElementById('ep-' + k); let v = el ? el.value : ''; if(k === 'has_hostel') v = v === 'true'; else if(v === '') v = null; row[k] = v; });
+    const { error } = await STATE.supabase.from('edu_profile').upsert(row, { onConflict:'organisation_id' });
+    if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+    await loadEdu(); eduRender(); toast('Profile saved.', 'success');
+  };
+
+  /* ---------- School IMS preset and legal starter ---------- */
+  const PRESET_ON = ['tasks','audits','risks','suppliers','objectives','legal','personnel','orgchart','training','appraisals','assets','bulletins','management_review','business_health','governance','master_register','privacy','retention','bplan','disciplinary','projects','edu'];
+  const PRESET_OFF = ['quotes','crm','infosec_incidents'];
+  window.eduPreset = async function(){
+    if(!confirm('Apply the School IMS preset? This switches on the school modules and switches off welding, site files, asset watchman, quotations, CRM and information security for this organisation. Nothing recorded is deleted.')) return;
+    showLoader('Setting up the School IMS…');
+    try{
+      const now = new Date().toISOString(), org = STATE.org.id;
+      const rows = PRESET_ON.map(k => ({ organisation_id:org, module_key:k, enabled:true, updated_at:now })).concat(PRESET_OFF.map(k => ({ organisation_id:org, module_key:k, enabled:false, updated_at:now })));
+      let r = await STATE.supabase.from('org_modules').upsert(rows, { onConflict:'organisation_id,module_key' }); if(r.error) throw r.error;
+      r = await STATE.supabase.from('organisations').update({ document_control_enabled:true, all_documents_enabled:true, legal_certs_enabled:true, process_flowcharts_enabled:true, site_files_enabled:false, asset_watchman_enabled:false }).eq('id', org); if(r.error) throw r.error;
+      try{ await STATE.supabase.from('welding_settings').upsert({ organisation_id:org, enabled:false, updated_at:now }, { onConflict:'organisation_id' }); }catch(e){}
+      try{ await STATE.supabase.from('org_disciplines').upsert({ organisation_id:org, discipline:'infosec', enabled:false, updated_at:now }, { onConflict:'organisation_id,discipline' }); }catch(e){}
+    }catch(e){ try{ hideLoader(); }catch(x){} toast('Could not apply the preset: ' + (e.message || e), 'error'); return; }
+    try{ hideLoader(); }catch(x){} toast('School IMS preset applied: reloading…', 'success'); await reloadOrgAfterAdminConsoleChange();
+  };
+  const LEGAL = [
+    ['South African Schools Act 84 of 1996','Governance, admission, discipline, safety and registration of independent schools.'],
+    ['National Education Policy Act 27 of 1996','National policy for the education system, including curriculum and norms and standards.'],
+    ['Employment of Educators Act 76 of 1998','Appointment, conditions of service and discipline of educators.'],
+    ['South African Council for Educators (SACE) Act 31 of 2000','Professional registration of educators and the educator code of conduct.'],
+    ['General and Further Education and Training Quality Assurance Act 58 of 2001','Umalusi: accreditation and monitoring of independent schools and assessment bodies.'],
+    ['Policy and Regulations for Quality Assurance, Accreditation and Monitoring of Independent Schools (GN 1142 and 1143 of 2017)','The four criteria and core indicators for accreditation.'],
+    ['National Qualifications Framework Act 67 of 2008','Qualifications sub-frameworks and quality councils.'],
+    ['Occupational Health and Safety Act 85 of 1993 and Regulations','Safe premises, first aid, fire precautions, health and safety committee and representatives.'],
+    ['Basic Conditions of Employment Act 75 of 1997','Hours, leave and conditions for staff.'],
+    ['Labour Relations Act 66 of 1995','Fair dismissal, discipline, grievance and collective bargaining.'],
+    ['Employment Equity Act 55 of 1998','Unfair discrimination and employment equity.'],
+    ['Compensation for Occupational Injuries and Diseases Act 130 of 1993','Injury on duty and registration with the Compensation Fund.'],
+    ['Skills Development Act 97 of 1998 and Skills Development Levies Act 9 of 1999','Training and levies.'],
+    ['Protection of Personal Information Act 4 of 2013 (POPIA)','Lawful processing of learner, parent and staff information; special protection for children.'],
+    ['Children\'s Act 38 of 2005','Child protection, reporting of abuse and screening of staff against the Child Protection Register.'],
+    ['Criminal Law (Sexual Offences and Related Matters) Amendment Act 32 of 2007','National Register for Sex Offenders and the duty to report.'],
+    ['Promotion of Equality and Prevention of Unfair Discrimination Act 4 of 2000','Unfair discrimination in the school.'],
+    ['National Building Regulations and Building Standards Act 103 of 1977 (SANS 10400)','Building and fire compliance of premises and hostels.'],
+    ['Consumer Protection Act 68 of 2008','School fees contracts and fair marketing.'],
+    ['Promotion of Access to Information Act 2 of 2000','PAIA manual and access to records.'],
+  ];
+  window.eduLegalStarter = async function(){
+    let have = [];
+    const r0 = await STATE.supabase.from('legal_register').select('title').eq('organisation_id', STATE.org.id); have = arr(r0.data).map(x => String(x.title || '').toLowerCase());
+    const todo = LEGAL.filter(([t]) => !have.some(h => h.slice(0, 40) === t.toLowerCase().slice(0, 40)));
+    if(!todo.length){ toast('The education legal starter is already in the register.', 'success'); return; }
+    if(!confirm('Add ' + todo.length + ' education and employment laws to the Legal Compliance register? You then assign owners and review dates.')) return;
+    const nxt = addDays(tdy(), 365);
+    const rows = todo.map(([t, d]) => ({ organisation_id:STATE.org.id, title:t, description:d, owner_id:STATE.user.id, next_review_due_date:nxt, created_by:STATE.user.id }));
+    const { error } = await STATE.supabase.from('legal_register').insert(rows);
+    if(error){ toast('Could not add: ' + error.message, 'error'); return; }
+    try{ await loadLegalRegister(); }catch(e){} toast(todo.length + ' laws added to the Legal Compliance register.', 'success');
+  };
+
+  /* ---------- Portfolio of Evidence (print) ---------- */
+  window.eduPrintPoe = function(){
+    const p = D().profile || {}, pr = projection(), q = staffStats();
+    let body = printSectionTitle('Projected accreditation outcome') + `<p><b>${E(pr.t)}.</b> ${E(pr.d)} Readiness score: ${indexNow() == null ? '—' : indexNow() + '%'}.</p>`;
+    [1,2,3,4].forEach(c => { body += printSectionTitle('Criterion ' + c + ': ' + CRIT[c] + ' (' + (critRating(c) ? RATE[critRating(c)][0] : 'not rated') + ')');
+      body += printTable(['Ref','Core indicator','Rating','Evidence in the portfolio'], IND.filter(i => i.c === c).map(i => [i.k.slice(1).toUpperCase(), i.t, eff(i.k) == null ? 'Not rated' : RATE[eff(i.k)][0], evFor(i.k).map(e => E(e.title) + (e.doc_ref ? ' [' + E(e.doc_ref) + ']' : '') + (e.valid_until ? ' (valid to ' + fmtDate(e.valid_until) + ')' : '')).join('<br>') || 'None recorded'])); });
+    if(q.n) body += printSectionTitle('Staff establishment') + `<p>${q.prof} of ${q.n} teachers (${q.p80}%) are professionally qualified and SACE registered; ${q.p70}% including degree holders studying towards a professional qualification.</p>`;
+    const rs = resultsOf(); if(rs.length) body += printSectionTitle('Grade 12 results') + printTable(['Year','Wrote','Passed','Pass rate','National average'], rs.map(r => [r.year, r.learners_wrote ?? '', r.learners_passed ?? '', rate(r) == null ? '' : rate(r) + '%', r.national_pass_rate ?? '']));
+    printRecord('Portfolio of Evidence: Accreditation Readiness', p.accreditation_number || '', [['Institution', p.school_name || (STATE.org && STATE.org.name) || ''], ['EMIS number', p.emis_number || ''], ['Registration', p.registration_number || ''], ['Province', p.province || ''], ['Grades offered', (p.grade_min || '') + ' to ' + (p.grade_max || '')], ['Examining body', p.examining_body || ''], ['Principal', p.principal_name || ''], ['Prepared', fmtDate(tdy())]], body, null, 'edu');
+  };
+
+  /* ---------- integration: dashboard, health score, attention, Business Health ---------- */
+  const seg = (label, count, color) => ({ label, count:Math.max(0, count), color });
+  if(window.__wdExtra && !window.__wdExtra.some(e => e[0] === 'edu')){
+    window.__wdExtra.push(['edu', 'Educational Institution Compliance', () => { if(off() || !D().loaded) return null; const n = counts(); if(!(n[3] + n[2] + n[1] + n.none)) return null; return [seg('Indicators at Level 3', n[3], 'green'), seg('Indicators at Level 2', n[2], 'amber'), seg('Indicators at Level 1', n[1], 'red'), seg('Not yet rated', n.none, 'amber')]; }]);
+  }
+  { const _h = computeComplianceHealthScore; computeComplianceHealthScore = window.computeComplianceHealthScore = function(){ const h = _h.apply(this, arguments);
+      try{ if(off() || !D().loaded) return h; const ix = indexNow(); if(ix == null) return h; const comps = (h.components || []).slice(); if(comps.some(c => c.label === 'Accreditation readiness')) return h; comps.push({ label:'Accreditation readiness', value:ix });
+        const score = Math.round(Math.max(0, Math.min(100, comps.reduce((s, c) => s + (Number.isFinite(c.value) ? c.value : 0), 0) / comps.length))); return { score, color:score >= 85 ? 'green' : score >= 60 ? 'amber' : 'red', components:comps };
+      }catch(e){ return h; } }; }
+  { const _w = wdAttentionItems; wdAttentionItems = window.wdAttentionItems = function(){ const out = _w.apply(this, arguments);
+      try{ gaps().forEach(([t, mod]) => { if(!out.some(o => o.label === t)) out.push({ label:t, count:1, mod }); }); }catch(e){} return out; }; }
+  if(window.__bhDomains && !window.__bhDomains.some(x => x.k === 'education')){
+    const C = (label, status, detail, mod) => ({ label, status, detail:detail || '', mod:mod || null });
+    window.__bhDomains.push({ k:'education', label:'Educational Institution Compliance', mod:'edu', checks:() => { if(off()) return [C('Educational compliance', 'na', 'Educational Institution Compliance is switched off.', 'edu')]; if(!D().loaded) return [C('Accreditation', 'nodata', 'Open the module to load it.', 'edu')];
+      return [1,2,3,4].map(c => { const r = critRating(c); return C('Criterion ' + c + ': ' + CRIT[c], r == null ? 'nodata' : r === 3 ? 'pass' : r === 2 ? 'partial' : 'fail', r == null ? 'Not yet rated.' : RATE[r][0], 'edu'); }); } });
+  }
+})();
 </script>
 </body>
 </html>
