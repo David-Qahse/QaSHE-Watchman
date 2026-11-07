@@ -47342,6 +47342,556 @@ add('personnel', 'tips', ['Aim for 100% onboarding before a new person works uns
       return [1,2,3,4].map(c => { const r = critRating(c); return C('Criterion ' + c + ': ' + CRIT[c], r == null ? 'nodata' : r === 3 ? 'pass' : r === 2 ? 'partial' : 'fail', r == null ? 'Not yet rated.' : RATE[r][0], 'edu'); }); } });
   }
 })();
+/* ===== Water Treatment core: parameters, limits, evaluation and the report layout (shared by Watchman and the public report page) ===== */
+var WT = (function(){
+  var esc = function(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+  var KINDS = { boiler:[['oil_coal','Oil and coal fired'],['coil_elect','Coil and electric']], cooling:[['tower','Cooling tower'],['closed','Closed system']] };
+  var TITLE = { boiler:'BOILER SYSTEM ANALYSIS REPORT', cooling:'COOLING SYSTEM ANALYSIS REPORT' };
+  var UNITWORD = { boiler:'Boilers', cooling:'Cooling towers and closed systems' };
+  /* lim: per kind {min,max,t} ; 'all' applies to every kind. lc = columns where the limit applies. ratio = percentage of TDS check. */
+  var P = {
+    boiler:[
+      { k:'tds', l:'Total Dissolved Solids', u:'mg/l', cols:['raw','feed','unit'], lim:{ oil_coal:{min:2000,max:3500,t:'2000-3500 TDS'}, coil_elect:{max:1200,t:'1200 µS'} } },
+      { k:'hardness', l:'Total Hardness (as CaCO3)', u:'mg/l', cols:['raw','soft','feed','unit'], lc:['soft','feed','unit'], lim:{ all:{max:5,t:'5 max'} } },
+      { k:'ph', l:'pH', u:'', cols:['raw','feed','unit'], lc:['unit'], lim:{ all:{min:9,max:12,t:'9-12'} } },
+      { k:'p_alk', l:'P Alkalinity (as CaCO3)', u:'mg/l', cols:['unit'], lim:{ oil_coal:{max:1200,t:'1200 max'}, coil_elect:{max:800,t:'800 max'} } },
+      { k:'m_alk', l:'M Alkalinity (as CaCO3)', u:'mg/l', cols:['raw','soft','feed','unit'], ratio:{ of:'tds', min:25, max:30, t:'25-30% of TDS' } },
+      { k:'oh_alk', l:'OH Alkalinity (as CaCO3)', u:'mg/l', cols:['unit'], ratio:{ of:'tds', min:15, max:25, t:'15-25% of TDS' } },
+      { k:'chlorides', l:'Chlorides (as Cl)', u:'mg/l', cols:['raw','feed','unit'], lc:['unit'], lim:{ all:{max:350,t:'350 max'} } },
+      { k:'phosphates', l:'Phosphates', u:'mg/l', cols:['unit'], lim:{ all:{min:40,t:'40 min'} } },
+      { k:'sulphite', l:'Sulphite', u:'mg/l', cols:['unit'], lim:{ all:{min:30,max:100,t:'30-100'} } },
+      { k:'hydrazine', l:'Hydrazine', u:'mg/l', cols:['unit'], lim:{ all:{min:0.1,max:0.3,t:'0.1-0.3'} } },
+      { k:'colour', l:'Colour', u:'', cols:['raw','feed','unit'], text:true, lc:['unit'], lim:{ all:{t:'Clear',clear:true} } },
+      { k:'cond_return', l:'Condensate Return %', u:'%', cols:['unit'], info:'Boiler w/m minus Softener w/m, divided by Softener w/m' },
+      { k:'feed_temp', l:'Feed tank temperature', u:'°C', cols:['unit'] },
+      { k:'blowdown', l:'Boiler blow down rate', u:'', cols:['unit'] },
+      { k:'cs2', l:'CS2 Controller', u:'µS', cols:['unit'], info:'3500 µS set point' }
+    ],
+    cooling:[
+      { k:'tds', l:'Total Dissolved Solids', u:'mg/l', cols:['raw','unit'], lc:['unit'], lim:{ all:{max:2000,t:'2000 max'} } },
+      { k:'hardness', l:'Total Hardness (as CaCO3)', u:'mg/l', cols:['raw','unit'] },
+      { k:'ph', l:'pH', u:'', cols:['raw','unit'], lc:['unit'], lim:{ all:{min:7,max:9,t:'7-9'} } },
+      { k:'m_alk', l:'M-Alkalinity', u:'mg/l', cols:['raw','unit'] },
+      { k:'chlorides', l:'Chloride (as Cl)', u:'mg/l', cols:['raw','unit'], lc:['unit'], lim:{ all:{max:350,t:'350 max'} } },
+      { k:'cycles_cl', l:'Cycles of Concentration (Cl)', u:'', cols:['unit'], derived:'cl', lim:{ all:{min:4,max:6,t:'4 to 6'} } },
+      { k:'cycles_h', l:'Cycles of Concentration (Tot H)', u:'', cols:['unit'], derived:'h', info:'Greater than Cl concentration' },
+      { k:'phosphonate', l:'Phosphonate', u:'mg/l', cols:['unit'], lim:{ all:{min:200,t:'200 min'} } },
+      { k:'zinc', l:'Zinc', u:'mg/l', cols:['unit'], lim:{ all:{min:1,max:3,t:'1 to 3'} } },
+      { k:'molybdate', l:'Molybdate', u:'mg/l', cols:['unit'], lim:{ all:{min:10,t:'10 min'} } },
+      { k:'nitrites', l:'Nitrites', u:'mg/l', cols:['unit'], lim:{ all:{min:750,max:1000,t:'750 to 1000'} } },
+      { k:'colour', l:'Colour', u:'', cols:['raw','unit'], text:true, lc:['unit'], lim:{ all:{t:'Clear',clear:true} } }
+    ]
+  };
+  var EQUIP = {
+    boiler:[['softener_regen','Softener regen frequency'],['brine_salt','Brine tank salt (Y/N)'],['dosing_make','Chemical dosing pump make'],['dosing_setting','Dosing pump setting'],['ratio','Ratio Chem (kg), Water (m³)']],
+    cooling:[['dosing_pumps','Dosing pumps'],['dosing_settings','Dosing pump settings'],['dosing_run','Dosing pump running time'],['bleed_timer','Bleed timer settings'],['ratio','Ratio']]
+  };
+  var num = function(v){ if(v == null || v === '') return null; var n = parseFloat(String(v).replace(',', '.').replace(/[^0-9.\-]/g, '')); return isNaN(n) ? null : n; };
+  var limOf = function(def, kind){ var l = def.lim; if(!l) return null; return l[kind] || l.all || null; };
+  var unitKind = function(plant, u){ return (u && u.kind) || (plant.plant_type === 'cooling' ? 'tower' : 'oil_coal'); };
+  var cell = function(rd, col, k){ return rd[col + '.' + k]; };
+  /* derived value for a cooling unit: cycles of concentration */
+  var derived = function(def, rd, col){
+    if(!def.derived) return null; var f = def.derived === 'cl' ? 'chlorides' : 'hardness';
+    var a = num(cell(rd, col, f)), b = num(cell(rd, 'raw', f)); if(a == null || !b) return null; return Math.round(a / b * 10) / 10;
+  };
+  var valueOf = function(def, rd, col){ return def.derived ? derived(def, rd, col) : cell(rd, col, def.k); };
+  /* returns 'ok', 'out' or null (no limit or no value) */
+  var evalCell = function(def, kind, col, rd){
+    var isUnit = /^u\d+$/.test(col), cc = isUnit ? 'unit' : col, v = valueOf(def, rd, col);
+    if(v == null || v === '') return null;
+    if(def.ratio && isUnit){ var t = num(cell(rd, col, def.ratio.of)), a = num(v); if(t == null || !t || a == null) return null; var pc = a / t * 100; return (pc >= def.ratio.min - 0.05 && pc <= def.ratio.max + 0.05) ? 'ok' : 'out'; }
+    var l = limOf(def, kind); if(!l) return null; var lc = def.lc || ['unit']; if(lc.indexOf(cc) < 0) return null;
+    if(l.clear){ return /clear/i.test(String(v)) ? 'ok' : 'out'; }
+    var n = num(v); if(n == null) return null; if(l.min != null && n < l.min) return 'out'; if(l.max != null && n > l.max) return 'out'; return 'ok';
+  };
+  var evalVisit = function(plant, visit){
+    var rd = visit.readings || {}, type = plant.plant_type === 'cooling' ? 'cooling' : 'boiler', out = [], total = 0;
+    (plant.units || []).forEach(function(u){
+      if(u.status === 'offline') return; var col = 'u' + u.no, kind = unitKind(plant, u);
+      P[type].forEach(function(def){ var r = evalCell(def, kind, col, rd); if(r){ total++; if(r === 'out') out.push({ unit:u.no, unitName:u.name, k:def.k, l:def.l, v:valueOf(def, rd, col), lim:(def.ratio ? def.ratio.t : (limOf(def, kind) || {}).t) || '' }); } });
+    });
+    return { out:out, n:out.length, total:total };
+  };
+  var overallOf = function(n, defects){ var crit = (defects || []).some(function(d){ return d.urgency === 'critical' && d.status !== 'completed'; }); if(crit || n >= 4) return 'critical'; if(n > 0 || (defects || []).some(function(d){ return d.status !== 'completed'; })) return 'attention'; return 'compliant'; };
+  var RES = { compliant:['Compliant','#2E7D4F'], attention:['Attention required','#B26A16'], critical:['Critical','#B3261E'] };
+  var fd = function(d){ if(!d) return ''; var x = new Date(String(d).slice(0,10) + 'T00:00:00'); return isNaN(x) ? String(d) : x.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }); };
+
+  /* small trend chart: values by visit for one parameter on the first active unit, with the limit band */
+  var chart = function(title, pts, lim){
+    var v = pts.filter(function(p){ return p.v != null; }); if(v.length < 2) return '';
+    var W = 230, H = 110, L = 28, R = 8, T = 18, B = 22, ys = v.map(function(p){ return p.v; });
+    var lo = Math.min.apply(null, ys), hi = Math.max.apply(null, ys);
+    if(lim){ if(lim.min != null) lo = Math.min(lo, lim.min); if(lim.max != null) hi = Math.max(hi, lim.max); }
+    if(hi === lo){ hi += 1; lo -= 1; } var pad = (hi - lo) * 0.1; lo -= pad; hi += pad;
+    var X = function(i){ return L + (W - L - R) * (v.length === 1 ? 0.5 : i / (v.length - 1)); }, Y = function(y){ return T + (H - T - B) * (1 - (y - lo) / (hi - lo)); };
+    var band = lim ? '<rect x="' + L + '" y="' + Y(lim.max != null ? lim.max : hi) + '" width="' + (W - L - R) + '" height="' + Math.max(0, Y(lim.min != null ? lim.min : lo) - Y(lim.max != null ? lim.max : hi)) + '" fill="#2E7D4F" opacity="0.13"/>' : '';
+    var line = v.map(function(p, i){ return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(p.v).toFixed(1); }).join(' ');
+    var dots = v.map(function(p, i){ return '<circle cx="' + X(i).toFixed(1) + '" cy="' + Y(p.v).toFixed(1) + '" r="2.6" fill="#1c1c1c"/><text x="' + X(i).toFixed(1) + '" y="' + (Y(p.v) - 5).toFixed(1) + '" font-size="7.5" text-anchor="middle" fill="#444">' + esc(p.v) + '</text>'; }).join('');
+    var labs = v.map(function(p, i){ return '<text x="' + X(i).toFixed(1) + '" y="' + (H - 8) + '" font-size="7" text-anchor="middle" fill="#777">' + esc(String(p.d).slice(5, 10).split('-').reverse().join('/')) + '</text>'; }).join('');
+    return '<div style="border:1px solid #ddd;border-radius:6px;padding:4px 6px;width:240px;"><div style="font-size:10px;font-weight:700;margin-bottom:2px;">' + esc(title) + '</div><svg viewBox="0 0 ' + W + ' ' + H + '" width="230" height="110">' + band + '<path d="' + line + '" fill="none" stroke="#1c1c1c" stroke-width="1.4"/>' + dots + labs + '</svg></div>';
+  };
+
+  /* the report, laid out like the Allmech paper form, with photos, defects, trends and signatures */
+  var reportHtml = function(d){
+    var plant = d.plant; if(!plant.plant_type) plant.plant_type = plant.type; var v = d.visit, s = d.settings || {}, type = plant.plant_type === 'cooling' ? 'cooling' : 'boiler', rd = v.readings || {}, units = plant.units || [];
+    var ev = evalVisit(plant, v), res = RES[v.overall] || RES.compliant;
+    var cols = [], hd = '';
+    var showRaw = true, showSoft = type === 'boiler', showFeed = type === 'boiler';
+    var th = 'border:1px solid #333;padding:3px 5px;font-size:10px;text-align:center;background:#f2f2f2;';
+    var td = 'border:1px solid #333;padding:3px 5px;font-size:10.5px;text-align:center;';
+    var unitHdr = units.map(function(u){ return '<th style="' + th + '">' + u.no + '<div style="font-weight:400;font-size:8px;">' + esc(u.name || '') + (u.status === 'offline' ? ' (offline)' : '') + '</div></th>'; }).join('');
+    var limHead = type === 'boiler' ? '<th style="' + th + '">Required Limits<br>Oil &amp; Coal</th><th style="' + th + '">Required Limits<br>Coil / Elect</th>' : '<th style="' + th + '">Required Limits</th>';
+    var rows = P[type].map(function(def){
+      var c = '<td style="' + td + 'text-align:left;">' + esc(def.l) + (def.u ? ' <span style="color:#777;font-size:8.5px;">' + esc(def.u) + '</span>' : '') + '</td>';
+      ['raw','soft','feed'].forEach(function(col){
+        if(col === 'raw' && !showRaw) return; if(col === 'soft' && !showSoft) return; if(col === 'feed' && !showFeed) return;
+        var val = def.cols.indexOf(col) >= 0 ? cell(rd, col, def.k) : ''; var r = def.cols.indexOf(col) >= 0 ? evalCell(def, 'oil_coal', col, rd) : null;
+        c += '<td style="' + td + (def.cols.indexOf(col) < 0 ? 'background:#fafafa;' : '') + '">' + esc(val == null ? '' : val) + '</td>';
+      });
+      if(type === 'boiler'){
+        if(def.ratio) c += '<td style="' + td + '" colspan="2">' + esc(def.ratio.t) + '</td>';
+        else { var a = limOf(def, 'oil_coal'), b = limOf(def, 'coil_elect'); if(!a && !b && def.info) c += '<td style="' + td + 'font-size:8.5px;" colspan="2">' + esc(def.info) + '</td>'; else c += '<td style="' + td + '">' + esc(a ? a.t : '') + '</td><td style="' + td + '">' + esc(b ? b.t : '') + '</td>'; }
+      } else {
+        var lim = def.lim ? (def.lim.all || {}) : null; c += '<td style="' + td + '">' + esc(lim ? lim.t : (def.info || '')) + '</td>';
+      }
+      units.forEach(function(u){ var col = 'u' + u.no; var val = def.derived ? derived(def, rd, col) : cell(rd, col, def.k); var r = u.status === 'offline' ? null : evalCell(def, unitKind(plant, u), col, rd);
+        c += '<td style="' + td + (r === 'out' ? 'background:#fdecea;color:#B3261E;font-weight:700;' : r === 'ok' ? 'background:#eef7f1;' : '') + '">' + esc(val == null ? '' : val) + '</td>'; });
+      return '<tr>' + c + '</tr>';
+    }).join('');
+    var rawHd = '<th style="' + th + '">Raw<br>Water</th>' + (type === 'boiler' ? '<th style="' + th + '">Soft<br>Water</th><th style="' + th + '">Feed<br>Water</th>' : '');
+    var table = '<table style="border-collapse:collapse;width:100%;margin-top:8px;"><tr><th style="' + th + 'text-align:left;" rowspan="2">Water Analysis<br>mg / litre</th><th style="' + th + '" colspan="' + (type === 'boiler' ? 3 : 1) + '">Samples</th><th style="' + th + '" colspan="' + (type === 'boiler' ? 2 : 1) + '" rowspan="2">' + (type === 'boiler' ? 'Required Limits<br>Oil &amp; Coal | Coil / Elect' : 'Required<br>Limits') + '</th><th style="' + th + '" colspan="' + Math.max(1, units.length) + '">' + UNITWORD[type] + '</th></tr><tr>' + rawHd + unitHdr + '</tr>' + rows + '</table>';
+    var eq = EQUIP[type], e = v.equipment || {};
+    var box = function(title, inner){ return '<div style="border:1px solid #333;flex:1;min-width:210px;"><div style="background:#f2f2f2;font-weight:700;font-size:10.5px;padding:3px 6px;border-bottom:1px solid #333;">' + title + '</div>' + inner + '</div>'; };
+    var kv = function(a, b){ return '<div style="display:flex;border-bottom:1px solid #ddd;font-size:10.5px;"><div style="flex:1.3;padding:3px 6px;">' + esc(a) + '</div><div style="flex:1;padding:3px 6px;border-left:1px solid #ddd;font-weight:700;">' + esc(b == null ? '' : b) + '</div></div>'; };
+    var used = (v.meter_today != null && v.meter_last != null) ? Math.round((Number(v.meter_today) - Number(v.meter_last)) * 100) / 100 : '';
+    var chem = v.chemicals || [];
+    var chemTable = '<table style="border-collapse:collapse;width:100%;font-size:10.5px;"><tr><td style="padding:3px 6px;border-bottom:1px solid #ddd;"></td>' + chem.map(function(c){ return '<td style="padding:3px 6px;border-bottom:1px solid #ddd;border-left:1px solid #ddd;font-weight:700;">' + esc(c.name) + '</td>'; }).join('') + '</tr>' +
+      [['Opening stock (kg)','opening'],['Chemicals delivered (kg)','delivered'],['Closing stock (kg)','closing'],['Chemicals used (kg)','used']].map(function(r){ return '<tr><td style="padding:3px 6px;border-bottom:1px solid #ddd;">' + r[0] + '</td>' + chem.map(function(c){ var val = r[1] === 'used' ? ((num(c.opening) != null && num(c.closing) != null) ? Math.round((num(c.opening) + (num(c.delivered) || 0) - num(c.closing)) * 100) / 100 : c.used) : c[r[1]]; return '<td style="padding:3px 6px;border-bottom:1px solid #ddd;border-left:1px solid #ddd;">' + esc(val == null ? '' : val) + '</td>'; }).join('') + '</tr>'; }).join('') + '</table>';
+    var blocks = '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">' +
+      box('Equipment', eq.map(function(x){ return kv(x[1], e[x[0]]); }).join('')) +
+      box('Water Meter', kv('Water meter reading today', v.meter_today) + kv('Last meter reading', v.meter_last) + kv('Water used (kl)', used)) +
+      box('Chemicals', chemTable) + '</div>';
+    var defects = d.defects || [], photos = d.photos || [];
+    var dtab = defects.length ? '<div style="margin-top:10px;"><div style="font-weight:700;font-size:11px;margin-bottom:3px;">Defects identified</div><table style="border-collapse:collapse;width:100%;"><tr><th style="' + th + 'text-align:left;">Description</th><th style="' + th + '">Type</th><th style="' + th + '">Urgency</th><th style="' + th + '">Quotation</th></tr>' +
+      defects.map(function(x){ return '<tr><td style="' + td + 'text-align:left;">' + esc(x.description) + '</td><td style="' + td + '">' + esc(x.type === 'parts' ? 'Parts supply' : x.type === 'repair' ? 'Repair' : 'Other') + '</td><td style="' + td + 'font-weight:700;color:' + (x.urgency === 'critical' || x.urgency === 'high' ? '#B3261E' : '#444') + ';">' + esc(x.urgency) + '</td><td style="' + td + '">' + esc(({ open:'Not requested', quote_requested:'Requested', quoted:'Quoted', accepted:'Accepted', declined:'Declined', completed:'Completed' })[x.status] || x.status) + '</td></tr>'; }).join('') + '</table></div>' : '';
+    var ph = photos.length ? '<div style="margin-top:10px;page-break-inside:avoid;"><div style="font-weight:700;font-size:11px;margin-bottom:4px;">Photographs</div><div style="display:flex;flex-wrap:wrap;gap:8px;">' + photos.map(function(p){ return '<div style="width:170px;text-align:center;border:1px solid #ddd;border-radius:4px;padding:4px;"><img src="' + p.image + '" style="width:160px;height:120px;object-fit:cover;"><div style="font-size:9px;color:#555;margin-top:2px;">' + esc(p.caption || '') + '</div></div>'; }).join('') + '</div></div>' : '';
+    /* trends: first unit that is not offline */
+    var u0 = units.filter(function(u){ return u.status !== 'offline'; })[0], charts = '';
+    if(u0 && (d.history || []).length > 1){
+      var keys = type === 'boiler' ? ['tds','ph','chlorides'] : ['tds','ph','cycles_cl'];
+      charts = keys.map(function(k){ var def = P[type].filter(function(x){ return x.k === k; })[0]; var pts = d.history.map(function(h){ var col = 'u' + u0.no; var val = def.derived ? derived(def, h.readings || {}, col) : num(cell(h.readings || {}, col, k)); return { d:h.date, v:val }; }); var l = limOf(def, unitKind(plant, u0)); return chart(def.l + ' (unit ' + u0.no + ')', pts, l); }).join('');
+      if(charts) charts = '<div style="margin-top:10px;page-break-inside:avoid;"><div style="font-weight:700;font-size:11px;margin-bottom:4px;">Trends over the last visits (green band: required limit)</div><div style="display:flex;gap:8px;flex-wrap:wrap;">' + charts + '</div></div>';
+    }
+    var sig = function(label, img, name){ return '<div style="flex:1;min-width:230px;"><div style="font-size:10.5px;font-weight:700;">' + label + '</div><div style="height:58px;border-bottom:1px solid #333;display:flex;align-items:flex-end;">' + (img ? '<img src="' + img + '" style="max-height:54px;max-width:220px;">' : '') + '</div><div style="font-size:10.5px;margin-top:2px;">' + esc(name || '') + '</div></div>'; };
+    var topInfo = '<div style="display:flex;gap:10px;margin-top:8px;">' +
+      '<div style="flex:2;border:1px solid #333;padding:6px 8px;min-height:84px;"><div style="font-size:10px;color:#555;">Customer:</div><div style="font-size:13px;font-weight:700;">' + esc(plant.customer || '') + '</div><div style="font-size:11px;">' + esc(plant.site || '') + '</div><div style="font-size:10px;color:#555;margin-top:4px;">' + esc(plant.ref || '') + ' &middot; ' + esc(plant.name || '') + (plant.make_model ? ' &middot; ' + esc(plant.make_model) : '') + (plant.serial_no ? ' &middot; S/N ' + esc(plant.serial_no) : '') + '</div></div>' +
+      '<div style="flex:2;font-size:11px;line-height:1.9;"><b>Date:</b> ' + esc(fd(v.visit_date)) + '<br><b>Arrive:</b> ' + esc(v.arrive_time || '') + ' &nbsp;&nbsp; <b>Depart:</b> ' + esc(v.depart_time || '') + '<br><b>Report:</b> ' + esc(v.ref_code || '') + '</div>' +
+      (plant.photo ? '<div style="width:110px;"><img src="' + plant.photo + '" style="width:110px;height:84px;object-fit:cover;border:1px solid #333;"></div>' : '') +
+      (d.qr ? '<div style="width:84px;">' + d.qr + '</div>' : '') + '</div>';
+    var head = '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">' +
+      '<div style="width:160px;">' + (s.logo ? '<img src="' + s.logo + '" style="max-width:160px;max-height:70px;">' : '<div style="font-size:22px;font-weight:800;">' + esc(d.org || '') + '</div>') + (s.company_reg ? '<div style="font-size:8px;color:#555;">Company Reg. No ' + esc(s.company_reg) + '</div>' : '') + '</div>' +
+      '<div style="text-align:center;flex:1;"><div style="font-weight:700;font-size:13px;">' + esc(s.division || '') + '</div><div style="font-weight:800;font-size:15px;">' + TITLE[type] + '</div></div>' +
+      '<div style="text-align:right;font-size:10.5px;width:160px;">' + (s.tel ? 'Tel: ' + esc(s.tel) + '<br>' : '') + esc(s.website || '') + '</div></div>';
+    var banner = '<div style="margin-top:8px;padding:6px 10px;border-left:6px solid ' + res[1] + ';background:#f7f7f7;font-size:11.5px;"><b style="color:' + res[1] + ';">Result: ' + res[0] + '</b>' + (ev.total ? ' &middot; ' + ev.n + ' of ' + ev.total + ' limit checks outside the required limits' : '') +
+      (ev.n ? '<div style="font-size:10px;color:#444;margin-top:2px;">' + ev.out.slice(0, 12).map(function(o){ return esc(o.l) + ' (unit ' + o.unit + '): ' + esc(o.v) + ' vs ' + esc(o.lim); }).join('; ') + '</div>' : '') + '</div>';
+    var comments = '<div style="border:1px solid #333;margin-top:10px;"><div style="font-weight:700;font-size:10.5px;padding:3px 6px;border-bottom:1px solid #333;background:#f2f2f2;">Comments / Recommendations:</div><div style="padding:6px 8px;font-size:11px;min-height:70px;white-space:pre-wrap;">' + esc(v.comments || '') + '</div></div>';
+    var sigs = '<div style="display:flex;gap:30px;margin-top:14px;page-break-inside:avoid;">' + sig('Client\'s Signature:', v.client_signature, 'Client\'s Name: ' + (v.client_name || '')) + sig('Service Technician:', v.technician_signature, v.technician_name || '') + '</div>';
+    return '<div style="font-family:Arial,Helvetica,sans-serif;color:#111;max-width:760px;margin:0 auto;">' + head + topInfo + banner + table + blocks + comments + dtab + charts + ph + sigs +
+      '<div style="margin-top:12px;font-size:8.5px;color:#777;border-top:1px solid #ddd;padding-top:4px;">' + esc(s.footer || '') + ' Report ' + esc(v.ref_code || '') + ' &middot; generated by QaSHE Watchman.</div></div>';
+  };
+  return { chart:chart, P:P, EQUIP:EQUIP, KINDS:KINDS, TITLE:TITLE, RES:RES, esc:esc, num:num, limOf:limOf, unitKind:unitKind, evalCell:evalCell, evalVisit:evalVisit, overallOf:overallOf, derived:derived, valueOf:valueOf, reportHtml:reportHtml, fd:fd };
+})();
+
+/* ===== Release 20: Water Treatment Service Reports (Allmech) ===== */
+(function(){
+  const E = WT.esc, arr = x => Array.isArray(x) ? x : [], tdy = () => todayISO(), day = d => d ? String(d).slice(0, 10) : '';
+  const addDays = (iso, n) => { const d = new Date((iso || tdy()) + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const off = () => !(STATE.org && STATE.org._wtOn);
+  const canW = () => ['admin','manager','contributor'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const isMgr = () => ['admin','manager'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const D = () => STATE._wt = STATE._wt || { plants:[], visits:[], defects:[], faults:[], settings:null, loaded:false, broken:false };
+  const base = () => location.origin + location.pathname.replace(/[^/]*$/, '');
+  const plantUrl = p => base() + 'qashe-watchman-wt-plant.html?t=' + p.qr_token;
+  const reportUrl = v => base() + 'qashe-watchman-wt-report.html?t=' + v.share_token;
+  const plantBy = id => arr(D().plants).find(p => p.id === id);
+  const WTDEEP = new URLSearchParams(location.search).get('wt');
+
+  /* ---------- data ---------- */
+  const VCOLS = 'id,organisation_id,plant_id,ref_code,visit_date,arrive_time,depart_time,technician_id,technician_name,client_name,status,overall,out_of_limit,readings,equipment,meter_today,meter_last,chemicals,comments,share_token,notified_at,created_at,completed_at';
+  async function loadWt(){
+    const d = D(), org = STATE.org.id, q = (t, cols) => STATE.supabase.from(t).select(cols || '*').eq('organisation_id', org).limit(5000);
+    const tryq = async (t, cols) => { try{ const r = await q(t, cols); return r.error ? null : (r.data || []); }catch(e){ return null; } };
+    const [pl, vi, df, fa, se] = await Promise.all([tryq('wt_plants'), tryq('wt_visits', VCOLS), tryq('wt_defects'), tryq('wt_faults'), tryq('wt_settings')]);
+    d.broken = pl == null; d.plants = pl || []; d.visits = (vi || []).sort((a, b) => String(b.visit_date).localeCompare(String(a.visit_date)) || String(b.created_at).localeCompare(String(a.created_at)));
+    d.defects = df || []; d.faults = (fa || []).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))); d.settings = (se || [])[0] || null; d.loaded = true;
+  }
+  window.loadWt = loadWt;
+  async function loadFlag(){
+    if(!STATE.org) return; STATE.org._wtOn = false;
+    try { const r = await STATE.supabase.from('org_modules').select('enabled').eq('organisation_id', STATE.org.id).eq('module_key', 'wt').maybeSingle(); if(r && !r.error && r.data) STATE.org._wtOn = r.data.enabled === true; } catch(e){}
+    STATE.org.wt_module_enabled = STATE.org._wtOn;
+    try { applyModuleAccessToNav(); } catch(e){}
+    if(STATE.org._wtOn && !D().loaded){ try{ await loadWt(); }catch(e){} }
+    if(STATE.org._wtOn && WTDEEP && !window.__wtDeepDone){ window.__wtDeepDone = true; setTimeout(() => { try{ showModule('wt'); setTimeout(() => { const p = arr(D().plants).find(x => x.qr_token === WTDEEP); if(p) wtPlant(p.id); }, 900); }catch(e){} }, 600); }
+  }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const r = await _lc.apply(this, arguments); await loadFlag(); return r; }; }
+  ADMIN_CONSOLE_TOGGLES.push({ field:'wt_module_enabled', label:'Water Treatment Service Reports (Allmech)', note:'Bespoke for water treatment service providers: plants (boiler and cooling systems) with photo and QR label, service reports with required limits, chemicals, meter readings, photos, signatures, a printable report, notification to the customer\'s operations manager and quotation requests for defects. Off by default.' });
+  { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
+      if(field !== 'wt_module_enabled') return _t.apply(this, arguments);
+      const { error } = await STATE.supabase.from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:'wt', enabled:!!value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
+      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
+    }; }
+  { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){ if(mod === 'wt') return !off(); return _c.apply(this, arguments); }; }
+  MODULE_META.wt = { title:'Water Treatment', sub:() => 'Plants, service reports against required limits, chemicals, photos, defects and quotation requests' };
+  RENDERERS.wt = () => '<div id="wt-root"></div>';
+  { const mr = document.querySelector('.nav-item[data-mod="management_review"]');
+    if(mr && !document.querySelector('.nav-item[data-mod="wt"]')) mr.insertAdjacentHTML('beforebegin', '<div class="nav-item" data-mod="wt" onclick="showModule(\'wt\')"><svg viewBox="0 0 24 24"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></svg> Water Treatment</div>'); }
+  { const _a = applyModuleAccessToNav; applyModuleAccessToNav = window.applyModuleAccessToNav = function(){ const r = _a.apply(this, arguments);
+      const el = document.querySelector('.nav-item[data-mod="wt"]'); if(el) el.style.display = canAccessModule('wt') ? '' : 'none'; return r; }; }
+  { const _s = showModule; showModule = window.showModule = function(mod){ const r = _s.apply(this, arguments); if(mod === 'wt' && document.getElementById('wt-root')) wtInit(); return r; }; }
+  setTimeout(() => { try{ applyModuleAccessToNav(); }catch(e){} }, 0);
+
+  /* ---------- shell ---------- */
+  let tab = 'plants', view = null;     // view: null | {type:'plant',id} | {type:'form'}
+  async function wtInit(){ try{ await loadWt(); }catch(e){} view = null; wtRender(); }
+  window.wtTab = t => { tab = t; view = null; wtRender(); };
+  const pill = r => { const x = WT.RES[r]; return x ? `<span class="sev-badge" style="background:${x[1]};color:#fff;">${x[0]}</span>` : '<span style="color:var(--text-faint)">—</span>'; };
+  function wtRender(){
+    const root = document.getElementById('wt-root'); if(!root) return;
+    const d = D();
+    if(d.broken){ root.innerHTML = '<div class="detail-card" style="padding:20px"><h3>Database update needed</h3><p>Run <b>qashe-watchman-schema-water-treatment.sql</b> in the Supabase SQL editor, then reload.</p></div>'; return; }
+    if(view && view.type === 'form'){ root.innerHTML = formHtml(); formAfter(); return; }
+    if(view && view.type === 'plant'){ root.innerHTML = plantDetailHtml(view.id); return; }
+    const t = tdy(), openDef = d.defects.filter(x => !['completed','declined'].includes(x.status)).length, nf = d.faults.filter(f => f.status === 'new').length;
+    const tabs = [['plants','Plants'],['reports','Service reports'],['defects','Defects and quotations' + (openDef ? ' (' + openDef + ')' : '')],['faults','Reported faults' + (nf ? ' (' + nf + ')' : '')],['settings','Settings']];
+    const body = { plants:plantsHtml, reports:reportsHtml, defects:defectsHtml, faults:faultsHtml, settings:settingsHtml }[tab]();
+    root.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center;">${tabs.map(([k, l]) => `<button class="btn-small ${tab === k ? 'primary' : ''}" onclick="wtTab('${k}')">${l}</button>`).join('')}<span style="flex:1"></span>${canW() ? '<button class="btn-small primary" onclick="wtNewReport()">New service report</button>' : ''}</div>${body}`;
+  }
+
+  window.wtRender = wtRender;
+  /* ---------- plants ---------- */
+  const typeLbl = p => p.plant_type === 'cooling' ? 'Cooling system' : 'Boiler system';
+  const dueCell = p => { if(!p.next_service_date) return '—'; const od = p.next_service_date < tdy(); return od ? `<b style="color:#B3261E">${fmtDate(p.next_service_date)} (overdue)</b>` : fmtDate(p.next_service_date); };
+  function plantsHtml(){
+    const pl = arr(D().plants).filter(p => p.status !== 'decommissioned').sort((a, b) => String(a.customer_name || '').localeCompare(String(b.customer_name || '')) || String(a.name).localeCompare(String(b.name)));
+    return `<div class="detail-card" style="padding:16px"><div class="panel-head"><h3 style="font-size:15px">Plants</h3>${canW() ? '<button class="btn-small primary" onclick="wtPlantEdit()">Add plant</button>' : ''}</div>
+      <p style="font-size:12px;color:var(--text-faint);margin:0 0 8px;">Each plant is a boiler house or cooling system at a customer site. Print its QR label and fix it to the plant: scanning opens the plant's page, where anyone can report a fault and Allmech staff can start a service report.</p>
+      <table><tr><th></th><th>Ref</th><th>Plant</th><th>Customer</th><th>Type</th><th>Units</th><th>Last service</th><th>Next due</th><th>Result</th><th>Email ops</th></tr>
+      ${pl.map(p => `<tr class="clickable" onclick="wtPlant('${p.id}')"><td>${p.photo_data ? `<img src="${p.photo_data}" style="width:46px;height:36px;object-fit:cover;border-radius:4px;">` : ''}</td><td class="mono-cell">${E(p.ref_code || '')}</td><td class="strong">${E(p.name)}</td><td>${E(p.customer_name || '—')}</td><td style="font-size:12px">${typeLbl(p)}</td><td>${arr(p.units).length}</td><td>${p.last_service_date ? fmtDate(p.last_service_date) : '—'}</td><td>${dueCell(p)}</td><td>${pill(p.last_result)}</td><td style="font-size:12px">${p.notify_ops ? 'On' : 'Off'}</td></tr>`).join('') || '<tr><td colspan="10" style="color:var(--text-faint)">No plants yet. Add the first plant.</td></tr>'}</table></div>`;
+  }
+  let PF = null; // plant form state
+  window.wtPlantEdit = function(id){
+    if(!canW()){ toast('You do not have permission to change plants.', 'error'); return; }
+    const p = id ? Object.assign({}, plantBy(id)) : { plant_type:'boiler', status:'active', units:[{ no:1, name:'Boiler 1', kind:'oil_coal', status:'active' }], notify_ops:false };
+    p.units = JSON.parse(JSON.stringify(arr(p.units))); PF = { p, photo:p.photo_data || null };
+    plantFormDraw();
+  };
+  function plantFormDraw(){
+    const { p } = PF, cust = arr(STATE.customers).map(c => c.name || c.company_name).filter(Boolean);
+    const kinds = WT.KINDS[p.plant_type] || WT.KINDS.boiler;
+    const f = (k, l, t, extra) => `<div class="field"><label>${l}</label><input id="wp-${k}" type="${t || 'text'}" value="${E(p[k] == null ? '' : (t === 'date' ? day(p[k]) : p[k]))}" ${extra || ''}></div>`;
+    kpiOverlay(`<h3 style="font-family:Arial,Helvetica,sans-serif;margin:0 0 10px;">${p.id ? 'Edit' : 'Add'} plant</h3>
+      <div class="form-grid">
+        <div class="field"><label>Type</label><select id="wp-plant_type" onchange="wtPlantType(this.value)"><option value="boiler" ${p.plant_type === 'boiler' ? 'selected' : ''}>Boiler system</option><option value="cooling" ${p.plant_type === 'cooling' ? 'selected' : ''}>Cooling system</option></select></div>
+        ${f('name', 'Plant name')}<div class="field"><label>Customer</label><input id="wp-customer_name" list="wp-cust" value="${E(p.customer_name || '')}"><datalist id="wp-cust">${cust.map(c => `<option value="${E(c)}">`).join('')}</datalist></div>
+        ${f('site_address', 'Site address')}${f('location_note', 'Where on site')}${f('make_model', 'Make and model')}${f('serial_no', 'Serial number')}${f('capacity', 'Capacity')}
+        ${f('service_frequency_days', 'Service every (days)', 'number')}${f('last_service_date', 'Last service', 'date')}
+        <div class="field"><label>Status</label><select id="wp-status"><option value="active" ${p.status === 'active' ? 'selected' : ''}>Active</option><option value="offline" ${p.status === 'offline' ? 'selected' : ''}>Offline</option><option value="decommissioned" ${p.status === 'decommissioned' ? 'selected' : ''}>Decommissioned</option></select></div>
+        ${f('ops_manager_name', 'Operations manager (customer)')}${f('ops_manager_email', 'Operations manager email', 'email')}
+        <div class="field"><label>Email the operations manager when a service is completed</label><select id="wp-notify_ops"><option value="false" ${!p.notify_ops ? 'selected' : ''}>No notification</option><option value="true" ${p.notify_ops ? 'selected' : ''}>Send a notification</option></select></div>
+        <div class="field" style="grid-column:1/-1"><label>${p.plant_type === 'cooling' ? 'Cooling towers and closed systems' : 'Boilers'} on this plant</label>
+          ${arr(p.units).map((u, i) => `<div style="display:flex;gap:6px;margin-bottom:6px;"><input style="flex:2" value="${E(u.name || '')}" onchange="PFU(${i},'name',this.value)" placeholder="Name"><select style="flex:2" onchange="PFU(${i},'kind',this.value)">${kinds.map(([k, l]) => `<option value="${k}" ${u.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select><select style="flex:1" onchange="PFU(${i},'status',this.value)"><option value="active" ${u.status !== 'offline' ? 'selected' : ''}>Active</option><option value="offline" ${u.status === 'offline' ? 'selected' : ''}>Offline</option></select><button class="btn-small" onclick="PFUdel(${i})">Remove</button></div>`).join('')}
+          <button class="btn-small" onclick="PFUadd()">Add a unit</button></div>
+        <div class="field" style="grid-column:1/-1"><label>Photo of the plant</label><input type="file" accept="image/*" capture="environment" onchange="wtPlantPhoto(this)">${PF.photo ? `<img src="${PF.photo}" style="margin-top:6px;max-width:200px;max-height:140px;border-radius:6px;">` : ''}</div>
+        <div class="field" style="grid-column:1/-1"><label>Notes</label><textarea id="wp-notes" rows="2">${E(p.notes || '')}</textarea></div>
+      </div>
+      <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" onclick="wtPlantSave()">Save plant</button></div>`);
+  }
+  function pfRead(){ const { p } = PF; ['name','customer_name','site_address','location_note','make_model','serial_no','capacity','ops_manager_name','ops_manager_email','notes'].forEach(k => { const el = document.getElementById('wp-' + k); if(el) p[k] = el.value.trim() || null; });
+    ['service_frequency_days'].forEach(k => { const el = document.getElementById('wp-' + k); p[k] = el && el.value ? Number(el.value) : null; });
+    ['last_service_date'].forEach(k => { const el = document.getElementById('wp-' + k); p[k] = el && el.value ? el.value : null; });
+    p.status = document.getElementById('wp-status').value; p.notify_ops = document.getElementById('wp-notify_ops').value === 'true'; p.plant_type = document.getElementById('wp-plant_type').value; }
+  window.wtPlantType = v => { pfRead(); PF.p.plant_type = v; PF.p.units = [{ no:1, name:v === 'cooling' ? 'Cooling tower 1' : 'Boiler 1', kind:v === 'cooling' ? 'tower' : 'oil_coal', status:'active' }]; plantFormDraw(); };
+  window.PFU = (i, k, v) => { PF.p.units[i][k] = v; };
+  window.PFUadd = () => { pfRead(); const u = PF.p.units, t = PF.p.plant_type; u.push({ no:u.length + 1, name:(t === 'cooling' ? 'Unit ' : 'Boiler ') + (u.length + 1), kind:t === 'cooling' ? 'tower' : 'oil_coal', status:'active' }); plantFormDraw(); };
+  window.PFUdel = i => { pfRead(); PF.p.units.splice(i, 1); PF.p.units.forEach((u, j) => u.no = j + 1); plantFormDraw(); };
+  window.wtPlantPhoto = async function(inp){ const f = inp.files && inp.files[0]; if(!f) return; pfRead(); const rz = await resizeImageFile(f, 900, 0.7); if(!rz.ok) { toast('That image could not be read.', 'error'); return; }
+    PF.photo = await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => res(null); fr.readAsDataURL(rz.file); }); plantFormDraw(); };
+  window.wtPlantSave = async function(){
+    pfRead(); const p = PF.p; if(!p.name){ toast('Please give the plant a name.', 'error'); return; }
+    p.units.forEach((u, i) => u.no = i + 1);
+    const row = { organisation_id:STATE.org.id, plant_type:p.plant_type, name:p.name, customer_name:p.customer_name, site_address:p.site_address, location_note:p.location_note, make_model:p.make_model, serial_no:p.serial_no, capacity:p.capacity,
+      units:p.units, service_frequency_days:p.service_frequency_days, last_service_date:p.last_service_date, status:p.status, photo_data:PF.photo, ops_manager_name:p.ops_manager_name, ops_manager_email:p.ops_manager_email, notify_ops:p.notify_ops, notes:p.notes };
+    row.next_service_date = row.last_service_date && row.service_frequency_days ? addDays(row.last_service_date, row.service_frequency_days) : (p.next_service_date || null);
+    try{
+      if(p.id){ const { error } = await STATE.supabase.from('wt_plants').update(row).eq('id', p.id); if(error) throw error; }
+      else { row.created_by = STATE.user.id; const r = await STATE.supabase.rpc('gov_next_no', { p_org:STATE.org.id, p_kind:'wp' }); if(!r.error && r.data != null) row.ref_code = 'WTP-' + String(r.data).padStart(4, '0');
+        const { error } = await STATE.supabase.from('wt_plants').insert(row); if(error) throw error; }
+    }catch(e){ toast('Could not save: ' + (e.message || e), 'error'); return; }
+    kpiCloseOverlay(); await loadWt(); wtRender(); toast('Plant saved.', 'success');
+  };
+  window.wtPlant = function(id){ view = { type:'plant', id }; tab = 'plants'; wtRender(); window.scrollTo(0, 0); };
+  window.wtBack = function(){ view = null; wtRender(); };
+  window.wtNotifyToggle = async function(id, on){ const { error } = await STATE.supabase.from('wt_plants').update({ notify_ops:!!on }).eq('id', id); if(error){ toast('Could not update: ' + error.message, 'error'); return; } const p = plantBy(id); if(p) p.notify_ops = !!on; toast(on ? 'The operations manager will be emailed when a service is completed.' : 'Notification switched off.', 'success'); wtRender(); };
+  function trendCharts(p){
+    const vs = arr(D().visits).filter(v => v.plant_id === p.id && v.status === 'completed').sort((a, b) => String(a.visit_date).localeCompare(String(b.visit_date))).slice(-6);
+    const u0 = arr(p.units).filter(u => u.status !== 'offline')[0]; if(!u0 || vs.length < 2) return '';
+    const type = p.plant_type === 'cooling' ? 'cooling' : 'boiler', keys = type === 'boiler' ? ['tds','ph','chlorides'] : ['tds','ph','cycles_cl'];
+    return keys.map(k => { const def = WT.P[type].find(x => x.k === k); const pts = vs.map(v => ({ d:v.visit_date, v:def.derived ? WT.derived(def, v.readings || {}, 'u' + u0.no) : WT.num((v.readings || {})['u' + u0.no + '.' + k]) })); return WT.chart(def.l + ' (' + (u0.name || 'unit ' + u0.no) + ')', pts, WT.limOf(def, WT.unitKind(p, u0))); }).join('');
+  }
+  function plantDetailHtml(id){
+    const p = plantBy(id); if(!p) return '<p>Plant not found.</p>';
+    const vs = arr(D().visits).filter(v => v.plant_id === id), qr = qrSvg(plantUrl(p), 150), tc = trendCharts(p);
+    return `<div style="margin-bottom:10px"><button class="btn-small" onclick="wtBack()">Back to plants</button></div>
+      <div class="detail-card" style="padding:18px;margin-bottom:14px;display:flex;gap:18px;flex-wrap:wrap;">
+        ${p.photo_data ? `<img src="${p.photo_data}" style="width:220px;height:165px;object-fit:cover;border-radius:8px;">` : '<div style="width:220px;height:165px;background:var(--grey-tint);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-faint);font-size:12px;">No photo yet</div>'}
+        <div style="flex:1;min-width:260px;"><div style="font-size:11px;color:var(--text-faint)">${E(p.ref_code || '')} &middot; ${typeLbl(p)}</div><h2 style="margin:2px 0 6px;font-size:20px;">${E(p.name)}</h2>
+          <div style="font-size:13px;line-height:1.7;"><b>Customer:</b> ${E(p.customer_name || '—')}<br><b>Site:</b> ${E(p.site_address || '—')} ${p.location_note ? '(' + E(p.location_note) + ')' : ''}<br><b>Make and model:</b> ${E(p.make_model || '—')} &nbsp; <b>Serial:</b> ${E(p.serial_no || '—')} &nbsp; <b>Capacity:</b> ${E(p.capacity || '—')}<br><b>Units:</b> ${arr(p.units).map(u => E(u.name) + (u.status === 'offline' ? ' (offline)' : '')).join(', ') || '—'}<br><b>Last service:</b> ${p.last_service_date ? fmtDate(p.last_service_date) : '—'} &nbsp; <b>Next due:</b> ${dueCell(p)} &nbsp; ${pill(p.last_result)}</div>
+          <div style="margin-top:10px;padding:8px 10px;background:var(--grey-tint);border-radius:8px;font-size:12.5px;"><b>Operations manager:</b> ${E(p.ops_manager_name || '—')} ${p.ops_manager_email ? '&lt;' + E(p.ops_manager_email) + '&gt;' : '(no email)'}<br>
+            <label style="display:inline-flex;gap:6px;align-items:center;margin-top:4px;cursor:pointer;"><input type="checkbox" style="width:auto" ${p.notify_ops ? 'checked' : ''} ${canW() ? '' : 'disabled'} onchange="wtNotifyToggle('${p.id}',this.checked)"> Email the operations manager when a service is completed</label></div>
+          <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;">${canW() ? `<button class="btn-small primary" onclick="wtNewReport('${p.id}')">New service report</button><button class="btn-small" onclick="wtPlantEdit('${p.id}')">Edit plant</button>` : ''}<button class="btn-small" onclick="wtPrintQr('${p.id}')">Print QR label</button><button class="btn-small" onclick="wtCopy('${plantUrl(p)}')">Copy QR link</button></div></div>
+        <div style="text-align:center;">${qr}<div style="font-size:10.5px;color:var(--text-faint)">Scan to report a fault or open this plant</div></div></div>
+      ${tc ? `<div class="detail-card" style="padding:14px;margin-bottom:14px"><h3 style="font-size:14px;margin:0 0 8px;">Trends over the last services</h3><div style="display:flex;gap:10px;flex-wrap:wrap;">${tc}</div></div>` : ''}
+      <div class="detail-card" style="padding:16px"><h3 style="font-size:15px;margin:0 0 8px;">Service history</h3>${visitsTable(vs)}</div>`;
+  }
+  window.wtCopy = function(t){ try{ navigator.clipboard.writeText(t); toast('Link copied.', 'success'); }catch(e){ prompt('Copy this link', t); } };
+  window.wtPrintQr = function(id){
+    const p = plantBy(id), c = document.getElementById('print-container'), s = D().settings || {};
+    c.innerHTML = `<div style="font-family:Arial,sans-serif;text-align:center;padding-top:50px;">${s.logo_data ? `<img src="${s.logo_data}" style="max-height:70px;margin-bottom:10px;">` : ''}<div style="font-size:15px;font-weight:700;">${E(s.division || STATE.org.name)}</div><div style="margin:14px auto;">${qrSvg(plantUrl(p), 320)}</div><div style="font-size:28px;font-weight:800;">${E(p.ref_code || '')}</div><div style="font-size:16px;margin-top:6px;">${E(p.name)}</div><div style="font-size:13px;color:#555;margin-top:4px;">${E(p.customer_name || '')}</div><div style="font-size:13px;margin-top:16px;">Scan to report a fault, or to see when this plant was last serviced.</div><div style="font-size:11px;color:#777;margin-top:6px;">${E(s.tel || '')} ${E(s.website || '')}</div></div>`;
+    setTimeout(() => window.print(), 300);
+  };
+
+  /* ---------- reports list ---------- */
+  function visitsTable(vs){
+    return `<table><tr><th>Date</th><th>Report</th><th>Plant</th><th>Technician</th><th>Result</th><th>Out of limit</th><th>Status</th><th></th></tr>
+      ${vs.map(v => { const p = plantBy(v.plant_id) || {}; return `<tr><td>${fmtDate(v.visit_date)}</td><td class="mono-cell">${E(v.ref_code || '')}</td><td class="strong">${E(p.name || '')}<div style="font-size:11px;color:var(--text-faint)">${E(p.customer_name || '')}</div></td><td>${E(v.technician_name || '—')}</td><td>${v.status === 'completed' ? pill(v.overall) : '—'}</td><td>${v.status === 'completed' ? v.out_of_limit : '—'}</td><td>${v.status === 'completed' ? 'Completed' : '<b style="color:#B26A16">Draft</b>'}</td>
+        <td style="white-space:nowrap">${v.status === 'draft' && canW() ? `<button class="btn-small" onclick="wtEditReport('${v.id}')">Continue</button>` : `<button class="btn-small" onclick="wtPrint('${v.id}')">Print</button> <button class="btn-small" onclick="wtCopy('${reportUrl(v)}')">Link</button> ${canW() ? `<button class="btn-small" onclick="wtEditReport('${v.id}')">Edit</button>` : ''}`}</td></tr>`; }).join('') || '<tr><td colspan="8" style="color:var(--text-faint)">No service reports yet.</td></tr>'}</table>`;
+  }
+  const reportsHtml = () => `<div class="detail-card" style="padding:16px"><h3 style="font-size:15px;margin:0 0 8px;">Service reports</h3>${visitsTable(arr(D().visits))}</div>`;
+
+  /* ---------- the report form ---------- */
+  let FORM = null;
+  Object.defineProperty(window, 'FORM', { get: () => FORM, set: v => { FORM = v; }, configurable: true });
+  const readImg = async f => { const rz = await resizeImageFile(f, 1000, 0.7); if(!rz.ok) return null; return await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => res(null); fr.readAsDataURL(rz.file); }); };
+  window.wtNewReport = function(plantId){
+    if(!canW()){ toast('You do not have permission to create service reports.', 'error'); return; }
+    FORM = { id:null, plant_id:plantId || '', visit_date:tdy(), arrive_time:'', depart_time:'', client_name:'', readings:{}, equipment:{}, chemicals:[], meter_today:'', meter_last:'', comments:'', defects:[], newPhotos:[], oldPhotos:[], removed:[], removedPhotos:[], sigT:null, sigC:null, noClient:false, notify:null, quote:true };
+    if(plantId) prefill(); view = { type:'form' }; wtRender(); window.scrollTo(0, 0);
+  };
+  function prefill(){
+    const p = plantBy(FORM.plant_id); if(!p) return; FORM.notify = !!p.notify_ops;
+    const last = arrayLastVisit(p.id); if(last){ FORM.meter_last = last.meter_today == null ? '' : last.meter_today; FORM.chemicals = arr(last.chemicals).map(c => ({ name:c.name, opening:c.closing == null ? '' : c.closing, delivered:'', closing:'', used:'' })); }
+    if(!FORM.technician) FORM.technician = (STATE.profile && STATE.profile.name) || STATE.user.email;
+  }
+  const arrayLastVisit = pid => arr(D().visits).filter(v => v.plant_id === pid && v.status === 'completed' && v.id !== (FORM && FORM.id)).sort((a, b) => String(b.visit_date).localeCompare(String(a.visit_date)))[0];
+  window.wtEditReport = async function(id){
+    const v = arr(D().visits).find(x => x.id === id); if(!v) return; showLoader('Opening the report…');
+    try{
+      const [full, ph] = await Promise.all([STATE.supabase.from('wt_visits').select('client_signature,technician_signature').eq('id', id).single(), STATE.supabase.from('wt_photos').select('id,caption,image_data,defect_id').eq('visit_id', id)]);
+      const defs = arr(D().defects).filter(d => d.visit_id === id);
+      FORM = { id, plant_id:v.plant_id, visit_date:v.visit_date, arrive_time:v.arrive_time || '', depart_time:v.depart_time || '', client_name:v.client_name || '', readings:Object.assign({}, v.readings), equipment:Object.assign({}, v.equipment), chemicals:JSON.parse(JSON.stringify(arr(v.chemicals))),
+        meter_today:v.meter_today == null ? '' : v.meter_today, meter_last:v.meter_last == null ? '' : v.meter_last, comments:v.comments || '', technician:v.technician_name,
+        defects:defs.map(d => ({ id:d.id, description:d.description, defect_type:d.defect_type, urgency:d.urgency, status:d.status, newPhotos:[], oldPhotos:arr(ph.data).filter(p => p.defect_id === d.id) })), newPhotos:[], oldPhotos:arr(ph.data).filter(p => !p.defect_id), removed:[], removedPhotos:[],
+        sigT:(full.data || {}).technician_signature || null, sigC:(full.data || {}).client_signature || null, noClient:false, notify:null, quote:true, completed:v.status === 'completed' };
+      view = { type:'form' }; wtRender(); window.scrollTo(0, 0);
+    } finally { hideLoader(); }
+  };
+  window.wtPickPlant = function(id){ FORM.plant_id = id; FORM.readings = {}; FORM.chemicals = []; prefill(); wtRender(); };
+  function formHtml(){
+    const F = FORM, p = plantBy(F.plant_id);
+    if(!p) return `<div class="detail-card" style="padding:18px;"><h3 style="margin:0 0 10px">New service report</h3><div class="field"><label>Plant</label><select onchange="wtPickPlant(this.value)"><option value="">Choose the plant…</option>${arr(D().plants).filter(x => x.status !== 'decommissioned').map(x => `<option value="${x.id}">${E(x.customer_name || '')}: ${E(x.name)} (${E(x.ref_code || '')})</option>`).join('')}</select></div><div style="margin-top:10px"><button class="btn-cancel" onclick="wtCancelForm()">Cancel</button></div></div>`;
+    const type = p.plant_type === 'cooling' ? 'cooling' : 'boiler', units = arr(p.units), cols = ['raw'].concat(type === 'boiler' ? ['soft','feed'] : []);
+    const th = 'padding:4px 6px;font-size:11px;background:var(--grey-tint);text-align:center;border:1px solid var(--border,#ddd);', tdc = 'padding:2px;border:1px solid var(--border,#ddd);text-align:center;';
+    const inp = (col, def) => def.cols.includes(col.replace(/^u\d+$/, 'unit')) ? `<input class="wt-in" data-k="${col}.${def.k}" data-col="${col}" data-def="${def.k}" ${def.text ? '' : 'inputmode="decimal"'} value="${E(F.readings[col + '.' + def.k] == null ? '' : F.readings[col + '.' + def.k])}" oninput="wtIn(this)" style="width:${def.text ? 70 : 62}px;padding:6px 4px;text-align:center;font-size:13px;">` : '';
+    const rows = WT.P[type].map(def => {
+      const lim = def.ratio ? def.ratio.t : (type === 'boiler' ? [WT.limOf(def, 'oil_coal'), WT.limOf(def, 'coil_elect')].filter(Boolean).map(x => x.t).join(' | ') : (WT.limOf(def, 'tower') || {}).t) || def.info || '';
+      return `<tr><td style="${tdc}text-align:left;padding:4px 6px;font-size:12px;white-space:nowrap;">${E(def.l)} <span style="color:var(--text-faint);font-size:10px">${E(def.u)}</span></td>${cols.map(c => `<td style="${tdc}${def.cols.includes(c) ? '' : 'background:#fafafa;'}">${inp(c, def)}</td>`).join('')}<td style="${tdc}font-size:10.5px;color:var(--text-dim);padding:2px 6px;min-width:90px;">${E(lim)}</td>${units.map(u => `<td style="${tdc}" data-cell="u${u.no}.${def.k}">${def.derived ? `<span class="wt-der" data-col="u${u.no}" data-def="${def.k}"></span>` : inp('u' + u.no, def)}</td>`).join('')}</tr>`; }).join('');
+    const eq = WT.EQUIP[type].map(([k, l]) => `<div class="field"><label>${E(l)}</label><input class="wt-eq" data-k="${k}" value="${E(F.equipment[k] || '')}" oninput="FORM.equipment['${k}']=this.value"></div>`).join('');
+    const chem = F.chemicals.map((c, i) => `<div style="display:grid;grid-template-columns:2fr repeat(3,1fr) 1fr;gap:6px;margin-bottom:6px;align-items:end;"><div class="field"><label>${i ? '' : 'Chemical'}</label><input value="${E(c.name || '')}" oninput="FORM.chemicals[${i}].name=this.value" placeholder="Chemical or salt"></div><div class="field"><label>${i ? '' : 'Opening (kg)'}</label><input inputmode="decimal" value="${E(c.opening == null ? '' : c.opening)}" oninput="FORM.chemicals[${i}].opening=this.value;wtChem()"></div><div class="field"><label>${i ? '' : 'Delivered (kg)'}</label><input inputmode="decimal" value="${E(c.delivered == null ? '' : c.delivered)}" oninput="FORM.chemicals[${i}].delivered=this.value;wtChem()"></div><div class="field"><label>${i ? '' : 'Closing (kg)'}</label><input inputmode="decimal" value="${E(c.closing == null ? '' : c.closing)}" oninput="FORM.chemicals[${i}].closing=this.value;wtChem()"></div><div style="padding-bottom:10px;font-size:13px;"><b id="wt-used-${i}"></b> <button class="btn-small" onclick="FORM.chemicals.splice(${i},1);wtRender()">×</button></div></div>`).join('');
+    const defs = F.defects.map((d, i) => `<div style="border:1px solid var(--border,#ddd);border-radius:8px;padding:10px;margin-bottom:8px;"><div class="form-grid"><div class="field" style="grid-column:1/-1"><label>Defect or fault found</label><textarea rows="2" oninput="FORM.defects[${i}].description=this.value">${E(d.description || '')}</textarea></div>
+        <div class="field"><label>Needs</label><select onchange="FORM.defects[${i}].defect_type=this.value"><option value="repair" ${d.defect_type === 'repair' ? 'selected' : ''}>Repair</option><option value="parts" ${d.defect_type === 'parts' ? 'selected' : ''}>Parts supply</option><option value="other" ${d.defect_type === 'other' ? 'selected' : ''}>Other</option></select></div>
+        <div class="field"><label>Urgency</label><select onchange="FORM.defects[${i}].urgency=this.value">${['low','medium','high','critical'].map(u => `<option value="${u}" ${d.urgency === u ? 'selected' : ''}>${u[0].toUpperCase() + u.slice(1)}</option>`).join('')}</select></div>
+        <div class="field"><label>Photos</label><input type="file" accept="image/*" capture="environment" multiple onchange="wtAddPhotos(this,${i})"></div></div>
+        <div>${arr(d.oldPhotos).concat(arr(d.newPhotos)).map(ph => `<img src="${ph.image_data || ph.image}" style="width:70px;height:54px;object-fit:cover;border-radius:4px;margin-right:4px;">`).join('')}</div>
+        <button class="btn-small" style="margin-top:6px" onclick="wtDelDefect(${i})">Remove defect</button></div>`).join('');
+    const photos = arr(F.oldPhotos).map((ph, i) => `<div style="display:inline-block;margin:0 6px 6px 0;text-align:center;"><img src="${ph.image_data}" style="width:100px;height:76px;object-fit:cover;border-radius:4px;"><div style="font-size:10px;max-width:100px">${E(ph.caption || '')}</div><button class="btn-small" onclick="wtDelPhoto(${i},true)">Remove</button></div>`).join('') +
+      arr(F.newPhotos).map((ph, i) => `<div style="display:inline-block;margin:0 6px 6px 0;text-align:center;"><img src="${ph.image}" style="width:100px;height:76px;object-fit:cover;border-radius:4px;"><input style="width:100px;font-size:11px" placeholder="Caption" value="${E(ph.caption || '')}" oninput="FORM.newPhotos[${i}].caption=this.value"><br><button class="btn-small" onclick="wtDelPhoto(${i},false)">Remove</button></div>`).join('');
+    const ev = p.ops_manager_email ? `<label style="display:flex;gap:6px;align-items:center;font-size:13px;margin:6px 0;"><input type="checkbox" style="width:auto" ${(F.notify == null ? p.notify_ops : F.notify) ? 'checked' : ''} onchange="FORM.notify=this.checked"> Email ${E(p.ops_manager_name || 'the operations manager')} (${E(p.ops_manager_email)}) when this report is completed</label>` : '<div style="font-size:12px;color:var(--text-faint);margin:6px 0;">No operations manager email on this plant, so no notification will be sent.</div>';
+    return `<div style="margin-bottom:10px;"><button class="btn-small" onclick="wtCancelForm()">Cancel</button></div>
+      <div class="detail-card" style="padding:16px;margin-bottom:12px;"><div style="font-size:11px;color:var(--text-faint)">${E(WT.TITLE[type])}</div><h3 style="margin:2px 0 8px;font-size:17px;">${E(p.customer_name || '')}: ${E(p.name)} <span style="font-weight:400;font-size:12px;color:var(--text-faint)">${E(p.ref_code || '')}</span></h3>
+        <div class="form-grid"><div class="field"><label>Date</label><input type="date" value="${E(day(F.visit_date))}" oninput="FORM.visit_date=this.value"></div><div class="field"><label>Arrive</label><input type="time" value="${E(F.arrive_time)}" oninput="FORM.arrive_time=this.value"></div><div class="field"><label>Depart</label><input type="time" value="${E(F.depart_time)}" oninput="FORM.depart_time=this.value"></div><div class="field"><label>Client's name (who signs)</label><input value="${E(F.client_name)}" oninput="FORM.client_name=this.value"></div></div></div>
+      <div class="detail-card" style="padding:12px;margin-bottom:12px;"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;"><b style="font-size:14px;">Water analysis</b><span id="wt-live" style="font-size:12.5px;"></span></div><div style="overflow:auto;"><table style="border-collapse:collapse;"><tr><th style="${th}text-align:left;">Water analysis</th>${cols.map(c => `<th style="${th}">${c === 'raw' ? 'Raw water' : c === 'soft' ? 'Soft water' : 'Feed water'}</th>`).join('')}<th style="${th}">Required limits</th>${units.map(u => `<th style="${th}">${u.no}<div style="font-weight:400;font-size:9px">${E(u.name || '')}${u.status === 'offline' ? ' (offline)' : ''}</div></th>`).join('')}</tr>${rows}</table></div>
+        <div style="font-size:11px;color:var(--text-faint);margin-top:6px;">Values outside the required limit turn red as you type. Offline units are not counted.</div></div>
+      <div class="detail-card" style="padding:14px;margin-bottom:12px;"><b style="font-size:14px;">Equipment</b><div class="form-grid" style="margin-top:8px;">${eq}</div></div>
+      <div class="detail-card" style="padding:14px;margin-bottom:12px;"><b style="font-size:14px;">Water meter</b><div class="form-grid" style="margin-top:8px;"><div class="field"><label>Reading today</label><input inputmode="decimal" value="${E(F.meter_today)}" oninput="FORM.meter_today=this.value;wtMeter()"></div><div class="field"><label>Last reading</label><input inputmode="decimal" value="${E(F.meter_last)}" oninput="FORM.meter_last=this.value;wtMeter()"></div><div class="field"><label>Water used (kl)</label><div id="wt-used" style="padding:10px 0;font-weight:700;"></div></div></div></div>
+      <div class="detail-card" style="padding:14px;margin-bottom:12px;"><div style="display:flex;align-items:center;"><b style="font-size:14px;flex:1;">Chemicals</b><button class="btn-small" onclick="FORM.chemicals.push({name:'',opening:'',delivered:'',closing:'',used:''});wtRender()">Add chemical</button></div><div style="margin-top:8px;">${chem || '<div style="font-size:12px;color:var(--text-faint)">No chemicals recorded.</div>'}</div></div>
+      <div class="detail-card" style="padding:14px;margin-bottom:12px;"><b style="font-size:14px;">Comments and recommendations</b><textarea rows="4" style="width:100%;margin-top:8px;" oninput="FORM.comments=this.value">${E(F.comments)}</textarea></div>
+      <div class="detail-card" style="padding:14px;margin-bottom:12px;"><div style="display:flex;align-items:center;"><b style="font-size:14px;flex:1;">Defects found</b><button class="btn-small" onclick="FORM.defects.push({description:'',defect_type:'repair',urgency:'medium',newPhotos:[],oldPhotos:[]});wtRender()">Add defect</button></div><div style="margin-top:8px;">${defs || '<div style="font-size:12px;color:var(--text-faint)">Nothing defective found. If something needs repair or parts, add it here to prompt a quotation.</div>'}</div></div>
+      <div class="detail-card" style="padding:14px;margin-bottom:12px;"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;"><b style="font-size:14px;flex:1;">Photographs</b><input type="file" accept="image/*" capture="environment" multiple onchange="wtAddPhotos(this,-1)"></div><div style="margin-top:8px;">${photos}</div></div>
+      <div class="detail-card" style="padding:14px;margin-bottom:12px;"><b style="font-size:14px;">Signatures</b><div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;">
+        <div style="flex:1;min-width:260px;"><div style="font-size:12px;margin-bottom:4px;">Client's signature</div><canvas id="sig-c" width="420" height="130" style="width:100%;max-width:420px;border:1px solid var(--border,#ccc);border-radius:6px;background:#fff;touch-action:none;"></canvas><div><button class="btn-small" onclick="wtSigClear('c')">Clear</button> <label style="font-size:12px;"><input type="checkbox" style="width:auto" ${F.noClient ? 'checked' : ''} onchange="FORM.noClient=this.checked"> Client not available to sign</label></div></div>
+        <div style="flex:1;min-width:260px;"><div style="font-size:12px;margin-bottom:4px;">Service technician: ${E(F.technician || '')}</div><canvas id="sig-t" width="420" height="130" style="width:100%;max-width:420px;border:1px solid var(--border,#ccc);border-radius:6px;background:#fff;touch-action:none;"></canvas><div><button class="btn-small" onclick="wtSigClear('t')">Clear</button></div></div></div></div>
+      <div class="detail-card" style="padding:14px;margin-bottom:12px;">${ev}${F.defects.length ? `<label style="display:flex;gap:6px;align-items:center;font-size:13px;margin:6px 0;"><input type="checkbox" style="width:auto" ${F.quote ? 'checked' : ''} onchange="FORM.quote=this.checked"> Email the quotation desk to prompt a quotation for the defects</label>` : ''}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:30px;"><button class="btn-small" onclick="wtSave(false)">Save as draft</button><button class="btn-primary" onclick="wtSave(true)">Complete the report</button></div>`;
+  }
+  window.wtCancelForm = function(){ if(FORM && (FORM.newPhotos.length || Object.keys(FORM.readings).length) && !confirm('Leave without saving?')) return; FORM = null; view = null; wtRender(); };
+  window.wtIn = function(el){ FORM.readings[el.dataset.k] = el.value; wtRecalc(); };
+  function curVisit(){ const p = plantBy(FORM.plant_id); return { plant:p, visit:{ readings:FORM.readings } }; }
+  window.wtRecalc = function(){
+    const p = plantBy(FORM.plant_id); if(!p) return; const type = p.plant_type === 'cooling' ? 'cooling' : 'boiler', rd = FORM.readings;
+    document.querySelectorAll('.wt-in').forEach(el => { const def = WT.P[type].find(x => x.k === el.dataset.def), col = el.dataset.col, u = arr(p.units).find(x => 'u' + x.no === col);
+      const r = (u && u.status === 'offline') ? null : WT.evalCell(def, u ? WT.unitKind(p, u) : 'oil_coal', col, rd); el.style.background = r === 'out' ? '#fdecea' : r === 'ok' ? '#eef7f1' : ''; el.style.color = r === 'out' ? '#B3261E' : ''; el.style.fontWeight = r === 'out' ? '700' : ''; });
+    document.querySelectorAll('.wt-der').forEach(sp => { const def = WT.P[type].find(x => x.k === sp.dataset.def), u = arr(p.units).find(x => 'u' + x.no === sp.dataset.col), v = WT.derived(def, rd, sp.dataset.col); const r = v != null && u && u.status !== 'offline' ? WT.evalCell(def, WT.unitKind(p, u), sp.dataset.col, rd) : null;
+      sp.textContent = v == null ? '' : v; sp.style.color = r === 'out' ? '#B3261E' : ''; sp.style.fontWeight = r === 'out' ? '700' : ''; });
+    const ev = WT.evalVisit(p, { readings:rd }), lv = document.getElementById('wt-live');
+    if(lv) lv.innerHTML = ev.total ? (ev.n ? `<b style="color:#B3261E">${ev.n} of ${ev.total} limit checks outside the required limits</b>` : `<b style="color:#2E7D4F">All ${ev.total} limit checks within the required limits</b>`) : '<span style="color:var(--text-faint)">Enter readings to check them against the limits</span>';
+  };
+  window.wtMeter = function(){ const a = WT.num(FORM.meter_today), b = WT.num(FORM.meter_last), el = document.getElementById('wt-used'); if(el) el.textContent = a != null && b != null ? (Math.round((a - b) * 100) / 100) : ''; };
+  window.wtChem = function(){ FORM.chemicals.forEach((c, i) => { const o = WT.num(c.opening), cl = WT.num(c.closing), el = document.getElementById('wt-used-' + i); if(el) el.textContent = o != null && cl != null ? (Math.round((o + (WT.num(c.delivered) || 0) - cl) * 100) / 100) + ' kg used' : ''; }); };
+  window.wtAddPhotos = async function(inp, di){ const files = Array.from(inp.files || []).slice(0, 10); if(!files.length) return; showLoader('Preparing the photos…');
+    try{ for(const f of files){ const img = await readImg(f); if(!img) continue; if(di >= 0) FORM.defects[di].newPhotos.push({ image:img, caption:'' }); else FORM.newPhotos.push({ image:img, caption:'' }); } } finally { hideLoader(); } wtRender(); };
+  window.wtDelPhoto = function(i, old){ if(old){ FORM.removedPhotos.push(FORM.oldPhotos[i].id); FORM.oldPhotos.splice(i, 1); } else FORM.newPhotos.splice(i, 1); wtRender(); };
+  window.wtDelDefect = function(i){ const d = FORM.defects[i]; if(d.id) FORM.removed.push(d.id); FORM.defects.splice(i, 1); wtRender(); };
+  /* signature pads */
+  const SIG = {};
+  function sigInit(id, existing){
+    const cv = document.getElementById('sig-' + id); if(!cv) return; const ctx = cv.getContext('2d'); ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.strokeStyle = '#111'; SIG[id] = { cv, ctx, drawn:false, down:false };
+    if(existing){ const im = new Image(); im.onload = () => ctx.drawImage(im, 0, 0, cv.width, cv.height); im.src = existing; }
+    const pos = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; };
+    cv.addEventListener('pointerdown', e => { SIG[id].down = true; SIG[id].drawn = true; const [x, y] = pos(e); ctx.beginPath(); ctx.moveTo(x, y); cv.setPointerCapture(e.pointerId); e.preventDefault(); });
+    cv.addEventListener('pointermove', e => { if(!SIG[id].down) return; const [x, y] = pos(e); ctx.lineTo(x, y); ctx.stroke(); e.preventDefault(); });
+    ['pointerup','pointercancel','pointerleave'].forEach(ev => cv.addEventListener(ev, () => { SIG[id].down = false; }));
+  }
+  window.wtSigClear = function(id){ const s = SIG[id]; if(!s) return; s.ctx.clearRect(0, 0, s.cv.width, s.cv.height); s.drawn = false; if(id === 'c') FORM.sigC = null; else FORM.sigT = null; };
+  const sigData = id => { const s = SIG[id]; if(s && s.drawn) return s.cv.toDataURL('image/png'); return id === 'c' ? FORM.sigC : FORM.sigT; };
+  function formAfter(){ if(!FORM || !plantBy(FORM.plant_id)) return; sigInit('c', FORM.sigC); sigInit('t', FORM.sigT); wtRecalc(); wtMeter(); wtChem(); }
+
+  /* ---------- save, complete, notify, quote ---------- */
+  window.wtSave = async function(complete){
+    const F = FORM, p = plantBy(F.plant_id); if(!p){ toast('Choose the plant first.', 'error'); return; }
+    const sT = sigData('t'), sC = sigData('c');
+    if(complete){ if(!sT){ toast('The technician must sign before the report is completed.', 'error'); return; } if(!sC && !F.noClient){ toast('Get the client to sign, or tick that the client is not available.', 'error'); return; } if(!F.visit_date){ toast('Enter the date.', 'error'); return; } }
+    const bad = F.defects.find(d => !String(d.description || '').trim()); if(bad){ toast('Describe each defect or remove it.', 'error'); return; }
+    showLoader(complete ? 'Completing the report…' : 'Saving the draft…');
+    try{
+      const defsLive = F.defects.map(d => ({ urgency:d.urgency, status:d.status || 'open' }));
+      const ev = WT.evalVisit(p, { readings:F.readings }), overall = WT.overallOf(ev.n, defsLive), now = new Date().toISOString();
+      const row = { organisation_id:STATE.org.id, plant_id:p.id, visit_date:F.visit_date, arrive_time:F.arrive_time || null, depart_time:F.depart_time || null, technician_name:F.technician || null, client_name:F.client_name || null, client_signature:sC || null, technician_signature:sT || null,
+        status:complete ? 'completed' : 'draft', overall:complete ? overall : null, out_of_limit:ev.n, readings:F.readings, equipment:F.equipment, meter_today:WT.num(F.meter_today), meter_last:WT.num(F.meter_last),
+        chemicals:F.chemicals.map(c => ({ name:c.name, opening:WT.num(c.opening), delivered:WT.num(c.delivered), closing:WT.num(c.closing), used:(WT.num(c.opening) != null && WT.num(c.closing) != null) ? Math.round((WT.num(c.opening) + (WT.num(c.delivered) || 0) - WT.num(c.closing)) * 100) / 100 : null })), comments:F.comments || null };
+      if(complete) row.completed_at = now;
+      let vid = F.id, share = null, ref = null;
+      if(vid){ const { error } = await STATE.supabase.from('wt_visits').update(row).eq('id', vid); if(error) throw error; }
+      else { row.technician_id = STATE.user.id; row.created_by = STATE.user.id; const r = await STATE.supabase.rpc('gov_next_no', { p_org:STATE.org.id, p_kind:'wv' }); if(!r.error && r.data != null) row.ref_code = 'WTR-' + String(r.data).padStart(4, '0');
+        const ins = await STATE.supabase.from('wt_visits').insert(row).select('id,share_token,ref_code').single(); if(ins.error) throw ins.error; vid = ins.data.id; }
+      const keep = { organisation_id:STATE.org.id, plant_id:p.id, visit_id:vid };
+      for(const id of F.removed){ await STATE.supabase.from('wt_defects').delete().eq('id', id); }
+      for(const id of F.removedPhotos){ await STATE.supabase.from('wt_photos').delete().eq('id', id); }
+      for(const d of F.defects){ let did = d.id;
+        if(did){ await STATE.supabase.from('wt_defects').update({ description:d.description.trim(), defect_type:d.defect_type, urgency:d.urgency }).eq('id', did); }
+        else { const r = await STATE.supabase.from('wt_defects').insert({ organisation_id:STATE.org.id, plant_id:p.id, visit_id:vid, description:d.description.trim(), defect_type:d.defect_type, urgency:d.urgency, status:'open', created_by:STATE.user.id }).select('id').single(); if(r.error) throw r.error; did = r.data.id; d.id = did; }
+        for(const ph of d.newPhotos){ const r = await STATE.supabase.from('wt_photos').insert(Object.assign({}, keep, { defect_id:did, image_data:ph.image, caption:ph.caption || null })); if(r.error) throw r.error; } d.newPhotos = []; }
+      for(const ph of F.newPhotos){ const r = await STATE.supabase.from('wt_photos').insert(Object.assign({}, keep, { image_data:ph.image, caption:ph.caption || null })); if(r.error) throw r.error; } F.newPhotos = [];
+      F.id = vid;
+      if(complete){ const nxt = p.service_frequency_days ? addDays(F.visit_date, p.service_frequency_days) : p.next_service_date;
+        await STATE.supabase.from('wt_plants').update({ last_service_date:F.visit_date, next_service_date:nxt || null, last_result:overall }).eq('id', p.id); }
+      await loadWt(); hideLoader();
+      if(!complete){ toast('Draft saved.', 'success'); FORM = null; view = null; wtRender(); return; }
+      const v = arr(D().visits).find(x => x.id === vid), notes = [];
+      const wantOps = F.notify == null ? !!p.notify_ops : F.notify;
+      if(wantOps && p.ops_manager_email){ const ok = await wtNotifyOps(vid, true); notes.push(ok ? 'operations manager emailed' : 'the operations manager email could not be sent'); }
+      const opens = arr(D().defects).filter(d => d.visit_id === vid && (d.status || 'open') === 'open');
+      if(F.quote && opens.length){ const ok = await wtRequestQuote(opens.map(d => d.id), true); notes.push(ok ? 'quotation requested' : 'the quotation email could not be sent'); }
+      toast('Report ' + (v.ref_code || '') + ' completed' + (notes.length ? ': ' + notes.join(', ') : '') + '.', 'success');
+      FORM = null; view = { type:'plant', id:p.id }; wtRender(); wtPrintAsk(vid);
+    }catch(e){ try{ hideLoader(); }catch(x){} toast('Could not save: ' + (e.message || e), 'error'); console.error('wtSave', e); }
+  };
+  function wtPrintAsk(vid){ setTimeout(() => { if(confirm('Report completed. Print or save it as a PDF now?')) wtPrint(vid); }, 400); }
+  const dline = d => `- ${d.description} (${d.defect_type === 'parts' ? 'parts supply' : d.defect_type === 'repair' ? 'repair' : 'other'}, urgency: ${d.urgency})`;
+  window.wtNotifyOps = async function(vid, silent){
+    const v = arr(D().visits).find(x => x.id === vid), p = v && plantBy(v.plant_id); if(!v || !p || !p.ops_manager_email){ if(!silent) toast('This plant has no operations manager email.', 'error'); return false; }
+    const s = D().settings || {}, ev = WT.evalVisit(p, v), defs = arr(D().defects).filter(d => d.visit_id === vid), res = (WT.RES[v.overall] || [''])[0];
+    const body = `Dear ${p.ops_manager_name || 'Operations Manager'},\n\nThe water treatment service on ${fmtDate(v.visit_date)} at ${p.name}${p.customer_name ? ' (' + p.customer_name + ')' : ''} is complete.\n\nResult: ${res}.${ev.n ? '\n\nReadings outside the required limits:\n' + ev.out.slice(0, 15).map(o => `- ${o.l}, ${o.unitName || 'unit ' + o.unit}: ${o.v} (required ${o.lim})`).join('\n') : '\n\nAll readings are within the required limits.'}${defs.length ? '\n\nDefects identified:\n' + defs.map(dline).join('\n') + '\nWe will follow up with a quotation where required.' : ''}${v.comments ? '\n\nComments: ' + v.comments : ''}\n\nView the full service report: ${reportUrl(v)}\n\nKind regards,\n${v.technician_name || ''}\n${STATE.org.name}${s.tel ? '\nTel: ' + s.tel : ''}`;
+    let ok = false; try{ ok = await sendEmailToAddress(p.ops_manager_email, `Water treatment service complete: ${p.name} (${v.ref_code || ''})`, body); }catch(e){ ok = false; }
+    if(ok){ await STATE.supabase.from('wt_visits').update({ notified_at:new Date().toISOString() }).eq('id', vid); v.notified_at = new Date().toISOString(); }
+    if(!silent) toast(ok ? 'Email sent to ' + p.ops_manager_email + '.' : 'The email could not be sent.', ok ? 'success' : 'error'); return !!ok;
+  };
+  window.wtRequestQuote = async function(ids, silent){
+    const s = D().settings || {}; if(!s.quote_email){ if(!silent) toast('Set the quotation desk email in Settings first.', 'error'); else toast('Quotation not emailed: set the quotation desk email in Settings.', 'error'); return false; }
+    const defs = arr(D().defects).filter(d => ids.includes(d.id)); if(!defs.length) return false; const p = plantBy(defs[0].plant_id), v = arr(D().visits).find(x => x.id === defs[0].visit_id);
+    const body = `A quotation is requested for work identified during a water treatment service.\n\nCustomer: ${p.customer_name || ''}\nSite: ${p.site_address || ''}\nPlant: ${p.name} (${p.ref_code || ''})\n${p.ops_manager_name ? 'Customer contact: ' + p.ops_manager_name + (p.ops_manager_email ? ' <' + p.ops_manager_email + '>' : '') + '\n' : ''}Service report: ${v ? (v.ref_code || '') + ' of ' + fmtDate(v.visit_date) : ''}\nRaised by: ${(v && v.technician_name) || (STATE.profile && STATE.profile.name) || STATE.user.email}\n\nItems to quote:\n${defs.map(dline).join('\n')}\n\n${v ? 'Report with photographs: ' + reportUrl(v) + '\n\n' : ''}Please prepare the quotation and send it to the customer. Update the quotation reference in Watchman (Water Treatment, Defects and quotations).`;
+    let ok = false; try{ ok = await sendEmailToAddress(s.quote_email, `Quotation request: ${p.customer_name || p.name}, ${defs.length} item${defs.length === 1 ? '' : 's'} (${p.ref_code || ''})`, body); }catch(e){ ok = false; }
+    if(ok){ for(const d of defs){ await STATE.supabase.from('wt_defects').update({ status:'quote_requested', quote_requested_at:new Date().toISOString() }).eq('id', d.id); d.status = 'quote_requested'; } }
+    if(!silent){ toast(ok ? 'Quotation request emailed to ' + s.quote_email + '.' : 'The email could not be sent.', ok ? 'success' : 'error'); if(ok){ await loadWt(); wtRender(); } } return !!ok;
+  };
+
+  /* ---------- print ---------- */
+  window.wtPrint = async function(vid){
+    showLoader('Preparing the report…');
+    try{
+      const v = arr(D().visits).find(x => x.id === vid), p = v && plantBy(v.plant_id); if(!v || !p) return;
+      const [full, ph, df] = await Promise.all([STATE.supabase.from('wt_visits').select('client_signature,technician_signature').eq('id', vid).single(), STATE.supabase.from('wt_photos').select('caption,image_data,defect_id').eq('visit_id', vid).order('created_at'), STATE.supabase.from('wt_defects').select('description,defect_type,urgency,status').eq('visit_id', vid)]);
+      const hist = arr(D().visits).filter(x => x.plant_id === p.id && x.status === 'completed' && x.visit_date <= v.visit_date).sort((a, b) => String(b.visit_date).localeCompare(String(a.visit_date))).slice(0, 6).reverse().map(x => ({ date:x.visit_date, readings:x.readings }));
+      const s = D().settings || {};
+      const data = { org:STATE.org.name, settings:{ division:s.division, tel:s.tel, website:s.website, company_reg:s.company_reg, footer:s.report_footer, logo:s.logo_data || STATE.org.logo_url || null },
+        plant:{ ref:p.ref_code, name:p.name, type:p.plant_type, customer:p.customer_name, site:p.site_address, units:p.units, photo:p.photo_data, make_model:p.make_model, serial_no:p.serial_no }, visit:Object.assign({}, v, full.data || {}),
+        photos:arr(ph.data).map(x => ({ caption:x.caption, image:x.image_data })), defects:arr(df.data).map(x => ({ description:x.description, type:x.defect_type, urgency:x.urgency, status:x.status })), history:hist, qr:qrSvg(plantUrl(p), 84) };
+      const c = document.getElementById('print-container'); c.innerHTML = WT.reportHtml(data); await waitForPrintImages(c); hideLoader(); window.print();
+    } catch(e){ try{ hideLoader(); }catch(x){} toast('Could not prepare the report: ' + (e.message || e), 'error'); }
+  };
+
+  /* ---------- defects, faults, settings ---------- */
+  function defectsHtml(){
+    const ds = arr(D().defects).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))), S = [['open','Not requested'],['quote_requested','Quotation requested'],['quoted','Quoted'],['accepted','Accepted'],['declined','Declined'],['completed','Completed']];
+    return `<div class="detail-card" style="padding:16px"><h3 style="font-size:15px;margin:0 0 8px;">Defects and quotations</h3><p style="font-size:12px;color:var(--text-faint);margin:0 0 8px;">Defects found during services. Request a quotation to email the quotation desk, then track it through to completion.</p>
+      <table><tr><th>Found</th><th>Plant</th><th>Defect</th><th>Needs</th><th>Urgency</th><th>Status</th><th>Quote ref</th><th></th></tr>
+      ${ds.map(d => { const p = plantBy(d.plant_id) || {}; return `<tr><td>${fmtDate(d.created_at)}</td><td class="strong">${E(p.name || '')}<div style="font-size:11px;color:var(--text-faint)">${E(p.customer_name || '')}</div></td><td style="max-width:280px;font-size:12.5px">${E(d.description)}</td><td>${E(d.defect_type)}</td><td><b style="color:${d.urgency === 'critical' || d.urgency === 'high' ? '#B3261E' : 'inherit'}">${E(d.urgency)}</b></td>
+        <td><select ${canW() ? '' : 'disabled'} onchange="wtDefectSet('${d.id}','status',this.value)">${S.map(([k, l]) => `<option value="${k}" ${d.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td><td><input style="width:110px" value="${E(d.quote_ref || '')}" ${canW() ? '' : 'disabled'} onchange="wtDefectSet('${d.id}','quote_ref',this.value)"></td>
+        <td>${canW() && d.status === 'open' ? `<button class="btn-small primary" onclick="wtRequestQuote(['${d.id}'])">Request quotation</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="8" style="color:var(--text-faint)">No defects recorded.</td></tr>'}</table></div>`;
+  }
+  window.wtDefectSet = async function(id, k, v){ const { error } = await STATE.supabase.from('wt_defects').update({ [k]:v || null }).eq('id', id); if(error){ toast('Could not update: ' + error.message, 'error'); return; } const d = arr(D().defects).find(x => x.id === id); if(d) d[k] = v; toast('Saved.', 'success'); };
+  function faultsHtml(){
+    const fs = arr(D().faults);
+    return `<div class="detail-card" style="padding:16px"><h3 style="font-size:15px;margin:0 0 8px;">Faults reported from the QR code</h3><table><tr><th>Reported</th><th>Plant</th><th>By</th><th>Problem</th><th></th><th>Status</th><th></th></tr>
+      ${fs.map(f => { const p = plantBy(f.plant_id) || {}; return `<tr><td>${fmtDate(f.created_at)}</td><td class="strong">${E(p.name || '')}<div style="font-size:11px;color:var(--text-faint)">${E(p.customer_name || '')}</div></td><td style="font-size:12px">${E(f.reporter_name || '—')}<br>${E(f.reporter_contact || '')}</td><td style="max-width:300px;font-size:12.5px">${E(f.description)}</td><td>${f.image_data ? `<img src="${f.image_data}" style="width:56px;height:44px;object-fit:cover;border-radius:4px;">` : ''}</td><td>${E(f.status)}</td>
+        <td style="white-space:nowrap">${canW() ? `${f.status === 'new' ? `<button class="btn-small" onclick="wtFaultSet('${f.id}','acknowledged')">Acknowledge</button> ` : ''}${f.status !== 'closed' ? `<button class="btn-small" onclick="wtFaultDefect('${f.id}')">Make a defect</button> <button class="btn-small" onclick="wtFaultSet('${f.id}','closed')">Close</button>` : ''}` : ''}</td></tr>`; }).join('') || '<tr><td colspan="7" style="color:var(--text-faint)">No faults reported.</td></tr>'}</table></div>`;
+  }
+  window.wtFaultSet = async function(id, st){ const { error } = await STATE.supabase.from('wt_faults').update({ status:st }).eq('id', id); if(error){ toast('Could not update: ' + error.message, 'error'); return; } await loadWt(); wtRender(); };
+  window.wtFaultDefect = async function(id){ const f = arr(D().faults).find(x => x.id === id); if(!f) return; const { error } = await STATE.supabase.from('wt_defects').insert({ organisation_id:STATE.org.id, plant_id:f.plant_id, description:f.description, defect_type:'repair', urgency:'medium', status:'open', created_by:STATE.user.id }); if(error){ toast('Could not create: ' + error.message, 'error'); return; }
+    await STATE.supabase.from('wt_faults').update({ status:'acknowledged' }).eq('id', id); await loadWt(); tab = 'defects'; wtRender(); toast('Defect created: request the quotation from here.', 'success'); };
+  let LOGO = undefined;
+  function settingsHtml(){
+    const s = D().settings || {}; LOGO = undefined; const f = (k, l, t) => `<div class="field"><label>${l}</label><input id="ws-${k}" type="${t || 'text'}" value="${E(s[k] || '')}" ${isMgr() ? '' : 'disabled'}></div>`;
+    return `<div class="detail-card" style="padding:16px"><div class="panel-head"><h3 style="font-size:15px">Report and notification settings</h3>${isMgr() ? '<button class="btn-small primary" onclick="wtSaveSettings()">Save settings</button>' : ''}</div>
+      <div class="form-grid">${f('division', 'Division name on the report (for example Water Treatment Division)')}${f('company_reg', 'Company registration number')}${f('tel', 'Telephone')}${f('website', 'Website')}${f('quote_email', 'Quotation desk email (prompted when something is defective)', 'email')}
+        <div class="field" style="grid-column:1/-1"><label>Report footer note</label><input id="ws-report_footer" value="${E(s.report_footer || '')}" ${isMgr() ? '' : 'disabled'}></div>
+        <div class="field" style="grid-column:1/-1"><label>Logo for reports and QR labels</label>${isMgr() ? '<input type="file" accept="image/*" onchange="wtLogo(this)">' : ''}${s.logo_data ? `<div><img id="ws-logo" src="${s.logo_data}" style="max-height:70px;margin-top:6px;"></div>` : '<div style="font-size:12px;color:var(--text-faint)">No logo uploaded. The organisation logo is used if there is one.</div>'}</div></div>
+      <p style="font-size:12px;color:var(--text-faint);margin-top:10px;">The notification to a customer's operations manager is switched on or off per plant (Plants, open a plant). It can also be unticked for a single report when completing it.</p></div>`;
+  }
+  window.wtLogo = async function(inp){ const f = inp.files && inp.files[0]; if(!f) return; const img = await readImg(f); if(!img){ toast('That image could not be read.', 'error'); return; } LOGO = img; const el = document.getElementById('ws-logo'); if(el) el.src = img; else inp.insertAdjacentHTML('afterend', `<div><img id="ws-logo" src="${img}" style="max-height:70px;margin-top:6px;"></div>`); };
+  window.wtSaveSettings = async function(){
+    const g = k => (document.getElementById('ws-' + k) || {}).value || null, old = D().settings || {};
+    const row = { organisation_id:STATE.org.id, division:g('division'), company_reg:g('company_reg'), tel:g('tel'), website:g('website'), quote_email:g('quote_email'), report_footer:g('report_footer'), logo_data:LOGO !== undefined ? LOGO : (old.logo_data || null), updated_at:new Date().toISOString() };
+    const { error } = await STATE.supabase.from('wt_settings').upsert(row, { onConflict:'organisation_id' }); if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+    await loadWt(); wtRender(); toast('Settings saved.', 'success');
+  };
+
+  /* ---------- integration ---------- */
+  const gapsWt = () => { const out = [], t = tdy(), d = D(); if(off() || !d.loaded) return out;
+    const od = d.plants.filter(p => p.status === 'active' && p.next_service_date && p.next_service_date < t).length; if(od) out.push(['Water treatment plants overdue for service', od]);
+    const cr = d.plants.filter(p => p.last_result === 'critical').length; if(cr) out.push(['Water treatment plants with a critical last result', cr]);
+    const dn = d.defects.filter(x => x.status === 'open').length; if(dn) out.push(['Water treatment defects without a quotation request', dn]);
+    const nf = d.faults.filter(f => f.status === 'new').length; if(nf) out.push(['New faults reported from plant QR codes', nf]); return out; };
+  const seg = (label, count, color) => ({ label, count:Math.max(0, count), color });
+  if(window.__wdExtra && !window.__wdExtra.some(e => e[0] === 'wt')){
+    window.__wdExtra.push(['wt', 'Water Treatment', () => { if(off() || !D().loaded || !D().plants.length) return null; const pl = D().plants.filter(p => p.status === 'active'), t = tdy(), od = pl.filter(p => p.next_service_date && p.next_service_date < t).length, cr = pl.filter(p => p.last_result === 'critical').length, at = pl.filter(p => p.last_result === 'attention').length;
+      return [seg('Compliant and in date', pl.length - od - cr - at, 'green'), seg('Attention required', at, 'amber'), seg('Critical', cr, 'red'), seg('Overdue for service', od, 'red')]; }]);
+  }
+  { const _w = wdAttentionItems; wdAttentionItems = window.wdAttentionItems = function(){ const out = _w.apply(this, arguments); try{ gapsWt().forEach(([label, count]) => { if(!out.some(o => o.label === label)) out.push({ label, count, mod:'wt' }); }); }catch(e){} return out; }; }
+})();
+
 </script>
 </body>
 </html>
