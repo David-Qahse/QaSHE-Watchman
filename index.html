@@ -38947,15 +38947,24 @@ async function renderNcResponsePage(token){
     if(!cat){ toast('Choose a category first: it drives the statistics and trends.', 'error'); return; }
     if(!title){ toast('Give the event a short title.', 'error'); return; }
     const btn = document.getElementById('ian-save'); btn.disabled = true; btn.textContent = 'Recording…';
-    const payload = { organisation_id:STATE.org.id, title, record_class:cls, category_key:cat, description:g('ian-desc').trim(), immediate_action_taken:g('ian-imm').trim(), contact_details:g('ian-contacts').trim(),
-      severity:g('ian-sev'), raised_by:STATE.user.id, owner_id:g('ian-owner'), target_close_date:g('ian-tgt'), discipline:discFor(cls, cat),
-      occurred_at:g('ian-when') ? new Date(g('ian-when')).toISOString() : new Date().toISOString(), location:g('ian-where').trim() || null, witnesses:g('ian-wit').trim() || null,
-      reported_to_authority:g('ian-auth') === 'yes', authority_reference:g('ian-auth') === 'yes' ? (g('ian-authref').trim() || null) : null };
-    if(cls === 'accident'){ payload.injured_person = g('ian-injured').trim() || null; payload.injury_details = g('ian-injury').trim() || null; payload.lost_time_days = g('ian-lost') ? parseInt(g('ian-lost'), 10) : null; }
-    const { error } = await STATE.supabase.from('nonconformances').insert(payload);
-    btn.disabled = false; btn.textContent = 'Record';
-    if(error){ toast('Could not record: ' + error.message + (/record_class|category_key|column/i.test(error.message||'') ? ' (run qashe-watchman-schema-incidents.sql first)' : ''), 'error'); return; }
-    STATE._ianFormOpen = false; await loadNCs(); updateNavBadges(); renderIan(); toast(`${CLS[cls][0]} recorded.`, 'success');
+    const reset = () => { btn.disabled = false; btn.textContent = 'Record'; };
+    try {
+      const whenRaw = g('ian-when'), whenD = whenRaw ? new Date(whenRaw) : new Date();
+      const payload = { organisation_id:STATE.org.id, title, record_class:cls, category_key:cat, description:g('ian-desc').trim(), immediate_action_taken:g('ian-imm').trim(), contact_details:g('ian-contacts').trim(),
+        severity:g('ian-sev') || null, raised_by:STATE.user.id, owner_id:g('ian-owner') || null, target_close_date:g('ian-tgt') || null, discipline:discFor(cls, cat),
+        occurred_at:isNaN(whenD.getTime()) ? new Date().toISOString() : whenD.toISOString(), location:g('ian-where').trim() || null, witnesses:g('ian-wit').trim() || null,
+        reported_to_authority:g('ian-auth') === 'yes', authority_reference:g('ian-auth') === 'yes' ? (g('ian-authref').trim() || null) : null };
+      if(cls === 'accident'){ payload.injured_person = g('ian-injured').trim() || null; payload.injury_details = g('ian-injury').trim() || null; payload.lost_time_days = g('ian-lost') ? parseInt(g('ian-lost'), 10) : null; }
+      const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('The server did not respond within 30 seconds. Check your connection and try again; nothing was recorded if this message appears.')), 30000));
+      const { error } = await Promise.race([STATE.supabase.from('nonconformances').insert(payload), timeout]);
+      reset();
+      if(error){ toast('Could not record: ' + error.message + (/record_class|category_key|column/i.test(error.message||'') ? ' (run qashe-watchman-schema-incidents.sql first)' : ''), 'error'); return; }
+      STATE._ianFormOpen = false;
+      toast(`${CLS[cls][0]} recorded.`, 'success');
+      try { await loadNCs(); updateNavBadges(); renderIan(); } catch(e){ console.warn('ian refresh', e); try{ renderIan(); }catch(x){} }
+    } catch(e){
+      reset(); toast('Could not record: ' + (e && e.message ? e.message : e), 'error'); console.error('ianSubmit', e);
+    }
   };
 
   function filtered(){
