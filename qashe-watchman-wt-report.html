@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Service Report</title>
+<style>body{margin:0;background:#e9e8e6;font-family:Arial,Helvetica,sans-serif}
+#bar{background:#fff;border-bottom:1px solid #ddd;padding:10px 16px;display:flex;gap:10px;align-items:center;position:sticky;top:0}
+#bar button{background:#B21616;color:#fff;border:0;border-radius:8px;padding:9px 16px;font:700 14px Arial,sans-serif;cursor:pointer}
+#sheet{max-width:820px;margin:16px auto;background:#fff;padding:18px;box-shadow:0 1px 6px rgba(0,0,0,.15)}
+@media print{#bar{display:none}body{background:#fff}#sheet{margin:0;box-shadow:none;max-width:none;padding:0}@page{size:A4;margin:10mm}}</style></head><body>
+<div id="bar"><b style="flex:1">Water treatment service report</b><button onclick="window.print()">Print or save as PDF</button></div>
+<div id="sheet">Loading…</div>
+<script type="module">
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+const supabase = createClient('https://uzywxhptwavnvpfzbhkb.supabase.co', 'sb_publishable_8XxT0I-Qdmswhd2I-TT_jg_CuI8a24f');
+
+/* ===== Water Treatment core: parameters, limits, evaluation and the report layout (shared by Watchman and the public report page) ===== */
+var WT = (function(){
+  var esc = function(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+  var KINDS = { boiler:[['oil_coal','Oil and coal fired'],['coil_elect','Coil and electric']], cooling:[['tower','Cooling tower'],['closed','Closed system']] };
+  var TITLE = { boiler:'BOILER SYSTEM ANALYSIS REPORT', cooling:'COOLING SYSTEM ANALYSIS REPORT' };
+  var UNITWORD = { boiler:'Boilers', cooling:'Cooling towers and closed systems' };
+  /* lim: per kind {min,max,t} ; 'all' applies to every kind. lc = columns where the limit applies. ratio = percentage of TDS check. */
+  var P = {
+    boiler:[
+      { k:'tds', l:'Total Dissolved Solids', u:'mg/l', cols:['raw','feed','unit'], lim:{ oil_coal:{min:2000,max:3500,t:'2000-3500 TDS'}, coil_elect:{max:1200,t:'1200 µS'} } },
+      { k:'hardness', l:'Total Hardness (as CaCO3)', u:'mg/l', cols:['raw','soft','feed','unit'], lc:['soft','feed','unit'], lim:{ all:{max:5,t:'5 max'} } },
+      { k:'ph', l:'pH', u:'', cols:['raw','feed','unit'], lc:['unit'], lim:{ all:{min:9,max:12,t:'9-12'} } },
+      { k:'p_alk', l:'P Alkalinity (as CaCO3)', u:'mg/l', cols:['unit'], lim:{ oil_coal:{max:1200,t:'1200 max'}, coil_elect:{max:800,t:'800 max'} } },
+      { k:'m_alk', l:'M Alkalinity (as CaCO3)', u:'mg/l', cols:['raw','soft','feed','unit'], ratio:{ of:'tds', min:25, max:30, t:'25-30% of TDS' } },
+      { k:'oh_alk', l:'OH Alkalinity (as CaCO3)', u:'mg/l', cols:['unit'], ratio:{ of:'tds', min:15, max:25, t:'15-25% of TDS' } },
+      { k:'chlorides', l:'Chlorides (as Cl)', u:'mg/l', cols:['raw','feed','unit'], lc:['unit'], lim:{ all:{max:350,t:'350 max'} } },
+      { k:'phosphates', l:'Phosphates', u:'mg/l', cols:['unit'], lim:{ all:{min:40,t:'40 min'} } },
+      { k:'sulphite', l:'Sulphite', u:'mg/l', cols:['unit'], lim:{ all:{min:30,max:100,t:'30-100'} } },
+      { k:'hydrazine', l:'Hydrazine', u:'mg/l', cols:['unit'], lim:{ all:{min:0.1,max:0.3,t:'0.1-0.3'} } },
+      { k:'colour', l:'Colour', u:'', cols:['raw','feed','unit'], text:true, lc:['unit'], lim:{ all:{t:'Clear',clear:true} } },
+      { k:'cond_return', l:'Condensate Return %', u:'%', cols:['unit'], info:'Boiler w/m minus Softener w/m, divided by Softener w/m' },
+      { k:'feed_temp', l:'Feed tank temperature', u:'°C', cols:['unit'] },
+      { k:'blowdown', l:'Boiler blow down rate', u:'', cols:['unit'] },
+      { k:'cs2', l:'CS2 Controller', u:'µS', cols:['unit'], info:'3500 µS set point' }
+    ],
+    cooling:[
+      { k:'tds', l:'Total Dissolved Solids', u:'mg/l', cols:['raw','unit'], lc:['unit'], lim:{ all:{max:2000,t:'2000 max'} } },
+      { k:'hardness', l:'Total Hardness (as CaCO3)', u:'mg/l', cols:['raw','unit'] },
+      { k:'ph', l:'pH', u:'', cols:['raw','unit'], lc:['unit'], lim:{ all:{min:7,max:9,t:'7-9'} } },
+      { k:'m_alk', l:'M-Alkalinity', u:'mg/l', cols:['raw','unit'] },
+      { k:'chlorides', l:'Chloride (as Cl)', u:'mg/l', cols:['raw','unit'], lc:['unit'], lim:{ all:{max:350,t:'350 max'} } },
+      { k:'cycles_cl', l:'Cycles of Concentration (Cl)', u:'', cols:['unit'], derived:'cl', lim:{ all:{min:4,max:6,t:'4 to 6'} } },
+      { k:'cycles_h', l:'Cycles of Concentration (Tot H)', u:'', cols:['unit'], derived:'h', info:'Greater than Cl concentration' },
+      { k:'phosphonate', l:'Phosphonate', u:'mg/l', cols:['unit'], lim:{ all:{min:200,t:'200 min'} } },
+      { k:'zinc', l:'Zinc', u:'mg/l', cols:['unit'], lim:{ all:{min:1,max:3,t:'1 to 3'} } },
+      { k:'molybdate', l:'Molybdate', u:'mg/l', cols:['unit'], lim:{ all:{min:10,t:'10 min'} } },
+      { k:'nitrites', l:'Nitrites', u:'mg/l', cols:['unit'], lim:{ all:{min:750,max:1000,t:'750 to 1000'} } },
+      { k:'colour', l:'Colour', u:'', cols:['raw','unit'], text:true, lc:['unit'], lim:{ all:{t:'Clear',clear:true} } }
+    ]
+  };
+  var EQUIP = {
+    boiler:[['softener_regen','Softener regen frequency'],['brine_salt','Brine tank salt (Y/N)'],['dosing_make','Chemical dosing pump make'],['dosing_setting','Dosing pump setting'],['ratio','Ratio Chem (kg), Water (m³)']],
+    cooling:[['dosing_pumps','Dosing pumps'],['dosing_settings','Dosing pump settings'],['dosing_run','Dosing pump running time'],['bleed_timer','Bleed timer settings'],['ratio','Ratio']]
+  };
+  var num = function(v){ if(v == null || v === '') return null; var n = parseFloat(String(v).replace(',', '.').replace(/[^0-9.\-]/g, '')); return isNaN(n) ? null : n; };
+  var limOf = function(def, kind){ var l = def.lim; if(!l) return null; return l[kind] || l.all || null; };
+  var unitKind = function(plant, u){ return (u && u.kind) || (plant.plant_type === 'cooling' ? 'tower' : 'oil_coal'); };
+  var cell = function(rd, col, k){ return rd[col + '.' + k]; };
+  /* derived value for a cooling unit: cycles of concentration */
+  var derived = function(def, rd, col){
+    if(!def.derived) return null; var f = def.derived === 'cl' ? 'chlorides' : 'hardness';
+    var a = num(cell(rd, col, f)), b = num(cell(rd, 'raw', f)); if(a == null || !b) return null; return Math.round(a / b * 10) / 10;
+  };
+  var valueOf = function(def, rd, col){ return def.derived ? derived(def, rd, col) : cell(rd, col, def.k); };
+  /* returns 'ok', 'out' or null (no limit or no value) */
+  var evalCell = function(def, kind, col, rd){
+    var isUnit = /^u\d+$/.test(col), cc = isUnit ? 'unit' : col, v = valueOf(def, rd, col);
+    if(v == null || v === '') return null;
+    if(def.ratio && isUnit){ var t = num(cell(rd, col, def.ratio.of)), a = num(v); if(t == null || !t || a == null) return null; var pc = a / t * 100; return (pc >= def.ratio.min - 0.05 && pc <= def.ratio.max + 0.05) ? 'ok' : 'out'; }
+    var l = limOf(def, kind); if(!l) return null; var lc = def.lc || ['unit']; if(lc.indexOf(cc) < 0) return null;
+    if(l.clear){ return /clear/i.test(String(v)) ? 'ok' : 'out'; }
+    var n = num(v); if(n == null) return null; if(l.min != null && n < l.min) return 'out'; if(l.max != null && n > l.max) return 'out'; return 'ok';
+  };
+  var evalVisit = function(plant, visit){
+    var rd = visit.readings || {}, type = plant.plant_type === 'cooling' ? 'cooling' : 'boiler', out = [], total = 0;
+    (plant.units || []).forEach(function(u){
+      if(u.status === 'offline') return; var col = 'u' + u.no, kind = unitKind(plant, u);
+      P[type].forEach(function(def){ var r = evalCell(def, kind, col, rd); if(r){ total++; if(r === 'out') out.push({ unit:u.no, unitName:u.name, k:def.k, l:def.l, v:valueOf(def, rd, col), lim:(def.ratio ? def.ratio.t : (limOf(def, kind) || {}).t) || '' }); } });
+    });
+    return { out:out, n:out.length, total:total };
+  };
+  var overallOf = function(n, defects){ var crit = (defects || []).some(function(d){ return d.urgency === 'critical' && d.status !== 'completed'; }); if(crit || n >= 4) return 'critical'; if(n > 0 || (defects || []).some(function(d){ return d.status !== 'completed'; })) return 'attention'; return 'compliant'; };
+  var RES = { compliant:['Compliant','#2E7D4F'], attention:['Attention required','#B26A16'], critical:['Critical','#B3261E'] };
+  var fd = function(d){ if(!d) return ''; var x = new Date(String(d).slice(0,10) + 'T00:00:00'); return isNaN(x) ? String(d) : x.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }); };
+
+  /* small trend chart: values by visit for one parameter on the first active unit, with the limit band */
+  var chart = function(title, pts, lim){
+    var v = pts.filter(function(p){ return p.v != null; }); if(v.length < 2) return '';
+    var W = 230, H = 110, L = 28, R = 8, T = 18, B = 22, ys = v.map(function(p){ return p.v; });
+    var lo = Math.min.apply(null, ys), hi = Math.max.apply(null, ys);
+    if(lim){ if(lim.min != null) lo = Math.min(lo, lim.min); if(lim.max != null) hi = Math.max(hi, lim.max); }
+    if(hi === lo){ hi += 1; lo -= 1; } var pad = (hi - lo) * 0.1; lo -= pad; hi += pad;
+    var X = function(i){ return L + (W - L - R) * (v.length === 1 ? 0.5 : i / (v.length - 1)); }, Y = function(y){ return T + (H - T - B) * (1 - (y - lo) / (hi - lo)); };
+    var band = lim ? '<rect x="' + L + '" y="' + Y(lim.max != null ? lim.max : hi) + '" width="' + (W - L - R) + '" height="' + Math.max(0, Y(lim.min != null ? lim.min : lo) - Y(lim.max != null ? lim.max : hi)) + '" fill="#2E7D4F" opacity="0.13"/>' : '';
+    var line = v.map(function(p, i){ return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(p.v).toFixed(1); }).join(' ');
+    var dots = v.map(function(p, i){ return '<circle cx="' + X(i).toFixed(1) + '" cy="' + Y(p.v).toFixed(1) + '" r="2.6" fill="#1c1c1c"/><text x="' + X(i).toFixed(1) + '" y="' + (Y(p.v) - 5).toFixed(1) + '" font-size="7.5" text-anchor="middle" fill="#444">' + esc(p.v) + '</text>'; }).join('');
+    var labs = v.map(function(p, i){ return '<text x="' + X(i).toFixed(1) + '" y="' + (H - 8) + '" font-size="7" text-anchor="middle" fill="#777">' + esc(String(p.d).slice(5, 10).split('-').reverse().join('/')) + '</text>'; }).join('');
+    return '<div style="border:1px solid #ddd;border-radius:6px;padding:4px 6px;width:240px;"><div style="font-size:10px;font-weight:700;margin-bottom:2px;">' + esc(title) + '</div><svg viewBox="0 0 ' + W + ' ' + H + '" width="230" height="110">' + band + '<path d="' + line + '" fill="none" stroke="#1c1c1c" stroke-width="1.4"/>' + dots + labs + '</svg></div>';
+  };
+
+  /* the report, laid out like the Allmech paper form, with photos, defects, trends and signatures */
+  var reportHtml = function(d){
+    var plant = d.plant; if(!plant.plant_type) plant.plant_type = plant.type; var v = d.visit, s = d.settings || {}, type = plant.plant_type === 'cooling' ? 'cooling' : 'boiler', rd = v.readings || {}, units = plant.units || [];
+    var ev = evalVisit(plant, v), res = RES[v.overall] || RES.compliant;
+    var cols = [], hd = '';
+    var showRaw = true, showSoft = type === 'boiler', showFeed = type === 'boiler';
+    var th = 'border:1px solid #333;padding:3px 5px;font-size:10px;text-align:center;background:#f2f2f2;';
+    var td = 'border:1px solid #333;padding:3px 5px;font-size:10.5px;text-align:center;';
+    var unitHdr = units.map(function(u){ return '<th style="' + th + '">' + u.no + '<div style="font-weight:400;font-size:8px;">' + esc(u.name || '') + (u.status === 'offline' ? ' (offline)' : '') + '</div></th>'; }).join('');
+    var limHead = type === 'boiler' ? '<th style="' + th + '">Required Limits<br>Oil &amp; Coal</th><th style="' + th + '">Required Limits<br>Coil / Elect</th>' : '<th style="' + th + '">Required Limits</th>';
+    var rows = P[type].map(function(def){
+      var c = '<td style="' + td + 'text-align:left;">' + esc(def.l) + (def.u ? ' <span style="color:#777;font-size:8.5px;">' + esc(def.u) + '</span>' : '') + '</td>';
+      ['raw','soft','feed'].forEach(function(col){
+        if(col === 'raw' && !showRaw) return; if(col === 'soft' && !showSoft) return; if(col === 'feed' && !showFeed) return;
+        var val = def.cols.indexOf(col) >= 0 ? cell(rd, col, def.k) : ''; var r = def.cols.indexOf(col) >= 0 ? evalCell(def, 'oil_coal', col, rd) : null;
+        c += '<td style="' + td + (def.cols.indexOf(col) < 0 ? 'background:#fafafa;' : '') + '">' + esc(val == null ? '' : val) + '</td>';
+      });
+      if(type === 'boiler'){
+        if(def.ratio) c += '<td style="' + td + '" colspan="2">' + esc(def.ratio.t) + '</td>';
+        else { var a = limOf(def, 'oil_coal'), b = limOf(def, 'coil_elect'); if(!a && !b && def.info) c += '<td style="' + td + 'font-size:8.5px;" colspan="2">' + esc(def.info) + '</td>'; else c += '<td style="' + td + '">' + esc(a ? a.t : '') + '</td><td style="' + td + '">' + esc(b ? b.t : '') + '</td>'; }
+      } else {
+        var lim = def.lim ? (def.lim.all || {}) : null; c += '<td style="' + td + '">' + esc(lim ? lim.t : (def.info || '')) + '</td>';
+      }
+      units.forEach(function(u){ var col = 'u' + u.no; var val = def.derived ? derived(def, rd, col) : cell(rd, col, def.k); var r = u.status === 'offline' ? null : evalCell(def, unitKind(plant, u), col, rd);
+        c += '<td style="' + td + (r === 'out' ? 'background:#fdecea;color:#B3261E;font-weight:700;' : r === 'ok' ? 'background:#eef7f1;' : '') + '">' + esc(val == null ? '' : val) + '</td>'; });
+      return '<tr>' + c + '</tr>';
+    }).join('');
+    var rawHd = '<th style="' + th + '">Raw<br>Water</th>' + (type === 'boiler' ? '<th style="' + th + '">Soft<br>Water</th><th style="' + th + '">Feed<br>Water</th>' : '');
+    var table = '<table style="border-collapse:collapse;width:100%;margin-top:8px;"><tr><th style="' + th + 'text-align:left;" rowspan="2">Water Analysis<br>mg / litre</th><th style="' + th + '" colspan="' + (type === 'boiler' ? 3 : 1) + '">Samples</th><th style="' + th + '" colspan="' + (type === 'boiler' ? 2 : 1) + '" rowspan="2">' + (type === 'boiler' ? 'Required Limits<br>Oil &amp; Coal | Coil / Elect' : 'Required<br>Limits') + '</th><th style="' + th + '" colspan="' + Math.max(1, units.length) + '">' + UNITWORD[type] + '</th></tr><tr>' + rawHd + unitHdr + '</tr>' + rows + '</table>';
+    var eq = EQUIP[type], e = v.equipment || {};
+    var box = function(title, inner){ return '<div style="border:1px solid #333;flex:1;min-width:210px;"><div style="background:#f2f2f2;font-weight:700;font-size:10.5px;padding:3px 6px;border-bottom:1px solid #333;">' + title + '</div>' + inner + '</div>'; };
+    var kv = function(a, b){ return '<div style="display:flex;border-bottom:1px solid #ddd;font-size:10.5px;"><div style="flex:1.3;padding:3px 6px;">' + esc(a) + '</div><div style="flex:1;padding:3px 6px;border-left:1px solid #ddd;font-weight:700;">' + esc(b == null ? '' : b) + '</div></div>'; };
+    var used = (v.meter_today != null && v.meter_last != null) ? Math.round((Number(v.meter_today) - Number(v.meter_last)) * 100) / 100 : '';
+    var chem = v.chemicals || [];
+    var chemTable = '<table style="border-collapse:collapse;width:100%;font-size:10.5px;"><tr><td style="padding:3px 6px;border-bottom:1px solid #ddd;"></td>' + chem.map(function(c){ return '<td style="padding:3px 6px;border-bottom:1px solid #ddd;border-left:1px solid #ddd;font-weight:700;">' + esc(c.name) + '</td>'; }).join('') + '</tr>' +
+      [['Opening stock (kg)','opening'],['Chemicals delivered (kg)','delivered'],['Closing stock (kg)','closing'],['Chemicals used (kg)','used']].map(function(r){ return '<tr><td style="padding:3px 6px;border-bottom:1px solid #ddd;">' + r[0] + '</td>' + chem.map(function(c){ var val = r[1] === 'used' ? ((num(c.opening) != null && num(c.closing) != null) ? Math.round((num(c.opening) + (num(c.delivered) || 0) - num(c.closing)) * 100) / 100 : c.used) : c[r[1]]; return '<td style="padding:3px 6px;border-bottom:1px solid #ddd;border-left:1px solid #ddd;">' + esc(val == null ? '' : val) + '</td>'; }).join('') + '</tr>'; }).join('') + '</table>';
+    var blocks = '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">' +
+      box('Equipment', eq.map(function(x){ return kv(x[1], e[x[0]]); }).join('')) +
+      box('Water Meter', kv('Water meter reading today', v.meter_today) + kv('Last meter reading', v.meter_last) + kv('Water used (kl)', used)) +
+      box('Chemicals', chemTable) + '</div>';
+    var defects = d.defects || [], photos = d.photos || [];
+    var dtab = defects.length ? '<div style="margin-top:10px;"><div style="font-weight:700;font-size:11px;margin-bottom:3px;">Defects identified</div><table style="border-collapse:collapse;width:100%;"><tr><th style="' + th + 'text-align:left;">Description</th><th style="' + th + '">Type</th><th style="' + th + '">Urgency</th><th style="' + th + '">Quotation</th></tr>' +
+      defects.map(function(x){ return '<tr><td style="' + td + 'text-align:left;">' + esc(x.description) + '</td><td style="' + td + '">' + esc(x.type === 'parts' ? 'Parts supply' : x.type === 'repair' ? 'Repair' : 'Other') + '</td><td style="' + td + 'font-weight:700;color:' + (x.urgency === 'critical' || x.urgency === 'high' ? '#B3261E' : '#444') + ';">' + esc(x.urgency) + '</td><td style="' + td + '">' + esc(({ open:'Not requested', quote_requested:'Requested', quoted:'Quoted', accepted:'Accepted', declined:'Declined', completed:'Completed' })[x.status] || x.status) + '</td></tr>'; }).join('') + '</table></div>' : '';
+    var ph = photos.length ? '<div style="margin-top:10px;page-break-inside:avoid;"><div style="font-weight:700;font-size:11px;margin-bottom:4px;">Photographs</div><div style="display:flex;flex-wrap:wrap;gap:8px;">' + photos.map(function(p){ return '<div style="width:170px;text-align:center;border:1px solid #ddd;border-radius:4px;padding:4px;"><img src="' + p.image + '" style="width:160px;height:120px;object-fit:cover;"><div style="font-size:9px;color:#555;margin-top:2px;">' + esc(p.caption || '') + '</div></div>'; }).join('') + '</div></div>' : '';
+    /* trends: first unit that is not offline */
+    var u0 = units.filter(function(u){ return u.status !== 'offline'; })[0], charts = '';
+    if(u0 && (d.history || []).length > 1){
+      var keys = type === 'boiler' ? ['tds','ph','chlorides'] : ['tds','ph','cycles_cl'];
+      charts = keys.map(function(k){ var def = P[type].filter(function(x){ return x.k === k; })[0]; var pts = d.history.map(function(h){ var col = 'u' + u0.no; var val = def.derived ? derived(def, h.readings || {}, col) : num(cell(h.readings || {}, col, k)); return { d:h.date, v:val }; }); var l = limOf(def, unitKind(plant, u0)); return chart(def.l + ' (unit ' + u0.no + ')', pts, l); }).join('');
+      if(charts) charts = '<div style="margin-top:10px;page-break-inside:avoid;"><div style="font-weight:700;font-size:11px;margin-bottom:4px;">Trends over the last visits (green band: required limit)</div><div style="display:flex;gap:8px;flex-wrap:wrap;">' + charts + '</div></div>';
+    }
+    var sig = function(label, img, name){ return '<div style="flex:1;min-width:230px;"><div style="font-size:10.5px;font-weight:700;">' + label + '</div><div style="height:58px;border-bottom:1px solid #333;display:flex;align-items:flex-end;">' + (img ? '<img src="' + img + '" style="max-height:54px;max-width:220px;">' : '') + '</div><div style="font-size:10.5px;margin-top:2px;">' + esc(name || '') + '</div></div>'; };
+    var topInfo = '<div style="display:flex;gap:10px;margin-top:8px;">' +
+      '<div style="flex:2;border:1px solid #333;padding:6px 8px;min-height:84px;"><div style="font-size:10px;color:#555;">Customer:</div><div style="font-size:13px;font-weight:700;">' + esc(plant.customer || '') + '</div><div style="font-size:11px;">' + esc(plant.site || '') + '</div><div style="font-size:10px;color:#555;margin-top:4px;">' + esc(plant.ref || '') + ' &middot; ' + esc(plant.name || '') + (plant.make_model ? ' &middot; ' + esc(plant.make_model) : '') + (plant.serial_no ? ' &middot; S/N ' + esc(plant.serial_no) : '') + '</div></div>' +
+      '<div style="flex:2;font-size:11px;line-height:1.9;"><b>Date:</b> ' + esc(fd(v.visit_date)) + '<br><b>Arrive:</b> ' + esc(v.arrive_time || '') + ' &nbsp;&nbsp; <b>Depart:</b> ' + esc(v.depart_time || '') + '<br><b>Report:</b> ' + esc(v.ref_code || '') + '</div>' +
+      (plant.photo ? '<div style="width:110px;"><img src="' + plant.photo + '" style="width:110px;height:84px;object-fit:cover;border:1px solid #333;"></div>' : '') +
+      (d.qr ? '<div style="width:84px;">' + d.qr + '</div>' : '') + '</div>';
+    var head = '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">' +
+      '<div style="width:160px;">' + (s.logo ? '<img src="' + s.logo + '" style="max-width:160px;max-height:70px;">' : '<div style="font-size:22px;font-weight:800;">' + esc(d.org || '') + '</div>') + (s.company_reg ? '<div style="font-size:8px;color:#555;">Company Reg. No ' + esc(s.company_reg) + '</div>' : '') + '</div>' +
+      '<div style="text-align:center;flex:1;"><div style="font-weight:700;font-size:13px;">' + esc(s.division || '') + '</div><div style="font-weight:800;font-size:15px;">' + TITLE[type] + '</div></div>' +
+      '<div style="text-align:right;font-size:10.5px;width:160px;">' + (s.tel ? 'Tel: ' + esc(s.tel) + '<br>' : '') + esc(s.website || '') + '</div></div>';
+    var banner = '<div style="margin-top:8px;padding:6px 10px;border-left:6px solid ' + res[1] + ';background:#f7f7f7;font-size:11.5px;"><b style="color:' + res[1] + ';">Result: ' + res[0] + '</b>' + (ev.total ? ' &middot; ' + ev.n + ' of ' + ev.total + ' limit checks outside the required limits' : '') +
+      (ev.n ? '<div style="font-size:10px;color:#444;margin-top:2px;">' + ev.out.slice(0, 12).map(function(o){ return esc(o.l) + ' (unit ' + o.unit + '): ' + esc(o.v) + ' vs ' + esc(o.lim); }).join('; ') + '</div>' : '') + '</div>';
+    var comments = '<div style="border:1px solid #333;margin-top:10px;"><div style="font-weight:700;font-size:10.5px;padding:3px 6px;border-bottom:1px solid #333;background:#f2f2f2;">Comments / Recommendations:</div><div style="padding:6px 8px;font-size:11px;min-height:70px;white-space:pre-wrap;">' + esc(v.comments || '') + '</div></div>';
+    var sigs = '<div style="display:flex;gap:30px;margin-top:14px;page-break-inside:avoid;">' + sig('Client\'s Signature:', v.client_signature, 'Client\'s Name: ' + (v.client_name || '')) + sig('Service Technician:', v.technician_signature, v.technician_name || '') + '</div>';
+    return '<div style="font-family:Arial,Helvetica,sans-serif;color:#111;max-width:760px;margin:0 auto;">' + head + topInfo + banner + table + blocks + comments + dtab + charts + ph + sigs +
+      '<div style="margin-top:12px;font-size:8.5px;color:#777;border-top:1px solid #ddd;padding-top:4px;">' + esc(s.footer || '') + ' Report ' + esc(v.ref_code || '') + ' &middot; generated by QaSHE Watchman.</div></div>';
+  };
+  return { chart:chart, P:P, EQUIP:EQUIP, KINDS:KINDS, TITLE:TITLE, RES:RES, esc:esc, num:num, limOf:limOf, unitKind:unitKind, evalCell:evalCell, evalVisit:evalVisit, overallOf:overallOf, derived:derived, valueOf:valueOf, reportHtml:reportHtml, fd:fd };
+})();
+
+const token = new URLSearchParams(location.search).get('t') || '';
+const sh = document.getElementById('sheet');
+try{
+  const { data, error } = await supabase.rpc('wt_report_get', { p_token: token });
+  if(error || !data || !data.ok) throw new Error('nf');
+  const d = { org: data.org, settings: data.settings, plant: data.plant, visit: data.visit, photos: data.photos, defects: data.defects, history: data.history };
+  sh.innerHTML = WT.reportHtml(d);
+}catch(e){ sh.innerHTML = '<p style="padding:30px">This report link is not valid or has been withdrawn. Please contact the service provider.</p>'; }
+</script></body></html>
