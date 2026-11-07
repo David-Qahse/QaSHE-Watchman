@@ -48309,6 +48309,28 @@ ${STATE.org.name}${s.tel ? '\nTel: ' + s.tel : ''}`;
   };
 })();
 
+
+/* Release 24: the invite and access lists include every module, including Water Treatment, Project Management and the Education module; and those modules honour the ticks */
+(function(){
+  const EXTRA=['wt','projects','edu'];
+  const offFor=k=> k==='wt' ? !(STATE.org&&STATE.org._wtOn) : k==='edu' ? !(STATE.org&&STATE.org._eduOn) : !!(STATE.org && STATE.org._modOff && STATE.org._modOff.has(k));
+  { const _a=adminInviteModules; adminInviteModules=window.adminInviteModules=function(){
+      const out=_a.apply(this,arguments); const have=new Set(out.map(x=>x.key));
+      EXTRA.forEach(k=>{ if(have.has(k)||!MODULE_META[k]) return; if(offFor(k)) return;
+        out.push({key:k,label:MODULE_META[k].title}); });
+      return out; }; }
+  { const _c=canAccessModule; canAccessModule=window.canAccessModule=function(mod){
+      const base=_c.apply(this,arguments);
+      if(mod!=='wt' && mod!=='projects' && mod!=='edu') return base;
+      if(!base) return base;
+      const staff=!!(STATE.profile&&STATE.profile.is_platform_staff);
+      if(staff||STATE.myRole==='admin') return base;
+      const ticks=(STATE.myModuleAccess||[]).filter(k=>k!==WM_CAL);
+      if(!ticks.length || !(STATE.myModuleAccess||[]).includes(WM_CAL)) return base; /* people saved before calibration keep what they had */
+      if(mod==='projects') return ticks.includes('projects')||ticks.includes('tasks');
+      return ticks.includes(mod);
+    }; }
+})();
 </script>
 </body>
 </html>
