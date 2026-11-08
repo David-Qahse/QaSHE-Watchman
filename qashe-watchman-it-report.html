@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Inspection and Test Certificate Pack</title>
+<style>body{margin:0;background:#e9e8e6;font-family:Arial,Helvetica,sans-serif;color:#111}
+#bar{background:#fff;border-bottom:1px solid #ddd;padding:10px 16px;display:flex;gap:10px;align-items:center;position:sticky;top:0;z-index:3}
+#bar button{background:#B21616;color:#fff;border:0;border-radius:8px;padding:9px 16px;font:700 14px Arial,sans-serif;cursor:pointer}
+#sheet{max-width:860px;margin:16px auto;background:#fff;padding:18px;box-shadow:0 1px 6px rgba(0,0,0,.15);font-size:12.5px;line-height:1.4}
+#sign{max-width:860px;margin:16px auto 0}.sp{background:#fff;padding:16px 18px;box-shadow:0 1px 6px rgba(0,0,0,.15);border-left:5px solid #B21616}.sp .l{display:block;font-size:11px;color:#777;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}.sp input[type=text],.sp input:not([type]),.sp textarea{width:100%;box-sizing:border-box;border:1px solid #ccc;border-radius:8px;padding:10px;font:16px Arial,sans-serif}.b1{display:block;width:100%;margin-top:12px;background:#B21616;color:#fff;border:0;border-radius:10px;padding:14px;font:700 16px Arial,sans-serif;cursor:pointer}.b2{margin-top:6px;border:1px solid #ccc;background:#fff;border-radius:6px;padding:5px 12px;cursor:pointer}
+h1{font-size:17px;margin:0}h2{font-size:13px;margin:14px 0 5px;background:#eee;padding:4px 8px}table{width:100%;border-collapse:collapse;margin-bottom:6px}td,th{border:1px solid #999;padding:3px 6px;text-align:left;vertical-align:top}th{background:#f4f4f4}.kv td:nth-child(odd){background:#f7f7f7;font-weight:700;width:22%}.ok{color:#1d6b3b;font-weight:700}.bad{color:#B3261E;font-weight:700}details{margin:4px 0}summary{cursor:pointer;font-weight:700;padding:4px 0}
+@media (max-width:640px){#sheet{padding:10px;margin:8px}.kv td{display:block;width:auto!important}}
+@media print{#sign,#bar{display:none}body{background:#fff}#sheet{margin:0;box-shadow:none;max-width:none;padding:0}details{display:block}details>*{display:block}@page{size:A4;margin:10mm}}</style></head><body>
+<div id="bar"><b style="flex:1">Inspection and test certificate pack</b><button onclick="document.querySelectorAll('details').forEach(d=>d.open=true);window.print()">Print or save as PDF</button></div>
+<div id="sign"></div>
+<div id="sheet">Loading…</div>
+<script type="module">
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+const supabase = createClient('https://uzywxhptwavnvpfzbhkb.supabase.co', 'sb_publishable_8XxT0I-Qdmswhd2I-TT_jg_CuI8a24f');
+const qs = new URLSearchParams(location.search), tokenT = qs.get('t') || '', tokenS = qs.get('s') || '';
+const sh = document.getElementById('sheet'), sg = document.getElementById('sign');
+const E = x => String(x == null ? '' : x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const fd = d => { if(!d) return ''; const x = new Date(String(d).slice(0,10) + 'T00:00:00Z'); return isNaN(x) ? '' : x.toLocaleDateString('en-ZA', { day:'2-digit', month:'short', year:'numeric', timeZone:'UTC' }); };
+const rs = s => s === 'pass' ? '<span class="ok">Pass</span>' : s === 'fail' ? '<span class="bad">FAIL</span>' : s === 'na' ? 'N/A' : '—';
+const kv = rows => { let h = '<table class="kv">'; for(let i = 0; i < rows.length; i += 2) h += '<tr><td>' + E(rows[i][0]) + '</td><td>' + E(rows[i][1]) + '</td>' + (rows[i+1] ? '<td>' + E(rows[i+1][0]) + '</td><td>' + E(rows[i+1][1]) + '</td>' : '<td></td><td></td>') + '</tr>'; return h + '</table>'; };
+const CUB = ['Power in / out on CCB','Power in / out on MCB','All relays switching','Contactors switching','Cubicle can start and stop','Stimulate VSD, Simocode or programmable device','Output power on terminals','In-light working'];
+const sig = (n, at, img) => at ? '<b>' + E(n || '') + '</b><br>' + (img ? '<img src="' + img + '" style="max-height:40px"><br>' : '') + fd(at) : '<span style="color:#888">Not signed</span>';
+function render(d){
+  const u = d.unit, sn = u.snapshot || {}, s = d.settings || {}, j = d.job || {};
+  let h = '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;border-bottom:2px solid #222;padding-bottom:8px;margin-bottom:10px;flex-wrap:wrap"><div style="display:flex;gap:10px;align-items:center">' + (s.logo ? '<img src="' + s.logo + '" style="max-height:48px;max-width:130px">' : '') + '<div><h1>' + E(s.company || d.org) + '</h1><div>' + [s.reg_no ? 'Reg ' + s.reg_no : '', s.tel, s.website].filter(Boolean).map(E).join(' · ') + '</div></div></div><div style="text-align:right"><b style="font-size:14px">INSPECTION AND TEST CERTIFICATE PACK</b><br>' + E(sn.type_name || '') + '<br>' + E(sn.ref || '') + (sn.rev > 1 ? ' · revision ' + sn.rev : '') + '</div></div>';
+  h += '<div style="background:#eef7f1;border:1px solid #9fd0b0;border-radius:8px;padding:10px 12px;margin-bottom:10px"><b class="ok">CERTIFIED</b> · Certificate <b>' + E(u.cert_no || '') + '</b>' + (u.doc_no ? ' · Declaration of conformity <b>' + E(u.doc_no) + '</b>' : '') + ' · issued ' + fd(u.certified_at) + '</div>';
+  h += kv([['Customer', j.customer], ['Job no.', j.job_no], ['Equipment', u.description], ['Tag no.', u.tag_no], ['Drawing no.', u.dwg_no], ['Project', j.project]]);
+  if((sn.spec || []).length) h += '<h2>Supply, control voltage and instrumentation</h2>' + kv(sn.spec);
+  if((sn.rt || []).length) h += '<h2>Assembly information</h2>' + kv(sn.rt);
+  const t = sn.tests;
+  if(t){ h += '<h2>Tests carried out</h2>'; if(t.press) h += '<p>One minute pressure test: ' + E(t.press.kv) + ' kV RMS symmetrical: ' + rs(t.press.s) + '</p>';
+    if((t.ir || []).length) h += '<table><tr><th>Insulation resistance (minimum 1 MΩ)</th><th>Reading</th><th>Result</th></tr>' + t.ir.map(r => '<tr><td>' + E(r[0]) + '</td><td>' + E(r[1]) + '</td><td>' + rs(r[2]) + '</td></tr>').join('') + '</table>';
+    h += '<table><tr><th>Functional test</th><th>Result</th></tr>' + (t.bool || []).map(r => '<tr><td>' + E(r[0]) + '</td><td>' + rs(r[1]) + '</td></tr>').join('') + '</table>';
+    if((t.inj || []).length) h += '<p>Primary current injection: ' + t.inj.map(r => E(r[0]) + ' ' + E(r[1] || '—')).join(' · ') + '</p>'; }
+  (sn.lists || []).forEach(L => { h += '<h2>' + E(L.title) + '</h2>'; L.groups.forEach(g => { const f = g.items.filter(i => i.s === 'fail').length; h += '<details><summary>' + E(g.t) + ' <span style="font-weight:400;color:#555">(' + g.items.length + ' items' + (f ? ', ' + f + ' noted as failed and corrected' : '') + ')</span></summary><table>' + g.items.map(i => '<tr><td>' + E(i.t) + (i.c ? '<br><span style="color:#555">' + E(i.c) + '</span>' : '') + (i.n ? '<br><i>Note: ' + E(i.n) + '</i>' : '') + '</td><td style="width:80px">' + (i.v !== '' ? E(i.v) + ' ' + E(i.u) : '') + '</td><td style="width:60px">' + rs(i.s) + '</td></tr>').join('') + '</table></details>'; }); });
+  if((sn.cub || []).length) h += '<h2>Cubicle function tests</h2><div style="overflow:auto"><table><tr><th>Cubicle</th><th>kW</th>' + CUB.map(c => '<th>' + c + '</th>').join('') + '</tr>' + sn.cub.map(c => '<tr><td>' + E(c.no) + '</td><td>' + E(c.kw) + '</td>' + c.r.map(x => '<td>' + (x ? rs(x) : '') + '</td>').join('') + '</tr>').join('') + '</table></div>';
+  if(sn.busbar){ const b = sn.busbar, L = ['Rating (A)','Sleeving','Fault level','Voltage','Size','Support','Centres checked','Tag / flexible sizes']; h += '<h2>Busbar conformity</h2>' + kv(L.map((l, i) => ['Main: ' + l, b.main[i]]).concat(L.map((l, i) => ['Dropper: ' + l, b.drop[i]]), ['Earthbar size','Earth support','Flex / GP size','Fishplates','Extension ref','Front / rear','Double / single'].map((l, i) => [l, b.earth[i]]), [['Checked by', b.checked_by], ['Engineer', b.engineer]])); }
+  if((sn.torque || []).length) h += '<h2>Copper connection torque settings</h2><table><tr><th>Connection</th><th>Bolt</th><th>Applied (Nm)</th><th>Required</th><th>Result</th></tr>' + sn.torque.map(r => '<tr><td>' + E(r.loc) + '</td><td>' + E(r.bolt) + '</td><td>' + E(r.nm) + '</td><td>' + E(r.band) + '</td><td>' + rs(r.s) + '</td></tr>').join('') + '</table>';
+  const pu = d.punch || []; if(pu.length) h += '<h2>Punch items raised and closed</h2><table><tr><th>No</th><th>Description</th><th>Status</th></tr>' + pu.map(p => '<tr><td>' + (p.no || '') + '</td><td>' + E(p.description) + '</td><td>' + (p.status === 'closed' ? 'Closed ' + fd(p.closed_at) : '<b class="bad">Open</b>') + '</td></tr>').join('') + '</table>';
+  const ph = d.photos || []; if(ph.length) h += '<h2>Photographs</h2><div style="display:flex;gap:8px;flex-wrap:wrap">' + ph.map(p => '<div style="width:190px;font-size:11px"><img src="' + p.image + '" style="width:190px;height:140px;object-fit:cover">' + E(p.caption || '') + '</div>').join('') + '</div>';
+  if(sn.remarks) h += '<h2>Remarks and shortages</h2><p>' + E(sn.remarks) + '</p>';
+  if(sn.doc) h += '<p style="margin-top:10px"><b>Declaration of conformity ' + E(u.doc_no || '') + ':</b> the equipment complies with SANS IEC 61439-1 / SANS 1973-1 / SANS 10142-1 as inspected and tested. The declaration is null and void in the event of any change whatsoever to the equipment as tested and certified.</p>';
+  h += '<h2>Sign-off</h2><table><tr><th>Quality inspector / tester</th><th>JBSS responsible engineer</th><th>Client acceptance</th></tr><tr style="height:70px"><td>' + sig(u.tester_name, u.tester_signed_at, u.tester_signature) + '</td><td>' + sig(u.engineer_name, u.engineer_signed_at, u.engineer_signature) + '</td><td id="cs">' + sig(u.client_name, u.client_signed_at, u.client_signature) + '</td></tr></table>';
+  h += '<div style="margin-top:10px;font-size:9.5px;color:#777;border-top:1px solid #ddd;padding-top:4px">' + E(s.footer || '') + ' Certificate ' + E(u.cert_no || '') + ' · generated by QaSHE Watchman.</div>';
+  return h;
+}
+async function load(){
+  try{
+    const { data, error } = tokenS ? await supabase.rpc('it_signoff_get', { p_token: tokenS }) : await supabase.rpc('it_pack_get', { p_token: tokenT });
+    if(error || !data || !data.ok) throw new Error('nf');
+    sh.innerHTML = render(data); if(tokenS) signPanel(data.signoff || {});
+  }catch(e){ sh.innerHTML = '<p style="padding:30px">This link is not valid or has been withdrawn. Please contact the supplier.</p>'; }
+}
+function signPanel(so){
+  if(so.signed){ sg.innerHTML = '<div class="sp"><b style="color:#2E7D4F">Thank you. This certificate pack was accepted by ' + E(so.client_name || 'the client representative') + '.</b></div>'; return; }
+  sg.innerHTML = '<div class="sp"><h2 style="font-size:16px;margin:0 0 6px;background:none;padding:0">Please review the record below and confirm your acceptance</h2><p style="font-size:13px;color:#555;margin:0 0 10px">Sign with your finger, or with a mouse or trackpad. If you prefer, leave the box empty and your typed name will be recorded as your acceptance.</p>' +
+    '<label class="l">Your name</label><input id="sn" value="' + E(so.client_name || '') + '"><label class="l" style="margin-top:10px">Comment (optional)</label><textarea id="sc" rows="2"></textarea>' +
+    '<label class="l" style="margin-top:10px">Signature</label><canvas id="spad" width="520" height="150" style="width:100%;max-width:520px;border:1px solid #ccc;border-radius:8px;background:#fff;touch-action:none"></canvas><div><button class="b2" id="sclr">Clear</button></div>' +
+    '<label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px;font-size:13px"><input type="checkbox" id="sok" style="margin-top:3px"> I have reviewed the record and I accept the equipment as inspected and tested.</label><button class="b1" id="sgo">Accept and sign</button><div id="smsg" style="margin-top:8px;font-size:13px"></div></div>';
+  const cv = document.getElementById('spad'), ctx = cv.getContext('2d'); ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.strokeStyle = '#111'; let down = false, drawn = false;
+  const pos = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; };
+  cv.addEventListener('pointerdown', e => { down = true; drawn = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p[0], p[1]); try{ cv.setPointerCapture(e.pointerId); }catch(x){} e.preventDefault(); });
+  cv.addEventListener('pointermove', e => { if(!down) return; const p = pos(e); ctx.lineTo(p[0], p[1]); ctx.stroke(); e.preventDefault(); });
+  ['pointerup','pointercancel','pointerleave'].forEach(ev => cv.addEventListener(ev, () => { down = false; }));
+  document.getElementById('sclr').onclick = () => { ctx.clearRect(0, 0, cv.width, cv.height); drawn = false; };
+  document.getElementById('sgo').onclick = async () => {
+    const nm = document.getElementById('sn').value.trim(), msg = document.getElementById('smsg'); if(nm.length < 2){ msg.textContent = 'Please enter your name.'; return; } if(!document.getElementById('sok').checked){ msg.textContent = 'Please tick the box to confirm.'; return; }
+    const btn = document.getElementById('sgo'); btn.disabled = true; msg.textContent = 'Saving…';
+    const { error } = await supabase.rpc('it_signoff_submit', { p_token: tokenS, p_name: nm, p_signature: drawn ? cv.toDataURL('image/png') : null, p_comment: document.getElementById('sc').value.trim() || null });
+    if(error){ msg.textContent = error.message; btn.disabled = false; return; } load();
+  };
+}
+load();
+</script></body></html>
