@@ -173,7 +173,7 @@
 .wmt.vid .wmt-view{top:0;bottom:0}
 .wmt.vid .wmt-cap{bottom:34px;font-size:22px}
 @media (max-width:760px){.wmt-top .ttl{display:none}.wmt-cap{font-size:15px}}
-.wmt #wmt-vb,.wmt #wmt-ap,.wmt #wmt-vp{display:none!important}
+.wmt #wmt-ap{display:none!important}
 .wmt-start{position:absolute;inset:0;z-index:20;background:rgba(11,14,20,.94);display:flex;align-items:center;justify-content:center;text-align:center;padding:24px}
 .wmt-start .m{color:#FF6B5E;letter-spacing:.2em;text-transform:uppercase;font-size:13px;font-weight:700}
 .wmt-start h2{color:#fff;font-size:44px;margin:6px 0 12px}
@@ -243,7 +243,7 @@ const CHAPTERS = [
  ['scs','Suppliers, Customers and Sites','Control the supply chain and grow the account'],
  ['leg','Legal and Governance','Stay compliant and above reproach'],
  ['sec','Information Security','Protect the information that runs the business'],
- ['ops','Assets and Specialist Modules','Equipment, condition and welding'],
+ ['ops','Assets and Specialist Modules','Equipment, condition, welding, water treatment and schools'],
  ['adm','Administration and Trust','Access, audit trail and set-up']
 ];
 const MODS = [
@@ -432,6 +432,16 @@ const MODS = [
  iso:['ISO 3834','ISO 9606','ISO 15614'],link:['assets','documents','nonconformances'],
  steps:['Record the welding procedure','Qualify the welders','Release the job and inspect','Review against ISO 3834'],
  d:{a:'flow',st:[['Contract review','ISO 3834'],['WPS + welders','qualified'],['Weld','monitored'],['Inspect / NDT','recorded'],['Release','approved']]}},
+{id:'wt',ch:'ops',n:'Water Treatment',ic:'gauge',tag:'Boiler and cooling water service reports, checked against required limits, signed by the customer.',
+ feat:['Plants (boilers and cooling systems) with photo and QR label','Service reports with required limits and plausibility flags','Chemicals, meter readings, photographs and signatures','Customer sign-off on the device or by email','Defects raised with a quotation request to the customer'],
+ iso:['ISO 9001 cl 8.5 service provision','ISO 9001 cl 7.1.5 monitoring resources'],link:['customers','assets','tasks'],
+ steps:['Register the plant and print its QR label','Scan the QR on site and start the inspection','Capture readings, chemicals and photographs','Sign off and send the report','Raise defects and request a quotation'],
+ d:{a:'flow',st:[['Scan QR','on site'],['Readings','vs limits'],['Photos','uploaded'],['Customer sign-off','email or screen'],['Quotation','for defects']]}},
+{id:'edu',ch:'ops',n:'Educational Institution Compliance (Umalusi)',ic:'cap',tag:'Umalusi accreditation readiness for schools, with the evidence an evaluator asks for.',
+ feat:['The 24 core indicators of Umalusi Table 5, rated by level','Evidence linked to the Watchman modules that hold it','Staff establishment and assessment integrity','Results analysis and enrolment','Portfolio of Evidence you can print for the evaluator'],
+ iso:['Umalusi quality assurance of private and public schools','ISO 21001 educational organisations (alignment)','ISO 9001 cl 9.1 monitoring'],link:['personnel','legal','documents','appraisals'],
+ steps:['Enter the institution profile','Rate each indicator and attach the evidence','Maintain the staff establishment','Record assessment integrity and results','Print the Portfolio of Evidence'],
+ d:{a:'dash',tiles:[['Indicators rated','24'],['Level 3','15'],['Level 1 gaps','3'],['Staff verified','94%']],bars:[40,52,60,68,75,82]}},
 {id:'security',ch:'adm',n:'Audit Trail and Account Security',ic:'lock',tag:'Know who did what and when, and protect every sign-in.',
  feat:['Change log of creates, changes and deletes on key records','Append-only: nothing can be quietly rewritten','Authenticator app protection for sign-in','Data separated per organisation'],
  iso:['ISO/IEC 27001 Annex A 8.15','ISO 9001 cl 7.5.3'],link:['administration','infosec'],
@@ -713,13 +723,38 @@ function playlist(mode){
   L.forEach(s => { if(!s.narr && NARR[s.id]) s.narr = NARR[s.id]; if(s.id === 'index') s.hold = true; });
   return L;
 }
+/* ===== b94: four narration voices: American male, South African male, American female, South African female ===== */
+window.WMVoices = (function(){
+  const KEY = 'wm_voice_profile';
+  const profiles = [{ id:'us_m', label:'American male', loc:'US', g:'m' }, { id:'za_m', label:'South African male', loc:'ZA', g:'m' }, { id:'us_f', label:'American female', loc:'US', g:'f' }, { id:'za_f', label:'South African female', loc:'ZA', g:'f' }];
+  const MALE = /\b(andrew|guy|ryan|christopher|eric|roger|steffan|brian|davis|jason|tony|luke|mark|david|james|daniel|george|richard|thomas|oliver|alex|fred|aaron|arthur|male|man)\b/i;
+  const FEMALE = /\b(aria|jenny|michelle|ana|emma|jane|sara|nancy|amber|ashley|leah|zira|samantha|karen|tessa|susan|hazel|libby|sonia|moira|victoria|allison|ava|joanna|kendra|kimberly|salli|female|woman|serena|fiona|kate|elizabeth|natasha|catherine|heather)\b/i;
+  const lang = v => String(v.lang || '').replace('_', '-').toLowerCase();
+  const gen = v => { const n = v.name || ''; if(/google us english/i.test(n)) return 'f'; if(MALE.test(n) && !FEMALE.test(n)) return 'm'; if(FEMALE.test(n)) return 'f'; return ''; };
+  const score = v => (/natural|online/i.test(v.name) ? 3 : 0) + (v.localService === false ? 1 : 0) + (/microsoft|google|apple/i.test(v.name) ? 1 : 0);
+  const best = a => a.slice().sort((x, y) => score(y) - score(x))[0] || null;
+  function get(){ try{ const k = localStorage.getItem(KEY); if(profiles.some(p => p.id === k)) return k; }catch(e){} return 'us_m'; }
+  function set(id){ try{ localStorage.setItem(KEY, id); }catch(e){} }
+  function pick(id){
+    const p = profiles.find(x => x.id === (id || get())) || profiles[0], SSx = window.speechSynthesis;
+    const vs = (SSx ? SSx.getVoices() : []).filter(v => /^en/i.test(v.lang)); if(!vs.length) return { voice:null, exact:false };
+    const want = p.loc === 'ZA' ? 'en-za' : 'en-us';
+    let c = vs.filter(v => lang(v) === want && gen(v) === p.g); if(c.length) return { voice:best(c), exact:true };
+    if(p.loc === 'US'){ c = vs.filter(v => lang(v) === 'en-us' && !gen(v)); if(c.length) return { voice:best(c), exact:true }; }
+    const order = p.loc === 'ZA' ? ['en-gb', 'en-au', 'en-us'] : ['en-gb', 'en-au'];
+    for(const l of order){ c = vs.filter(v => lang(v) === l && gen(v) === p.g); if(c.length) return { voice:best(c), exact:false }; }
+    c = vs.filter(v => gen(v) === p.g); if(c.length) return { voice:best(c), exact:false };
+    return { voice:best(vs.filter(v => lang(v) === 'en-us')) || vs[0], exact:false };
+  }
+  return { profiles, get, set, pick };
+})();
 /* ---------- engine ---------- */
 let T = null;
 function open(o){
   o = o || {}; if(T) T.close();
   const emb = !!o.embedded, root = document.createElement('div'); root.className = 'wmt' + (emb ? ' emb' : ''); root.setAttribute('role', 'dialog'); root.setAttribute('aria-label', 'QaSHE Watchman tutorial');
   root.innerHTML = `<div class="wmt-top"><span style="width:26px;height:26px;display:inline-block">${RING}</span><span class="ttl"><b>QaSHE Watchman</b> · Tutorial · <span id="wmt-ch"></span></span><span class="sp"></span><button class="wmt-ib" id="wmt-ix" title="Index (I)">☰ Index</button><button class="wmt-ib" id="wmt-nr" title="Pause or play (Space)">⏸ Pause</button><button class="wmt-ib" id="wmt-vb" title="Voice and captions settings">⚙ Voice</button><button class="wmt-ib" id="wmt-ap" title="Auto-play (A)">▶ Auto-play</button><button class="wmt-ib" id="wmt-fs" title="Full screen (F)">⛶ Present</button>${emb ? '' : '<button class="wmt-ib" id="wmt-x" title="Close (Esc)">✕ Close</button>'}</div>
-  <div class="wmt-view" id="wmt-view"><div class="wmt-stage" id="wmt-stage"></div></div><div class="wmt-drawer" id="wmt-dr"></div><div class="wmt-vp" id="wmt-vp"><b>Voiceover</b><label>Voice<select id="wmt-vs"></select></label><label>Speed<input type="range" id="wmt-vr" min="0.7" max="1.3" step="0.05"></label><label class="ck"><input type="checkbox" id="wmt-vc"> Show captions</label><button class="wmt-ib" id="wmt-vt">Test voice</button><small>The voice list comes from your device. Windows and Android include South African English voices.</small></div><div class="wmt-cap" id="wmt-cap"></div>
+  <div class="wmt-view" id="wmt-view"><div class="wmt-stage" id="wmt-stage"></div></div><div class="wmt-drawer" id="wmt-dr"></div><div class="wmt-vp" id="wmt-vp"><b>Voiceover</b><label>Voice<select id="wmt-vs"></select></label><small id="wmt-vn" style="margin:-4px 0 10px"></small><label>Speed<input type="range" id="wmt-vr" min="0.7" max="1.3" step="0.05"></label><label class="ck"><input type="checkbox" id="wmt-vc"> Show captions</label><button class="wmt-ib" id="wmt-vt">Test voice</button><small>Voices come from your device. Windows and Android include South African English voices; if one is missing, the closest English voice is used.</small></div><div class="wmt-cap" id="wmt-cap"></div>
   <div class="wmt-bot"><button class="wmt-ib" id="wmt-pv">◀ Back</button><div class="wmt-prog" id="wmt-pg"><i></i></div><span class="wmt-cnt" id="wmt-ct"></span><button class="wmt-ib on" id="wmt-nx">Next ▶</button></div>`;
   (o.host || document.body).appendChild(root);
   const $ = s => root.querySelector(s), stage = $('#wmt-stage'), view = $('#wmt-view');
@@ -729,14 +764,14 @@ function open(o){
   function applyStep(el, n){ el.querySelectorAll('.bld').forEach(b => { const s = +b.dataset.st; if(s) b.classList.toggle('show', s <= n); }); el.querySelectorAll('[data-only]').forEach(b => { b.style.opacity = (+b.dataset.only === n) ? 1 : 0; b.style.transform = (+b.dataset.only === n) ? 'none' : 'translateY(12px)'; b.style.pointerEvents = (+b.dataset.only === n) ? 'auto' : 'none'; b.classList.add('show'); }); }
   /* ---------- narration ---------- */
   const NS = { on:false, caps:true, rate:.95, voice:'', video:!!o.video }, LOG = (window.__wmtLog = []), T0 = performance.now();
-  NS.caps = true; NS.rate = .95; NS.voice = 'Microsoft Andrew';
+  NS.caps = true; NS.rate = .95;
   const saveNS = () => {};
   const sleep = ms => new Promise(r => setTimeout(r, ms)), wc = t => String(t).split(/\s+/).length, SS = window.speechSynthesis;
   window.__wmtT0 = T0;
-  const fixSpeech = t => String(t).replace(/\bcl\b/g, 'clause').replace(/\bs(\d+)/g, 'section $1').replace(/ISO\/IEC/g, 'ISO IEC').replace(/\bSHERQ\b/g, 'sherk').replace(/\bPOPIA\b/g, 'Popia').replace(/\bCOIDA\b/g, 'Coida').replace(/\bOHS\b/g, 'O H S').replace(/\bKPIs\b/g, 'K P Is').replace(/\bNC\b/g, 'N C');
+  const fixSpeech = t => String(t).replace(/\bcl\b/g, 'clause').replace(/\bs(\d+)/g, 'section $1').replace(/ISO\/IEC/g, 'ISO IEC').replace(/\bSHERQ\b/g, 'sherk').replace(/\bPOPIA\b/g, 'Popia').replace(/\bCOIDA\b/g, 'Coida').replace(/\bOHS\b/g, 'O H S').replace(/\bKPIs\b/g, 'K P Is').replace(/\bNC\b/g, 'N C').replace(/Umalusi/g, 'Oomaloosi').replace(/\bQR\b/g, 'Q R').replace(/\bTDS\b/g, 'T D S').replace(/\bpH\b/g, 'P H').replace(/\bIMS\b/g, 'I M S');
   let nTok = 0, hooks = {}, Q = Promise.resolve();
   const showCap = t => { const c = $('#wmt-cap'); if(!c) return; c.textContent = t || ''; c.style.opacity = (t && (NS.caps || NS.video)) ? 1 : 0; };
-  function pickVoice(){ if(!SS) return null; const vs = SS.getVoices(); return vs.find(v => /andrew/i.test(v.name) && /en[-_]US/i.test(v.lang)) || vs.find(v => /andrew/i.test(v.name)) || vs.find(v => /en[-_]US/i.test(v.lang) && /(david|guy|mark|ryan|christopher|eric|roger|steffan|male)/i.test(v.name)) || vs.find(v => /en[-_]US/i.test(v.lang)) || vs.find(v => /^en/i.test(v.lang)) || vs[0] || null; }
+  function pickVoice(){ return SS ? WMVoices.pick(WMVoices.get()).voice : null; }
   function say(t, tok){
     Q = Q.then(() => new Promise(res => {
       if(tok !== nTok) return res();
@@ -802,6 +837,17 @@ function open(o){
   document.addEventListener('keydown', key, true);
   $('#wmt-nx').onclick = next; $('#wmt-pv').onclick = prev; $('#wmt-fs').onclick = fs; if($('#wmt-x')) $('#wmt-x').onclick = close;
   $('#wmt-nr').onclick = () => setNarrate(!NS.on);
+
+  const vsel = $('#wmt-vs');
+  const vnote = () => { const r = WMVoices.pick(WMVoices.get()); $('#wmt-vn').textContent = r.voice ? 'Reading with ' + r.voice.name + (r.exact ? '.' : '. Closest voice on this device: add the matching Windows or Android voice for the exact accent.') : 'No voice was found on this device.'; };
+  const vfill = () => { vsel.innerHTML = WMVoices.profiles.map(p => `<option value="${p.id}" ${p.id === WMVoices.get() ? 'selected' : ''}>${p.label}</option>`).join(''); vnote(); };
+  vsel.onchange = () => { WMVoices.set(vsel.value); vnote(); if(NS.on) narrate(cur); };
+  $('#wmt-vb').onclick = () => $('#wmt-vp').classList.toggle('open');
+  $('#wmt-vr').value = NS.rate; $('#wmt-vr').oninput = e => { NS.rate = +e.target.value; };
+  $('#wmt-vc').checked = NS.caps; $('#wmt-vc').onchange = e => { NS.caps = e.target.checked; if(!NS.caps) showCap(''); };
+  $('#wmt-vt').onclick = () => { if(!SS) return; if(NS.on) setNarrate(false); SS.cancel(); const r = WMVoices.pick(WMVoices.get()), u = new SpeechSynthesisUtterance('This is the voice for your QaSHE Watchman tutorial.'); if(r.voice){ u.voice = r.voice; u.lang = r.voice.lang; } u.rate = NS.rate; SS.speak(u); };
+  if(SS && SS.addEventListener) SS.addEventListener('voiceschanged', vnote);
+  vfill();
   $('#wmt-ix').onclick = () => { NS.on = false; refreshNS(); jumpTo('index'); };
   $('#wmt-pg').onclick = e => { const r = e.currentTarget.getBoundingClientRect(); go(Math.max(0, Math.min(PL.length - 1, Math.floor((e.clientX - r.left) / r.width * PL.length)))); };
   $('#wmt-dr').onclick = e => { const a = e.target.closest('a'); if(a){ go(+a.dataset.i); $('#wmt-dr').classList.remove('open'); } };
