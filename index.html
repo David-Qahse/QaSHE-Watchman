@@ -14,6 +14,26 @@
 <meta name="apple-mobile-web-app-title" content="Watchman">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://esm.sh" crossorigin>
+<link rel="preconnect" href="https://uzywxhptwavnvpfzbhkb.supabase.co" crossorigin>
+<link rel="modulepreload" href="https://esm.sh/@supabase/supabase-js@2">
+<style>html.wm-boot #view-landing{display:none!important} html.wm-boot #boot-loading-overlay{display:flex}</style>
+<script>
+/* Fast start: begin downloading the data library before the large page script is parsed, and if this browser already
+   holds a saved sign-in, never paint the marketing landing page: show the opening screen straight away instead. */
+(function(){ try{
+  window.__wmSb = import('https://esm.sh/@supabase/supabase-js@2').catch(function(){ return null; });
+  var q = new URLSearchParams(location.search);
+  if(q.get('sp')||q.get('sv')||q.get('sq')||q.get('g')||q.get('nr')||q.get('ss')||q.has('tutorial')) return;
+  for(var i=0;i<localStorage.length;i++){
+    var k = localStorage.key(i);
+    if(/^sb-.+-auth-token$/.test(k)){
+      var v = JSON.parse(localStorage.getItem(k) || 'null');
+      if(v && (v.refresh_token || v.access_token)){ document.documentElement.classList.add('wm-boot'); break; }
+    }
+  }
+}catch(e){} })();
+</script>
 <style>
   :root{
     --red:#B21616;
@@ -1785,6 +1805,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       hideBootLoading();
     }
   } catch(e){ /* leave the landing page showing as normal: nothing lost here */ }
+  finally { document.documentElement.classList.remove('wm-boot'); }
 });
 
 window.doSignIn = async function(){
@@ -1863,6 +1884,11 @@ window.doSignOut = async function(){
 
 async function afterSignIn(user){
   STATE.user = user;
+  // Both lookups start together instead of one after the other (neither depends on the other).
+  const _memP = Promise.resolve(STATE.supabase
+    .from('organisation_members')
+    .select('organisation_id, role, module_access, can_download, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color, all_documents_enabled, document_control_enabled, administration_enabled, raga_enabled, hr_enabled, asset_watchman_enabled, site_files_enabled, nc_enabled, process_flowcharts_enabled, checklists_enabled, policies_enabled, legal_certs_enabled, ebitda, subscription_status)')
+    .eq('user_id', user.id).eq('status','active'));
   const { data: profile, error: profErr } = await STATE.supabase.from('profiles').select('id, name, is_platform_staff').eq('id', user.id).single();
   if(profErr || !profile){
     toast('Could not load your profile.', 'error');
@@ -1872,10 +1898,7 @@ async function afterSignIn(user){
   if(profile && profile.name) profile.name = wmCap(profile.name);
   STATE.profile = profile;
 
-  const { data: memberships, error: memErr } = await STATE.supabase
-    .from('organisation_members')
-    .select('organisation_id, role, module_access, can_download, organisations(id, name, ref_prefix, logo_url, brand_primary_color, brand_secondary_color, all_documents_enabled, document_control_enabled, administration_enabled, raga_enabled, hr_enabled, asset_watchman_enabled, site_files_enabled, nc_enabled, process_flowcharts_enabled, checklists_enabled, policies_enabled, legal_certs_enabled, ebitda, subscription_status)')
-    .eq('user_id', user.id).eq('status','active');
+  const { data: memberships, error: memErr } = await _memP;
 
   if(memErr){ toast('Could not load your organisations: ' + memErr.message, 'error'); return; }
   STATE.memberships = memberships || [];
@@ -27621,7 +27644,7 @@ window.sendWatchmanChat = async function(){
 /* ============ BOOT ============ */
 let supabaseLib = null;
 async function ensureSupabaseLib(){
-  if(!supabaseLib){ supabaseLib = await import('https://esm.sh/@supabase/supabase-js@2'); }
+  if(!supabaseLib){ supabaseLib = (window.__wmSb ? await window.__wmSb : null) || await import('https://esm.sh/@supabase/supabase-js@2'); }
 }
 
 /* ============================================================================
@@ -34118,7 +34141,7 @@ window.brandFromLogo = function(){
       STATE.orgAppts = a.data || []; STATE.persDocs = d.data || []; STATE.persQuals = ql.data || [];
     }catch(e){ STATE._oaMissing = true; }
   }
-  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ await _lc.apply(this, arguments); await loadOA(); }; }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ await loadOA(); })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
 
   async function loadOATemplates(){
     if(STATE._oaTemplates) return STATE._oaTemplates;
@@ -34797,7 +34820,7 @@ window.brandFromLogo = function(){
     }catch(e){ STATE.org.welding_enabled = false; }
     if(typeof applyModuleAccessToNav === 'function') applyModuleAccessToNav();
   }
-  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ await _lc.apply(this, arguments); await loadWelding(); }; }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ await loadWelding(); })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
 
   ORG_MODULE_FLAGS.welding = 'welding_enabled';
   GATED_MODULES.push('welding');
@@ -36183,7 +36206,7 @@ window.WM_IT_TPL = {
     nav();
   }
   function nav(){ MODS.forEach(m => { const el = document.querySelector('.nav-item[data-mod="' + m + '"]'); if(el && !on()) el.style.display = 'none'; else if(el && on()) el.style.display = ''; }); }
-  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ await _lc.apply(this, arguments); await loadDisc(); }; }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ await loadDisc(); })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
   { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){ if(MODS.includes(mod) && !on()) return false; return _c.apply(this, arguments); }; }
   { const _a = applyModuleAccessToNav; applyModuleAccessToNav = window.applyModuleAccessToNav = function(){ const r = _a.apply(this, arguments); nav(); return r; }; }
   ADMIN_CONSOLE_TOGGLES.push({ field:'infosec_enabled', label:'Information Security (ISO/IEC 27001)', note:'Statement of Applicability, Information Asset Register, Threat Intelligence, the ISMO appointment and the Information Security area of Business Health. On by default: turn off for clients where it does not apply. Run the disciplines SQL first.' });
@@ -36349,7 +36372,7 @@ function fmtRev(rev){
       STATE.org.naming_company = (!error && data && data.company_id) || null;
     }catch(e){ STATE.org.naming_standard = 'current'; STATE.org.naming_company = null; }
   }
-  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ await _lc.apply(this, arguments); await loadNaming(); }; }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ await loadNaming(); })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
 
   /* ---------------- parse and validate a file name ---------------- */
   const RX = {
@@ -36674,7 +36697,7 @@ function fmtRev(rev){
     SW.forEach(([k]) => { STATE.org[KEY(k)] = !set.has(k); });
     if(typeof applyModuleAccessToNav === 'function') applyModuleAccessToNav();
   }
-  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ await _lc.apply(this, arguments); await loadMods(); }; }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ await loadMods(); })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
   { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){ if(off(mod)) return false; return _c.apply(this, arguments); }; }
   { const _h = orgHasModule; orgHasModule = window.orgHasModule = function(mod, org){ if(off(mod) && (!org || org === STATE.org)) return false; return _h.apply(this, arguments); }; }
   { const _a = applyModuleAccessToNav; applyModuleAccessToNav = window.applyModuleAccessToNav = function(){
@@ -38906,7 +38929,7 @@ async function renderNcResponsePage(token){
 
   /* ---------- registration: switch, navigation, access ---------- */
   ADMIN_CONSOLE_TOGGLES.push({ field:'incidents_module_enabled', label:'Incidents, Accidents and Near Miss', note:'Runs on the same register as Nonconformances, with permanent categories and its own statistics and reports. Switching off hides it; nothing recorded is deleted.' });
-  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ await _lc.apply(this, arguments); if(STATE.org) STATE.org.incidents_module_enabled = !off(); await loadCats(); }; }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ if(STATE.org) STATE.org.incidents_module_enabled = !off(); await loadCats(); })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
   { const _t = toggleOrgModule;
     toggleOrgModule = window.toggleOrgModule = async function(field, value){
       if(field !== 'incidents_module_enabled') return _t.apply(this, arguments);
@@ -40018,7 +40041,7 @@ async function renderNcResponsePage(token){
 
   /* ---------- 2. switch, navigation, access ---------- */
   ADMIN_CONSOLE_TOGGLES.push({ field:'crm_module_enabled', label:'Customer Relationship Management', note:'Pipeline, activities and scheduling, account plans, sales targets, reports and customer satisfaction. Switching off hides it and returns nothing to Customers; nothing recorded is deleted.' });
-  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ await _lc.apply(this, arguments); if(STATE.org) STATE.org.crm_module_enabled = !off(); }; }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ if(STATE.org) STATE.org.crm_module_enabled = !off(); })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
   { const _t = toggleOrgModule;
     toggleOrgModule = window.toggleOrgModule = async function(field, value){
       if(field !== 'crm_module_enabled') return _t.apply(this, arguments);
@@ -40543,7 +40566,7 @@ async function renderNcResponsePage(token){
       return r;
     }; }
   /* make sure the live library is loaded for every user, not only platform staff */
-  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ await _lc.apply(this, arguments); try{ await loadContentTemplates(); }catch(e){} }; }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ try{ await loadContentTemplates(); }catch(e){} })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
 
   /* in-app register: live library against the code catalogue, with the modules each template serves (Excel) */
   window.wmTemplateRegisterExport = function(){
@@ -42239,7 +42262,7 @@ window.WMTutorial = { open, lessons: () => Object.keys(window.WMLESSONS || {}), 
     STATE.org.bug_button_module_enabled=STATE.org._bugBtn;
     try{ wmApplyHelper(); }catch(e){}
   }
-  { const _lc=loadCompetence; loadCompetence=window.loadCompetence=async function(){ const r=await _lc.apply(this,arguments); await loadBug(); return r; }; }
+  { const _lc=loadCompetence; loadCompetence=window.loadCompetence=async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ await loadBug();  })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
   ADMIN_CONSOLE_TOGGLES.push({field:'bug_button_module_enabled',label:'Report a Bug or Problem button',note:'Optional header button that sends a bug report straight to Group QaSHE CG. "Report a Bug or Change Request" and "Ask me for Help" are always on. Off by default.'});
   { const _t=toggleOrgModule; toggleOrgModule=window.toggleOrgModule=async function(field,value){
       if(field!=='bug_button_module_enabled') return _t.apply(this,arguments);
@@ -44494,7 +44517,7 @@ ask:'How do you control who has access to what?'};
     STATE.org.quotes_module_enabled = STATE.org._qiOn;
     try { applyModuleAccessToNav(); } catch(e){}
   }
-  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const r = await _lc.apply(this, arguments); await loadFlag(); return r; }; }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ await loadFlag();  })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
   ADMIN_CONSOLE_TOGGLES.push({ field:'quotes_module_enabled', label:'Quotations and Invoicing', note:'Quotations, client purchase orders, invoices and payments, with a price book, tax codes, surcharges, currencies and AI assistance. Admins and managers only. Off by default.' });
   { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
       if(field !== 'quotes_module_enabled') return _t.apply(this, arguments);
@@ -45142,7 +45165,7 @@ Prices must be in ${doc.currency}. If you are unsure of a price, set it to your 
 
   /* ---------- switch, navigation, access ---------- */
   ADMIN_CONSOLE_TOGGLES.push({ field:'projects_module_enabled', label:'Project Management', note:'Projects of any kind: plan, phases, tasks (shared with Task Management), risks and issues, budget, linked records and status reports. Can be started from nonconformances, RAGA alerts, audits, management reviews, quotations and orders. On by default.' });
-  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ await _lc.apply(this, arguments); if(STATE.org) STATE.org.projects_module_enabled = !off(); try{ if(!off()) await loadPm(); }catch(e){} }; }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ if(STATE.org) STATE.org.projects_module_enabled = !off(); try{ if(!off()) await loadPm(); }catch(e){} })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
   { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
       if(field !== 'projects_module_enabled') return _t.apply(this, arguments);
       const { error } = await STATE.supabase.from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:'projects', enabled:!!value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
@@ -45789,7 +45812,7 @@ Prices must be in ${doc.currency}. If you are unsure of a price, set it to your 
 
   /* ---------------- 3. Deficiency Control ---------------- */
   ADMIN_CONSOLE_TOGGLES.push({ field:'auto_deficiency_enabled', label:'Automatic raising of deficiencies', note:'When an inspection, audit finding or checklist records a failure, a nonconformance (or RAGA alert where nonconformances are switched off) and a follow-up task are raised automatically. On by default.' });
-  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ await _lc.apply(this, arguments); if(STATE.org) STATE.org.auto_deficiency_enabled = !dfOff(); }; }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ if(STATE.org) STATE.org.auto_deficiency_enabled = !dfOff(); })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
   { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
       if(field !== 'auto_deficiency_enabled') return _t.apply(this, arguments);
       const { error } = await STATE.supabase.from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:'auto_deficiency', enabled:!!value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
@@ -45956,9 +45979,9 @@ Prices must be in ${doc.currency}. If you are unsure of a price, set it to your 
   ADMIN_CONSOLE_TOGGLES.push({ field:'bplan_module_enabled', label:'Business Planning and Continuity', note:'Business plan, goals linked to objectives, risks and legal items, business continuity plans and tests, and succession planning for key roles. Feeds the Compliance Dashboard, Business Health and Management Review. On by default.' });
   ADMIN_CONSOLE_TOGGLES.push({ field:'disciplinary_module_enabled', label:'Disciplinary Action', note:'Register a disciplinary case, notify the employee, record hearing minutes, issue the verdict and outcome, and keep it on the personnel profile. Visible to administrators and managers only. On by default.' });
   const SW = { bplan_module_enabled:'bplan', disciplinary_module_enabled:'disciplinary' };
-  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ await _lc.apply(this, arguments);
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{
       if(STATE.org){ STATE.org.bplan_module_enabled = !mOff('bplan'); STATE.org.disciplinary_module_enabled = !mOff('disciplinary'); }
-      try{ await loadGov(); }catch(e){ console.warn('b84 loadGov', e); } }; }
+      try{ await loadGov(); }catch(e){ console.warn('b84 loadGov', e); } })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
   { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
       if(!SW[field]) return _t.apply(this, arguments);
       const { error } = await STATE.supabase.from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:SW[field], enabled:!!value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
@@ -47199,7 +47222,7 @@ add('personnel', 'tips', ['Aim for 100% onboarding before a new person works uns
     try { applyModuleAccessToNav(); } catch(e){}
     if(STATE.org._eduOn && !D().loaded){ try{ await loadEdu(); }catch(e){} }
   }
-  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const r = await _lc.apply(this, arguments); await loadFlag(); return r; }; }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ await loadFlag();  })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
   ADMIN_CONSOLE_TOGGLES.push({ field:'edu_module_enabled', label:'Educational Institution Compliance (Umalusi)', note:'For schools and other educational institutions: accreditation readiness against the four Umalusi criteria, staff establishment (SACE), assessment moderation and irregularities, results analysis and a printable Portfolio of Evidence. Off by default; use the School IMS preset to switch on the modules a school needs.' });
   { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
       if(field !== 'edu_module_enabled') return _t.apply(this, arguments);
@@ -47738,7 +47761,7 @@ var WT = (function(){
     if(STATE.org._wtOn && !D().loaded){ try{ await loadWt(); }catch(e){} }
     if(STATE.org._wtOn && WTDEEP && !window.__wtDeepDone){ window.__wtDeepDone = true; setTimeout(() => { try{ showModule('wt'); setTimeout(() => { const p = arr(D().plants).find(x => x.qr_token === WTDEEP); if(p){ try{ history.replaceState(null, '', location.pathname); }catch(e){} canW() ? wtNewReport(p.id) : wtPlant(p.id); } else toast('That plant QR code was not found in this organisation.', 'error'); }, 900); }catch(e){} }, 600); }
   }
-  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const r = await _lc.apply(this, arguments); await loadFlag(); return r; }; }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ await loadFlag();  })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
   ADMIN_CONSOLE_TOGGLES.push({ field:'wt_module_enabled', label:'Water Treatment Service Reports (Allmech)', note:'Bespoke for water treatment service providers: plants (boiler and cooling systems) with photo and QR label, service reports with required limits, chemicals, meter readings, photos, signatures, a printable report, notification to the customer\'s operations manager and quotation requests for defects. Off by default.' });
   { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
       if(field !== 'wt_module_enabled') return _t.apply(this, arguments);
@@ -48356,7 +48379,7 @@ ${STATE.org.name}${s.tel ? '\nTel: ' + s.tel : ''}`;
     }
     try{ if(typeof navApplyOrder === 'function') navApplyOrder(); }catch(e){}
   }
-  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const r = await _lc.apply(this, arguments); await loadOrgExtras(); return r; }; }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ await loadOrgExtras();  })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
   /* ---- the tick list, in Administration (Admin Console tab) ---- */
   const BASE = [['nonconformances','Nonconformances'],['raga','RAGA'],['incidents','Incidents, Accidents and Near Miss'],['tasks','Tasks'],['audits','Audits and Checklists'],['risks','Risk and Opportunity'],['legal','Legal Compliance'],['training','Training'],['objectives','Objectives and Targets'],['process_flowcharts','Process KPIs'],['suppliers','Suppliers and Subcontractors'],['customers','Customers'],['site_files','Site SHERQ Files']];
   window.dashList = function(){
@@ -48740,7 +48763,7 @@ ask:'Which three faults came back most often last month, and what has changed in
     try { applyModuleAccessToNav(); } catch(e){}
     if(STATE.org._itOn && !D().loaded){ try{ await loadIt(); }catch(e){} }
   }
-  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const r = await _lc.apply(this, arguments); await loadFlag(); return r; }; }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ await loadFlag();  })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
   ADMIN_CONSOLE_TOGGLES.push({ field:'it_module_enabled', label:'Inspection and Testing (JB Switchgear Solutions)', note:'Bespoke for switchgear and control gear manufacturers: jobs and boards by product type, inspection checklists, measured tests against limits, busbar and torque records, punch lists, routine test certificates and declarations of conformity (IEC 61439, SANS 1973), release notes, handover, client acceptance and a Managing Director dashboard. Off by default.' });
   { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
       if(field !== 'it_module_enabled') return _t.apply(this, arguments);
