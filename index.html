@@ -49734,6 +49734,521 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   };
 })();
 
+
+/* ===== Release 30 ===== */
+
+/* ===== Release 30: Permit to Work, Occupational Health Surveillance, Environmental Performance Data, Confidential Reporting (Speak Up) ===== */
+(function(){
+  if(window.__r30) return; window.__r30 = true;
+  const E = s => escapeHtml(s == null ? '' : String(s));
+  const arr = x => Array.isArray(x) ? x : [];
+  const sb = () => STATE.supabase;
+  const staff = () => !!(STATE.profile && STATE.profile.is_platform_staff);
+  const canW = () => ['admin','manager','contributor'].includes(STATE.myRole) || staff();
+  const isMgr = () => ['admin','manager'].includes(STATE.myRole) || staff();
+  const isAdm = () => STATE.myRole === 'admin' || staff();
+  const day = d => d ? String(d).slice(0, 10) : '';
+  const tdy = () => new Date().toISOString().slice(0, 10);
+  const fd = d => d ? fmtDate(day(d)) : '';
+  const fdt = d => d ? fmtDateTime(d) : '';
+  const val = id => { const e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; };
+  const ck = id => { const e = document.getElementById(id); return !!(e && e.checked); };
+  const nm = id => id ? (memberName(id) || '') : '';
+  const missing = e => e && /does not exist|relation|schema cache|Could not find|permission denied/i.test(e.message || '');
+  const addMonths = (iso, m) => { const d = new Date(iso + 'T00:00:00'); d.setMonth(d.getMonth() + (m || 0)); return d.toISOString().slice(0, 10); };
+  const daysTo = iso => iso ? Math.round((new Date(day(iso) + 'T00:00:00') - new Date(tdy() + 'T00:00:00')) / 864e5) : null;
+  const base = () => location.origin + location.pathname.replace(/[^/]*$/, '');
+  const toLocalInput = iso => { if(!iso) return ''; const d = new Date(iso); if(isNaN(d)) return ''; const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
+  const chip = (t, c) => `<span style="display:inline-block;background:${c};color:#fff;border-radius:10px;padding:2px 9px;font-size:11px;font-weight:700;white-space:nowrap;">${E(t)}</span>`;
+  const tile = (n, l, c) => `<div class="panel" style="padding:14px 16px;border-top:4px solid ${c};margin:0;"><div style="font-size:28px;font-weight:800;line-height:1;">${n}</div><div style="font-size:11.5px;color:var(--text-faint);margin-top:6px;">${l}</div></div>`;
+  const tiles = a => `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px;">${a.join('')}</div>`;
+  const tabsBar = (cur, list, fn) => `<div class="toolbar" style="flex-wrap:wrap;gap:6px;margin-bottom:12px;">${list.map(([k, l]) => `<button class="btn-small ${cur === k ? 'primary' : ''}" onclick="${fn}('${k}')">${E(l)}</button>`).join('')}</div>`;
+  const sqlNote = () => '<div class="panel" style="padding:14px 18px;border-left:4px solid #f07a1a;margin-bottom:14px;font-size:13px;">Run <b>qashe-watchman-schema-safety-legal.sql</b> in the Supabase SQL editor, then refresh.</div>';
+  const noRows = t => `<div class="empty-state"><p>${t}</p></div>`;
+
+  /* ---------- generic form helpers ---------- */
+  function formHtml(fields, row, p){
+    return fields.map(f => {
+      const id = p + f.k, v = row[f.k]; let inp;
+      if(f.t === 'textarea') inp = `<textarea id="${id}" rows="${f.rows || 3}" ${f.ph ? `placeholder="${E(f.ph)}"` : ''}>${E(v)}</textarea>`;
+      else if(f.t === 'select') inp = `<select id="${id}">${f.opts.map(o => { const a = Array.isArray(o) ? o : [o, o]; return `<option value="${E(a[0])}" ${String(v == null ? (f.def == null ? '' : f.def) : v) === String(a[0]) ? 'selected' : ''}>${E(a[1])}</option>`; }).join('')}</select>`;
+      else if(f.t === 'member') inp = `<select id="${id}"><option value="">Not assigned</option>${memberOptions(v || '')}</select>`;
+      else if(f.t === 'person') inp = `<select id="${id}"><option value="">Choose a person</option>${arr(STATE.personnel).filter(x => x.full_name).sort((a, b) => a.full_name.localeCompare(b.full_name)).map(x => `<option value="${x.id}" ${x.id === v ? 'selected' : ''}>${E(x.full_name)}</option>`).join('')}</select>`;
+      else if(f.t === 'check') inp = `<input type="checkbox" id="${id}" ${v == null ? (f.def ? 'checked' : '') : (v ? 'checked' : '')} style="width:auto;">`;
+      else if(f.t === 'datetime-local') inp = `<input id="${id}" type="datetime-local" value="${E(toLocalInput(v))}">`;
+      else if(f.t === 'date') inp = `<input id="${id}" type="date" value="${E(day(v))}">`;
+      else inp = `<input id="${id}" type="${f.t || 'text'}" ${f.t === 'number' ? 'step="any"' : ''} value="${E(v == null ? (f.def == null ? '' : f.def) : v)}" ${f.ph ? `placeholder="${E(f.ph)}"` : ''}>`;
+      return `<div class="field ${f.span ? 'span' + f.span : ''}"><label>${E(f.l)}</label>${inp}${f.hint ? `<div style="font-size:11px;color:var(--text-faint);margin-top:3px;">${E(f.hint)}</div>` : ''}</div>`;
+    }).join('');
+  }
+  function readForm(fields, p){
+    const o = {};
+    for(const f of fields){
+      const id = p + f.k; let v;
+      if(f.t === 'check'){ o[f.k] = ck(id); continue; }
+      v = val(id);
+      if(f.req && !v){ alert(f.l + ' is required.'); return null; }
+      if(f.t === 'number') o[f.k] = v === '' ? null : Number(v);
+      else if(f.t === 'datetime-local') o[f.k] = v ? new Date(v).toISOString() : null;
+      else o[f.k] = v || null;
+    }
+    return o;
+  }
+
+  /* ---------- module plumbing (switch per organisation, sidebar, access) ---------- */
+  const MODS = {
+    ptw: { field:'ptw_module_enabled', title:'Permit to Work', label:'Permit to Work', note:'Controlled permits for hot work, work at height, confined space entry, lock out and isolation, excavation and lifting: request, approve, issue with a checklist, hand back. Switch on for clients with high risk work.', sub:'Controlled permits for high risk work: request, approve, issue with a checklist, hand back and close.', icon:'<svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>' },
+    ohs: { field:'ohs_module_enabled', title:'Occupational Health Surveillance', label:'Occupational Health Surveillance', note:'Surveillance programme by hazard, individual fitness outcomes (administrators and managers only) and occupational hygiene surveys with due dates. Switch on for clients with noise, dust, chemical or heat exposure.', sub:'Hazard based surveillance programme, fitness outcomes and occupational hygiene surveys, with due dates.', icon:'<svg viewBox="0 0 24 24"><path d="M12 21s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.5-7 10-7 10z"/></svg>' },
+    envdata: { field:'envdata_module_enabled', title:'Environmental Performance Data', label:'Environmental Performance Data', note:'Monthly waste, energy, water and emissions data with targets, trends and an export for audits and reporting. Switch on for clients with ISO 14001 or environmental legal obligations.', sub:'Monthly waste, energy, water and emissions data against targets, with trends and export.', icon:'<svg viewBox="0 0 24 24"><path d="M5 19c0-8 5-13 14-14-1 9-6 14-14 14z"/><path d="M5 19c3-4 6-6 9-8"/></svg>' },
+    speakup: { field:'speakup_module_enabled', title:'Confidential Reporting (Speak Up)', label:'Confidential Reporting (Speak Up)', note:'An anonymous channel for staff, contractors and suppliers to report wrongdoing, with a reference and key to follow up. Visible only to administrators and the nominated recipient.', sub:'An anonymous reporting channel, visible only to the nominated recipient and administrators.', icon:'<svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 10h8"/></svg>' },
+  };
+  const KEYS = Object.keys(MODS);
+  async function loadFlags(){
+    if(!STATE.org) return; KEYS.forEach(k => STATE.org['_' + k + 'On'] = false); STATE.org._suRecipient = false;
+    try{ const r = await sb().from('org_modules').select('module_key,enabled').eq('organisation_id', STATE.org.id).in('module_key', KEYS); arr(r.data).forEach(x => { STATE.org['_' + x.module_key + 'On'] = x.enabled === true; }); }catch(e){}
+    if(STATE.org._speakupOn && !isAdm()){ try{ const r = await sb().from('speakup_settings').select('recipient_user_id').eq('organisation_id', STATE.org.id).maybeSingle(); STATE.org._suRecipient = !!(r && r.data && r.data.recipient_user_id === STATE.user.id); }catch(e){} }
+    try{ applyModuleAccessToNav(); }catch(e){}
+  }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const a = arguments, t = this; const p = _lc.apply(t, a); const q = loadFlags(); const r = await Promise.all([p, q]); return r[0]; }; }
+  KEYS.forEach(k => ADMIN_CONSOLE_TOGGLES.push({ field: MODS[k].field, label: MODS[k].label, note: MODS[k].note }));
+  { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
+      const k = KEYS.find(x => MODS[x].field === field); if(!k) return _t.apply(this, arguments);
+      const { error } = await sb().from('org_modules').upsert({ organisation_id: STATE.org.id, module_key: k, enabled: !!value, updated_at: new Date().toISOString() }, { onConflict: 'organisation_id,module_key' });
+      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
+    }; }
+  { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){
+      if(!KEYS.includes(mod)) return _c.apply(this, arguments);
+      if(!(STATE.org && STATE.org['_' + mod + 'On'])) return false;
+      if(mod === 'speakup') return isAdm() || !!STATE.org._suRecipient;
+      const base0 = _c.apply(this, arguments); if(!base0) return base0;
+      if(isAdm()) return base0;
+      const ticks = arr(STATE.myModuleAccess).filter(k => k !== WM_CAL);
+      if(!ticks.length || !arr(STATE.myModuleAccess).includes(WM_CAL)) return base0;
+      return ticks.includes(mod);
+    }; }
+  { const _a = adminInviteModules; adminInviteModules = window.adminInviteModules = function(){
+      const out = _a.apply(this, arguments); const have = new Set(out.map(x => x.key));
+      ['ptw','ohs','envdata'].forEach(k => { if(!have.has(k) && STATE.org && STATE.org['_' + k + 'On']) out.push({ key: k, label: MODS[k].title }); });
+      return out; }; }
+  KEYS.forEach(k => { MODULE_META[k] = { title: MODS[k].title, sub: () => MODS[k].sub }; RENDERERS[k] = () => `<div id="${k}-root"></div>`; });
+  { const a = document.querySelector('.nav-item[data-mod="incidents"]') || document.querySelector('.nav-item[data-mod="management_review"]'); let prev = a;
+    KEYS.forEach(k => { if(document.querySelector(`.nav-item[data-mod="${k}"]`)) return; const h = `<div class="nav-item" data-mod="${k}" onclick="showModule('${k}')" style="display:none">${MODS[k].icon} ${E(MODS[k].title)}</div>`; if(prev){ prev.insertAdjacentHTML('afterend', h); prev = document.querySelector(`.nav-item[data-mod="${k}"]`); } }); }
+  { const _a = applyModuleAccessToNav; applyModuleAccessToNav = window.applyModuleAccessToNav = function(){ const r = _a.apply(this, arguments); KEYS.forEach(k => { const el = document.querySelector(`.nav-item[data-mod="${k}"]`); if(el) el.style.display = canAccessModule(k) ? '' : 'none'; }); return r; }; }
+  const INIT = {};
+  { const _s = showModule; showModule = window.showModule = function(mod){ const r = _s.apply(this, arguments); if(INIT[mod] && document.getElementById(mod + '-root')) INIT[mod](); return r; }; }
+  setTimeout(() => { try{ applyModuleAccessToNav(); }catch(e){} }, 0);
+
+  /* evidence panels (attachments) for the new record types */
+  const EV_REFRESH = {};
+  { const _u = window.uploadEvidence; window.uploadEvidence = async function(t, id){ const r = await _u.apply(this, arguments); if(EV_REFRESH[t]) EV_REFRESH[t](id); return r; }; }
+  { const _d = window.deleteEvidence; window.deleteEvidence = async function(fid, path, t, id){ const r = await _d.apply(this, arguments); if(EV_REFRESH[t]) EV_REFRESH[t](id); return r; }; }
+  { const _l = window.saveEvidenceLabel; window.saveEvidenceLabel = async function(fid, t, id){ const r = await _l.apply(this, arguments); if(EV_REFRESH[t]) EV_REFRESH[t](id); return r; }; }
+  async function evidenceHtml(type, id){ try{ const { files } = await loadEvidence(type, id); return renderEvidenceSection(type, id, files); }catch(e){ return ''; } }
+
+  /* ====================================================================== */
+  /* 1. PERMIT TO WORK                                                       */
+  /* ====================================================================== */
+  const PTW_TYPES = {
+    hot_work: ['Hot work (welding, cutting, grinding)', ['Flammable and combustible materials removed from the work area, or covered with fire blankets','Fire extinguisher of the right type at the work position','Fire watch assigned for the work and for the period set by the approver afterwards','Gas test done where flammable vapour could be present','Welding and cutting equipment inspected and in good order','Floor and wall openings covered or sealed','Workers competent and wearing the required PPE','Ventilation and fume extraction in place']],
+    height: ['Work at height', ['Fall protection method decided and anchor points inspected','Harnesses, lanyards and equipment inspected and in date','Ladders, scaffolds or platforms inspected and tagged for use','Area below barricaded and signed','Weather conditions suitable','Rescue plan in place and rescue equipment available','Tools and materials secured against falling','Workers competent and trained for work at height']],
+    confined: ['Confined space entry', ['All energy sources and services isolated, locked and tagged','Atmosphere tested before entry (oxygen, flammable, toxic) and monitored during entry','Ventilation provided','Attendant stationed outside, with communication to the entrants','Rescue plan and equipment in place, and rescue team informed','Entrants trained, competent and fit for the task','Entry and exit log in use','Emergency stop procedure explained to everyone involved']],
+    loto: ['Lock out and electrical isolation', ['Energy sources identified and listed under isolation points','Isolation carried out and each point locked and tagged','Stored energy released or made safe','Zero energy verified by a try start or a test for dead','Each worker has applied their personal lock','Contractor locks and tags recorded','Reinstatement sequence and responsible person agreed','Workers competent and authorised for the isolation']],
+    excavation: ['Excavation', ['Underground services located and marked','Barricades and warning signs in place','Sides sloped or supported','Spoil placed clear of the edge','Safe access and egress provided','Water, gas and atmosphere hazards assessed','Excavation inspected before each shift','Workers competent and wearing the required PPE']],
+    lifting: ['Lifting operations', ['Lift plan prepared and understood','Lifting equipment certified and in date','Operator and rigger competent and authorised','Load mass and the working load limit checked','Exclusion zone barricaded','Signaller appointed and signals agreed','Ground and weather conditions suitable','Lifting tackle inspected before use']],
+    general: ['General high risk work', ['Task and hazards assessed and recorded','Controls in place and agreed with the workers','Workers competent and briefed','PPE issued and in good order','Emergency arrangements known to everyone involved','Other people in the area informed']],
+  };
+  const PST = { requested:['Awaiting approval','#f07a1a'], approved:['Approved, not yet issued','#3b6ea5'], active:['Active','#2e9e5b'], suspended:['Suspended','#8a6ff5'], closed:['Closed','#888'], cancelled:['Cancelled','#888'], expired:['Expired: hand back now','#d4262c'] };
+  const P = STATE._ptw = { rows: [], loaded: false, broken: false, tab: 'permits', filter: 'open', open: null };
+  const ptwEff = p => ((p.status === 'active' || p.status === 'approved') && p.valid_to && new Date(p.valid_to) < new Date()) ? 'expired' : p.status;
+  async function loadPtw(){ const r = await sb().from('ptw_permits').select('*').eq('organisation_id', STATE.org.id).order('created_at', { ascending: false }); P.broken = !!(r.error && missing(r.error)); P.rows = r.error ? [] : arr(r.data); P.loaded = true; }
+  INIT.ptw = async function(){ const root = document.getElementById('ptw-root'); if(!root) return; root.innerHTML = '<p style="padding:24px;color:var(--text-faint);">Loading…</p>'; await loadPtw(); renderPtw(); };
+  window.ptwTab = k => { P.tab = k; P.open = null; renderPtw(); };
+  window.ptwFilter = v => { P.filter = v; renderPtw(); };
+  function renderPtw(){
+    const root = document.getElementById('ptw-root'); if(!root) return;
+    if(P.broken){ root.innerHTML = sqlNote(); return; }
+    const eff = P.rows.map(p => [p, ptwEff(p)]);
+    const n = s => eff.filter(x => x[1] === s).length;
+    const soon = eff.filter(x => x[1] === 'active' && p_hrs(x[0]) <= 24).length;
+    const rows = eff.filter(([p, s]) => P.filter === 'all' ? true : P.filter === 'open' ? !['closed', 'cancelled'].includes(s) : s === P.filter);
+    root.innerHTML = tiles([tile(n('active'), 'permits active now', '#2e9e5b'), tile(n('requested'), 'awaiting approval', '#f07a1a'), tile(soon, 'expire within 24 hours', soon ? '#f07a1a' : '#2e9e5b'), tile(n('expired'), 'expired, not handed back', n('expired') ? '#d4262c' : '#2e9e5b'), tile(eff.filter(x => x[1] === 'closed' && day(x[0].closed_at).slice(0, 7) === tdy().slice(0, 7)).length, 'closed this month', '#0b1f3a')])
+      + `<div class="toolbar"><div class="filters"><select onchange="ptwFilter(this.value)">${[['open', 'Open permits'], ['all', 'All permits'], ['requested', 'Awaiting approval'], ['active', 'Active'], ['expired', 'Expired'], ['closed', 'Closed']].map(o => `<option value="${o[0]}" ${P.filter === o[0] ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></div>${canW() ? '<button class="btn-primary btn-add" onclick="ptwEdit(\'\')">New permit</button>' : ''}</div>
+      <div id="ptw-slot"></div>
+      <div class="panel" style="padding:0;overflow:hidden;">${rows.length ? `<table><tr><th>Permit</th><th>Type</th><th>Work and location</th><th>Valid</th><th>Status</th><th>Requested by</th></tr>${rows.map(([p, s]) => `<tr class="clickable" onclick="ptwOpen('${p.id}')"><td class="mono">${E(p.ref_code || '')}</td><td>${E((PTW_TYPES[p.permit_type] || ['Other'])[0])}</td><td class="strong">${E(p.title)}<div style="font-size:11.5px;color:var(--text-faint);font-weight:400;">${E(p.location || '')}</div></td><td style="font-size:12px;">${fdt(p.valid_from)}<br>to ${fdt(p.valid_to)}</td><td>${chip(PST[s][0], PST[s][1])}</td><td>${E(nm(p.requested_by))}</td></tr>`).join('')}</table>` : noRows('No permits here yet.')}</div>`;
+    if(P.open) ptwOpen(P.open, true);
+  }
+  function p_hrs(p){ return p.valid_to ? (new Date(p.valid_to) - new Date()) / 36e5 : 999; }
+  const PTW_FIELDS = [
+    { k:'permit_type', l:'Type of permit', t:'select', opts:Object.keys(PTW_TYPES).map(k => [k, PTW_TYPES[k][0]]), def:'general' },
+    { k:'title', l:'Work to be done (short title)', req:true, span:2 },
+    { k:'location', l:'Location', ph:'Area, plant or room' },
+    { k:'contractor', l:'Contractor or department' },
+    { k:'approver_id', l:'Approver', t:'member' },
+    { k:'valid_from', l:'Valid from', t:'datetime-local', req:true },
+    { k:'valid_to', l:'Valid until', t:'datetime-local', req:true },
+    { k:'workers', l:'People doing the work', span:3, ph:'Names, one per line', t:'textarea', rows:2 },
+    { k:'description', l:'Description of the work', span:3, t:'textarea' },
+    { k:'hazards', l:'Hazards', span:3, t:'textarea', ph:'What could go wrong?' },
+    { k:'controls', l:'Controls and precautions', span:3, t:'textarea' },
+    { k:'ppe', l:'PPE and equipment required', span:3 },
+    { k:'isolation_points', l:'Isolation points (lock out)', span:3, t:'textarea', ph:'Energy sources isolated, lock and tag numbers', rows:2 },
+  ];
+  window.ptwEdit = function(id){
+    const p = P.rows.find(x => x.id === id) || { permit_type: 'general' };
+    const slot = document.getElementById('ptw-slot'); if(!slot) return;
+    slot.innerHTML = `<div class="detail-panel" style="padding:16px;margin-bottom:14px;"><h3 style="margin:0 0 10px;font-size:15px;">${id ? 'Edit permit request' : 'New permit request'}</h3>
+      <div class="form-grid">${formHtml(PTW_FIELDS, p, 'pw-')}</div>
+      <p style="font-size:11.5px;color:var(--text-faint);margin:8px 0;">The checklist for the chosen type is added when you submit. A permit cannot be approved by the person who requested it.</p>
+      <div class="form-actions"><button class="btn-cancel" onclick="document.getElementById('ptw-slot').innerHTML=''">Cancel</button><button class="btn-primary" onclick="ptwSave('${id || ''}')">${id ? 'Save changes' : 'Submit for approval'}</button></div></div>`;
+    slot.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  window.ptwSave = async function(id){
+    const o = readForm(PTW_FIELDS, 'pw-'); if(!o) return;
+    if(new Date(o.valid_to) <= new Date(o.valid_from)){ alert('The end of the validity period must be after the start.'); return; }
+    let r;
+    if(id){ const old = P.rows.find(x => x.id === id); if(old && old.permit_type !== o.permit_type) o.checklist = PTW_TYPES[o.permit_type][1].map(t => ({ t, ok: false })); o.updated_at = new Date().toISOString(); r = await sb().from('ptw_permits').update(o).eq('id', id); }
+    else { const yr = new Date().getFullYear(); const n = P.rows.filter(x => String(x.ref_code || '').startsWith('PTW-' + yr)).length + 1; Object.assign(o, { organisation_id: STATE.org.id, ref_code: `PTW-${yr}-${String(n).padStart(4, '0')}`, status: 'requested', requested_by: STATE.user.id, created_by: STATE.user.id, checklist: PTW_TYPES[o.permit_type][1].map(t => ({ t, ok: false })) }); r = await sb().from('ptw_permits').insert(o); }
+    if(r.error){ toast('Could not save: ' + r.error.message, 'error'); return; }
+    toast(id ? 'Permit updated.' : 'Permit submitted for approval.', 'success'); await loadPtw(); renderPtw();
+  };
+  window.ptwOpen = async function(id, keep){
+    const p = P.rows.find(x => x.id === id); if(!p) return; P.open = id;
+    const s = ptwEff(p), slot = document.getElementById('ptw-slot'); if(!slot) return;
+    const me = STATE.user.id, cl = arr(p.checklist), allOk = cl.length && cl.every(c => c.ok);
+    const editable = p.status === 'requested' && canW(), tickable = ['approved', 'active'].includes(p.status) && canW();
+    const kv = (a, b) => b ? `<tr><td style="width:170px;color:var(--text-faint);vertical-align:top;">${a}</td><td style="white-space:pre-wrap;">${E(b)}</td></tr>` : '';
+    const btn = (l, f, cls) => `<button class="btn-small ${cls || ''}" onclick="${f}">${l}</button>`;
+    const acts = [];
+    if(p.status === 'requested' && (isMgr() || p.approver_id === me)) acts.push(btn('Approve', `ptwAct('${id}','approve')`, 'primary'));
+    if(editable) acts.push(btn('Edit request', `ptwEdit('${id}')`));
+    if(p.status === 'approved' && canW()) acts.push(btn('Issue permit (work may start)', `ptwAct('${id}','issue')`, 'primary'));
+    if(p.status === 'active' && canW()) acts.push(btn('Suspend', `ptwAct('${id}','suspend')`));
+    if(p.status === 'suspended' && canW()) acts.push(btn('Resume', `ptwAct('${id}','resume')`));
+    if(['active', 'suspended', 'approved'].includes(p.status) && canW()) acts.push(btn('Hand back and close', `document.getElementById('pw-close').style.display='block'`, 'primary'));
+    if(!['closed', 'cancelled'].includes(p.status) && canW()) acts.push(btn('Cancel permit', `ptwAct('${id}','cancel')`));
+    acts.push(btn('Print permit', `ptwPrint('${id}')`));
+    slot.innerHTML = `<div class="detail-panel" style="padding:16px;margin-bottom:14px;" id="ptw-detail">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;"><div><span class="mono" style="color:var(--text-faint);">${E(p.ref_code)}</span><h3 style="margin:2px 0 4px;font-size:16px;">${E(p.title)}</h3><div>${chip(PST[s][0], PST[s][1])} <span style="font-size:12px;color:var(--text-faint);">${E((PTW_TYPES[p.permit_type] || ['Other'])[0])}</span></div></div><button class="btn-small" onclick="P_close()">Close</button></div>
+      <table style="margin:10px 0;">${kv('Location', p.location)}${kv('Contractor or department', p.contractor)}${kv('Valid', fdt(p.valid_from) + ' to ' + fdt(p.valid_to))}${kv('Requested by', nm(p.requested_by))}${kv('Approver', p.approved_at ? nm(p.approver_id) + ' on ' + fdt(p.approved_at) : nm(p.approver_id))}${kv('Issued', p.issued_at ? nm(p.issued_by) + ' on ' + fdt(p.issued_at) : '')}${kv('People doing the work', p.workers)}${kv('Description', p.description)}${kv('Hazards', p.hazards)}${kv('Controls and precautions', p.controls)}${kv('PPE and equipment', p.ppe)}${kv('Isolation points', p.isolation_points)}${kv('Hand back', p.closed_at ? (p.area_safe ? 'Area left safe. ' : '') + (p.handback_notes || '') + ' (' + nm(p.closed_by) + ', ' + fdt(p.closed_at) + ')' : '')}${kv('Cancelled', p.cancel_reason)}</table>
+      <h4 style="margin:12px 0 6px;font-size:13.5px;">Pre-work checklist ${allOk ? chip('Complete', '#2e9e5b') : ''}</h4>
+      ${cl.map((c, i) => `<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;padding:4px 0;font-weight:400;"><input type="checkbox" style="width:auto;margin-top:3px;" ${c.ok ? 'checked' : ''} ${tickable ? '' : 'disabled'} onchange="ptwTick('${id}',${i},this.checked)"> ${E(c.t)}</label>`).join('')}
+      ${p.status === 'requested' ? '<p style="font-size:11.5px;color:var(--text-faint);">The checklist is completed after approval, on site, before the permit is issued.</p>' : ''}
+      <div id="pw-close" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:10px;"><h4 style="margin:0 0 6px;font-size:13.5px;">Hand back</h4>
+        <label style="display:flex;gap:8px;font-weight:400;font-size:13px;"><input type="checkbox" id="pw-safe" style="width:auto;"> The work is complete, the area is clean and safe, and all isolations and locks have been removed or accounted for.</label>
+        <div class="field"><label>Hand back notes</label><textarea id="pw-hb" rows="2"></textarea></div><button class="btn-primary" onclick="ptwAct('${id}','close')">Close permit</button></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">${acts.join('')}</div>
+      <div id="ptw-ev" style="margin-top:14px;"></div></div>`;
+    document.getElementById('ptw-ev').innerHTML = await evidenceHtml('ptw_permit', id);
+    if(!keep) slot.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  window.P_close = () => { P.open = null; const s = document.getElementById('ptw-slot'); if(s) s.innerHTML = ''; };
+  EV_REFRESH.ptw_permit = id => { if(P.open === id) ptwOpen(id, true); };
+  window.ptwTick = async function(id, i, v){
+    const p = P.rows.find(x => x.id === id); if(!p) return; const cl = arr(p.checklist).map(c => Object.assign({}, c)); cl[i].ok = !!v;
+    const { error } = await sb().from('ptw_permits').update({ checklist: cl, updated_at: new Date().toISOString() }).eq('id', id);
+    if(error){ toast('Could not save: ' + error.message, 'error'); return; } p.checklist = cl; ptwOpen(id, true);
+  };
+  window.ptwAct = async function(id, act){
+    const p = P.rows.find(x => x.id === id); if(!p) return; const me = STATE.user.id, now = new Date().toISOString(); let patch = {};
+    if(act === 'approve'){
+      if(p.requested_by === me){ toast('A permit cannot be approved by the person who requested it. Ask another manager to approve it.', 'error'); return; }
+      patch = { status: 'approved', approver_id: me, approved_at: now };
+    } else if(act === 'issue'){
+      if(!arr(p.checklist).every(c => c.ok)){ toast('Complete every item on the checklist before the permit is issued.', 'error'); return; }
+      if(p.valid_to && new Date(p.valid_to) < new Date()){ toast('The validity period has ended. Cancel this permit and request a new one.', 'error'); return; }
+      patch = { status: 'active', issued_by: me, issued_at: now };
+    } else if(act === 'suspend') patch = { status: 'suspended' };
+    else if(act === 'resume'){ if(p.valid_to && new Date(p.valid_to) < new Date()){ toast('The validity period has ended. Hand back and close, then request a new permit.', 'error'); return; } patch = { status: 'active' }; }
+    else if(act === 'close'){
+      if(!ck('pw-safe')){ alert('Confirm that the area is safe and the isolations are removed before closing.'); return; }
+      patch = { status: 'closed', area_safe: true, handback_notes: val('pw-hb') || null, closed_by: me, closed_at: now };
+    } else if(act === 'cancel'){ const why = prompt('Why is this permit being cancelled?', ''); if(why == null) return; if(why.trim().length < 3){ alert('A reason is required.'); return; } patch = { status: 'cancelled', cancel_reason: why.trim(), closed_by: me, closed_at: now }; }
+    patch.updated_at = now;
+    const { error } = await sb().from('ptw_permits').update(patch).eq('id', id);
+    if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+    toast('Permit updated.', 'success'); await loadPtw(); renderPtw();
+  };
+  window.ptwPrint = function(id){
+    const p = P.rows.find(x => x.id === id); if(!p) return; const c = document.getElementById('print-container'); if(!c) return;
+    const r = (a, b) => b ? `<tr><td style="width:150px;font-weight:700;vertical-align:top;border:1px solid #999;padding:4px 6px;">${a}</td><td style="border:1px solid #999;padding:4px 6px;white-space:pre-wrap;">${E(b)}</td></tr>` : '';
+    c.innerHTML = `<div style="font-family:Arial,sans-serif;font-size:12px;color:#000;"><h2 style="margin:0 0 2px;">Permit to Work: ${E((PTW_TYPES[p.permit_type] || ['General'])[0])}</h2><div style="margin-bottom:8px;">${E(STATE.org.name)} · ${E(p.ref_code)} · Status: ${E(PST[ptwEff(p)][0])}</div>
+      <table style="width:100%;border-collapse:collapse;">${r('Work', p.title)}${r('Location', p.location)}${r('Contractor or department', p.contractor)}${r('Valid', fdt(p.valid_from) + ' to ' + fdt(p.valid_to))}${r('Requested by', nm(p.requested_by))}${r('Approved by', p.approved_at ? nm(p.approver_id) + ', ' + fdt(p.approved_at) : '')}${r('Issued by', p.issued_at ? nm(p.issued_by) + ', ' + fdt(p.issued_at) : '')}${r('People doing the work', p.workers)}${r('Description', p.description)}${r('Hazards', p.hazards)}${r('Controls', p.controls)}${r('PPE', p.ppe)}${r('Isolation points', p.isolation_points)}</table>
+      <h3 style="margin:12px 0 4px;">Pre-work checklist</h3>${arr(p.checklist).map(x => `<div>${x.ok ? '&#9745;' : '&#9744;'} ${E(x.t)}</div>`).join('')}
+      <h3 style="margin:12px 0 4px;">Hand back</h3><div>${p.closed_at ? E((p.area_safe ? 'Area left safe, isolations removed. ' : '') + (p.handback_notes || '') + ' ' + nm(p.closed_by) + ', ' + fdt(p.closed_at)) : 'Work complete. Area safe. Isolations removed.   Name: ______________   Signature: ______________   Date and time: ______________'}</div></div>`;
+    setTimeout(() => window.print(), 150);
+  };
+
+  /* ====================================================================== */
+  /* 2. OCCUPATIONAL HEALTH SURVEILLANCE                                     */
+  /* ====================================================================== */
+  const HAZ = ['Noise', 'Dust and airborne particulates', 'Hazardous chemical agents', 'Heat and thermal conditions', 'Vibration', 'Illumination', 'Ventilation', 'Manual handling and ergonomics', 'Work at height', 'Confined spaces', 'Biological agents', 'Other'];
+  const TESTS = ['Audiometry (hearing)', 'Spirometry (lung function)', 'Vision screening', 'Pre-employment medical', 'Periodic fitness for work', 'Chemical biological monitoring', 'Chest X-ray', 'Fitness for work at height or confined space', 'Other'];
+  const OUTC = ['Fit', 'Fit with restrictions', 'Unfit', 'Referred for follow-up', 'Did not attend'];
+  const SURVEYS = ['Noise', 'Illumination', 'Ventilation', 'Thermal conditions', 'Hazardous chemical agents', 'Dust and airborne particulates', 'Vibration', 'Ergonomics', 'Other'];
+  const O = STATE._ohs = { req: [], rec: [], sur: [], loaded: false, broken: false, tab: 'overview', recMissing: false };
+  async function loadOhs(){
+    const q = t => sb().from(t).select('*').eq('organisation_id', STATE.org.id);
+    const [a, c, b] = await Promise.all([q('ohs_requirements'), q('ohs_surveys'), isMgr() ? q('ohs_records') : Promise.resolve({ data: [] })]);
+    O.broken = !!((a.error && missing(a.error)) || (c.error && missing(c.error)));
+    O.req = a.error ? [] : arr(a.data); O.sur = c.error ? [] : arr(c.data).sort((x, y) => String(x.next_due || '9999').localeCompare(String(y.next_due || '9999')));
+    O.rec = b.error ? [] : arr(b.data).sort((x, y) => String(y.performed_date || '').localeCompare(String(x.performed_date || ''))); O.loaded = true;
+  }
+  INIT.ohs = async function(){ const root = document.getElementById('ohs-root'); if(!root) return; root.innerHTML = '<p style="padding:24px;color:var(--text-faint);">Loading…</p>'; await loadOhs(); renderOhs(); };
+  window.ohsTab = k => { O.tab = k; renderOhs(); };
+  const dueChip = d => { const n = daysTo(d); if(n == null) return chip('No date', '#888'); return n < 0 ? chip('Overdue ' + (-n) + ' d', '#d4262c') : n <= 60 ? chip('Due in ' + n + ' d', '#f07a1a') : chip('Current', '#2e9e5b'); };
+  const personName = id => (arr(STATE.personnel).find(p => p.id === id) || {}).full_name || 'Unknown person';
+  function latestRecords(){ const m = {}; O.rec.forEach(r => { const k = r.personnel_id + '|' + r.test_type; if(!m[k] || String(r.performed_date || '') > String(m[k].performed_date || '')) m[k] = r; }); return Object.values(m); }
+  function renderOhs(){
+    const root = document.getElementById('ohs-root'); if(!root) return;
+    if(O.broken){ root.innerHTML = sqlNote(); return; }
+    const tabs = [['overview', 'Overview'], ['programme', 'Surveillance programme'], ['surveys', 'Hygiene surveys']]; if(isMgr()) tabs.splice(2, 0, ['records', 'Fitness outcomes']);
+    let body = '';
+    if(O.tab === 'overview'){
+      const lr = latestRecords(), od = lr.filter(r => daysTo(r.next_due) != null && daysTo(r.next_due) < 0), soon = lr.filter(r => { const n = daysTo(r.next_due); return n != null && n >= 0 && n <= 60; });
+      const sod = O.sur.filter(s => s.status !== 'planned' && daysTo(s.next_due) != null && daysTo(s.next_due) < 0), ssoon = O.sur.filter(s => { const n = daysTo(s.next_due); return n != null && n >= 0 && n <= 90; });
+      const restr = lr.filter(r => ['Fit with restrictions', 'Unfit'].includes(r.outcome));
+      const noSurvey = O.req.filter(r => r.active && SURVEYS.some(s => r.hazard.toLowerCase().includes(s.toLowerCase().split(' ')[0])) && !O.sur.length).length;
+      body = tiles([tile(O.req.filter(r => r.active).length, 'surveillance requirements defined', '#0b1f3a'), tile(O.sur.filter(s => s.survey_date).length, 'hygiene surveys on record', '#0b1f3a'), tile(sod.length, 'surveys overdue', sod.length ? '#d4262c' : '#2e9e5b'), tile(ssoon.length, 'surveys due within 90 days', ssoon.length ? '#f07a1a' : '#2e9e5b')].concat(isMgr() ? [tile(od.length, 'fitness checks overdue', od.length ? '#d4262c' : '#2e9e5b'), tile(soon.length, 'fitness checks due within 60 days', soon.length ? '#f07a1a' : '#2e9e5b'), tile(restr.length, 'people with restrictions or unfit', restr.length ? '#f07a1a' : '#2e9e5b')] : []))
+        + (!O.req.length && !O.sur.length ? '<div class="panel" style="padding:16px;font-size:13px;line-height:1.6;"><b>How to start.</b> 1) On <i>Surveillance programme</i>, record the hazards people are exposed to and the checks each one needs (for example noise and audiometry). Confirm the requirements with your occupational health practitioner and your legal register. 2) On <i>Hygiene surveys</i>, record each survey (noise, illumination, ventilation, thermal, chemical agents) with the provider, the date and the next due date. Attach the report. 3) Managers record each person\'s fitness outcome on <i>Fitness outcomes</i>. Only the outcome is recorded here, never clinical results.</div>' : '')
+        + `<div class="panel" style="padding:14px 16px;"><h4 style="margin:0 0 8px;font-size:14px;">Needs attention</h4>${sod.concat(ssoon).length || (isMgr() && od.concat(soon).length) ? `<table>${sod.concat(ssoon).map(s => `<tr><td class="strong">${E(s.survey_type)} survey${s.site_area ? ': ' + E(s.site_area) : ''}</td><td>${fd(s.next_due)}</td><td>${dueChip(s.next_due)}</td></tr>`).join('')}${isMgr() ? od.concat(soon).map(r => `<tr><td class="strong">${E(personName(r.personnel_id))}: ${E(r.test_type)}</td><td>${fd(r.next_due)}</td><td>${dueChip(r.next_due)}</td></tr>`).join('') : ''}</table>` : '<p style="font-size:12.5px;color:var(--text-faint);margin:0;">Nothing is overdue or due soon.</p>'}</div>`;
+    } else if(O.tab === 'programme'){
+      body = `<div class="toolbar"><div></div>${canW() ? '<button class="btn-primary btn-add" onclick="ohsReqEdit(\'\')">Add requirement</button>' : ''}</div><div id="ohs-slot"></div><div class="panel" style="padding:0;overflow:hidden;">${O.req.length ? `<table><tr><th>Hazard</th><th>Applies to</th><th>Check</th><th>Every</th><th>Legal basis</th><th></th></tr>${O.req.map(r => `<tr class="clickable" onclick="ohsReqEdit('${r.id}')"><td class="strong">${E(r.hazard)}</td><td>${E(r.applies_to || '')}</td><td>${E(r.test_type)}</td><td>${r.frequency_months} months</td><td style="font-size:12px;">${E(r.legal_basis || '')}</td><td>${r.active ? '' : chip('Inactive', '#888')}</td></tr>`).join('')}</table>` : noRows('No surveillance requirements yet.')}</div>`;
+    } else if(O.tab === 'records'){
+      body = `<div class="panel" style="padding:10px 14px;margin-bottom:12px;font-size:12px;background:var(--amber-tint);">Individual fitness outcomes are special personal information. Only administrators and managers can see this page. Record the outcome and any work restrictions only. Do not record clinical results or diagnoses.</div>
+        <div class="toolbar"><div></div>${isMgr() ? '<button class="btn-primary btn-add" onclick="ohsRecEdit(\'\')">Record an outcome</button>' : ''}</div><div id="ohs-slot"></div><div class="panel" style="padding:0;overflow:hidden;">${O.rec.length ? `<table><tr><th>Person</th><th>Check</th><th>Done</th><th>Outcome</th><th>Next due</th><th></th></tr>${O.rec.map(r => `<tr class="clickable" onclick="ohsRecEdit('${r.id}')"><td class="strong">${E(personName(r.personnel_id))}</td><td>${E(r.test_type)}</td><td>${fd(r.performed_date)}</td><td>${E(r.outcome || '')}${r.restrictions ? `<div style="font-size:11.5px;color:var(--text-faint);">${E(r.restrictions)}</div>` : ''}</td><td>${fd(r.next_due)}</td><td>${dueChip(r.next_due)}</td></tr>`).join('')}</table>` : noRows('No outcomes recorded yet.')}</div>`;
+    } else {
+      body = `<div class="toolbar"><div></div>${canW() ? '<button class="btn-primary btn-add" onclick="ohsSurEdit(\'\')">Add survey</button>' : ''}</div><div id="ohs-slot"></div><div class="panel" style="padding:0;overflow:hidden;">${O.sur.length ? `<table><tr><th>Survey</th><th>Area</th><th>Provider</th><th>Done</th><th>Next due</th><th>Status</th><th></th></tr>${O.sur.map(s => `<tr class="clickable" onclick="ohsSurEdit('${s.id}')"><td class="strong">${E(s.survey_type)}</td><td>${E(s.site_area || '')}</td><td>${E(s.provider || '')}</td><td>${fd(s.survey_date)}</td><td>${fd(s.next_due)}</td><td>${E(label(s.status))}</td><td>${dueChip(s.next_due)}</td></tr>`).join('')}</table>` : noRows('No hygiene surveys yet.')}</div>`;
+    }
+    root.innerHTML = tabsBar(O.tab, tabs, 'ohsTab') + body;
+  }
+  const REQ_F = [
+    { k:'hazard', l:'Hazard or exposure', t:'select', opts:HAZ, req:true }, { k:'applies_to', l:'Who it applies to', ph:'e.g. workshop, welders, all staff on site' },
+    { k:'test_type', l:'Check required', t:'select', opts:TESTS, req:true }, { k:'frequency_months', l:'Repeat every (months)', t:'number', def:12, req:true },
+    { k:'legal_basis', l:'Legal or standard basis', span:2, ph:'Confirm with your legal register and occupational health practitioner' }, { k:'active', l:'Active', t:'check', def:true },
+    { k:'notes', l:'Notes', span:3, t:'textarea', rows:2 },
+  ];
+  window.ohsReqEdit = function(id){
+    const r = O.req.find(x => x.id === id) || {}; const s = document.getElementById('ohs-slot'); if(!s) return;
+    s.innerHTML = `<div class="detail-panel" style="padding:16px;margin-bottom:14px;"><div class="form-grid">${formHtml(REQ_F, r, 'rq-')}</div><div class="form-actions">${id && isMgr() ? `<button class="btn-small" style="color:#B3261E;" onclick="ohsDel('ohs_requirements','${id}')">Delete</button>` : ''}<button class="btn-cancel" onclick="document.getElementById('ohs-slot').innerHTML=''">Cancel</button><button class="btn-primary" onclick="ohsReqSave('${id || ''}')">Save</button></div></div>`;
+  };
+  window.ohsReqSave = async function(id){
+    const o = readForm(REQ_F, 'rq-'); if(!o) return; o.frequency_months = Math.max(1, Math.round(o.frequency_months || 12));
+    const r = id ? await sb().from('ohs_requirements').update(o).eq('id', id) : await sb().from('ohs_requirements').insert(Object.assign(o, { organisation_id: STATE.org.id }));
+    if(r.error){ toast('Could not save: ' + r.error.message, 'error'); return; } toast('Saved.', 'success'); await loadOhs(); renderOhs();
+  };
+  const REC_F = () => [
+    { k:'personnel_id', l:'Person', t:'person', req:true }, { k:'test_type', l:'Check', t:'select', opts:TESTS, req:true }, { k:'requirement_id', l:'Programme requirement', t:'select', opts:[['', 'Not linked']].concat(O.req.map(r => [r.id, r.hazard + ': ' + r.test_type + (r.applies_to ? ' (' + r.applies_to + ')' : '')])) },
+    { k:'performed_date', l:'Date done', t:'date', req:true }, { k:'next_due', l:'Next due', t:'date', hint:'Left blank, it is worked out from the requirement, or 12 months.' }, { k:'outcome', l:'Outcome', t:'select', opts:OUTC, def:'Fit' },
+    { k:'restrictions', l:'Work restrictions (if any)', span:3, ph:'Restrictions on the work the person may do. No clinical detail.' }, { k:'provider', l:'Provider', span:2 }, { k:'notes', l:'Notes', span:3, t:'textarea', rows:2, hint:'Never record clinical results or diagnoses here.' },
+  ];
+  window.ohsRecEdit = function(id){
+    if(!isMgr()) return; const r = O.rec.find(x => x.id === id) || {}; const s = document.getElementById('ohs-slot'); if(!s) return;
+    s.innerHTML = `<div class="detail-panel" style="padding:16px;margin-bottom:14px;"><div class="form-grid">${formHtml(REC_F(), r, 'rc-')}</div><div class="form-actions">${id ? `<button class="btn-small" style="color:#B3261E;" onclick="ohsDel('ohs_records','${id}')">Delete</button>` : ''}<button class="btn-cancel" onclick="document.getElementById('ohs-slot').innerHTML=''">Cancel</button><button class="btn-primary" onclick="ohsRecSave('${id || ''}')">Save</button></div></div>`;
+  };
+  window.ohsRecSave = async function(id){
+    const o = readForm(REC_F(), 'rc-'); if(!o) return;
+    if(!o.next_due){ const rq = O.req.find(x => x.id === o.requirement_id); o.next_due = addMonths(o.performed_date, rq ? rq.frequency_months : 12); }
+    const r = id ? await sb().from('ohs_records').update(o).eq('id', id) : await sb().from('ohs_records').insert(Object.assign(o, { organisation_id: STATE.org.id, created_by: STATE.user.id }));
+    if(r.error){ toast('Could not save: ' + r.error.message, 'error'); return; } toast('Saved.', 'success'); await loadOhs(); renderOhs();
+  };
+  const SUR_F = [
+    { k:'survey_type', l:'Survey', t:'select', opts:SURVEYS, req:true }, { k:'site_area', l:'Site or area', ph:'e.g. Head office, workshop' }, { k:'provider', l:'Provider (Approved Inspection Authority or occupational hygienist)', span:2 },
+    { k:'status', l:'Status', t:'select', opts:[['planned', 'Planned'], ['scheduled', 'Scheduled'], ['completed', 'Completed'], ['actions_open', 'Completed, actions open']], def:'planned' },
+    { k:'survey_date', l:'Date of survey', t:'date' }, { k:'next_due', l:'Next survey due', t:'date', hint:'Left blank, it is set to 24 months after the survey date. Change it to the frequency your legal register requires.' },
+    { k:'result_summary', l:'Summary of results', span:3, t:'textarea' }, { k:'actions_required', l:'Actions required', span:3, t:'textarea', rows:2 },
+  ];
+  window.ohsSurEdit = async function(id){
+    const r = O.sur.find(x => x.id === id) || {}; const s = document.getElementById('ohs-slot'); if(!s) return; O.surOpen = id;
+    s.innerHTML = `<div class="detail-panel" style="padding:16px;margin-bottom:14px;"><div class="form-grid">${formHtml(SUR_F, r, 'sv-')}</div><div class="form-actions">${id && isMgr() ? `<button class="btn-small" style="color:#B3261E;" onclick="ohsDel('ohs_surveys','${id}')">Delete</button>` : ''}<button class="btn-cancel" onclick="document.getElementById('ohs-slot').innerHTML=''">Cancel</button><button class="btn-primary" onclick="ohsSurSave('${id || ''}')">Save</button></div>${id ? '<div id="ohs-ev" style="margin-top:12px;"></div>' : '<p style="font-size:11.5px;color:var(--text-faint);">Save the survey first, then attach the report.</p>'}</div>`;
+    if(id){ const e = document.getElementById('ohs-ev'); if(e) e.innerHTML = await evidenceHtml('ohs_survey', id); }
+  };
+  EV_REFRESH.ohs_survey = id => { if(O.surOpen === id && document.getElementById('ohs-slot')) ohsSurEdit(id); };
+  window.ohsSurSave = async function(id){
+    const o = readForm(SUR_F, 'sv-'); if(!o) return; if(!o.next_due && o.survey_date) o.next_due = addMonths(o.survey_date, 24);
+    const r = id ? await sb().from('ohs_surveys').update(o).eq('id', id) : await sb().from('ohs_surveys').insert(Object.assign(o, { organisation_id: STATE.org.id, created_by: STATE.user.id })).select().single();
+    if(r.error){ toast('Could not save: ' + r.error.message, 'error'); return; } toast('Saved.', 'success'); await loadOhs(); renderOhs();
+    if(!id && r.data) { O.tab = 'surveys'; renderOhs(); ohsSurEdit(r.data.id); }
+  };
+  window.ohsDel = async function(t, id){
+    if(!isMgr() || !confirm('Delete this record? This cannot be undone.')) return;
+    const { error } = await sb().from(t).delete().eq('id', id); if(error){ toast('Could not delete: ' + error.message, 'error'); return; } toast('Deleted.', 'success'); await loadOhs(); renderOhs();
+  };
+
+  /* ====================================================================== */
+  /* 3. ENVIRONMENTAL PERFORMANCE DATA                                       */
+  /* ====================================================================== */
+  const ECAT = { waste_hazardous:'Hazardous waste', waste_general:'General waste', waste_recycled:'Recycled waste', energy_electricity:'Electricity', energy_fuel:'Fuel', water:'Water', emissions:'Emissions', other:'Other' };
+  const EN = STATE._env = { m: [], r: [], loaded: false, broken: false, tab: 'dash', year: new Date().getFullYear() };
+  async function loadEnv(){
+    const q = t => sb().from(t).select('*').eq('organisation_id', STATE.org.id);
+    const [a, b] = await Promise.all([q('env_metrics'), q('env_readings')]);
+    EN.broken = !!((a.error && missing(a.error)) || (b.error && missing(b.error)));
+    EN.m = a.error ? [] : arr(a.data).sort((x, y) => x.name.localeCompare(y.name)); EN.r = b.error ? [] : arr(b.data); EN.loaded = true;
+  }
+  INIT.envdata = async function(){ const root = document.getElementById('envdata-root'); if(!root) return; root.innerHTML = '<p style="padding:24px;color:var(--text-faint);">Loading…</p>'; await loadEnv(); renderEnv(); };
+  window.envTab = k => { EN.tab = k; renderEnv(); };
+  window.envYear = v => { EN.year = parseInt(v, 10) || EN.year; renderEnv(); };
+  const mkey = (y, m) => `${y}-${String(m).padStart(2, '0')}-01`;
+  const rd = (mid, per) => EN.r.find(x => x.metric_id === mid && day(x.period) === per);
+  const fnum = n => n == null ? '' : Number(n).toLocaleString('en-ZA', { maximumFractionDigits: 2 });
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function spark(vals, target){
+    const w = 220, h = 46, mx = Math.max(1, ...vals.filter(v => v != null), target || 0); const bw = w / 12;
+    return `<svg viewBox="0 0 ${w} ${h + 12}" width="100%" style="max-width:${w}px;">${vals.map((v, i) => v == null ? `<rect x="${i * bw + 2}" y="${h - 1}" width="${bw - 4}" height="1" fill="#ccc"/>` : `<rect x="${i * bw + 2}" y="${h - (v / mx) * h}" width="${bw - 4}" height="${(v / mx) * h}" fill="#2e9e5b" rx="1"/>`).join('')}${target ? `<line x1="0" x2="${w}" y1="${h - (target / mx) * h}" y2="${h - (target / mx) * h}" stroke="#d4262c" stroke-dasharray="3 3"/>` : ''}${MONTHS.map((m, i) => `<text x="${i * bw + bw / 2}" y="${h + 10}" font-size="7" text-anchor="middle" fill="#999">${m[0]}</text>`).join('')}</svg>`;
+  }
+  function renderEnv(){
+    const root = document.getElementById('envdata-root'); if(!root) return;
+    if(EN.broken){ root.innerHTML = sqlNote(); return; }
+    const yrs = []; for(let y = new Date().getFullYear(); y >= new Date().getFullYear() - 4; y--) yrs.push(y);
+    const head = tabsBar(EN.tab, [['dash', 'Dashboard'], ['entry', 'Enter data'], ['metrics', 'Measures']], 'envTab');
+    const act = EN.m.filter(m => m.active !== false); let body = '';
+    const ysel = `<select onchange="envYear(this.value)">${yrs.map(y => `<option ${y === EN.year ? 'selected' : ''}>${y}</option>`).join('')}</select>`;
+    if(EN.tab === 'dash'){
+      const co2 = Array(12).fill(null); act.filter(m => m.co2e_factor).forEach(m => { for(let i = 1; i <= 12; i++){ const x = rd(m.id, mkey(EN.year, i)); if(x) co2[i - 1] = (co2[i - 1] || 0) + Number(x.value) * Number(m.co2e_factor); } });
+      body = `<div class="toolbar"><div class="filters">${ysel}</div><button class="btn-small" onclick="envExport()">Export Excel</button></div>`
+        + (!act.length ? noRows('No measures yet. Open <b>Measures</b> to add the waste, energy, water and emissions data you track, or load the starter set.') : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;">${act.map(m => {
+          const v = Array.from({ length: 12 }, (_, i) => { const x = rd(m.id, mkey(EN.year, i + 1)); return x ? Number(x.value) : null; }); const have = v.filter(x => x != null); const last = [...v].reverse().find(x => x != null); const li = v.lastIndexOf(last); const prev = li > 0 ? v[li - 1] : null;
+          const ytd = have.reduce((a, b) => a + b, 0); const delta = prev ? Math.round((last - prev) / prev * 100) : null;
+          const tv = m.target_value != null ? Number(m.target_value) : null; const met = tv != null && last != null ? (m.target_direction === 'above' ? last >= tv : last <= tv) : null;
+          return `<div class="panel" style="padding:12px 14px;margin:0;"><div style="font-weight:700;font-size:13.5px;">${E(m.name)}</div><div style="font-size:11px;color:var(--text-faint);margin-bottom:4px;">${E(ECAT[m.category] || '')} · ${E(m.unit)} · ${E(m.frequency)}</div>${spark(v, tv)}<div style="display:flex;justify-content:space-between;font-size:12px;margin-top:4px;"><span>Latest <b>${last == null ? '-' : fnum(last)}</b>${delta == null ? '' : ` <span style="color:${delta > 0 ? '#d4262c' : '#2e9e5b'};">${delta > 0 ? '+' : ''}${delta}%</span>`}</span><span>Year to date <b>${fnum(ytd)}</b></span></div>${tv != null ? `<div style="margin-top:6px;">${met == null ? chip('Target ' + (m.target_direction === 'above' ? 'at least ' : 'at most ') + fnum(tv), '#888') : met ? chip('Target met: ' + (m.target_direction === 'above' ? 'at least ' : 'at most ') + fnum(tv), '#2e9e5b') : chip('Off target: ' + (m.target_direction === 'above' ? 'at least ' : 'at most ') + fnum(tv), '#d4262c')}</div>` : ''}</div>`; }).join('')}</div>`
+          + (co2.some(x => x != null) ? `<div class="panel" style="padding:12px 14px;margin-top:12px;"><b style="font-size:13.5px;">Emissions (kg CO2e), calculated from your factors</b>${spark(co2, null)}<div style="font-size:12px;">Year to date <b>${fnum(co2.reduce((a, b) => a + (b || 0), 0))}</b> kg CO2e</div></div>` : ''));
+    } else if(EN.tab === 'entry'){
+      body = `<div class="toolbar"><div class="filters">${ysel}</div></div>` + (!act.length ? noRows('Add measures first.') : `<div class="panel" style="padding:0;overflow:auto;"><table><tr><th>Measure</th>${MONTHS.map(m => `<th>${m}</th>`).join('')}</tr>${act.map(m => `<tr><td class="strong" style="white-space:nowrap;">${E(m.name)}<div style="font-size:11px;color:var(--text-faint);font-weight:400;">${E(m.unit)}</div></td>${MONTHS.map((_, i) => { const x = rd(m.id, mkey(EN.year, i + 1)); return `<td><input type="number" step="any" style="width:72px;padding:4px 6px;font-size:12px;" value="${x ? E(x.value) : ''}" ${canW() ? '' : 'disabled'} onchange="envSet('${m.id}','${mkey(EN.year, i + 1)}',this)"></td>`; }).join('')}</tr>`).join('')}</table></div><p style="font-size:11.5px;color:var(--text-faint);margin-top:8px;">Type a value and move to the next cell: it saves automatically. Clear a cell to remove the reading.</p>`);
+    } else {
+      body = `<div class="toolbar"><div></div>${canW() ? '<button class="btn-small" onclick="envStarter()">Load starter set</button><button class="btn-primary btn-add" onclick="envMetEdit(\'\')">Add measure</button>' : ''}</div><div id="env-slot"></div><div class="panel" style="padding:0;overflow:hidden;">${EN.m.length ? `<table><tr><th>Measure</th><th>Category</th><th>Unit</th><th>Target</th><th>Owner</th><th></th></tr>${EN.m.map(m => `<tr class="clickable" onclick="envMetEdit('${m.id}')"><td class="strong">${E(m.name)}</td><td>${E(ECAT[m.category] || '')}</td><td>${E(m.unit)}</td><td>${m.target_value == null ? '' : (m.target_direction === 'above' ? 'at least ' : 'at most ') + fnum(m.target_value)}</td><td>${E(nm(m.owner_id))}</td><td>${m.active === false ? chip('Inactive', '#888') : ''}</td></tr>`).join('')}</table>` : noRows('No measures yet.')}</div>`;
+    }
+    root.innerHTML = head + body;
+  }
+  const MET_F = [
+    { k:'name', l:'Measure', req:true, span:2, ph:'e.g. Electricity, Hazardous waste to licensed facility' }, { k:'category', l:'Category', t:'select', opts:Object.keys(ECAT).map(k => [k, ECAT[k]]), def:'other' },
+    { k:'unit', l:'Unit', req:true, ph:'kWh, kg, kilolitres, litres' }, { k:'frequency', l:'How often', t:'select', opts:['monthly', 'quarterly', 'annual'], def:'monthly' }, { k:'owner_id', l:'Owner', t:'member' },
+    { k:'target_value', l:'Target per period', t:'number' }, { k:'target_direction', l:'Target means', t:'select', opts:[['below', 'At most (a limit)'], ['above', 'At least (a goal)']], def:'below' }, { k:'co2e_factor', l:'Emission factor (kg CO2e per unit)', t:'number', hint:'Optional. Use a recognised factor for your region and note its source.' },
+    { k:'source', l:'Where the data comes from', span:2, ph:'e.g. Eskom invoice, weighbridge slips, meter reading' }, { k:'active', l:'Active', t:'check', def:true },
+  ];
+  window.envMetEdit = function(id){
+    const m = EN.m.find(x => x.id === id) || {}; const s = document.getElementById('env-slot'); if(!s) return;
+    s.innerHTML = `<div class="detail-panel" style="padding:16px;margin-bottom:14px;"><div class="form-grid">${formHtml(MET_F, m, 'mt-')}</div><div class="form-actions">${id && isMgr() ? `<button class="btn-small" style="color:#B3261E;" onclick="envMetDel('${id}')">Delete</button>` : ''}<button class="btn-cancel" onclick="document.getElementById('env-slot').innerHTML=''">Cancel</button><button class="btn-primary" onclick="envMetSave('${id || ''}')">Save</button></div></div>`;
+  };
+  window.envMetSave = async function(id){
+    const o = readForm(MET_F, 'mt-'); if(!o) return;
+    const r = id ? await sb().from('env_metrics').update(o).eq('id', id) : await sb().from('env_metrics').insert(Object.assign(o, { organisation_id: STATE.org.id }));
+    if(r.error){ toast('Could not save: ' + r.error.message, 'error'); return; } toast('Saved.', 'success'); await loadEnv(); renderEnv();
+  };
+  window.envMetDel = async function(id){
+    if(!isMgr() || !confirm('Delete this measure and all of its readings?')) return;
+    const { error } = await sb().from('env_metrics').delete().eq('id', id); if(error){ toast('Could not delete: ' + error.message, 'error'); return; } toast('Deleted.', 'success'); await loadEnv(); renderEnv();
+  };
+  window.envStarter = async function(){
+    const have = new Set(EN.m.map(m => m.name.toLowerCase())); const S = [['Hazardous waste', 'waste_hazardous', 'kg'], ['General waste', 'waste_general', 'kg'], ['Recycled waste', 'waste_recycled', 'kg'], ['Electricity', 'energy_electricity', 'kWh'], ['Diesel', 'energy_fuel', 'litres'], ['Water', 'water', 'kilolitres']].filter(x => !have.has(x[0].toLowerCase()));
+    if(!S.length){ toast('The starter set is already loaded.', 'info'); return; }
+    const { error } = await sb().from('env_metrics').insert(S.map(x => ({ organisation_id: STATE.org.id, name: x[0], category: x[1], unit: x[2], frequency: 'monthly', target_direction: 'below' })));
+    if(error){ toast('Could not load: ' + error.message, 'error'); return; } toast(S.length + ' measures added. Set targets and owners next.', 'success'); await loadEnv(); renderEnv();
+  };
+  window.envSet = async function(mid, per, el){
+    if(!canW()) return; const v = el.value.trim(); const x = rd(mid, per);
+    let r;
+    if(v === ''){ if(!x) return; r = await sb().from('env_readings').delete().eq('id', x.id); if(!r.error) EN.r = EN.r.filter(y => y.id !== x.id); }
+    else if(isNaN(Number(v))){ toast('Enter a number.', 'error'); el.value = x ? x.value : ''; return; }
+    else { r = await sb().from('env_readings').upsert({ organisation_id: STATE.org.id, metric_id: mid, period: per, value: Number(v), created_by: STATE.user.id }, { onConflict: 'metric_id,period' }).select().single(); if(!r.error && r.data){ EN.r = EN.r.filter(y => !(y.metric_id === mid && day(y.period) === per)); EN.r.push(r.data); } }
+    if(r.error){ toast('Could not save: ' + r.error.message, 'error'); return; }
+    el.style.background = '#e9f5ee'; setTimeout(() => { el.style.background = ''; }, 800);
+  };
+  window.envExport = async function(){
+    const XLSX = await ensureXLSX(); const rows = [];
+    EN.m.forEach(m => { const o = { Measure: m.name, Category: ECAT[m.category] || '', Unit: m.unit, Target: m.target_value == null ? '' : m.target_value }; MONTHS.forEach((mn, i) => { const x = rd(m.id, mkey(EN.year, i + 1)); o[mn + ' ' + EN.year] = x ? Number(x.value) : ''; }); rows.push(o); });
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Environmental data ' + EN.year); XLSX.writeFile(wb, 'Environmental-Performance-Data-' + EN.year + '.xlsx');
+  };
+
+  /* ====================================================================== */
+  /* 4. CONFIDENTIAL REPORTING CHANNEL (SPEAK UP)                            */
+  /* ====================================================================== */
+  const SU_ST = [['received', 'Received'], ['acknowledged', 'Acknowledged'], ['investigating', 'Investigating'], ['outcome_given', 'Outcome given'], ['closed', 'Closed']];
+  const SU_COL = { received:'#d4262c', acknowledged:'#f07a1a', investigating:'#1f6fd1', outcome_given:'#2e9e5b', closed:'#888' };
+  const SU_CAT = { fraud:'Fraud or theft', safety:'Health and safety', harassment:'Harassment or discrimination', corruption:'Bribery or corruption', environment:'Environmental harm', privacy:'Privacy or data breach', other:'Other' };
+  const SU_POLICY = 'Group QaSHE CG (Pty) Ltd and this organisation do not tolerate unlawful or unethical conduct. Anyone may report a concern through this channel, anonymously if preferred. Reports are received only by the nominated recipient and are handled confidentially. A person who reports a concern in good faith is protected against retaliation. When you submit a report you receive a reference and a key. Keep both: they are the only way to check progress or answer questions anonymously. Do not include information that identifies you unless you choose to. This text is a starting point: review it with your legal adviser against the Protected Disclosures Act and your own policies before relying on it.';
+  const SU = STATE._su = { s: null, reps: [], loaded: false, broken: false, tab: 'cases', open: null, fu: [], nt: [] };
+  async function loadSu(){
+    const id = STATE.org.id;
+    const [a, b] = await Promise.all([sb().from('speakup_settings').select('*').eq('organisation_id', id).maybeSingle(), sb().from('speakup_reports').select('*').eq('organisation_id', id).order('received_at', { ascending: false })]);
+    SU.broken = !!((a.error && missing(a.error)) || (b.error && missing(b.error)));
+    SU.s = a.error ? null : a.data; SU.reps = b.error ? [] : arr(b.data); SU.loaded = true;
+  }
+  INIT.speakup = async function(){ const root = document.getElementById('speakup-root'); if(!root) return; root.innerHTML = '<p style="padding:24px;color:var(--text-faint);">Loading…</p>'; await loadSu(); renderSu(); };
+  window.suTab = k => { SU.tab = k; SU.open = null; renderSu(); };
+  const suLink = () => SU.s && SU.s.public_token ? new URL('qashe-watchman-speakup.html?o=' + SU.s.public_token, location.href).href : '';
+  function renderSu(){
+    const root = document.getElementById('speakup-root'); if(!root) return;
+    if(SU.broken){ root.innerHTML = sqlNote(); return; }
+    const tabs = [['cases', 'Cases']]; if(isAdm()) tabs.push(['settings', 'Settings and link']);
+    let body = '';
+    if(SU.tab === 'settings' && isAdm()) body = suSettingsHtml();
+    else if(SU.open){ body = '<div id="su-detail"></div>'; }
+    else {
+      const open = SU.reps.filter(r => r.status !== 'closed'), nw = SU.reps.filter(r => r.status === 'received');
+      body = (SU.s && SU.s.enabled ? '' : '<div class="panel" style="padding:12px 16px;border-left:4px solid #f07a1a;margin-bottom:12px;font-size:13px;">The channel is switched off. ' + (isAdm() ? 'Open Settings and link to nominate a recipient and switch it on.' : 'An administrator must switch it on.') + '</div>')
+        + tiles([tile(SU.reps.length, 'reports received', '#0b1f3a'), tile(nw.length, 'awaiting acknowledgement', nw.length ? '#d4262c' : '#2e9e5b'), tile(open.length, 'open cases', open.length ? '#f07a1a' : '#2e9e5b')])
+        + `<div class="panel" style="padding:0;overflow:hidden;">${SU.reps.length ? `<table><tr><th>Reference</th><th>Received</th><th>Category</th><th>Status</th><th>Assigned</th></tr>${SU.reps.map(r => `<tr class="clickable" onclick="suOpen('${r.id}')"><td class="strong">${E(r.ref_code)}</td><td>${fdt(r.received_at)}</td><td>${E(SU_CAT[r.category] || r.category || '')}</td><td>${chip(label(r.status), SU_COL[r.status] || '#888')}</td><td>${E(nm(r.assigned_to))}</td></tr>`).join('')}</table>` : noRows('No reports yet.')}</div>`;
+    }
+    root.innerHTML = '<style>#speakup-root textarea,#speakup-root select{width:100%;box-sizing:border-box}#speakup-root .form-group label{display:block;margin-bottom:4px;font-weight:700;font-size:12.5px}#speakup-root .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:700px){#speakup-root .form-grid{grid-template-columns:1fr}}</style>' + tabsBar(SU.tab, tabs, 'suTab') + body;
+    if(SU.open && SU.tab === 'cases') suDetail();
+  }
+  function suSettingsHtml(){
+    const s = SU.s || {}; const link = suLink();
+    return `<div class="panel" style="padding:16px;"><div class="form-grid">
+      <div class="form-group"><label>Channel status</label><select id="su-en"><option value="0" ${s.enabled ? '' : 'selected'}>Off</option><option value="1" ${s.enabled ? 'selected' : ''}>On</option></select></div>
+      <div class="form-group"><label>Nominated recipient</label><select id="su-rc"><option value="">Choose a person</option>${memberOptions(s.recipient_user_id)}</select><div style="font-size:11px;color:var(--text-faint);">Only this person and the administrators can see reports. Choose someone independent of the people most likely to be reported.</div></div>
+      <div class="form-group" style="grid-column:1/-1;"><label>Policy statement shown on the reporting page</label><textarea id="su-pol" rows="8">${E(s.policy_text || SU_POLICY)}</textarea></div></div>
+      <div class="form-actions"><button class="btn-primary" onclick="suSaveSettings()">Save settings</button></div>
+      ${link ? `<div style="margin-top:14px;font-size:13px;"><b>Public reporting link</b><div style="background:#f3f3f3;padding:8px 10px;border-radius:6px;word-break:break-all;margin:6px 0;font-size:12px;">${E(link)}</div><button class="btn-small" onclick="navigator.clipboard.writeText('${E(link)}').then(()=>toast('Link copied.','success'))">Copy link</button> <span style="font-size:11.5px;color:var(--text-faint);">Share it on your intranet, notice boards, supplier packs and contracts. Anyone with the link can report without signing in.</span></div>` : '<p style="font-size:12px;color:var(--text-faint);">Save the settings to generate the public link.</p>'}</div>`;
+  }
+  window.suSaveSettings = async function(){
+    if(!isAdm()) return; const en = document.getElementById('su-en').value === '1', rc = document.getElementById('su-rc').value || null, pol = document.getElementById('su-pol').value.trim();
+    if(en && !rc){ toast('Nominate a recipient before switching the channel on.', 'error'); return; }
+    const o = { enabled: en, recipient_user_id: rc, policy_text: pol, updated_at: new Date().toISOString() };
+    const r = SU.s ? await sb().from('speakup_settings').update(o).eq('organisation_id', STATE.org.id) : await sb().from('speakup_settings').insert(Object.assign(o, { organisation_id: STATE.org.id }));
+    if(r.error){ toast('Could not save: ' + r.error.message, 'error'); return; } toast('Saved.', 'success'); await loadSu(); renderSu();
+  };
+  window.suOpen = async function(id){ SU.open = id; const [f, n] = await Promise.all([sb().from('speakup_followups').select('*').eq('report_id', id).order('created_at'), sb().from('speakup_notes').select('*').eq('report_id', id).order('created_at')]); SU.fu = arr(f.data); SU.nt = arr(n.data); renderSu(); };
+  window.suBack = () => { SU.open = null; renderSu(); };
+  async function suDetail(){
+    const r = SU.reps.find(x => x.id === SU.open); const el = document.getElementById('su-detail'); if(!r || !el) return;
+    el.innerHTML = `<button class="btn-small" onclick="suBack()">Back to cases</button>
+      <div class="panel" style="padding:16px;margin-top:10px;"><div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;"><h3 style="margin:0;">${E(r.ref_code)}</h3>${chip(label(r.status), SU_COL[r.status] || '#888')}</div>
+      <div style="font-size:12px;color:var(--text-faint);margin:4px 0 10px;">Received ${fdt(r.received_at)} · ${E(SU_CAT[r.category] || r.category || 'No category')}${r.contact ? ' · Reporter contact: ' + E(r.contact) : ' · Anonymous'}</div>
+      <div style="white-space:pre-wrap;font-size:13.5px;line-height:1.6;background:#fafafa;padding:12px;border-radius:6px;">${E(r.description)}</div>
+      <div class="form-grid" style="margin-top:14px;"><div class="form-group"><label>Status</label><select id="su-st">${SU_ST.map(([k, l]) => `<option value="${k}" ${r.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div class="form-group"><label>Assigned to</label><select id="su-as"><option value="">Unassigned</option>${memberOptions(r.assigned_to)}</select></div>
+      <div class="form-group" style="grid-column:1/-1;"><label>Outcome (shown to the reporter when they check status)</label><textarea id="su-oc" rows="3">${E(r.outcome || '')}</textarea></div></div>
+      <div class="form-actions"><button class="btn-primary" onclick="suSaveCase('${r.id}')">Save case</button></div></div>
+      <div class="panel" style="padding:16px;"><h4 style="margin:0 0 8px;">Conversation with the reporter</h4>${SU.fu.length ? SU.fu.map(f => `<div style="margin:6px 0;padding:8px 10px;border-radius:6px;background:${f.from_reporter ? '#eef3fb' : '#f1f8f3'};font-size:13px;"><b>${f.from_reporter ? 'Reporter' : 'Response'}</b> <span style="color:var(--text-faint);font-size:11px;">${fdt(f.created_at)}</span><div style="white-space:pre-wrap;">${E(f.message)}</div></div>`).join('') : '<p style="font-size:12.5px;color:var(--text-faint);">No messages yet.</p>'}
+      <textarea id="su-msg" rows="2" placeholder="Reply to the reporter. They see it when they check status with their reference and key."></textarea><div class="form-actions"><button class="btn-small" onclick="suReply('${r.id}')">Send reply</button></div></div>
+      <div class="panel" style="padding:16px;"><h4 style="margin:0 0 8px;">Internal notes (never shown to the reporter)</h4>${SU.nt.map(n => `<div style="margin:6px 0;padding:8px 10px;background:#fafafa;border-radius:6px;font-size:13px;"><b>${E(nm(n.author_id))}</b> <span style="color:var(--text-faint);font-size:11px;">${fdt(n.created_at)}</span><div style="white-space:pre-wrap;">${E(n.note)}</div></div>`).join('')}
+      <textarea id="su-nt" rows="2" placeholder="Add an internal note"></textarea><div class="form-actions"><button class="btn-small" onclick="suNote('${r.id}')">Add note</button></div></div>
+      <div class="panel" style="padding:16px;"><h4 style="margin:0 0 8px;">Evidence</h4><div id="su-ev"></div></div>
+      <p style="font-size:11.5px;color:var(--text-faint);">Reports cannot be deleted: they are retained as a record. Confidentiality: do not disclose the identity of a reporter.</p>`;
+    const ev = document.getElementById('su-ev'); if(ev) ev.innerHTML = await evidenceHtml('speakup_report', r.id);
+  }
+  EV_REFRESH.speakup_report = id => { if(SU.open === id && document.getElementById('su-ev')) evidenceHtml('speakup_report', id).then(h => { const e = document.getElementById('su-ev'); if(e) e.innerHTML = h; }); };
+  window.suSaveCase = async function(id){
+    const st = document.getElementById('su-st').value, o = { status: st, assigned_to: document.getElementById('su-as').value || null, outcome: document.getElementById('su-oc').value.trim() || null };
+    if(['outcome_given', 'closed'].includes(st) && !o.outcome){ toast('Record an outcome before giving an outcome or closing.', 'error'); return; }
+    o.closed_at = st === 'closed' ? new Date().toISOString() : null;
+    const { error } = await sb().from('speakup_reports').update(o).eq('id', id); if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+    toast('Case saved.', 'success'); await loadSu(); renderSu();
+  };
+  window.suReply = async function(id){
+    const m = document.getElementById('su-msg').value.trim(); if(!m) return;
+    const { error } = await sb().from('speakup_followups').insert({ organisation_id: STATE.org.id, report_id: id, from_reporter: false, message: m }); if(error){ toast('Could not send: ' + error.message, 'error'); return; }
+    await suOpen(id);
+  };
+  window.suNote = async function(id){
+    const m = document.getElementById('su-nt').value.trim(); if(!m) return;
+    const { error } = await sb().from('speakup_notes').insert({ organisation_id: STATE.org.id, report_id: id, author_id: STATE.user.id, note: m }); if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+    await suOpen(id);
+  };
+})();
+
 </script>
 </body>
 </html>
