@@ -2142,7 +2142,7 @@ async function loadAudits(){
 async function loadRisks(){
   const { data, error } = await STATE.supabase.from('risk_register').select('*').eq('organisation_id', STATE.org.id).order('inherent_score', {ascending:false});
   if(error){ toast('Could not load risk register: ' + error.message, 'error'); return; }
-  STATE.risks = data || [];
+  { const all = data || []; STATE.risksExcluded = all.filter(x => x.applicability === 'not_applicable'); STATE.risks = all.filter(x => x.applicability !== 'not_applicable'); }
 }
 async function loadDocuments(){
   const { data, error } = await STATE.supabase.from('documents').select('*').eq('organisation_id', STATE.org.id).order('doc_number', {ascending:true});
@@ -2198,7 +2198,7 @@ async function loadObjectives(){
 async function loadLegalRegister(){
   const { data, error } = await STATE.supabase.from('legal_register').select('*').eq('organisation_id', STATE.org.id).order('next_review_due_date', {ascending:true});
   if(error){ toast('Could not load legal register: ' + error.message, 'error'); return; }
-  STATE.legalRegister = data || [];
+  { const all = data || []; STATE.legalRegisterExcluded = all.filter(x => x.applicability === 'not_applicable'); STATE.legalRegister = all.filter(x => x.applicability !== 'not_applicable'); }
 }
 async function loadLegalAiSuggestions(){
   const { data, error } = await STATE.supabase.from('legal_register_ai_suggestions').select('*').eq('organisation_id', STATE.org.id).eq('status','suggested').order('created_at', {ascending:false});
@@ -3607,6 +3607,8 @@ const RENDERERS = {
       <button class="btn-small ro-btn" onclick="showRiskInfographic()">Risk Dashboard</button>
       <button class="btn-small ro-btn" onclick="showFrameworkOverview()">Registers Overview</button>
       <button class="btn-small ro-btn" onclick="openRiskAiReview()">AI Audit Register</button>
+      <button class="btn-small ro-btn" onclick="openAlignmentReview('risks')" title="Check every entry against your Business Context Profile">AI Alignment Review</button>
+      <button class="btn-small ro-btn" onclick="openBizContext()">Business Context</button>
       <button class="btn-small ro-btn" onclick="openProgrammes()">Programmes</button>
       <button class="btn-small" onclick="openImportModal('risks')">Import Excel</button>
       <button class="btn-small" onclick="exportModuleExcel('risks')">Export Excel</button>
@@ -3949,6 +3951,8 @@ const RENDERERS = {
       <button class="btn-small" onclick="printCurrentRegister('legal','Legal Compliance Register')">Print Register</button>
         <button class="btn-small" onclick="bulkMarkAllLegalCompliant()" title="Mark every item matching the current filter as compliant: then open the specific ones you know aren't and adjust those">Mark all compliant</button>
         <button class="btn-small" style="background:linear-gradient(135deg,#6d4fe0,#8a6ff5); color:#fff; border:none;" onclick="toggleLegalAiForm()">✨ AI: Build Legal Register</button>
+        <button class="btn-small" style="background:linear-gradient(135deg,#6d4fe0,#8a6ff5); color:#fff; border:none;" onclick="openAlignmentReview('legal')" title="Check every entry against your Business Context Profile">✨ AI: Review against my business</button>
+        <button class="btn-small" onclick="openBizContext()">Business Context</button>
         <button class="btn-primary btn-add" onclick="toggleLegalForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Legal Item</button>
       </div>
     </div>
@@ -49320,6 +49324,414 @@ ask:'Which three faults came back most often last month, and what has changed in
     doPrint(`<div class="itp">${PS}${hdr('INSPECTION AND TESTING: MANAGING DIRECTOR REPORT', m)}${kv([['Jobs in progress', S.open.length], ['Jobs past due date', S.od.length], ['Boards certified', S.certM.length], ['Jobs released', S.rel.length], ['First-time pass, 90 days', S.fpPct == null ? 'n/a' : S.fpPct + '%'], ['Average days, opened to released', S.avgDays == null ? 'n/a' : S.avgDays], ['Open punch items', S.openP], ['Internal / client test hours', S.hi + ' / ' + S.hc]])}<h2>Jobs in progress</h2><table><tr><th>Job</th><th>Customer</th><th>Boards</th><th>Certified</th><th>Open punch</th><th>Due</th><th>Status</th></tr>${S.open.map(j => { const us = unitsOf(j); return `<tr><td>${E(j.job_no)}</td><td>${E(j.customer_name || '')}</td><td>${us.length}</td><td>${us.filter(u => u.status === 'certified').length}</td><td>${D().punch.filter(p => p.job_id === j.id && p.status === 'open').length}</td><td>${j.due_date ? fmtDate(j.due_date) : ''}</td><td>${(JST[j.status] || [j.status])[0]}</td></tr>`; }).join('') || '<tr><td colspan="7">None.</td></tr>'}</table><h2>Jobs released this month</h2><table><tr><th>Job</th><th>Customer</th><th>Release note</th><th>Released</th></tr>${S.rel.map(j => `<tr><td>${E(j.job_no)}</td><td>${E(j.customer_name || '')}</td><td>${E(j.release_note_no || '')}</td><td>${fmtDate(j.released_at)}</td></tr>`).join('') || '<tr><td colspan="4">None.</td></tr>'}</table><h2>Faults by category</h2><table><tr><th>Category</th><th>Faults</th></tr>${cats.map(c => `<tr><td>${E(c)}</td><td>${F.byCat[c].n}</td></tr>`).join('') || '<tr><td colspan="2">None.</td></tr>'}</table>${foot()}</div>`);
   };
   window.itDash = { stats:dashStats, summary, ready, buildSnap, TYPES, LISTS };
+})();
+
+
+/* ===== Release 29: Business Context Profile and AI alignment review (Legal Register, Risks and Opportunities) ===== */
+(function(){
+  if(window.__r29) return; window.__r29 = true;
+  const E = s => escapeHtml(s == null ? '' : s);
+  const sb = () => STATE.supabase;
+  const canManage = () => ['admin','manager'].includes(STATE.myRole);
+  const canWork = () => ['admin','manager','contributor'].includes(STATE.myRole);
+  const todayS = () => new Date().toISOString().slice(0,10);
+  const val = id => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+  const SQLHINT = ' (run the AI alignment SQL first)';
+
+  function openModal(id, html, wide){
+    closeModal(id);
+    const d = document.createElement('div'); d.id = id;
+    d.style.cssText = 'position:fixed;inset:0;background:rgba(20,23,31,.55);z-index:8000;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:28px 14px;';
+    d.innerHTML = `<div style="background:var(--panel);border-radius:12px;max-width:${wide||980}px;width:100%;padding:22px 24px;box-shadow:0 12px 40px rgba(0,0,0,.3);font-family:Arial,Helvetica,sans-serif;">${html}</div>`;
+    document.body.appendChild(d);
+  }
+  function closeModal(id){ const d = document.getElementById(id); if(d) d.remove(); }
+  window.alClose = function(){ closeModal('al-modal'); closeModal('bc-modal'); };
+  const chip = (t, bg, fg) => `<span style="display:inline-block;background:${bg};color:${fg};border-radius:10px;padding:2px 9px;font-size:11px;font-weight:700;">${E(t)}</span>`;
+  const VCHIP = {
+    keep: chip('Relevant', 'var(--green-tint)', 'var(--green)'),
+    refine: chip('Refine', 'var(--amber-tint)', 'var(--amber)'),
+    not_relevant: chip('Not relevant', 'var(--grey-tint)', 'var(--charcoal)'),
+  };
+  const CONF = { high:'High confidence', medium:'Medium confidence', low:'Low confidence: verify' };
+
+  /* ---------- Business Context Profile ---------- */
+  async function bcLoad(){
+    const { data, error } = await sb().from('org_business_context').select('*').eq('organisation_id', STATE.org.id).maybeSingle();
+    if(error){ STATE._bcErr = error.message; STATE._bc = null; return null; }
+    STATE._bcErr = ''; STATE._bc = data || null; return STATE._bc;
+  }
+  function bcMissing(c){
+    const m = [];
+    if(!c || !(c.scope_statement || '').trim()) m.push('scope of the business');
+    if(!c || !(c.products_services || '').trim()) m.push('products and services');
+    if(!c || !((c.jurisdictions || []).length || (c.other_jurisdictions || '').trim())) m.push('jurisdiction');
+    return m;
+  }
+  function bcText(c){
+    const L = [];
+    L.push('Organisation: ' + STATE.org.name);
+    if(c.scope_statement) L.push('Scope of the business and management system: ' + c.scope_statement);
+    if(c.products_services) L.push('Products and services: ' + c.products_services);
+    if(c.key_activities) L.push('Key activities and processes: ' + c.key_activities);
+    if(c.sites_regions) L.push('Sites and regions of operation: ' + c.sites_regions);
+    const j = [...(c.jurisdictions || []), ...(c.other_jurisdictions ? [c.other_jurisdictions] : [])];
+    if(j.length) L.push('Jurisdictions: ' + j.join(', '));
+    if(c.sector) L.push('Sector: ' + c.sector);
+    if(c.regulators) L.push('Regulators and certification bodies: ' + c.regulators);
+    if(c.employee_band) L.push('Size: ' + c.employee_band);
+    if(c.key_hazards) L.push('Significant hazards, aspects and risk areas: ' + c.key_hazards);
+    return L.join('\n');
+  }
+  window.openBizContext = async function(opts){
+    opts = opts || {};
+    const c = (await bcLoad()) || {};
+    if(STATE._bcErr){ toast('Could not read the Business Context Profile: ' + STATE._bcErr + SQLHINT, 'error'); return; }
+    STATE._bcAfter = opts.after || null;
+    const ro = canManage() ? '' : 'disabled';
+    const jsel = c.jurisdictions || [];
+    const fld = (id, lab, v, ph, rows) => `<div class="field span3"><label>${lab}</label><textarea id="${id}" ${ro} rows="${rows||3}" placeholder="${E(ph||'')}">${E(v||'')}</textarea></div>`;
+    openModal('bc-modal', `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+        <div><h3 style="font-size:18px;color:var(--text);margin:0 0 4px;">Business Context Profile</h3>
+        <p style="font-size:12.5px;color:var(--text-dim);margin:0 0 14px;line-height:1.5;">Describe the business once. The AI uses this to judge which legal requirements, risks and opportunities are relevant to you, and which are not. The more specific you are, the better the review.</p></div>
+        <button class="btn-small" onclick="closeModal_bc()">Close</button>
+      </div>
+      ${opts.need && opts.need.length ? `<div style="background:var(--amber-tint);border-radius:8px;padding:9px 12px;font-size:12.5px;margin-bottom:12px;">Before the review can run, please complete: <b>${E(opts.need.join(', '))}</b>.</div>` : ''}
+      ${canManage() ? '' : '<div style="background:var(--grey-tint);border-radius:8px;padding:9px 12px;font-size:12.5px;margin-bottom:12px;">Only an administrator or manager can change the profile.</div>'}
+      <div class="form-grid">
+        ${fld('bc-scope','Scope of the business and management system', c.scope_statement, 'e.g. Design, manufacture, installation and service of low voltage switchgear and distribution boards from our Benoni facility, including site installation and testing.', 4)}
+        ${fld('bc-products','Products and services', c.products_services, 'Everything you sell or deliver, one per line.', 4)}
+        ${fld('bc-activities','Key activities and processes', c.key_activities, 'e.g. fabrication, welding, painting, electrical testing, working at height on client sites, fleet, warehousing, in-house payroll.', 3)}
+        ${fld('bc-sites','Sites and regions of operation', c.sites_regions, 'e.g. Head office and factory in Benoni; client sites across Gauteng and Mpumalanga.', 2)}
+        <div class="field span2"><label>Jurisdictions</label>
+          <div style="display:flex;flex-wrap:wrap;gap:6px 16px;padding:6px 2px;">${LEGAL_AI_JURISDICTIONS.map((j,i)=>`<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text-dim);font-weight:400;"><input type="checkbox" class="bc-jur" value="${E(j)}" ${jsel.includes(j)?'checked':''} ${ro} style="width:auto;"> ${E(j)}</label>`).join('')}</div>
+          <input id="bc-otherjur" ${ro} placeholder="Other jurisdictions (optional)" value="${E(c.other_jurisdictions||'')}"></div>
+        <div class="field"><label>Size</label><select id="bc-band" ${ro}><option value="">Not stated</option>${LEGAL_AI_EMPLOYEE_BANDS.map(b=>`<option ${c.employee_band===b?'selected':''}>${E(b)}</option>`).join('')}</select></div>
+        <div class="field span2"><label>Sector</label><input id="bc-sector" ${ro} value="${E(c.sector||'')}" placeholder="e.g. Electrical engineering and manufacturing"></div>
+        <div class="field span3"><label>Regulators, certification bodies and customer requirements</label><input id="bc-reg" ${ro} value="${E(c.regulators||'')}" placeholder="e.g. Department of Employment and Labour, SABS, LRQA, Eskom, mining house customers"></div>
+        ${fld('bc-haz','Significant hazards, environmental aspects and risk areas', c.key_hazards, 'e.g. electrical shock, hot work, noise, solvents and paints, manual handling, vehicle use.', 3)}
+      </div>
+      <div class="form-actions"><button class="btn-cancel" onclick="closeModal_bc()">Close</button>${canManage() ? '<button class="btn-primary" onclick="bcSave()">Save profile</button>' : ''}</div>`);
+  };
+  window.closeModal_bc = function(){ closeModal('bc-modal'); };
+  window.bcSave = async function(){
+    if(!canManage()){ toast('Only an administrator or manager can change the profile.', 'error'); return; }
+    const row = {
+      organisation_id: STATE.org.id,
+      scope_statement: val('bc-scope') || null, products_services: val('bc-products') || null, key_activities: val('bc-activities') || null,
+      sites_regions: val('bc-sites') || null, jurisdictions: [...document.querySelectorAll('.bc-jur:checked')].map(x => x.value),
+      other_jurisdictions: val('bc-otherjur') || null, sector: val('bc-sector') || null, regulators: val('bc-reg') || null,
+      employee_band: val('bc-band') || null, key_hazards: val('bc-haz') || null, updated_by: STATE.user.id, updated_at: new Date().toISOString(),
+    };
+    const { error } = await sb().from('org_business_context').upsert(row, { onConflict: 'organisation_id' });
+    if(error){ toast('Could not save: ' + error.message + (/org_business_context/.test(error.message) ? SQLHINT : ''), 'error'); return; }
+    STATE._bc = row; closeModal('bc-modal'); toast('Business Context Profile saved.', 'success');
+    const cb = STATE._bcAfter; STATE._bcAfter = null; if(cb) cb();
+  };
+
+  /* ---------- AI call ---------- */
+  async function alAi(prompt, max, retry){
+    const sd = await sb().auth.getSession(); const token = sd.data && sd.data.session && sd.data.session.access_token;
+    if(!token) throw new Error('Your sign in has expired: sign out and in again.');
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/watchman-chat`, { method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + token }, body: JSON.stringify({ messages:[{ role:'user', content: prompt }], max_tokens: max || 4096 }) });
+    const j = await res.json().catch(() => ({}));
+    if(!res.ok && !j.reply) throw new Error(j.error || ('The AI service answered ' + res.status));
+    const raw = String(j.reply || j.message || j.content || '').trim();
+    const p = parseAiDraftJson(raw);
+    if(!p && !retry) return alAi('IMPORTANT: your previous answer was not valid JSON or was cut off. Answer again with shorter text, every value under 200 characters, no line breaks inside values.\n\n' + prompt, max, true);
+    if(!p) throw new Error('The AI answer could not be read, even after a second attempt. Try again in a minute.');
+    return p;
+  }
+  const RULES = `RULES
+- Judge only against the organisation context above. If the context does not allow a safe decision, answer "keep" with confidence "low" and say what to verify. Never answer "not_relevant" on a guess.
+- Do not invent legislation, regulations, section numbers or dates. Cite only instruments you are confident exist, with their number and year. If unsure of a reference, leave it out and set confidence "low".
+- Use "Opportunities for Improvement" wording where you refer to improvement areas. Plain, executive language, no hyphens used as dashes.
+- Every reason must be specific to this organisation (mention the product, activity, site or jurisdiction that decides it), under 220 characters.
+- Return strictly valid JSON only, no commentary. Escape double quotes inside values and write no line breaks inside values.`;
+
+  function legalPrompt(ctx, batch){
+    return `You are a senior South African legal compliance and ISO management systems consultant reviewing an organisation's Legal Register for relevance and accuracy.
+
+ORGANISATION CONTEXT
+${ctx}
+
+TASK
+For each register entry decide:
+- "keep": relevant to this organisation as written.
+- "refine": relevant, but the title, description or jurisdiction should be corrected or sharpened to match this organisation's scope, products, services and region. Put only the changed fields in "suggested". A title should read "<Act or instrument, number and year>: <short title>".
+- "not_relevant": does not apply to this organisation given its scope, products, services, activities, sites, size or jurisdiction.
+
+${RULES}
+
+Return: {"items":[{"id":"<id>","verdict":"keep|refine|not_relevant","confidence":"high|medium|low","reason":"...","suggested":{"title":"","description":"","jurisdiction":""}}]}
+Include every id exactly once.
+
+ENTRIES
+${JSON.stringify(batch)}`;
+  }
+  function legalGapPrompt(ctx, titles){
+    return `You are a senior South African legal compliance and ISO management systems consultant. Identify obligations missing from an organisation's Legal Register.
+
+ORGANISATION CONTEXT
+${ctx}
+
+EXISTING REGISTER TITLES
+${JSON.stringify(titles)}
+
+TASK
+List up to 12 legal, regulatory or statutory obligations (including regulations under an Act and municipal by-laws only where you are certain) that clearly apply to this organisation given the context, and are NOT already covered by the existing titles. Exclude anything that is not relevant to this organisation's scope, products, services, sites, size or jurisdiction. Prefer fewer, certain items over many uncertain ones.
+
+${RULES}
+
+Return: {"gaps":[{"title":"<short title>","act_reference":"<Act or instrument, number and year>","jurisdiction":"","domain":"","why_applies":"...","description":"what it requires of this organisation","suggested_review_frequency":"Annual"}]}`;
+  }
+  function riskPrompt(ctx, batch){
+    return `You are a senior risk, opportunity and ISO management systems consultant reviewing an organisation's Risk and Opportunity Register for relevance and quality.
+
+ORGANISATION CONTEXT
+${ctx}
+
+TASK
+For each entry decide:
+- "keep": relevant to this organisation as written.
+- "refine": relevant, but the title or description should be sharpened so that it reflects this organisation's actual scope, products, services, activities or sites. Put only the changed fields in "suggested" (title, description, category). Category must be one of: ${RISK_CATEGORIES.join(', ')}.
+- "not_relevant": does not apply to this organisation's scope, products, services, activities or sites.
+
+${RULES}
+
+Return: {"items":[{"id":"<id>","verdict":"keep|refine|not_relevant","confidence":"high|medium|low","reason":"...","suggested":{"title":"","description":"","category":""}}]}
+Include every id exactly once.
+
+ENTRIES
+${JSON.stringify(batch)}`;
+  }
+  function riskGapPrompt(ctx, titles){
+    return `You are a senior risk, opportunity and ISO management systems consultant. Identify risks and opportunities missing from an organisation's register.
+
+ORGANISATION CONTEXT
+${ctx}
+
+EXISTING REGISTER TITLES
+${JSON.stringify(titles)}
+
+TASK
+List up to 10 risks or opportunities that clearly apply to this organisation given its scope, products, services, activities, sites and hazards, and are NOT already covered. Exclude anything not relevant to this organisation. Prefer fewer, certain items over many uncertain ones. Category must be one of: ${RISK_CATEGORIES.join(', ')}.
+
+${RULES}
+
+Return: {"gaps":[{"entry_type":"risk|opportunity","title":"","description":"","category":"","why_applies":"...","likelihood":3,"impact":3}]}
+Likelihood and impact are whole numbers from 1 to 5.`;
+  }
+
+  /* ---------- Review run ---------- */
+  let AL = null;
+  const KINDS = {
+    legal: {
+      name: 'Legal Register', table: 'legal_register',
+      recs: () => (STATE.legalRegister || []).filter(l => l.status !== 'retired'),
+      excluded: () => STATE.legalRegisterExcluded || [],
+      pack: (r, k) => ({ id: k, title: r.title, jurisdiction: r.jurisdiction || '', description: String(r.description || '').slice(0, 350), status: r.status || '' }),
+      prompt: legalPrompt, gapPrompt: legalGapPrompt, reload: async () => { await loadLegalRegister(); try{ renderLegalTable(); }catch(e){} },
+    },
+    risks: {
+      name: 'Risks and Opportunities', table: 'risk_register',
+      recs: () => (STATE.risks || []).filter(r => r.status !== 'closed'),
+      excluded: () => STATE.risksExcluded || [],
+      pack: (r, k) => ({ id: k, type: r.entry_type, title: r.title, category: r.category || '', description: String(r.description || '').slice(0, 300) }),
+      prompt: riskPrompt, gapPrompt: riskGapPrompt, reload: async () => { await loadRisks(); try{ renderRisksTable(); }catch(e){} },
+    },
+  };
+
+  window.openAlignmentReview = async function(kind){
+    if(!canWork()){ toast('You need contributor access or higher to run the review.', 'error'); return; }
+    const K = KINDS[kind]; if(!K) return;
+    const c = await bcLoad();
+    if(STATE._bcErr){ toast('Could not read the Business Context Profile: ' + STATE._bcErr + SQLHINT, 'error'); return; }
+    const miss = bcMissing(c);
+    if(miss.length){ openBizContext({ need: miss, after: () => openAlignmentReview(kind) }); return; }
+    const n = K.recs().length;
+    openModal('al-modal', `
+      <h3 style="font-size:18px;margin:0 0 6px;color:var(--text);">AI Alignment Review: ${E(K.name)}</h3>
+      <p style="font-size:12.5px;color:var(--text-dim);line-height:1.55;margin:0 0 12px;">The AI will check each of the <b>${n}</b> entries against your Business Context Profile and tell you what to keep, what to refine and what is not relevant to your business. It will also list obligations that look to be missing. <b>Nothing changes until you accept it.</b> AI can be wrong: verify every legal reference against the source before you accept it.</p>
+      <div style="background:var(--grey-tint);border-radius:8px;padding:10px 12px;font-size:12px;white-space:pre-wrap;line-height:1.5;margin-bottom:14px;">${E(bcText(c))}</div>
+      <div class="form-actions"><button class="btn-cancel" onclick="alClose()">Cancel</button><button class="btn-small" onclick="alClose(); openBizContext({after:()=>openAlignmentReview('${kind}')})">Edit profile</button><button class="btn-primary" onclick="alRun('${kind}')" ${n ? '' : 'disabled'}>${n ? 'Start review' : 'No entries to review'}</button></div>`, 820);
+  };
+
+  window.alRun = async function(kind){
+    const K = KINDS[kind], c = STATE._bc, ctx = bcText(c);
+    const recs = K.recs();
+    const keyOf = {}; const packed = recs.map((r, i) => { const k = 'E' + (i + 1); keyOf[k] = r; return K.pack(r, k); });
+    const items = []; const BATCH = 15; let failed = 0;
+    closeModal('al-modal');
+    try{
+      for(let i = 0; i < packed.length; i += BATCH){
+        showLoader(`AI alignment review: entries ${i + 1} to ${Math.min(i + BATCH, packed.length)} of ${packed.length}…`);
+        let p = null;
+        try{ p = await alAi(K.prompt(ctx, packed.slice(i, i + BATCH)), 4096); }catch(e){ failed += Math.min(BATCH, packed.length - i); console.warn(e); }
+        const got = new Set();
+        ((p && p.items) || []).forEach(it => { const rec = keyOf[it.id]; if(!rec || got.has(it.id)) return; got.add(it.id);
+          const v = ['keep','refine','not_relevant'].includes(it.verdict) ? it.verdict : 'keep';
+          items.push({ rec, verdict: v, conf: ['high','medium','low'].includes(it.confidence) ? it.confidence : 'low', reason: String(it.reason || ''), sug: it.suggested || {}, state: '' }); });
+        packed.slice(i, i + BATCH).forEach(x => { if(!got.has(x.id)) items.push({ rec: keyOf[x.id], verdict: 'keep', conf: 'low', reason: 'The AI did not assess this entry in this run. Review it yourself or run the review again.', sug: {}, state: '', unassessed: true }); });
+      }
+      showLoader('AI alignment review: checking for missing entries…');
+      let gaps = [];
+      try{ const g = await alAi(K.gapPrompt(ctx, recs.map(r => r.title)), 4096); gaps = (g.gaps || []).slice(0, 12).map(x => Object.assign({ state: '' }, x)); }catch(e){ console.warn(e); }
+      AL = { kind, K, items, gaps, actions: 0, logId: null, failed };
+      const cnt = v => items.filter(x => x.verdict === v && !x.unassessed).length;
+      try{
+        const { data } = await sb().from('ai_alignment_reviews').insert({ organisation_id: STATE.org.id, module: kind, run_by: STATE.user.id, items_reviewed: items.length, kept: cnt('keep'), refined: cnt('refine'), not_relevant: cnt('not_relevant'), gaps_found: gaps.length, context_snapshot: c, note: failed ? failed + ' entries could not be assessed' : null }).select('id').single();
+        if(data) AL.logId = data.id;
+      }catch(e){ console.warn(e); }
+      alRender();
+    }catch(e){ toast('AI review failed: ' + (e.message || e), 'error'); }
+    finally{ hideLoader(); }
+  };
+
+  /* ---------- Review panel ---------- */
+  function alCardHead(it){
+    return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">${VCHIP[it.verdict]} <span style="font-size:11px;color:${it.conf==='low'?'var(--red)':'var(--text-faint)'};">${CONF[it.conf]}</span></div>
+      <div style="font-size:12.5px;color:var(--text-dim);line-height:1.5;margin-bottom:8px;"><b>Why:</b> ${E(it.reason)}</div>`;
+  }
+  function alItemCard(it, i){
+    const r = it.rec, K = AL.K, isLegal = AL.kind === 'legal', s = it.sug || {};
+    const cur = `<div style="font-size:13.5px;font-weight:600;color:var(--text);margin-bottom:6px;">${E(r.title)}</div>`;
+    let body = '';
+    if(it.verdict === 'refine'){
+      body = `<div class="form-grid">
+        <div class="field span3"><label>Title</label><input id="al-t-${i}" value="${E(s.title || r.title)}"></div>
+        <div class="field span3"><label>Description</label><textarea id="al-d-${i}" rows="3">${E(s.description || r.description || '')}</textarea></div>
+        ${isLegal ? `<div class="field"><label>Jurisdiction</label><input id="al-j-${i}" value="${E(s.jurisdiction || r.jurisdiction || '')}"></div>`
+          : `<div class="field"><label>Category</label><select id="al-c-${i}">${RISK_CATEGORIES.map(c => `<option value="${c}" ${(s.category || r.category) === c ? 'selected' : ''}>${E(riskCategoryLabel(c))}</option>`).join('')}</select></div>`}
+      </div>
+      <div class="form-actions"><button class="btn-small" onclick="alKeep(${i})">Keep as it is</button><button class="btn-primary" onclick="alRefine(${i})">Apply refinement</button></div>`;
+    } else if(it.verdict === 'not_relevant'){
+      body = `<div class="field"><label>Reason it does not apply (recorded for the auditor)</label><textarea id="al-r-${i}" rows="2">${E(it.reason)}</textarea></div>
+      <div class="form-actions"><button class="btn-small" onclick="alKeep(${i})">Keep: it does apply</button><button class="btn-primary" onclick="alExclude(${i})" ${canManage() ? '' : 'disabled title="Administrator or manager only"'}>Mark not applicable</button></div>`;
+    } else {
+      body = `<div class="form-actions"><button class="btn-primary" onclick="alKeep(${i})">Confirm as relevant</button></div>`;
+    }
+    return `<div class="detail-panel" id="al-card-${i}" style="padding:12px 14px;margin-bottom:10px;">${cur}${alCardHead(it)}${body}</div>`;
+  }
+  function alGapCard(g, i){
+    const isLegal = AL.kind === 'legal';
+    const head = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">${chip('Missing', 'var(--blue-tint)', 'var(--blue)')}</div>
+      <div style="font-size:12.5px;color:var(--text-dim);line-height:1.5;margin-bottom:8px;"><b>Why it applies:</b> ${E(g.why_applies || '')}</div>`;
+    const owner = `<div class="field"><label>Owner</label><select id="al-go-${i}">${memberOptions(STATE.user.id)}</select></div>`;
+    let fields;
+    if(isLegal){
+      fields = `<div class="field span3"><label>Title</label><input id="al-gt-${i}" value="${E(g.act_reference ? g.act_reference + ': ' + (g.title || '') : (g.title || ''))}"></div>
+        <div class="field span3"><label>What it requires</label><textarea id="al-gd-${i}" rows="3">${E(g.description || '')}</textarea></div>
+        <div class="field"><label>Jurisdiction</label><input id="al-gj-${i}" value="${E(g.jurisdiction || '')}"></div>
+        <div class="field"><label>Review frequency</label><input id="al-gf-${i}" value="${E(g.suggested_review_frequency || 'Annual')}"></div>${owner}`;
+    } else {
+      fields = `<div class="field"><label>Type</label><select id="al-gy-${i}"><option value="risk" ${g.entry_type !== 'opportunity' ? 'selected' : ''}>Risk</option><option value="opportunity" ${g.entry_type === 'opportunity' ? 'selected' : ''}>Opportunity</option></select></div>
+        <div class="field span2"><label>Title</label><input id="al-gt-${i}" value="${E(g.title || '')}"></div>
+        <div class="field span3"><label>Description</label><textarea id="al-gd-${i}" rows="3">${E(g.description || '')}</textarea></div>
+        <div class="field"><label>Category</label><select id="al-gc-${i}">${RISK_CATEGORIES.map(c => `<option value="${c}" ${g.category === c ? 'selected' : ''}>${E(riskCategoryLabel(c))}</option>`).join('')}</select></div>
+        <div class="field"><label>Likelihood (1 to 5)</label><input id="al-gl-${i}" type="number" min="1" max="5" value="${Math.min(5, Math.max(1, parseInt(g.likelihood, 10) || 3))}"></div>
+        <div class="field"><label>Impact (1 to 5)</label><input id="al-gi-${i}" type="number" min="1" max="5" value="${Math.min(5, Math.max(1, parseInt(g.impact, 10) || 3))}"></div>${owner}`;
+    }
+    return `<div class="detail-panel" id="al-gap-${i}" style="padding:12px 14px;margin-bottom:10px;">${head}<div class="form-grid">${fields}</div>
+      <div class="form-actions"><button class="btn-cancel" onclick="alGapReject(${i})">Not relevant to us</button><button class="btn-primary" onclick="alGapAdd(${i})">Add to the register</button></div></div>`;
+  }
+  function alRender(){
+    if(!AL) return;
+    const K = AL.K, items = AL.items;
+    const need = items.map((it, i) => ({ it, i })).filter(x => (x.it.verdict === 'refine' || x.it.verdict === 'not_relevant') && !x.it.state);
+    const keeps = items.map((it, i) => ({ it, i })).filter(x => x.it.verdict === 'keep' && !x.it.state);
+    const sureKeeps = keeps.filter(x => x.it.conf !== 'low');
+    const lowKeeps = keeps.filter(x => x.it.conf === 'low');
+    const gaps = AL.gaps.map((g, i) => ({ g, i })).filter(x => !x.g.state);
+    const excl = K.excluded();
+    openModal('al-modal', `
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+        <div><h3 style="font-size:18px;margin:0 0 4px;color:var(--text);">AI Alignment Review: ${E(K.name)}</h3>
+        <p style="font-size:12px;color:var(--text-faint);margin:0 0 10px;">Run ${E(new Date().toLocaleString())} against the Business Context Profile. AI-assisted: verify every legal reference against the source before accepting.${AL.failed ? ` <b style="color:var(--red);">${AL.failed} entries could not be assessed.</b>` : ''}</p></div>
+        <button class="btn-small" onclick="alClose()">Close</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+        ${chip(need.length + ' need your decision', 'var(--amber-tint)', 'var(--amber)')} ${chip(keeps.length + ' relevant as they are', 'var(--green-tint)', 'var(--green)')}
+        ${chip(gaps.length + ' possibly missing', 'var(--blue-tint)', 'var(--blue)')} ${chip(excl.length + ' excluded as not applicable', 'var(--grey-tint)', 'var(--charcoal)')}
+      </div>
+      <h4 style="font-size:14px;margin:6px 0 8px;">Needs your decision (${need.length})</h4>
+      ${need.length ? need.map(x => alItemCard(x.it, x.i)).join('') : '<p style="font-size:12.5px;color:var(--text-faint);">Nothing here. Every entry was judged relevant as written.</p>'}
+      <h4 style="font-size:14px;margin:16px 0 8px;">Possibly missing from the register (${gaps.length})</h4>
+      ${gaps.length ? gaps.map(x => alGapCard(x.g, x.i)).join('') : '<p style="font-size:12.5px;color:var(--text-faint);">No missing entries suggested.</p>'}
+      <h4 style="font-size:14px;margin:16px 0 8px;">Relevant as written (${keeps.length})</h4>
+      ${sureKeeps.length ? `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;"><span style="font-size:12.5px;color:var(--text-dim);">Confirming stamps each entry as reviewed against the business context today.</span><button class="btn-small primary" onclick="alKeepAll()">Confirm all ${sureKeeps.length} as relevant</button></div>` : ''}
+      <div style="border:1px solid var(--border);border-radius:8px;max-height:240px;overflow:auto;padding:4px 10px;">${keeps.length ? keeps.map(x => `<div id="al-card-${x.i}" style="font-size:12.5px;padding:6px 0;border-bottom:1px dashed var(--border);"><b>${E(x.it.rec.title)}</b>${x.it.conf === 'low' ? ` <span style="color:var(--red);font-size:11px;">${E(CONF.low)}</span>` : ''}<div style="color:var(--text-faint);font-size:11.5px;">${E(x.it.reason)}</div>${x.it.conf === 'low' ? `<button class="btn-small" style="margin-top:4px;" onclick="alKeep(${x.i})">Confirm</button>` : ''}</div>`).join('') : '<div style="padding:8px 0;font-size:12.5px;color:var(--text-faint);">None left to confirm.</div>'}</div>
+      <h4 style="font-size:14px;margin:16px 0 8px;">Excluded as not applicable (${excl.length})</h4>
+      ${excl.length ? `<div style="border:1px solid var(--border);border-radius:8px;padding:4px 10px;">${excl.map(r => `<div style="font-size:12.5px;padding:7px 0;border-bottom:1px dashed var(--border);display:flex;justify-content:space-between;gap:10px;"><div><b>${E(r.title)}</b><div style="font-size:11.5px;color:var(--text-faint);">${E(r.applicability_reason || '')}${r.applicability_at ? ' (' + E(String(r.applicability_at).slice(0, 10)) + ')' : ''}</div></div>${canManage() ? `<button class="btn-small" onclick="alReinstate('${r.id}')">Reinstate</button>` : ''}</div>`).join('')}</div>` : '<p style="font-size:12.5px;color:var(--text-faint);">Nothing excluded. Excluded entries are kept here with the reason, so an auditor can see the decision.</p>'}
+      <div class="form-actions" style="margin-top:16px;"><button class="btn-primary" onclick="alClose()">Done</button></div>`, 1020);
+  }
+  async function alPatch(rec, patch){
+    const { error } = await sb().from(AL.K.table).update(patch).eq('id', rec.id);
+    if(error){ toast('Could not save: ' + error.message + (/applicability|ai_review/.test(error.message) ? SQLHINT : ''), 'error'); return false; }
+    return true;
+  }
+  async function alAfter(msg){
+    AL.actions++;
+    if(AL.logId) sb().from('ai_alignment_reviews').update({ actions_applied: AL.actions }).eq('id', AL.logId).then(() => {});
+    await AL.K.reload(); try{ updateNavBadges(); }catch(e){}
+    const pt = document.getElementById('al-modal') ? document.getElementById('al-modal').scrollTop : 0;
+    alRender(); const m = document.getElementById('al-modal'); if(m) m.scrollTop = pt;
+    if(msg) toast(msg, 'success');
+  }
+  window.alKeep = async function(i){
+    const it = AL.items[i]; if(!it) return;
+    if(!await alPatch(it.rec, { ai_reviewed_at: new Date().toISOString(), ai_review_note: 'Confirmed relevant to the business context on ' + todayS() })) return;
+    it.state = 'kept'; await alAfter('Confirmed as relevant.');
+  };
+  window.alKeepAll = async function(){
+    const sel = AL.items.filter(x => x.verdict === 'keep' && x.conf !== 'low' && !x.state);
+    if(!sel.length) return;
+    const { error } = await sb().from(AL.K.table).update({ ai_reviewed_at: new Date().toISOString(), ai_review_note: 'Confirmed relevant to the business context on ' + todayS() }).in('id', sel.map(x => x.rec.id));
+    if(error){ toast('Could not save: ' + error.message + SQLHINT, 'error'); return; }
+    sel.forEach(x => x.state = 'kept'); await alAfter(sel.length + ' entries confirmed as relevant.');
+  };
+  window.alRefine = async function(i){
+    const it = AL.items[i], t = val('al-t-' + i);
+    if(!t){ alert('A title is required.'); return; }
+    const patch = { title: t, description: val('al-d-' + i), ai_reviewed_at: new Date().toISOString(), ai_review_note: 'Refined after the alignment review on ' + todayS() };
+    if(AL.kind === 'legal') patch.jurisdiction = val('al-j-' + i) || null; else if(val('al-c-' + i)) patch.category = val('al-c-' + i);
+    if(!await alPatch(it.rec, patch)) return;
+    it.state = 'refined'; await alAfter('Refinement applied.');
+  };
+  window.alExclude = async function(i){
+    if(!canManage()){ toast('Only an administrator or manager can mark an entry not applicable.', 'error'); return; }
+    const it = AL.items[i], why = val('al-r-' + i);
+    if(why.length < 10){ alert('Please record why this does not apply to the business (at least a short sentence). The auditor will see it.'); return; }
+    const now = new Date().toISOString();
+    if(!await alPatch(it.rec, { applicability: 'not_applicable', applicability_reason: why, applicability_by: STATE.user.id, applicability_at: now, ai_reviewed_at: now, ai_review_note: 'Excluded as not applicable after the alignment review on ' + todayS() })) return;
+    it.state = 'excluded'; await alAfter('Marked not applicable. It stays on record under "Excluded".');
+  };
+  window.alReinstate = async function(id){
+    if(!canManage()) return;
+    const { error } = await sb().from(AL.K.table).update({ applicability: 'applicable', ai_review_note: 'Reinstated as applicable on ' + todayS() }).eq('id', id);
+    if(error){ toast('Could not reinstate: ' + error.message, 'error'); return; }
+    await alAfter('Reinstated.');
+  };
+  window.alGapReject = function(i){ AL.gaps[i].state = 'rejected'; alRender(); };
+  window.alGapAdd = async function(i){
+    const g = AL.gaps[i], title = val('al-gt-' + i);
+    if(!title){ alert('A title is required.'); return; }
+    let table, payload;
+    if(AL.kind === 'legal'){
+      table = 'legal_register';
+      const d = new Date(); const f = (val('al-gf-' + i) || 'Annual').toLowerCase();
+      d.setMonth(d.getMonth() + (/month/.test(f) && !/12/.test(f) ? 1 : /quarter/.test(f) ? 3 : /6|semi|half/.test(f) ? 6 : /2.?year|bienn/.test(f) ? 24 : 12));
+      payload = { organisation_id: STATE.org.id, title, description: val('al-gd-' + i), owner_id: val('al-go-' + i) || STATE.user.id, next_review_due_date: d.toISOString().slice(0, 10), jurisdiction: val('al-gj-' + i) || null, created_by: STATE.user.id, source: 'ai_suggested', ai_reviewed_at: new Date().toISOString(), ai_review_note: 'Added from the alignment review on ' + todayS() };
+    } else {
+      table = 'risk_register';
+      const rv = new Date(); rv.setMonth(rv.getMonth() + 12);
+      payload = { organisation_id: STATE.org.id, entry_type: val('al-gy-' + i) || 'risk', title, description: val('al-gd-' + i), category: val('al-gc-' + i) || 'business', likelihood: parseInt(val('al-gl-' + i), 10) || 3, impact: parseInt(val('al-gi-' + i), 10) || 3, owner_id: val('al-go-' + i) || STATE.user.id, review_date: rv.toISOString().slice(0, 10), created_by: STATE.user.id, ai_reviewed_at: new Date().toISOString(), ai_review_note: 'Added from the alignment review on ' + todayS() };
+    }
+    const { error } = await sb().from(table).insert(payload);
+    if(error){ toast('Could not add: ' + error.message + (/ai_review/.test(error.message) ? SQLHINT : ''), 'error'); return; }
+    g.state = 'added'; await alAfter('Added to the register.');
+  };
 })();
 
 </script>
