@@ -21445,7 +21445,7 @@ function renderAdminTeam(){
         </select>
       </div>
       <div class="field">
-        <label>Module access <span style="text-transform:none; font-weight:400; color:var(--text-faint);">(Admins see every module. Managers, Contributors and Viewers see only what is ticked)</span></label>
+        <label>Module access <span style="text-transform:none; font-weight:400; color:var(--text-faint);">(Admins see every module. Managers, Contributors and Viewers see only what is ticked. Only modules activated for your organisation by Group QaSHE CG are listed)</span></label>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 16px; margin-top:6px;">
           ${adminInviteModules().map(m => `
             <div style="display:flex; align-items:center; gap:8px;">
@@ -48527,7 +48527,7 @@ ${STATE.org.name}${s.tel ? '\nTel: ' + s.tel : ''}`;
       <p style="font-size:12px;color:var(--text-faint);margin-bottom:10px;">They receive an email with a link to set up their login. Choose their user level and the modules they will see.</p>
       <div class="field"><label>Email address</label><input id="wpi-email" type="email" value="${E(p.email || '')}" placeholder="name@company.com"></div>
       <div class="field"><label>User level</label><select id="wpi-role" onchange="wpInviteRole()"><option value="contributor" selected>Contributor: records and updates</option><option value="manager">Manager: contributor plus management actions</option><option value="viewer">Viewer: read only</option><option value="admin">Admin: everything, including inviting people</option></select></div>
-      <div class="field"><label>Modules <span style="text-transform:none;font-weight:400;color:var(--text-faint)">(Admins see every module; others see only what is ticked)</span></label>
+      <div class="field"><label>Modules <span style="text-transform:none;font-weight:400;color:var(--text-faint)">(Admins see every module; others see only what is ticked. Only modules activated for your organisation by Group QaSHE CG are listed)</span></label>
         <div style="margin:4px 0"><button class="btn-small" onclick="wpiAll(true)">Tick all</button> <button class="btn-small" onclick="wpiAll(false)">Clear</button></div>
         <div id="wpi-mods" style="display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;max-height:260px;overflow:auto;">${mods.map(m => `<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer"><input type="checkbox" class="wpi-cb" value="${m.key}" style="width:auto"> ${E(m.label)}</label>`).join('')}</div></div>
       <div id="wpi-result"></div>
@@ -50319,6 +50319,41 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     const { error } = await sb().from('speakup_notes').insert({ organisation_id: STATE.org.id, report_id: id, author_id: STATE.user.id, note: m }); if(error){ toast('Could not save: ' + error.message, 'error'); return; }
     await suOpen(id);
   };
+})();
+
+
+/* ===== Release 31: one tenant rule for module selection ===== */
+/* A module can be offered to staff only when Group QaSHE CG has switched it on for this organisation.
+   Applies to the invite form, the Edit access screen, the person invite and every other list built from adminInviteModules(). */
+(function(){
+  const arr = a => Array.isArray(a) ? a : [];
+  const DEFAULT_OFF = ['wt', 'it', 'edu', 'ptw', 'ohs', 'envdata'];
+  const INFOSEC = ['soa', 'info_assets', 'threat_intel', 'infosec_incidents'];
+  const EXTRA = ['disciplinary', 'bplan', 'welding'];
+  const isAdm = () => STATE.myRole === 'admin' || !!(STATE.profile && STATE.profile.is_platform_staff);
+  window.wmTenantHas = function(k){
+    const o = STATE.org; if(!o) return false;
+    try{ if(!orgHasModule(k)) return false; }catch(e){}
+    if(o._modOff && o._modOff.has && o._modOff.has(k)) return false;
+    if(DEFAULT_OFF.includes(k)) return !!o['_' + k + 'On'];
+    if(INFOSEC.includes(k) && o.infosec_enabled === false) return false;
+    if(k === 'welding') return !!o.welding_enabled;
+    return true;
+  };
+  { const _a = adminInviteModules; adminInviteModules = window.adminInviteModules = function(){
+      const out = arr(_a.apply(this, arguments)); const have = new Set(out.map(x => x.key));
+      EXTRA.forEach(k => { if(!have.has(k) && MODULE_META[k]) out.push({ key: k, label: MODULE_META[k].title }); });
+      const seen = new Set();
+      return out.filter(m => { if(seen.has(m.key)) return false; seen.add(m.key); return wmTenantHas(m.key); });
+    }; }
+  /* the extra modules honour the person's tick */
+  { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){
+      const base = _c.apply(this, arguments);
+      if(!base || !EXTRA.includes(mod) || isAdm()) return base;
+      const all = arr(STATE.myModuleAccess); if(!all.includes(WM_CAL)) return base;
+      return all.includes(mod);
+    }; }
+  setTimeout(() => { try{ applyModuleAccessToNav(); }catch(e){} }, 0);
 })();
 
 </script>
