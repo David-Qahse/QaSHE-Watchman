@@ -2046,7 +2046,7 @@ window.selectOrg = async function(orgId){
 };
 
 async function loadNCs(){
-  if(STATE.org.nc_enabled === false) return; // no point querying a module this org has switched off
+  // the nonconformances table also holds incidents, accidents, near misses and information security incidents, so it always loads
   const { data, error } = await STATE.supabase.from('nonconformances').select('*').eq('organisation_id', STATE.org.id).order('raised_date', {ascending:false});
   if(error){ toast('Could not load nonconformances: ' + error.message, 'error'); return; }
   STATE.ncs = data || [];
@@ -4631,8 +4631,14 @@ function renderNcTypesList(){
       </div>
     </div>
     <div id="nc-type-edit-${t.id}"></div>
-  `).join('') : '<p style="font-size:12px; color:var(--text-faint);">No types yet.</p>';
+  `).join('') + '' : '<p style="font-size:12px; color:var(--text-faint);">No types yet.</p>';
+  if(!document.getElementById('nc-restore-defaults')) wrap.insertAdjacentHTML('afterend', '<div id="nc-restore-defaults" style="margin-top:10px;font-size:12px;color:var(--text-faint);">The standard category list is applied to every client and is always kept. You can add your own and edit names, but not remove the standard ones. <button class="btn-small" onclick="restoreStdNcTypes()">Restore standard categories</button></div>');
 }
+window.restoreStdNcTypes = async function(){
+  const { error } = await STATE.supabase.rpc('seed_default_nc_types', { p_org: STATE.org.id });
+  if(error){ toast('Could not restore: ' + error.message, 'error'); return; }
+  await loadNCTypes(); renderNcTypesList(); toast('Standard categories restored. Existing ones were not changed.', 'success');
+};
 
 window.toggleEditNcType = function(id){
   const slot = document.getElementById('nc-type-edit-'+id);
@@ -20884,21 +20890,21 @@ function renderAdminConsole(){
     </div>
 
     <div class="detail-card">
-      <div class="panel-head"><h3>Nonconformance Methodology</h3></div>
-      <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:12px;">A client runs either traditional Nonconformances or RAGA (Red/Orange/Green Alerts): not both at once. Switching here only hides the module; nothing recorded in either is deleted, so it's safe to change your mind later.</p>
-      ${ncMode === 'both' ? `<p style="font-size:12px; color:var(--red); margin-bottom:10px;">Both are currently switched on for this client: pick one below to resolve it.</p>` : ''}
-      <div style="display:flex; gap:8px;">
-        <button class="btn-small ${ncMode==='nc'?'primary':''}" onclick="setNcRagaMode('nc')">Nonconformances</button>
-        <button class="btn-small ${ncMode==='raga'?'primary':''}" onclick="setNcRagaMode('raga')">RAGA</button>
-        <button class="btn-small ${ncMode==='none'?'primary':''}" onclick="setNcRagaMode('none')">Neither</button>
-      </div>
+      <div class="panel-head"><h3>Issue Methodologies</h3></div>
+      <p style="font-size:12.5px; color:var(--text-faint); margin-bottom:12px;">The ways this client records and closes issues. Switch on one or several to suit the client: Nonconformances is the full process and the usual choice; the others suit smaller clients. All of them follow the same path: raise, classify, investigate, correct, verify and close. Switching off only hides a module; nothing recorded is deleted, so it can be switched on again at any time.</p>
+      <table>
+        <tr><th>Methodology</th><th>Note</th><th style="text-align:right;">Status</th></tr>
+        <tr><td class="strong">Nonconformances</td><td style="font-size:12px; color:var(--text-faint);">The main issue methodology: full register with permanent categories, root cause, corrective action and verification.</td><td style="text-align:right;"><button class="btn-small ${ncOn?'primary':''}" onclick="toggleOrgModule('nc_enabled', ${!ncOn})">${ncOn ? 'On: click to turn off' : 'Off, click to turn on'}</button></td></tr>
+        <tr><td class="strong">RAGA (Red, Orange, Green Alerts)</td><td style="font-size:12px; color:var(--text-faint);">A lighter alert based process with positive recognition, for smaller clients.</td><td style="text-align:right;"><button class="btn-small ${ragaOn?'primary':''}" onclick="toggleOrgModule('raga_enabled', ${!ragaOn})">${ragaOn ? 'On: click to turn off' : 'Off, click to turn on'}</button></td></tr>
+        ${ADMIN_CONSOLE_TOGGLES.filter(t => ['incidents_module_enabled','infosec_incidents_module_enabled'].includes(t.field)).map(t => `<tr><td class="strong">${t.label}</td><td style="font-size:12px; color:var(--text-faint);">${t.note}</td><td style="text-align:right;"><button class="btn-small ${org[t.field]?'primary':''}" onclick="toggleOrgModule('${t.field}', ${!org[t.field]})">${org[t.field] ? 'On: click to turn off' : 'Off, click to turn on'}</button></td></tr>`).join('')}
+      </table>
     </div>
 
     <div class="detail-card">
       <div class="panel-head"><h3>Other Modules</h3></div>
       <table>
         <tr><th>Module</th><th>Note</th><th style="text-align:right;">Status</th></tr>
-        ${ADMIN_CONSOLE_TOGGLES.map(t => `<tr>
+        ${ADMIN_CONSOLE_TOGGLES.filter(t => !['incidents_module_enabled','infosec_incidents_module_enabled'].includes(t.field)).map(t => `<tr>
           <td class="strong">${t.label}</td>
           <td style="font-size:12px; color:var(--text-faint);">${t.note}</td>
           <td style="text-align:right;"><button class="btn-small ${org[t.field]?'primary':''}" onclick="toggleOrgModule('${t.field}', ${!org[t.field]})">${org[t.field] ? 'On: click to turn off' : 'Off, click to turn on'}</button></td>
@@ -38942,7 +38948,7 @@ async function renderNcResponsePage(token){
       toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
     }; }
   { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){
-      if(mod === 'incidents'){ if(off()) return false; return _c('nonconformances') || STATE.myRole === 'admin' || !!(STATE.profile && STATE.profile.is_platform_staff); }
+      if(mod === 'incidents'){ if(off()) return false; if(STATE.myRole === 'admin' || (STATE.profile && STATE.profile.is_platform_staff)) return true; const all = STATE.myModuleAccess; if(Array.isArray(all) && all.includes(WM_CAL)) return all.includes('incidents'); return _c('nonconformances'); }
       return _c.apply(this, arguments); }; }
   MODULE_META.incidents = { title:'Incidents, Accidents and Near Miss', sub:() => 'One register shared with Nonconformances: report, investigate, close, and see the statistics and trends per category' };
   RENDERERS.incidents = () => '<div id="ian-root"></div>';
@@ -49947,7 +49953,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     root.innerHTML = tiles([tile(n('active'), 'permits active now', '#2e9e5b'), tile(n('requested'), 'awaiting approval', '#f07a1a'), tile(soon, 'expire within 24 hours', soon ? '#f07a1a' : '#2e9e5b'), tile(n('expired'), 'expired, not handed back', n('expired') ? '#d4262c' : '#2e9e5b'), tile(eff.filter(x => x[1] === 'closed' && day(x[0].closed_at).slice(0, 7) === tdy().slice(0, 7)).length, 'closed this month', '#0b1f3a')])
       + `<div class="toolbar"><div class="filters"><select onchange="ptwFilter(this.value)">${[['open', 'Open permits'], ['all', 'All permits'], ['requested', 'Awaiting approval'], ['active', 'Active'], ['expired', 'Expired'], ['closed', 'Closed']].map(o => `<option value="${o[0]}" ${P.filter === o[0] ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></div>${canW() ? '<button class="btn-primary btn-add" onclick="ptwEdit(\'\')">New permit</button>' : ''}</div>
       <div id="ptw-slot"></div>
-      <div class="panel" style="padding:0;overflow:hidden;">${rows.length ? `<table><tr><th>Permit</th><th>Type</th><th>Work and location</th><th>Valid</th><th>Status</th><th>Requested by</th></tr>${rows.map(([p, s]) => `<tr class="clickable" onclick="ptwOpen('${p.id}')"><td class="mono">${E(p.ref_code || '')}</td><td>${E((PTW_TYPES[p.permit_type] || ['Other'])[0])}</td><td class="strong">${E(p.title)}<div style="font-size:11.5px;color:var(--text-faint);font-weight:400;">${E(p.location || '')}</div></td><td style="font-size:12px;">${fdt(p.valid_from)}<br>to ${fdt(p.valid_to)}</td><td>${chip(PST[s][0], PST[s][1])}</td><td>${E(nm(p.requested_by))}</td></tr>`).join('')}</table>` : noRows('No permits here yet.')}</div>`;
+      <div class="panel" style="padding:0;overflow:hidden;">${rows.length ? `<table><tr><th>Permit</th><th>Type</th><th>Work and location</th><th>Valid</th><th>Status</th><th>Requested by</th></tr>${rows.map(([p, s]) => `<tr class="clickable" onclick="ptwOpen('${p.id}')"><td class="mono">${E(p.ref_code || '')}</td><td>${E((PTW_TYPES[p.permit_type] || ['Other'])[0])}</td><td class="strong">${E(p.title)}<div style="font-size:11.5px;color:var(--text-faint);font-weight:400;">${E(p.location || '')}</div></td><td style="font-size:12px;">${fmtDateTime(p.valid_from)}<br>to ${fmtDateTime(p.valid_to)}</td><td>${chip(PST[s][0], PST[s][1])}</td><td>${E(nm(p.requested_by))}</td></tr>`).join('')}</table>` : noRows('No permits here yet.')}</div>`;
     if(P.open) ptwOpen(P.open, true);
   }
   function p_hrs(p){ return p.valid_to ? (new Date(p.valid_to) - new Date()) / 36e5 : 999; }
@@ -50002,7 +50008,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     acts.push(btn('Print permit', `ptwPrint('${id}')`));
     slot.innerHTML = `<div class="detail-panel" style="padding:16px;margin-bottom:14px;" id="ptw-detail">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;"><div><span class="mono" style="color:var(--text-faint);">${E(p.ref_code)}</span><h3 style="margin:2px 0 4px;font-size:16px;">${E(p.title)}</h3><div>${chip(PST[s][0], PST[s][1])} <span style="font-size:12px;color:var(--text-faint);">${E((PTW_TYPES[p.permit_type] || ['Other'])[0])}</span></div></div><button class="btn-small" onclick="P_close()">Close</button></div>
-      <table style="margin:10px 0;">${kv('Location', p.location)}${kv('Contractor or department', p.contractor)}${kv('Valid', fdt(p.valid_from) + ' to ' + fdt(p.valid_to))}${kv('Requested by', nm(p.requested_by))}${kv('Approver', p.approved_at ? nm(p.approver_id) + ' on ' + fdt(p.approved_at) : nm(p.approver_id))}${kv('Issued', p.issued_at ? nm(p.issued_by) + ' on ' + fdt(p.issued_at) : '')}${kv('People doing the work', p.workers)}${kv('Description', p.description)}${kv('Hazards', p.hazards)}${kv('Controls and precautions', p.controls)}${kv('PPE and equipment', p.ppe)}${kv('Isolation points', p.isolation_points)}${kv('Hand back', p.closed_at ? (p.area_safe ? 'Area left safe. ' : '') + (p.handback_notes || '') + ' (' + nm(p.closed_by) + ', ' + fdt(p.closed_at) + ')' : '')}${kv('Cancelled', p.cancel_reason)}</table>
+      <table style="margin:10px 0;">${kv('Location', p.location)}${kv('Contractor or department', p.contractor)}${kv('Valid', fmtDateTime(p.valid_from) + ' to ' + fmtDateTime(p.valid_to))}${kv('Requested by', nm(p.requested_by))}${kv('Approver', p.approved_at ? nm(p.approver_id) + ' on ' + fmtDateTime(p.approved_at) : nm(p.approver_id))}${kv('Issued', p.issued_at ? nm(p.issued_by) + ' on ' + fmtDateTime(p.issued_at) : '')}${kv('People doing the work', p.workers)}${kv('Description', p.description)}${kv('Hazards', p.hazards)}${kv('Controls and precautions', p.controls)}${kv('PPE and equipment', p.ppe)}${kv('Isolation points', p.isolation_points)}${kv('Hand back', p.closed_at ? (p.area_safe ? 'Area left safe. ' : '') + (p.handback_notes || '') + ' (' + nm(p.closed_by) + ', ' + fmtDateTime(p.closed_at) + ')' : '')}${kv('Cancelled', p.cancel_reason)}</table>
       <h4 style="margin:12px 0 6px;font-size:13.5px;">Pre-work checklist ${allOk ? chip('Complete', '#2e9e5b') : ''}</h4>
       ${cl.map((c, i) => `<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;padding:4px 0;font-weight:400;"><input type="checkbox" style="width:auto;margin-top:3px;" ${c.ok ? 'checked' : ''} ${tickable ? '' : 'disabled'} onchange="ptwTick('${id}',${i},this.checked)"> ${E(c.t)}</label>`).join('')}
       ${p.status === 'requested' ? '<p style="font-size:11.5px;color:var(--text-faint);">The checklist is completed after approval, on site, before the permit is issued.</p>' : ''}
@@ -50045,9 +50051,9 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     const p = P.rows.find(x => x.id === id); if(!p) return; const c = document.getElementById('print-container'); if(!c) return;
     const r = (a, b) => b ? `<tr><td style="width:150px;font-weight:700;vertical-align:top;border:1px solid #999;padding:4px 6px;">${a}</td><td style="border:1px solid #999;padding:4px 6px;white-space:pre-wrap;">${E(b)}</td></tr>` : '';
     c.innerHTML = `<div style="font-family:Arial,sans-serif;font-size:12px;color:#000;"><h2 style="margin:0 0 2px;">Permit to Work: ${E((PTW_TYPES[p.permit_type] || ['General'])[0])}</h2><div style="margin-bottom:8px;">${E(STATE.org.name)} · ${E(p.ref_code)} · Status: ${E(PST[ptwEff(p)][0])}</div>
-      <table style="width:100%;border-collapse:collapse;">${r('Work', p.title)}${r('Location', p.location)}${r('Contractor or department', p.contractor)}${r('Valid', fdt(p.valid_from) + ' to ' + fdt(p.valid_to))}${r('Requested by', nm(p.requested_by))}${r('Approved by', p.approved_at ? nm(p.approver_id) + ', ' + fdt(p.approved_at) : '')}${r('Issued by', p.issued_at ? nm(p.issued_by) + ', ' + fdt(p.issued_at) : '')}${r('People doing the work', p.workers)}${r('Description', p.description)}${r('Hazards', p.hazards)}${r('Controls', p.controls)}${r('PPE', p.ppe)}${r('Isolation points', p.isolation_points)}</table>
+      <table style="width:100%;border-collapse:collapse;">${r('Work', p.title)}${r('Location', p.location)}${r('Contractor or department', p.contractor)}${r('Valid', fmtDateTime(p.valid_from) + ' to ' + fmtDateTime(p.valid_to))}${r('Requested by', nm(p.requested_by))}${r('Approved by', p.approved_at ? nm(p.approver_id) + ', ' + fmtDateTime(p.approved_at) : '')}${r('Issued by', p.issued_at ? nm(p.issued_by) + ', ' + fmtDateTime(p.issued_at) : '')}${r('People doing the work', p.workers)}${r('Description', p.description)}${r('Hazards', p.hazards)}${r('Controls', p.controls)}${r('PPE', p.ppe)}${r('Isolation points', p.isolation_points)}</table>
       <h3 style="margin:12px 0 4px;">Pre-work checklist</h3>${arr(p.checklist).map(x => `<div>${x.ok ? '&#9745;' : '&#9744;'} ${E(x.t)}</div>`).join('')}
-      <h3 style="margin:12px 0 4px;">Hand back</h3><div>${p.closed_at ? E((p.area_safe ? 'Area left safe, isolations removed. ' : '') + (p.handback_notes || '') + ' ' + nm(p.closed_by) + ', ' + fdt(p.closed_at)) : 'Work complete. Area safe. Isolations removed.   Name: ______________   Signature: ______________   Date and time: ______________'}</div></div>`;
+      <h3 style="margin:12px 0 4px;">Hand back</h3><div>${p.closed_at ? E((p.area_safe ? 'Area left safe, isolations removed. ' : '') + (p.handback_notes || '') + ' ' + nm(p.closed_by) + ', ' + fmtDateTime(p.closed_at)) : 'Work complete. Area safe. Isolations removed.   Name: ______________   Signature: ______________   Date and time: ______________'}</div></div>`;
     setTimeout(() => window.print(), 150);
   };
 
@@ -50260,7 +50266,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
       const open = SU.reps.filter(r => r.status !== 'closed'), nw = SU.reps.filter(r => r.status === 'received');
       body = (SU.s && SU.s.enabled ? '' : '<div class="panel" style="padding:12px 16px;border-left:4px solid #f07a1a;margin-bottom:12px;font-size:13px;">The channel is switched off. ' + (isAdm() ? 'Open Settings and link to nominate a recipient and switch it on.' : 'An administrator must switch it on.') + '</div>')
         + tiles([tile(SU.reps.length, 'reports received', '#0b1f3a'), tile(nw.length, 'awaiting acknowledgement', nw.length ? '#d4262c' : '#2e9e5b'), tile(open.length, 'open cases', open.length ? '#f07a1a' : '#2e9e5b')])
-        + `<div class="panel" style="padding:0;overflow:hidden;">${SU.reps.length ? `<table><tr><th>Reference</th><th>Received</th><th>Category</th><th>Status</th><th>Assigned</th></tr>${SU.reps.map(r => `<tr class="clickable" onclick="suOpen('${r.id}')"><td class="strong">${E(r.ref_code)}</td><td>${fdt(r.received_at)}</td><td>${E(SU_CAT[r.category] || r.category || '')}</td><td>${chip(label(r.status), SU_COL[r.status] || '#888')}</td><td>${E(nm(r.assigned_to))}</td></tr>`).join('')}</table>` : noRows('No reports yet.')}</div>`;
+        + `<div class="panel" style="padding:0;overflow:hidden;">${SU.reps.length ? `<table><tr><th>Reference</th><th>Received</th><th>Category</th><th>Status</th><th>Assigned</th></tr>${SU.reps.map(r => `<tr class="clickable" onclick="suOpen('${r.id}')"><td class="strong">${E(r.ref_code)}</td><td>${fmtDateTime(r.received_at)}</td><td>${E(SU_CAT[r.category] || r.category || '')}</td><td>${chip(label(r.status), SU_COL[r.status] || '#888')}</td><td>${E(nm(r.assigned_to))}</td></tr>`).join('')}</table>` : noRows('No reports yet.')}</div>`;
     }
     root.innerHTML = '<style>#speakup-root textarea,#speakup-root select{width:100%;box-sizing:border-box}#speakup-root .form-group label{display:block;margin-bottom:4px;font-weight:700;font-size:12.5px}#speakup-root .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:700px){#speakup-root .form-grid{grid-template-columns:1fr}}</style>' + tabsBar(SU.tab, tabs, 'suTab') + body;
     if(SU.open && SU.tab === 'cases') suDetail();
@@ -50287,15 +50293,15 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     const r = SU.reps.find(x => x.id === SU.open); const el = document.getElementById('su-detail'); if(!r || !el) return;
     el.innerHTML = `<button class="btn-small" onclick="suBack()">Back to cases</button>
       <div class="panel" style="padding:16px;margin-top:10px;"><div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;"><h3 style="margin:0;">${E(r.ref_code)}</h3>${chip(label(r.status), SU_COL[r.status] || '#888')}</div>
-      <div style="font-size:12px;color:var(--text-faint);margin:4px 0 10px;">Received ${fdt(r.received_at)} · ${E(SU_CAT[r.category] || r.category || 'No category')}${r.contact ? ' · Reporter contact: ' + E(r.contact) : ' · Anonymous'}</div>
+      <div style="font-size:12px;color:var(--text-faint);margin:4px 0 10px;">Received ${fmtDateTime(r.received_at)} · ${E(SU_CAT[r.category] || r.category || 'No category')}${r.contact ? ' · Reporter contact: ' + E(r.contact) : ' · Anonymous'}</div>
       <div style="white-space:pre-wrap;font-size:13.5px;line-height:1.6;background:#fafafa;padding:12px;border-radius:6px;">${E(r.description)}</div>
       <div class="form-grid" style="margin-top:14px;"><div class="form-group"><label>Status</label><select id="su-st">${SU_ST.map(([k, l]) => `<option value="${k}" ${r.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
       <div class="form-group"><label>Assigned to</label><select id="su-as"><option value="">Unassigned</option>${memberOptions(r.assigned_to)}</select></div>
       <div class="form-group" style="grid-column:1/-1;"><label>Outcome (shown to the reporter when they check status)</label><textarea id="su-oc" rows="3">${E(r.outcome || '')}</textarea></div></div>
       <div class="form-actions"><button class="btn-primary" onclick="suSaveCase('${r.id}')">Save case</button></div></div>
-      <div class="panel" style="padding:16px;"><h4 style="margin:0 0 8px;">Conversation with the reporter</h4>${SU.fu.length ? SU.fu.map(f => `<div style="margin:6px 0;padding:8px 10px;border-radius:6px;background:${f.from_reporter ? '#eef3fb' : '#f1f8f3'};font-size:13px;"><b>${f.from_reporter ? 'Reporter' : 'Response'}</b> <span style="color:var(--text-faint);font-size:11px;">${fdt(f.created_at)}</span><div style="white-space:pre-wrap;">${E(f.message)}</div></div>`).join('') : '<p style="font-size:12.5px;color:var(--text-faint);">No messages yet.</p>'}
+      <div class="panel" style="padding:16px;"><h4 style="margin:0 0 8px;">Conversation with the reporter</h4>${SU.fu.length ? SU.fu.map(f => `<div style="margin:6px 0;padding:8px 10px;border-radius:6px;background:${f.from_reporter ? '#eef3fb' : '#f1f8f3'};font-size:13px;"><b>${f.from_reporter ? 'Reporter' : 'Response'}</b> <span style="color:var(--text-faint);font-size:11px;">${fmtDateTime(f.created_at)}</span><div style="white-space:pre-wrap;">${E(f.message)}</div></div>`).join('') : '<p style="font-size:12.5px;color:var(--text-faint);">No messages yet.</p>'}
       <textarea id="su-msg" rows="2" placeholder="Reply to the reporter. They see it when they check status with their reference and key."></textarea><div class="form-actions"><button class="btn-small" onclick="suReply('${r.id}')">Send reply</button></div></div>
-      <div class="panel" style="padding:16px;"><h4 style="margin:0 0 8px;">Internal notes (never shown to the reporter)</h4>${SU.nt.map(n => `<div style="margin:6px 0;padding:8px 10px;background:#fafafa;border-radius:6px;font-size:13px;"><b>${E(nm(n.author_id))}</b> <span style="color:var(--text-faint);font-size:11px;">${fdt(n.created_at)}</span><div style="white-space:pre-wrap;">${E(n.note)}</div></div>`).join('')}
+      <div class="panel" style="padding:16px;"><h4 style="margin:0 0 8px;">Internal notes (never shown to the reporter)</h4>${SU.nt.map(n => `<div style="margin:6px 0;padding:8px 10px;background:#fafafa;border-radius:6px;font-size:13px;"><b>${E(nm(n.author_id))}</b> <span style="color:var(--text-faint);font-size:11px;">${fmtDateTime(n.created_at)}</span><div style="white-space:pre-wrap;">${E(n.note)}</div></div>`).join('')}
       <textarea id="su-nt" rows="2" placeholder="Add an internal note"></textarea><div class="form-actions"><button class="btn-small" onclick="suNote('${r.id}')">Add note</button></div></div>
       <div class="panel" style="padding:16px;"><h4 style="margin:0 0 8px;">Evidence</h4><div id="su-ev"></div></div>
       <p style="font-size:11.5px;color:var(--text-faint);">Reports cannot be deleted: they are retained as a record. Confidentiality: do not disclose the identity of a reporter.</p>`;
@@ -50356,6 +50362,384 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   setTimeout(() => { try{ applyModuleAccessToNav(); }catch(e){} }, 0);
 })();
 
+
+/* ===== Release 32: Statistical Analysis of issues (Nonconformances, Incidents, Information Security Incidents, RAGA, Audits) ===== */
+(function(){
+  const arr = a => Array.isArray(a) ? a : [];
+  const E = s => escapeHtml(s == null ? '' : String(s));
+  const sb = () => STATE.supabase;
+  const R = n => 'R' + Math.round(Number(n) || 0).toLocaleString('en-ZA');
+  const N1 = n => (Math.round(n * 10) / 10).toLocaleString('en-ZA');
+  const day = d => d ? String(d).slice(0, 10) : '';
+  const mkey = d => day(d).slice(0, 7);
+  const NOW = () => new Date();
+  const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
+  const SCOPES = {
+    nonconformances: 'Nonconformances', incidents: 'Incidents, Accidents and Near Misses', infosec_incidents: 'Information Security Incidents', raga: 'RAGA Alerts', audits: 'Audit Findings'
+  };
+  const SEV = { minor: 'Minor', moderate: 'Moderate', major: 'Major', critical: 'Critical' };
+  const SEVC = { minor: '#2e9e5b', moderate: '#f0b21a', major: '#f07a1a', critical: '#d4262c' };
+  const personName = id => (arr(STATE.personnel).find(p => p.id === id) || {}).full_name || '';
+  const partyName = id => { const s = arr(STATE.suppliers).find(x => x.id === id); return s ? (s.name || s.supplier_name || s.company_name || s.ref_code) : ''; };
+  const isSubc = id => { const s = arr(STATE.suppliers).find(x => x.id === id); return !!s && s.party_type === 'subcontractor'; };
+  const catName = n => n.title || '(No category)';
+  const LEGAL_RX = /legal|regulat|statut|act\b|licen[cs]e|permit|compliance with law|contravention|inspector|fine|penalt|authority/i;
+  const COMPL_RX = /complaint|customer|client/i;
+
+  /* normalised records */
+  function secIds(){ return new Set(arr(STATE.secIncidents).map(s => s.nonconformance_id)); }
+  function norm(n, kind){
+    return { id:n.id, ref:n.ref_code, kind, date:day(n.occurred_at || n.raised_date || n.created_at), closed:day(n.closed_date), status:n.status, cat:kind === 'raga' ? (n.title || '(No title)') : catName(n), sev:n.severity || (n.alert_type === 'red' ? 'major' : n.alert_type === 'orange' ? 'minor' : ''), cost:Number(n.estimated_cost) || 0,
+      sup:n.supplier_id || null, per:n.personnel_id || null, own:n.owner_id || null, proc:n.process_id || null, target:day(n.target_close_date), raw:n, cls:n.record_class || '', alert:n.alert_type || '', title:n.title || '', desc:n.description || '', rep:!!n.is_repeated };
+  }
+  function records(scope){
+    if(scope === 'raga') return arr(STATE.ragaAlerts).map(a => norm(a, 'raga'));
+    const sec = secIds(); const all = arr(STATE.ncs);
+    if(scope === 'incidents') return all.filter(n => ['incident', 'accident', 'near_miss'].includes(n.record_class) && !sec.has(n.id)).map(n => norm(n, 'incident'));
+    if(scope === 'infosec_incidents') return all.filter(n => sec.has(n.id)).map(n => norm(n, 'infosec'));
+    if(scope === 'audits') return [];
+    return all.filter(n => (!n.record_class || n.record_class === 'nonconformance') && !sec.has(n.id)).map(n => norm(n, 'nonconformance'));
+  }
+  const months = (k) => { const out = [], d = NOW(); for(let i = k - 1; i >= 0; i--){ const x = new Date(d.getFullYear(), d.getMonth() - i, 1); out.push(x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0')); } return out; };
+  const mlabel = k => ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][parseInt(k.slice(5), 10) - 1] + ' ' + k.slice(2, 4);
+  const isOpen = r => r.status !== 'closed' && !r.closed;
+  const overdue = r => isOpen(r) && r.target && r.target < day(NOW().toISOString());
+  const tally = (list, keyFn, valFn) => { const m = new Map(); list.forEach(r => { const k = keyFn(r); if(k == null || k === '') return; const o = m.get(k) || { k, n:0, cost:0 }; o.n++; o.cost += valFn ? valFn(r) : 0; m.set(k, o); }); return [...m.values()].sort((a, b) => b.n - a.n || b.cost - a.cost); };
+
+  /* ---------- chart helpers ---------- */
+  const hbars = (rows, o) => { o = o || {}; const max = Math.max(1, ...rows.map(r => r[o.val || 'n'])); return rows.length ? `<div>${rows.slice(0, o.top || 10).map(r => `<div style="display:grid;grid-template-columns:minmax(120px,38%) 1fr auto;gap:8px;align-items:center;margin:4px 0;font-size:12px;"><div title="${E(r.label || r.k)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${E(r.label || r.k)}</div><div style="background:#eef1f5;border-radius:4px;height:14px;"><div style="width:${Math.max(2, r[o.val || 'n'] / max * 100)}%;height:14px;border-radius:4px;background:${o.color || '#B21616'};"></div></div><div style="min-width:60px;text-align:right;font-weight:700;">${o.fmt ? o.fmt(r[o.val || 'n']) : r[o.val || 'n']}</div></div>`).join('')}</div>` : '<p class="is-none">No data yet.</p>'; };
+  function lineChart(keys, series, o){
+    o = o || {}; const W = 560, H = 170, L = 34, B = 24, T = 10, Rr = 8; const max = Math.max(1, ...series.flatMap(s => s.v)); const x = i => L + (keys.length > 1 ? i * (W - L - Rr) / (keys.length - 1) : 0); const y = v => T + (H - T - B) * (1 - v / max);
+    const grid = [0, .5, 1].map(f => `<line x1="${L}" x2="${W - Rr}" y1="${y(max * f)}" y2="${y(max * f)}" stroke="#e3e7ed"/><text x="${L - 4}" y="${y(max * f) + 3}" font-size="9" text-anchor="end" fill="#888">${o.fmt ? o.fmt(max * f) : Math.round(max * f)}</text>`).join('');
+    const lab = keys.map((k, i) => i % 2 === 0 || keys.length < 8 ? `<text x="${x(i)}" y="${H - 8}" font-size="9" text-anchor="middle" fill="#888">${mlabel(k)}</text>` : '').join('');
+    const lines = series.map(s => `<polyline fill="none" stroke="${s.c}" stroke-width="2.2" points="${s.v.map((v, i) => x(i) + ',' + y(v)).join(' ')}"/>${s.v.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="2.6" fill="${s.c}"><title>${E(s.n)} ${mlabel(keys[i])}: ${o.fmt ? o.fmt(v) : v}</title></circle>`).join('')}`).join('');
+    const leg = series.map(s => `<span style="margin-right:14px;font-size:11.5px;"><span style="display:inline-block;width:10px;height:10px;background:${s.c};border-radius:2px;margin-right:4px;"></span>${E(s.n)}</span>`).join('');
+    return `<div>${leg}</div><svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px;">${grid}${lab}${lines}</svg>`;
+  }
+  function colChart(keys, vals, color, fmt){
+    const W = 560, H = 150, L = 34, B = 22, T = 8; const max = Math.max(1, ...vals); const bw = (W - L - 8) / keys.length;
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px;">${[0, .5, 1].map(f => `<line x1="${L}" x2="${W - 8}" y1="${T + (H - T - B) * (1 - f)}" y2="${T + (H - T - B) * (1 - f)}" stroke="#e3e7ed"/><text x="${L - 4}" y="${T + (H - T - B) * (1 - f) + 3}" font-size="9" text-anchor="end" fill="#888">${fmt ? fmt(max * f) : Math.round(max * f)}</text>`).join('')}${keys.map((k, i) => { const h = (H - T - B) * vals[i] / max; return `<rect x="${L + i * bw + 3}" y="${H - B - h}" width="${Math.max(2, bw - 6)}" height="${h}" fill="${color}" rx="2"><title>${mlabel(k)}: ${fmt ? fmt(vals[i]) : vals[i]}</title></rect>${i % 2 === 0 || keys.length < 8 ? `<text x="${L + i * bw + bw / 2}" y="${H - 6}" font-size="9" text-anchor="middle" fill="#888">${mlabel(k)}</text>` : ''}`; }).join('')}</svg>`;
+  }
+  const donut = (parts) => { const tot = parts.reduce((a, p) => a + p.v, 0) || 1; let a0 = -Math.PI / 2; const r = 52, c = 60; const arcs = parts.filter(p => p.v > 0).map(p => { const a1 = a0 + p.v / tot * 2 * Math.PI; const big = a1 - a0 > Math.PI ? 1 : 0; const d = parts.filter(q => q.v > 0).length === 1 ? `M ${c} ${c - r} A ${r} ${r} 0 1 1 ${c - .01} ${c - r}` : `M ${c + r * Math.cos(a0)} ${c + r * Math.sin(a0)} A ${r} ${r} 0 ${big} 1 ${c + r * Math.cos(a1)} ${c + r * Math.sin(a1)}`; a0 = a1; return `<path d="${d}" fill="none" stroke="${p.c}" stroke-width="22"><title>${E(p.n)}: ${p.v}</title></path>`; }).join(''); return `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;"><svg viewBox="0 0 120 120" width="120" height="120">${arcs}<text x="60" y="64" text-anchor="middle" font-size="18" font-weight="700">${tot === 1 && !parts.some(p => p.v) ? 0 : parts.reduce((a, p) => a + p.v, 0)}</text></svg><div>${parts.map(p => `<div style="font-size:12px;margin:2px 0;"><span style="display:inline-block;width:10px;height:10px;background:${p.c};border-radius:2px;margin-right:6px;"></span>${E(p.n)}: <b>${p.v}</b></div>`).join('')}</div></div>`; };
+  const tile = (v, l, c) => `<div style="background:#fff;border:1px solid #e3e7ed;border-top:4px solid ${c || '#0b1f3a'};border-radius:8px;padding:10px 12px;"><div style="font-size:22px;font-weight:800;line-height:1.1;">${v}</div><div style="font-size:11px;color:#667;margin-top:4px;">${l}</div></div>`;
+  const card = (h, body, wide) => `<div class="is-card"${wide ? ' style="grid-column:1/-1"' : ''}><h4>${E(h)}</h4>${body}</div>`;
+  const table = (head, rows) => rows.length ? `<table class="is-t"><tr>${head.map(h => `<th>${E(h)}</th>`).join('')}</tr>${rows.map(r => `<tr>${r.map(c => `<td>${c == null ? '' : c}</td>`).join('')}</tr>`).join('')}</table>` : '<p class="is-none">None recorded.</p>';
+
+  /* ---------- extra data ---------- */
+  async function loadExtras(scope, recs){
+    const x = { riskLinks:[], extReq:[], findings:[] };
+    const ids = recs.map(r => r.id); const chunk = (a, n) => { const o = []; for(let i = 0; i < a.length; i += n) o.push(a.slice(i, i + n)); return o; };
+    try{
+      if(ids.length){
+        const tbl = scope === 'raga' ? 'raga_risk_links' : 'nc_risk_links', col = scope === 'raga' ? 'raga_alert_id' : 'nonconformance_id';
+        for(const c of chunk(ids, 150)){ const r = await sb().from(tbl).select(col + ', risk_id, risk_register(ref_code, title, entry_type, status)').in(col, c); if(!r.error) x.riskLinks.push(...arr(r.data).map(l => ({ rec:l[col], risk:l.risk_register, risk_id:l.risk_id }))); }
+        if(scope !== 'raga'){ const r = await sb().from('nc_external_requests').select('nonconformance_id, party_type, party_name, status').eq('organisation_id', STATE.org.id); if(!r.error) x.extReq = arr(r.data); }
+      }
+    }catch(e){}
+    try{ const r = await sb().from('audit_findings').select('id, audit_id, finding_type, description, clause_reference, nonconformance_id, raga_alert_id, created_at').eq('organisation_id', STATE.org.id); if(!r.error) x.findings = arr(r.data); }catch(e){}
+    return x;
+  }
+
+  /* ---------- the analysis ---------- */
+  function insights(scope, rs, mk, cats, tot){
+    const o = [];
+    if(!rs.length) return ['No records yet: the analysis fills in as records are raised.'];
+    const m6 = mk.slice(-6), recent = rs.filter(r => m6.includes(mkey(r.date))).length, before = rs.filter(r => { const k = mkey(r.date); return mk.slice(-12, -6).includes(k); }).length;
+    if(before) o.push(`Occurrences in the last six months are ${recent > before ? 'up' : recent < before ? 'down' : 'level'}: ${recent} against ${before} in the six months before (${recent >= before ? '+' : ''}${Math.round((recent - before) / before * 100)}%).`);
+    if(cats[0]) o.push(`${cats[0].k} is the largest category with ${cats[0].n} of ${rs.length} records (${pct(cats[0].n, rs.length)}%).`);
+    const byCost = tally(rs, r => r.cat, r => r.cost).sort((a, b) => b.cost - a.cost)[0]; if(byCost && byCost.cost) o.push(`The most costly category is ${byCost.k}: ${R(byCost.cost)} of the ${R(tot.cost)} recorded (${pct(byCost.cost, tot.cost)}%).`);
+    const od = rs.filter(overdue).length; if(od) o.push(`${od} open record${od === 1 ? ' is' : 's are'} past the target close date: these need an owner decision.`);
+    const rep = tot.repeats; if(rep) o.push(`${rep} categories recur: the same category was raised three or more times, which points to a cause that has not yet been removed.`);
+    const sup = tally(rs.filter(r => r.sup), r => partyName(r.sup))[0]; if(sup) o.push(`${sup.k} is responsible for the most supplier related records (${sup.n}).`);
+    return o;
+  }
+  async function build(scope){
+    const rs = records(scope); const sc = SCOPES[scope]; const mk = months(12);
+    const ex = await loadExtras(scope, rs);
+    const today = day(NOW().toISOString());
+    const open = rs.filter(isOpen), closed = rs.filter(r => !isOpen(r)), od = rs.filter(overdue);
+    const days = closed.filter(r => r.closed && r.date).map(r => Math.max(0, (new Date(r.closed) - new Date(r.date)) / 864e5));
+    const avgDays = days.length ? days.reduce((a, b) => a + b, 0) / days.length : 0;
+    const onTime = closed.filter(r => r.closed && r.target && r.closed <= r.target).length, withTarget = closed.filter(r => r.target).length;
+    const cost = rs.reduce((a, r) => a + r.cost, 0), openCost = open.reduce((a, r) => a + r.cost, 0);
+    const cats = tally(rs, r => r.cat, r => r.cost);
+    const rec3 = cats.filter(c => c.n >= 3).length;
+    const tot = { cost, repeats: rec3 };
+    const raised = mk.map(k => rs.filter(r => mkey(r.date) === k).length), closedBy = mk.map(k => rs.filter(r => mkey(r.closed) === k).length), costBy = mk.map(k => rs.filter(r => mkey(r.date) === k).reduce((a, r) => a + r.cost, 0));
+    const sevParts = Object.keys(SEV).map(k => ({ n:SEV[k], v:rs.filter(r => r.sev === k).length, c:SEVC[k] })).filter(p => p.v);
+    const stat = [{ n:'Open', v:open.length - od.length, c:'#f0b21a' }, { n:'Overdue', v:od.length, c:'#d4262c' }, { n:'Closed', v:closed.length, c:'#2e9e5b' }];
+    const supRows = tally(rs.filter(r => r.sup && !isSubc(r.sup)), r => partyName(r.sup), r => r.cost).map(r => ({ label:r.k, n:r.n, cost:r.cost }));
+    const subRows = tally(rs.filter(r => r.sup && isSubc(r.sup)), r => partyName(r.sup), r => r.cost).map(r => ({ label:r.k, n:r.n, cost:r.cost }));
+    const perRows = tally(rs.filter(r => r.per), r => personName(r.per), r => r.cost).map(r => ({ label:r.k, n:r.n, cost:r.cost }));
+    const cust = tally(arr(ex.extReq).filter(q => q.party_type === 'client' && rs.some(r => r.id === q.nonconformance_id)), q => q.party_name).map(r => ({ label:r.k, n:r.n }));
+    const compl = rs.filter(r => COMPL_RX.test(r.cat) || COMPL_RX.test(r.title));
+    const procRows = tally(rs.filter(r => r.proc), r => { const p = arr(STATE.processes).find(x => x.id === r.proc); return p ? (p.title || p.name) : 'Process'; }).map(r => ({ label:r.k, n:r.n }));
+    /* repeats: same category 3+ times, or same category with the same supplier or person twice in 12 months */
+    const y1 = new Date(NOW().getFullYear() - 1, NOW().getMonth(), NOW().getDate()).toISOString().slice(0, 10);
+    const rep = []; cats.filter(c => c.n >= 2).forEach(c => { const l = rs.filter(r => r.cat === c.k && r.date >= y1); const ps = tally(l.filter(r => r.sup || r.per), r => r.sup ? partyName(r.sup) : personName(r.per)).filter(p => p.n >= 2)[0]; if(l.length >= 3 || ps) rep.push([E(c.k), l.length, ps ? E(ps.k) + ' (' + ps.n + ')' : '', R(l.reduce((a, r) => a + r.cost, 0)), l.filter(isOpen).length]); });
+    const flagged = rs.filter(r => r.rep).length;
+    /* improvements, compliments */
+    const imp = closed.filter(r => r.raw.closure_conclusion || r.raw.preventive_action || r.raw.root_cause).sort((a, b) => (b.closed || '').localeCompare(a.closed || '')).slice(0, 8);
+    const posFind = arr(ex.findings).filter(f => f.finding_type === 'positive');
+    const greens = scope === 'raga' ? rs.filter(r => r.alert === 'green') : arr(STATE.ragaAlerts).filter(a => a.alert_type === 'green').map(a => norm(a, 'raga'));
+    const surveys = arr(STATE.customerSurveys).filter(s => s.overall_rating != null);
+    const csat = surveys.length ? surveys.reduce((a, s) => a + Number(s.overall_rating), 0) / surveys.length : null;
+    const csatBy = mk.map(k => { const l = surveys.filter(s => mkey(s.completed_at || s.created_at) === k); return l.length ? l.reduce((a, s) => a + Number(s.overall_rating), 0) / l.length : null; });
+    const comments = surveys.filter(s => s.comments && Number(s.overall_rating) >= 4).slice(0, 5);
+    /* supplier performance */
+    const ass = arr(STATE.assessmentRecords).filter(a => a.entity_type === 'supplier');
+    const perfRows = arr(STATE.suppliers).map(s => { const a = ass.filter(x => x.entity_id === s.id).sort((p, q) => String(q.assessment_date).localeCompare(String(p.assessment_date)))[0]; const n = rs.filter(r => r.sup === s.id); return { s, a, n }; }).filter(r => r.a || r.n.length).sort((p, q) => q.n.length - p.n.length).slice(0, 12).map(r => [E(partyName(r.s.id)), r.s.party_type === 'subcontractor' ? 'Subcontractor' : 'Supplier', r.a ? Number(r.a.overall_score).toFixed(1) + ' / 5' : 'Not assessed', r.n.length, R(r.n.reduce((a, x) => a + x.cost, 0))]);
+    /* legal */
+    const legal = rs.filter(r => LEGAL_RX.test(r.cat) || LEGAL_RX.test(r.title) || r.raw.reported_to_authority);
+    const reg = arr(STATE.legalRegister); const regBad = reg.filter(l => ['non_compliant', 'semi_compliant', 'partially_compliant'].includes(l.status));
+    /* risks and opportunities */
+    const linkedRecs = new Set(ex.riskLinks.map(l => l.rec)); const riskTally = tally(ex.riskLinks.filter(l => l.risk), l => (l.risk.ref_code || '') + '|' + (l.risk.title || '') + '|' + (l.risk.entry_type || '')).slice(0, 10);
+    const unlinkedSerious = rs.filter(r => ['major', 'critical'].includes(r.sev) && !linkedRecs.has(r.id));
+    const tasks = arr(STATE.tasks).filter(t => ['nonconformance', 'raga'].includes(t.linked_type) && rs.some(r => r.id === t.linked_id));
+    const objs = arr(STATE.objectives); const objRisk = objs.filter(o => o.status && !['achieved', 'closed', 'completed'].includes(o.status)).length;
+    const inc = scope === 'incidents' ? { lost:rs.reduce((a, r) => a + (Number(r.raw.lost_time_days) || 0), 0), acc:rs.filter(r => r.cls === 'accident').length, nm:rs.filter(r => r.cls === 'near_miss').length, auth:rs.filter(r => r.raw.reported_to_authority).length } : null;
+    const aud = scope === 'audits' ? arr(ex.findings) : null;
+    return { scope, sc, rs, mk, ex, open, closed, od, avgDays, onTime, withTarget, cost, openCost, cats, tot, raised, closedBy, costBy, sevParts, stat, supRows, subRows, perRows, cust, compl, procRows, rep, flagged, imp, posFind, greens, csat, csatBy, comments, perfRows, legal, regBad, reg, linkedRecs, riskTally, unlinkedSerious, tasks, objRisk, objs, inc, aud, today, notes:insights(scope, rs, mk, cats, tot) };
+  }
+
+  function html(d){
+    const rs = d.rs, S = d.scope;
+    const tiles = [tile(rs.length, 'records in total', '#0b1f3a'), tile(d.open.length, 'open', d.open.length ? '#f0b21a' : '#2e9e5b'), tile(d.od.length, 'overdue', d.od.length ? '#d4262c' : '#2e9e5b'), tile(pct(d.closed.length, rs.length) + '%', 'closed', '#2e9e5b'), tile(N1(d.avgDays) + ' d', 'average days to close', '#0b1f3a'), tile(d.withTarget ? pct(d.onTime, d.withTarget) + '%' : '-', 'closed on or before target', '#0b1f3a'), tile(R(d.cost), 'recorded cost to the company', '#B21616'), tile(R(d.openCost), 'cost of open records', '#f07a1a'), tile(d.rep.length, 'recurring issues', d.rep.length ? '#d4262c' : '#2e9e5b')];
+    if(d.inc) tiles.push(tile(d.inc.acc, 'accidents', '#d4262c'), tile(d.inc.nm, 'near misses', '#f0b21a'), tile(d.inc.lost, 'lost time days', '#d4262c'), tile(d.inc.auth, 'reported to an authority', '#0b1f3a'));
+    let h = `<div class="is-tiles">${tiles.join('')}</div>`;
+    h += card('Executive observations', `<ul class="is-ul">${d.notes.map(n => `<li>${E(n)}</li>`).join('')}</ul>`, true);
+    h += '<div class="is-grid">';
+    h += card('Trend: raised and closed, last 12 months', lineChart(d.mk, [{ n:'Raised', c:'#d4262c', v:d.raised }, { n:'Closed', c:'#2e9e5b', v:d.closedBy }]), true);
+    h += card('Occurrences per category', hbars(d.cats.map(c => ({ label:c.k, n:c.n })), { top:12 }));
+    h += card('Cost to the company by category', hbars(d.cats.filter(c => c.cost).sort((a, b) => b.cost - a.cost).map(c => ({ label:c.k, n:c.cost })), { top:12, fmt:R, color:'#f07a1a' }));
+    h += card('Cost per month', colChart(d.mk, d.costBy, '#f07a1a', R));
+    h += card('Severity and status', `<div style="display:flex;gap:24px;flex-wrap:wrap;">${donut(d.sevParts.length ? d.sevParts : [{ n:'No severity recorded', v:0, c:'#ccc' }])}${donut(d.stat)}</div>`);
+    h += card('Suppliers responsible', hbars(d.supRows.map(r => ({ label:r.label + (r.cost ? '  ·  ' + R(r.cost) : ''), n:r.n }))));
+    h += card('Subcontractors responsible', hbars(d.subRows.map(r => ({ label:r.label + (r.cost ? '  ·  ' + R(r.cost) : ''), n:r.n }))));
+    h += card('Personnel responsible', hbars(d.perRows.map(r => ({ label:r.label, n:r.n }))));
+    h += card('Customers responsible and customer complaints', `<p style="font-size:12px;margin:0 0 6px;"><b>${d.compl.length}</b> record${d.compl.length === 1 ? '' : 's'} are customer complaints or customer related.</p>${hbars(d.cust, {})}`);
+    h += card('Processes and areas', hbars(d.procRows));
+    h += card('Recurring issues', d.rep.length ? table(['Category', 'Occurrences (12 months)', 'Same supplier or person', 'Cost', 'Still open'], d.rep.slice(0, 10)) + (d.flagged ? `<p style="font-size:11.5px;color:#667;">${d.flagged} record${d.flagged === 1 ? ' is' : 's are'} also marked as repeated by the person raising them.</p>` : '') : '<p class="is-none">No recurring issues found.</p>', true);
+    h += card('Improvements implemented (continual improvement)', `<p style="font-size:12px;margin:0 0 6px;"><b>${d.closed.length}</b> closed, <b>${d.imp.length}</b> with a recorded cause or conclusion shown below${d.objs.length ? `; ${d.objs.length - d.objRisk} of ${d.objs.length} objectives are achieved` : ''}.</p>` + (d.imp.length ? `<ul class="is-ul">${d.imp.map(r => `<li><b>${E(r.ref)}</b> ${E(r.title || r.cat)}: ${E(String(r.raw.closure_conclusion || r.raw.preventive_action || r.raw.root_cause).slice(0, 160))}</li>`).join('')}</ul>` : '<p class="is-none">Record a root cause or closure conclusion when closing, and it shows here.</p>'), true);
+    h += card('Compliments and positive information', `<p style="font-size:12px;margin:0 0 6px;"><b>${d.greens.length}</b> green (positive) alerts and <b>${d.posFind.length}</b> positive audit findings.</p>` + ((d.greens.length || d.posFind.length || d.comments.length) ? `<ul class="is-ul">${d.greens.slice(0, 5).map(g => `<li>${E(g.ref || '')} ${E(g.title)}</li>`).join('')}${d.posFind.slice(0, 4).map(f => `<li>Audit: ${E(String(f.description || '').slice(0, 140))}</li>`).join('')}${d.comments.map(c => `<li>Customer: "${E(String(c.comments).slice(0, 140))}"</li>`).join('')}</ul>` : '<p class="is-none">None recorded yet. Recognise good work with green alerts.</p>'), true);
+    h += card('Customer satisfaction', d.csat == null ? '<p class="is-none">No completed customer surveys.</p>' : `<p style="font-size:12px;margin:0 0 6px;">Average <b>${N1(d.csat)} / 5</b> (${pct(d.csat, 5)}%) from ${arr(STATE.customerSurveys).filter(s => s.overall_rating != null).length} surveys.</p>` + lineChart(d.mk, [{ n:'Average rating', c:'#1f6fd1', v:d.csatBy.map(v => v == null ? 0 : v) }]));
+    h += card('Supplier and subcontractor performance', table(['Party', 'Type', 'Latest assessment', 'Records', 'Cost'], d.perfRows), true);
+    h += card('Legal contraventions and occurrences', `<p style="font-size:12px;margin:0 0 6px;"><b>${d.legal.length}</b> record${d.legal.length === 1 ? '' : 's'} with a legal or regulatory element, reported to an authority or likely to be. Legal register: <b>${d.regBad.length}</b> of ${d.reg.length} requirements not fully compliant.</p>` + (d.legal.length ? `<ul class="is-ul">${d.legal.slice(0, 8).map(r => `<li><b>${E(r.ref)}</b> ${E(r.title || r.cat)}${r.raw.reported_to_authority ? ' (reported to an authority)' : ''}</li>`).join('')}</ul>` : ''), true);
+    h += card('Risks and opportunities, and traceability', `<p style="font-size:12px;margin:0 0 6px;"><b>${d.linkedRecs.size}</b> of ${rs.length} records are linked to a risk or opportunity; <b>${d.tasks.length}</b> actions are tracked in Task Management.</p>` + table(['Linked risk or opportunity', 'Type', 'Records'], d.riskTally.map(t => { const p = t.k.split('|'); return [E((p[0] ? p[0] + ': ' : '') + p[1]), E(p[2] || ''), t.n]; })) + (d.unlinkedSerious.length ? `<p style="font-size:12px;margin-top:8px;color:#b3261e;"><b>${d.unlinkedSerious.length}</b> major or critical record${d.unlinkedSerious.length === 1 ? ' has' : 's have'} no linked risk: ${d.unlinkedSerious.slice(0, 6).map(r => E(r.ref)).join(', ')}. Link them so the risk register reflects what is actually happening.</p>` : ''), true);
+    h += '</div>';
+    return h;
+  }
+  const CSS = '<style>#is-modal .is-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}#is-modal .is-card{background:#fff;border:1px solid #e3e7ed;border-radius:10px;padding:14px 16px}#is-modal .is-card h4{margin:0 0 10px;font-size:14px}#is-modal .is-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}#is-modal .is-ul{margin:0;padding-left:18px;font-size:12.5px;line-height:1.55}#is-modal .is-t{width:100%;border-collapse:collapse;font-size:12px}#is-modal .is-t th,#is-modal .is-t td{border-bottom:1px solid #e8ebf0;padding:5px 6px;text-align:left}#is-modal .is-none{font-size:12px;color:#889;margin:0}@media(max-width:900px){#is-modal .is-grid{grid-template-columns:1fr}}@media print{body>*:not(#is-modal){display:none!important}#is-modal{position:static!important;background:#fff!important;padding:0!important}#is-modal .is-bar{display:none!important}}</style>';
+  let LAST = null;
+  window.openIssueStats = async function(scope){
+    scope = SCOPES[scope] ? scope : 'nonconformances';
+    let m = document.getElementById('is-modal'); if(m) m.remove();
+    m = document.createElement('div'); m.id = 'is-modal'; m.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(10,20,35,.6);overflow:auto;padding:24px 16px;';
+    m.innerHTML = CSS + '<div style="max-width:1180px;margin:0 auto;background:#f4f6f9;border-radius:14px;padding:22px;"><p style="padding:30px;text-align:center;">Analysing…</p></div>'; document.body.appendChild(m);
+    let d; try{ d = await build(scope); }catch(e){ m.remove(); toast('Could not build the analysis: ' + (e.message || e), 'error'); return; }
+    LAST = d;
+    m.querySelector('div').innerHTML = `<div class="is-bar" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px;"><div><h2 style="margin:0;font-size:20px;">Statistical Analysis: ${E(d.sc)}</h2><div style="font-size:12px;color:#667;">${E(STATE.org.name)} · as at ${fmtDate(d.today)} · every figure is calculated from the live records</div></div><div><button class="btn-small" onclick="isExport()">Export Excel</button> <button class="btn-small" onclick="window.print()">Print</button> <button class="btn-small primary" onclick="document.getElementById('is-modal').remove()">Close</button></div></div>` + html(d);
+  };
+  window.isExport = async function(){
+    if(!LAST) return; const d = LAST; const X = await ensureXLSX(); const wb = X.utils.book_new();
+    X.utils.book_append_sheet(wb, X.utils.json_to_sheet(d.rs.map(r => ({ Reference:r.ref, Date:r.date, Category:r.cat, Severity:r.sev, Status:r.status, Closed:r.closed, Target:r.target, Cost:r.cost, Supplier:partyName(r.sup), Person:personName(r.per) }))), 'Records');
+    X.utils.book_append_sheet(wb, X.utils.json_to_sheet(d.cats.map(c => ({ Category:c.k, Occurrences:c.n, Cost:c.cost }))), 'By category');
+    X.utils.book_append_sheet(wb, X.utils.json_to_sheet(d.mk.map((k, i) => ({ Month:k, Raised:d.raised[i], Closed:d.closedBy[i], Cost:d.costBy[i] }))), 'Monthly trend');
+    X.writeFile(wb, 'Statistical-Analysis-' + d.sc.replace(/[^A-Za-z]+/g, '-') + '.xlsx');
+  };
+  window.wmIssueQuick = function(scope){
+    const rs = records(scope); const since = new Date(); since.setMonth(since.getMonth() - 3); const sd = since.toISOString().slice(0, 10);
+    return { label:SCOPES[scope], total:rs.length, open:rs.filter(isOpen).length, overdue:rs.filter(overdue).length, raised3m:rs.filter(r => r.date >= sd).length, closed3m:rs.filter(r => r.closed && r.closed >= sd).length, cost:rs.reduce((a, r) => a + r.cost, 0), serious:rs.filter(r => ['major', 'critical'].includes(r.sev) && isOpen(r)).length };
+  };
+  window.wmIssueSummary = async function(scope){ const d = await build(scope); return { scope:d.sc, total:d.rs.length, open:d.open.length, overdue:d.od.length, cost:d.cost, avgDays:d.avgDays, recurring:d.rep.length, notes:d.notes, raised:d.raised, closedBy:d.closedBy, mk:d.mk }; };
+
+  /* the button, on each register's toolbar */
+  const BTN = { nonconformances:'nonconformances', raga:'raga', incidents:'incidents', infosec_incidents:'infosec_incidents', audits:'audits' };
+  function addBtn(mod){
+    const scope = BTN[mod]; if(!scope) return; const root = document.getElementById('content-root'); if(!root || root.querySelector('#is-open-btn')) return;
+    const tb = root.querySelector('.toolbar'); const host = tb || root.firstElementChild; if(!host) return;
+    const b = document.createElement('button'); b.id = 'is-open-btn'; b.className = 'btn-small'; b.style.cssText = 'background:#0b1f3a;color:#fff;border-color:#0b1f3a;'; b.innerHTML = 'Statistical Analysis'; b.onclick = () => openIssueStats(scope);
+    if(tb){ const first = tb.querySelector('.btn-small, .btn-primary'); if(first) first.parentNode.insertBefore(b, first); else tb.appendChild(b); } else host.insertBefore(b, host.firstChild);
+  }
+  { const _s = showModule; showModule = window.showModule = function(mod){ const r = _s.apply(this, arguments); [60, 500, 1400].forEach(t => setTimeout(() => { try{ if(BTN[mod] && document.getElementById('mod-title') && MODULE_META[mod] && document.getElementById('mod-title').textContent === MODULE_META[mod].title) addBtn(mod); }catch(e){} }, t)); return r; }; }
+})();
+
+/* ===== Release 32: Quarterly SHERQ Committee meeting and minutes ===== */
+(function(){
+  const arr = a => Array.isArray(a) ? a : [];
+  const E = s => escapeHtml(s == null ? '' : String(s));
+  const sb = () => STATE.supabase;
+  const KEY = 'sherq_committee';
+  const isAdm = () => STATE.myRole === 'admin' || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const isMgr = () => isAdm() || STATE.myRole === 'manager';
+  const canW = () => isAdm() || ['manager', 'contributor'].includes(STATE.myRole);
+  const day = d => d ? String(d).slice(0, 10) : '';
+  const fd = d => d ? fmtDate(day(d)) : '';
+  const nm = id => id ? (memberName(id) || '') : '';
+  const has = k => { try{ return wmTenantHas(k); }catch(e){ return false; } };
+  const missing = e => e && /does not exist|relation|schema cache|Could not find/i.test(e.message || '');
+  const SC = STATE._sc = { m: [], a: [], loaded: false, broken: false, open: null };
+  const addMonths = (iso, n) => { const d = new Date(day(iso) + 'T00:00:00'); d.setMonth(d.getMonth() + n); return d.toISOString().slice(0, 10); };
+  const daysTo = iso => iso ? Math.round((new Date(day(iso) + 'T00:00:00') - new Date(todayISO() + 'T00:00:00')) / 864e5) : null;
+  const chip = (t, c) => `<span style="display:inline-block;background:${c};color:#fff;border-radius:10px;padding:2px 9px;font-size:11px;font-weight:700;">${E(t)}</span>`;
+  const tile = (n, l, c) => `<div class="panel" style="padding:14px 16px;border-top:4px solid ${c};margin:0;"><div style="font-size:26px;font-weight:800;line-height:1.1;">${n}</div><div style="font-size:11.5px;color:var(--text-faint);margin-top:6px;">${l}</div></div>`;
+
+  /* ---------- registration ---------- */
+  MODULE_META[KEY] = { title:'SHERQ Committee', sub:() => 'Quarterly safety, health, environment, risk and quality committee: agenda from your live data, minutes, actions and signatures' };
+  RENDERERS[KEY] = () => '<div id="sherq_committee-root"></div>';
+  ADMIN_CONSOLE_TOGGLES.push({ field:'sherq_committee_module_enabled', label:'SHERQ Committee', note:'Quarterly SHERQ committee meetings and minutes, as required by the OHS Act. Switching off hides it; nothing recorded is deleted.' });
+  { const _t = toggleOrgModule;
+    toggleOrgModule = window.toggleOrgModule = async function(field, value){
+      if(field !== 'sherq_committee_module_enabled') return _t.apply(this, arguments);
+      const { error } = await sb().from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:KEY, enabled:value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
+      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
+    }; }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const r = await _lc.apply(this, arguments); try{ if(STATE.org) STATE.org.sherq_committee_module_enabled = !(STATE.org._modOff && STATE.org._modOff.has(KEY)); }catch(e){} return r; }; }
+  { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){
+      if(mod !== KEY) return _c.apply(this, arguments);
+      if(STATE.org && STATE.org._modOff && STATE.org._modOff.has(KEY)) return false;
+      if(isAdm()) return true;
+      const all = arr(STATE.myModuleAccess); if(all.includes(WM_CAL)) return all.includes(KEY);
+      return _c('management_review') || isMgr();
+    }; }
+  { const _a = adminInviteModules; adminInviteModules = window.adminInviteModules = function(){ const out = arr(_a.apply(this, arguments)); if(!out.some(x => x.key === KEY) && has(KEY)){ const i = out.findIndex(x => x.key === 'management_review'); const item = { key:KEY, label:MODULE_META[KEY].title }; if(i >= 0) out.splice(i, 0, item); else out.push(item); } return out; }; }
+  { const nav = document.querySelector('.nav-item[data-mod="management_review"]');
+    if(nav && !document.querySelector('.nav-item[data-mod="' + KEY + '"]')) nav.insertAdjacentHTML('beforebegin', `<div class="nav-item" data-mod="${KEY}" onclick="showModule('${KEY}')" style="display:none"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.6"/><path d="M3 20v-1.5A4.5 4.5 0 017.5 14h3A4.5 4.5 0 0115 18.5V20M16 14h1.5A3.5 3.5 0 0121 17.5V20"/></svg> SHERQ Committee</div>`); }
+  { const _n = applyModuleAccessToNav; applyModuleAccessToNav = window.applyModuleAccessToNav = function(){ const r = _n.apply(this, arguments); const el = document.querySelector('.nav-item[data-mod="' + KEY + '"]'); if(el) el.style.display = canAccessModule(KEY) ? '' : 'none'; return r; }; }
+  { const _s = showModule; showModule = window.showModule = function(mod){ const r = _s.apply(this, arguments); if(mod === KEY && document.getElementById('sherq_committee-root')) scInit(); return r; }; }
+  setTimeout(() => { try{ applyModuleAccessToNav(); }catch(e){} }, 0);
+
+  /* ---------- the standard agenda, built from what this client has ---------- */
+  const quick = s => { try{ return window.wmIssueQuick(s); }catch(e){ return null; } };
+  const qline = s => { const q = quick(s); return q ? `${q.label}: ${q.total} on record, ${q.open} open (${q.overdue} overdue, ${q.serious} major or critical), ${q.raised3m} raised and ${q.closed3m} closed in the last three months.` : ''; };
+  function agendaDefs(){
+    const L = [];
+    const add = (key, title, basis, live) => L.push({ key, title, basis, live });
+    add('opening', 'Opening, attendance, quorum and apologies', 'OHS Act 85 of 1993, sections 19 and 20: the committee meets at least every three months', () => 'Record who is present and whether the committee is quorate.');
+    add('previous', 'Minutes and actions of the previous meeting', 'Follow up of earlier decisions', () => { const o = SC.a.filter(a => a.status === 'open').length; return o ? `${o} action${o === 1 ? '' : 's'} from earlier meetings still open.` : 'No open actions from earlier meetings.'; });
+    const issueScopes = [['nonconformances', 'nonconformances'], ['raga', 'raga'], ['incidents', 'incidents'], ['infosec_incidents', 'infosec_incidents']].filter(([k]) => has(k === 'nonconformances' ? 'nonconformances' : k));
+    if(issueScopes.length) add('issues', 'Incidents, accidents, near misses and nonconformances: statistics and trends', 'OHS Act s24, Regulation on incident reporting; ISO 45001 cl 10.2, ISO 9001 cl 10.2', () => issueScopes.map(([, sc]) => qline(sc)).filter(Boolean).join(' ') + ' Open the Statistical Analysis in each module for trends, cost and recurring causes.');
+    if(has('risks')) add('hira', 'Hazard identification, risk assessment and controls', 'OHS Act s8; ISO 45001 cl 6.1; ISO 31000', () => { const r = arr(STATE.risks); const hi = r.filter(x => x.status !== 'closed' && Number(x.inherent_score) >= 15).length; return `${r.length} risks and opportunities on the register, ${hi} open with a high inherent score.`; });
+    if(has('legal')) add('legal', 'Legal compliance, appointments and certificates', 'OHS Act s16 and s17; ISO 45001 cl 6.1.3; ISO 14001 cl 6.1.3', () => { const l = arr(STATE.legalRegister); const bad = l.filter(x => ['non_compliant', 'semi_compliant', 'partially_compliant'].includes(x.status || x.current_status)).length; return `${l.length} legal requirements registered, ${bad} not fully compliant.`; });
+    if(has('audits')) add('audits', 'Inspections and audits', 'OHS Act s20; ISO 45001 cl 9.2; ISO 9001 cl 9.2', () => { const a = arr(STATE.audits); const yr = String(new Date().getFullYear()); return `${a.filter(x => String(x.planned_date || '').startsWith(yr)).length} audits planned or done this year; ${a.filter(x => x.closed_at == null && (x.published_at || x.status === 'completed')).length} awaiting close out.`; });
+    if(has('training')) add('training', 'Training, competence and awareness', 'OHS Act s8(2)(e); ISO 45001 cl 7.2; ISO 9001 cl 7.2', () => { const t = arr(STATE.training); const od = t.filter(x => x.status !== 'completed' && x.status !== 'cancelled' && x.due_date && new Date(x.due_date) < new Date()).length; return `${t.length} training records, ${od} overdue.`; });
+    if(has('ohs')) add('ohs', 'Occupational health and hygiene surveillance', 'OHS Act s8; Hazardous Chemical Agents, Noise and Lead regulations; ISO 45001 cl 9.1', () => 'Review hygiene surveys due, fitness outcomes and work restrictions in Occupational Health Surveillance.');
+    if(has('ptw')) add('ptw', 'Permit to work and high risk activities', 'OHS Act s8; Construction Regulations; ISO 45001 cl 8.1', () => 'Review permits issued, expired or cancelled, and any permit related incidents.');
+    if(has('envdata') || has('legal')) add('env', 'Environmental performance and compliance', 'ISO 14001 cl 6.1.2, 9.1; NEMA and waste, air and water legislation', () => has('envdata') ? 'Review waste, energy, water and emissions against targets in Environmental Performance Data.' : 'Review environmental aspects, spills, waste handling and licences.');
+    if(has('customers') || has('suppliers')) add('quality', 'Quality, customer feedback and supplier performance', 'ISO 9001 cl 9.1.2, 8.4', () => { const s = arr(STATE.customerSurveys).filter(x => x.overall_rating != null); const avg = s.length ? (s.reduce((a, x) => a + Number(x.overall_rating), 0) / s.length) : null; return avg == null ? 'No completed customer surveys yet.' : `Customer satisfaction averages ${Math.round(avg * 10) / 10} out of 5 from ${s.length} surveys.`; });
+    if(has('suppliers')) add('contractors', 'Contractors, subcontractors and visitors', 'OHS Act s37; Construction Regulations; ISO 45001 cl 8.1.4', () => `${arr(STATE.suppliers).length} suppliers and subcontractors on record. Review contractor safety files, induction and incidents.`);
+    if(has('infosec_incidents') || has('soa') || has('privacy')) add('infosec', 'Information security and privacy (POPIA)', 'ISO/IEC 27001 cl 9.1, 10.2; POPIA s19 and s22', () => { const q = has('infosec_incidents') ? quick('infosec_incidents') : null; return q ? `${q.total} information security incidents recorded, ${q.open} open. Review personal information breaches and notification dates.` : 'Review security events, access control and personal information protection.'; });
+    if(STATE.org && STATE.org.welding_enabled) add('welding', 'Welding management', 'ISO 3834; ISO 9606; ISO 15614', () => 'Review welder qualifications, procedures, inspection results and rejects.');
+    if(has('edu')) add('edu', 'School safety, learner welfare and child protection', 'South African Schools Act; National School Safety Framework; Children\'s Act', () => 'Review school safety, emergency drills, learner incidents and child protection measures.');
+    add('emergency', 'Emergency preparedness, drills and first aid', 'OHS Act s8; General Safety Regulations; ISO 45001 cl 8.2', () => 'Review the emergency plan, drills held, fire equipment and first aiders.');
+    add('concerns', 'Employee concerns, suggestions and recognition', 'OHS Act s17(1)(a); ISO 45001 cl 5.4', () => has('speakup') ? 'Review matters raised through the confidential reporting channel (without identifying anyone), and recognise good practice.' : 'Record concerns raised by representatives and employees, and recognise good practice.');
+    add('general', 'General, and date of the next meeting', 'Quarterly: the next meeting is due within three months', () => 'Agree the date of the next meeting.');
+    return L;
+  }
+  const defOf = key => agendaDefs().find(d => d.key === key);
+
+  /* ---------- data ---------- */
+  async function loadSc(){
+    const id = STATE.org.id; const [a, b] = await Promise.all([sb().from('sherq_meetings').select('*').eq('organisation_id', id).order('meeting_date', { ascending:false }), sb().from('sherq_actions').select('*').eq('organisation_id', id).order('created_at')]);
+    SC.broken = !!((a.error && missing(a.error)) || (b.error && missing(b.error)));
+    SC.m = a.error ? [] : arr(a.data); SC.a = b.error ? [] : arr(b.data); SC.loaded = true;
+  }
+  async function scInit(){ const root = document.getElementById('sherq_committee-root'); if(!root) return; root.innerHTML = '<p style="padding:24px;color:var(--text-faint);">Loading…</p>'; await loadSc(); SC.open ? scDetail() : scList(); }
+  const mAct = id => SC.a.filter(a => a.meeting_id === id);
+
+  /* ---------- list ---------- */
+  function scList(){
+    const root = document.getElementById('sherq_committee-root'); if(!root) return; SC.open = null;
+    if(SC.broken){ root.innerHTML = '<div class="panel" style="padding:14px 18px;border-left:4px solid #f07a1a;font-size:13px;">Run <b>qashe-watchman-schema-issues-committee.sql</b> in the Supabase SQL editor, then refresh.</div>'; return; }
+    const held = SC.m.filter(m => m.status !== 'planned'); const last = held[0]; const dueOn = last ? (last.next_meeting_date || addMonths(last.meeting_date, 3)) : null;
+    const yr = new Date().getFullYear(); const thisYr = SC.m.filter(m => String(m.meeting_date).startsWith(String(yr)) && m.status !== 'planned').length;
+    const dd = dueOn ? daysTo(dueOn) : null; const openA = SC.a.filter(a => a.status === 'open'), odA = openA.filter(a => a.target_date && day(a.target_date) < todayISO());
+    const nextTile = !last ? tile('None yet', 'no meeting held: schedule the first', '#d4262c') : tile(fd(dueOn), dd < 0 ? 'next meeting overdue by ' + (-dd) + ' days' : 'next meeting due in ' + dd + ' days', dd < 0 ? '#d4262c' : dd <= 21 ? '#f07a1a' : '#2e9e5b');
+    root.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:14px;">${nextTile}${tile(thisYr + ' of 4', 'meetings held in ' + yr + ' (one every three months)', thisYr >= 4 ? '#2e9e5b' : '#0b1f3a')}${tile(openA.length, 'open actions', openA.length ? '#f0b21a' : '#2e9e5b')}${tile(odA.length, 'overdue actions', odA.length ? '#d4262c' : '#2e9e5b')}</div>
+      <div class="toolbar"><div style="font-size:12.5px;color:var(--text-dim);">The OHS Act requires the health and safety committee to meet at least every three months. The agenda is built from the modules and legal obligations of this organisation.</div>${canW() ? '<button class="btn-primary btn-add" onclick="scNewForm()">New meeting</button>' : ''}</div>
+      <div id="sc-form"></div>
+      <div class="panel" style="padding:0;overflow:hidden;">${SC.m.length ? `<table><tr><th>Ref</th><th>Quarter</th><th>Date</th><th>Chair</th><th>Actions open</th><th>Status</th></tr>${SC.m.map(m => `<tr class="clickable" onclick="scOpen('${m.id}')"><td class="mono-cell">${E(m.ref_code)}</td><td class="strong">${E(m.quarter_label || '')}</td><td>${fd(m.meeting_date)}</td><td>${E(nm(m.chair_id))}</td><td>${mAct(m.id).filter(a => a.status === 'open').length}</td><td>${chip(m.status === 'signed' ? 'Signed' : m.status === 'held' ? 'Held, minutes open' : 'Planned', m.status === 'signed' ? '#2e9e5b' : m.status === 'held' ? '#f07a1a' : '#888')}</td></tr>`).join('')}</table>` : '<div class="empty-state"><p>No SHERQ committee meetings recorded yet.</p></div>'}</div>`;
+  }
+  window.scNewForm = function(){
+    const f = document.getElementById('sc-form'); if(!f) return; const nextDue = SC.m.filter(m => m.status !== 'planned')[0];
+    f.innerHTML = `<div class="detail-panel" style="padding:16px;margin-bottom:14px;"><h3 style="margin:0 0 4px;">Schedule a SHERQ committee meeting</h3><p style="font-size:11.5px;color:var(--text-faint);margin-bottom:12px;">The agenda is built now from the modules this organisation uses. Open actions from earlier meetings carry forward automatically.</p><div class="form-grid"><div class="field"><label>Meeting date</label><input type="date" id="sc-date" value="${nextDue ? (nextDue.next_meeting_date || addMonths(nextDue.meeting_date, 3)) : todayISO()}"></div><div class="field"><label>Chair</label><select id="sc-chair">${memberOptions(STATE.user.id)}</select></div><div class="field"><label>Secretary (minutes)</label><select id="sc-sec">${memberOptions(STATE.user.id)}</select></div><div class="field span3"><label>Venue</label><input id="sc-venue" placeholder="e.g. Boardroom, or Microsoft Teams"></div></div><div class="form-actions"><button class="btn-cancel" onclick="document.getElementById('sc-form').innerHTML=''">Cancel</button><button class="btn-primary" onclick="scCreate()">Create meeting</button></div></div>`;
+  };
+  window.scCreate = async function(){
+    const date = document.getElementById('sc-date').value; if(!date){ alert('Meeting date is required.'); return; }
+    const d = new Date(date + 'T00:00:00'); const q = 'Q' + (Math.floor(d.getMonth() / 3) + 1) + ' ' + d.getFullYear();
+    const n = SC.m.filter(m => String(m.meeting_date).startsWith(String(d.getFullYear()))).length + 1;
+    const agenda = agendaDefs().map(x => ({ key:x.key, title:x.title, basis:x.basis, discussion:'', decision:'' }));
+    const mem = arr(STATE.members).filter(x => x.status !== 'removed' && x.user_id).map(x => ({ name:nm(x.user_id) || x.email || 'Member', role:'', status:'absent', user_id:x.user_id })).filter(x => x.name);
+    const { data, error } = await sb().from('sherq_meetings').insert({ organisation_id:STATE.org.id, ref_code:`SC-${d.getFullYear()}-${String(n).padStart(2, '0')}`, quarter_label:q, meeting_date:date, venue:document.getElementById('sc-venue').value.trim() || null, chair_id:document.getElementById('sc-chair').value || null, secretary_id:document.getElementById('sc-sec').value || null, attendees:mem, agenda, next_meeting_date:addMonths(date, 3), created_by:STATE.user.id }).select().single();
+    if(error){ toast('Could not create the meeting: ' + error.message, 'error'); return; }
+    const carry = SC.a.filter(a => a.status === 'open'); if(carry.length) await sb().from('sherq_actions').insert(carry.map(a => ({ organisation_id:STATE.org.id, meeting_id:data.id, agenda_key:'previous', description:a.description, responsible_id:a.responsible_id, target_date:a.target_date, task_id:a.task_id, carried_from:a.id })));
+    toast('Meeting created.', 'success'); await loadSc(); scOpen(data.id);
+  };
+  window.scOpen = function(id){ SC.open = id; scDetail(); };
+  window.scBack = function(){ SC.open = null; scList(); };
+
+  /* ---------- the meeting ---------- */
+  function scDetail(){
+    const root = document.getElementById('sherq_committee-root'); const m = SC.m.find(x => x.id === SC.open); if(!root || !m){ scList(); return; }
+    const lock = m.status === 'signed' || !canW(); const acts = mAct(m.id); const att = arr(m.attendees); const pres = att.filter(a => a.status === 'present').length;
+    const quorum = att.length ? Math.floor(att.length / 2) + 1 : 0;
+    const ag = arr(m.agenda);
+    root.innerHTML = `<button class="btn-small" onclick="scBack()">Back to meetings</button>
+      <div class="panel" style="padding:16px;margin-top:10px;"><div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;"><div><h3 style="margin:0;">${E(m.ref_code)}: SHERQ Committee, ${E(m.quarter_label || '')}</h3><div style="font-size:12.5px;color:var(--text-faint);margin-top:4px;">${fd(m.meeting_date)}${m.venue ? ' · ' + E(m.venue) : ''} · Chair ${E(nm(m.chair_id))} · Secretary ${E(nm(m.secretary_id))}</div></div><div>${chip(m.status === 'signed' ? 'Signed' : m.status === 'held' ? 'Held' : 'Planned', m.status === 'signed' ? '#2e9e5b' : m.status === 'held' ? '#f07a1a' : '#888')}</div></div>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;"><button class="btn-small" onclick="scPrint('${m.id}')">Print ${m.status === 'planned' ? 'agenda' : 'minutes'}</button>${!lock && m.status === 'planned' ? `<button class="btn-small primary" onclick="scHeld('${m.id}')">Mark as held</button>` : ''}${isMgr() && m.status !== 'signed' ? `<button class="btn-small" style="color:#B3261E;" onclick="scDelete('${m.id}')">Delete</button>` : ''}</div></div>
+      <div class="panel" style="padding:16px;"><h4 style="margin:0 0 8px;">Attendance</h4><p style="font-size:12px;color:var(--text-faint);margin:0 0 8px;">${pres} present of ${att.length} members${att.length ? (pres >= quorum ? ': quorum met' : `: quorum needs ${quorum} (a simple majority). Check your constitution for the rule that applies.`) : ''}</p>
+        <table><tr><th>Name</th><th>Role</th><th>Status</th></tr>${att.map((a, i) => `<tr><td>${E(a.name)}</td><td><input value="${E(a.role || '')}" ${lock ? 'disabled' : ''} placeholder="e.g. H&S representative" onchange="scAtt('${m.id}',${i},'role',this.value)" style="width:100%;"></td><td><select ${lock ? 'disabled' : ''} onchange="scAtt('${m.id}',${i},'status',this.value)">${[['present', 'Present'], ['apology', 'Apology'], ['absent', 'Absent']].map(([k, l]) => `<option value="${k}" ${a.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td></tr>`).join('')}</table>
+        ${lock ? '' : `<div style="display:flex;gap:8px;margin-top:8px;"><input id="sc-ext" placeholder="Add an invitee or other attendee (name)" style="flex:1;"><button class="btn-small" onclick="scAddAtt('${m.id}')">Add</button></div>`}</div>
+      ${ag.map((it, i) => { const df = defOf(it.key); const live = df ? df.live() : ''; return `<div class="panel" style="padding:16px;"><h4 style="margin:0 0 2px;">${i + 1}. ${E(it.title)}</h4><div style="font-size:11px;color:var(--text-faint);margin-bottom:8px;">${E(it.basis || '')}</div>${live ? `<div style="background:#eef3fb;border-radius:6px;padding:8px 10px;font-size:12px;margin-bottom:8px;"><b>Live data:</b> ${E(live)}</div>` : ''}<label style="font-size:12px;font-weight:700;">Discussion</label><textarea rows="3" ${lock ? 'disabled' : ''} onchange="scItem('${m.id}',${i},'discussion',this.value)" style="width:100%;box-sizing:border-box;">${E(it.discussion || '')}</textarea><label style="font-size:12px;font-weight:700;">Decisions</label><textarea rows="2" ${lock ? 'disabled' : ''} onchange="scItem('${m.id}',${i},'decision',this.value)" style="width:100%;box-sizing:border-box;">${E(it.decision || '')}</textarea></div>`; }).join('')}
+      <div class="panel" style="padding:16px;"><h4 style="margin:0 0 8px;">Actions</h4>${acts.length ? `<table><tr><th>Action</th><th>Responsible</th><th>Due</th><th>Status</th><th></th></tr>${acts.map(a => `<tr><td>${E(a.description)}${a.carried_from ? ' <span style="font-size:10.5px;color:#889;">(carried forward)</span>' : ''}</td><td>${E(nm(a.responsible_id))}</td><td>${fd(a.target_date)} ${a.status === 'open' && a.target_date && day(a.target_date) < todayISO() ? chip('Overdue', '#d4262c') : ''}</td><td>${a.status === 'closed' ? chip('Closed', '#2e9e5b') : chip('Open', '#f0b21a')}</td><td>${!lock && a.status === 'open' ? `<button class="btn-small" onclick="scActDone('${a.id}')">Close</button>` : ''}</td></tr>`).join('')}</table>` : '<p style="font-size:12.5px;color:var(--text-faint);">No actions yet.</p>'}
+        ${lock ? '' : `<div class="form-grid" style="margin-top:10px;"><div class="field span3"><label>New action</label><input id="sc-ad" placeholder="What must be done"></div><div class="field"><label>Responsible</label><select id="sc-ar">${memberOptions(STATE.user.id)}</select></div><div class="field"><label>Due</label><input type="date" id="sc-at" value="${addMonths(todayISO(), 1)}"></div></div><div class="form-actions"><button class="btn-small primary" onclick="scAddAction('${m.id}')">Add action and create a task</button></div>`}</div>
+      <div class="panel" style="padding:16px;"><h4 style="margin:0 0 8px;">Close of meeting</h4><div class="form-grid"><div class="field"><label>Next meeting</label><input type="date" ${lock ? 'disabled' : ''} value="${day(m.next_meeting_date)}" onchange="scField('${m.id}','next_meeting_date',this.value)"></div><div class="field span3"><label>General notes</label><textarea rows="2" ${lock ? 'disabled' : ''} onchange="scField('${m.id}','general_notes',this.value)" style="width:100%;box-sizing:border-box;">${E(m.general_notes || '')}</textarea></div></div>
+        ${m.status === 'signed' ? `<p style="font-size:13px;margin-top:10px;">Signed by <b>${E(m.signed_chair)}</b> (Chair) and <b>${E(m.signed_secretary)}</b> (Secretary) on ${fmtDateTime(m.signed_at)}.</p>` : (m.status === 'held' && canW() ? `<div class="form-grid" style="margin-top:10px;"><div class="field"><label>Chair: type your full name to sign</label><input id="sc-sg1"></div><div class="field"><label>Secretary: type your full name to sign</label><input id="sc-sg2"></div></div><div class="form-actions"><button class="btn-primary" onclick="scSign('${m.id}')">Sign the minutes</button></div><p style="font-size:11.5px;color:var(--text-faint);">Signing locks the minutes. Print them and keep them as evidence for audits and inspectors.</p>` : '<p style="font-size:12px;color:var(--text-faint);margin-top:10px;">Mark the meeting as held to capture signatures.</p>')}</div>`;
+  }
+  const patch = async (id, o) => { const { error } = await sb().from('sherq_meetings').update(Object.assign({ updated_at:new Date().toISOString() }, o)).eq('id', id); if(error){ toast('Could not save: ' + error.message, 'error'); return false; } const m = SC.m.find(x => x.id === id); if(m) Object.assign(m, o); return true; };
+  window.scField = (id, k, v) => patch(id, { [k]: v || null });
+  window.scItem = async (id, i, k, v) => { const m = SC.m.find(x => x.id === id); const ag = arr(m.agenda).map(x => Object.assign({}, x)); ag[i][k] = v; await patch(id, { agenda: ag }); };
+  window.scAtt = async (id, i, k, v) => { const m = SC.m.find(x => x.id === id); const a = arr(m.attendees).map(x => Object.assign({}, x)); a[i][k] = v; if(await patch(id, { attendees: a }) && k === 'status') scDetail(); };
+  window.scAddAtt = async id => { const v = (document.getElementById('sc-ext').value || '').trim(); if(!v) return; const m = SC.m.find(x => x.id === id); if(await patch(id, { attendees: arr(m.attendees).concat([{ name:v, role:'Invitee', status:'present' }]) })) scDetail(); };
+  window.scHeld = async id => { if(await patch(id, { status:'held' })){ toast('Marked as held. Complete the minutes, then sign them.', 'success'); scDetail(); } };
+  window.scSign = async id => {
+    const a = (document.getElementById('sc-sg1').value || '').trim(), b = (document.getElementById('sc-sg2').value || '').trim(); if(a.length < 3 || b.length < 3){ toast('Both the Chair and the Secretary must type their full name.', 'error'); return; }
+    const m = SC.m.find(x => x.id === id); if(!m.next_meeting_date){ toast('Set the date of the next meeting first.', 'error'); return; }
+    if(!confirm('Sign and lock the minutes? They cannot be edited afterwards.')) return;
+    if(await patch(id, { status:'signed', signed_chair:a, signed_secretary:b, signed_at:new Date().toISOString() })){ toast('Minutes signed.', 'success'); scDetail(); }
+  };
+  window.scDelete = async id => { if(!isMgr() || !confirm('Delete this meeting and its actions? This cannot be undone.')) return; const { error } = await sb().from('sherq_meetings').delete().eq('id', id); if(error){ toast('Could not delete: ' + error.message, 'error'); return; } toast('Deleted.', 'success'); await loadSc(); scList(); };
+  window.scAddAction = async id => {
+    const d = (document.getElementById('sc-ad').value || '').trim(); if(!d){ alert('Describe the action.'); return; } const who = document.getElementById('sc-ar').value || null, due = document.getElementById('sc-at').value || null; const m = SC.m.find(x => x.id === id); let task = null;
+    try{ if(has('tasks')){ const t = await sb().from('tasks').insert({ organisation_id:STATE.org.id, title:`SHERQ Committee ${m.ref_code}: ${d.slice(0, 90)}`, description:d, linked_type:'none', assignee_id:who || STATE.user.id, due_date:due || addMonths(todayISO(), 1), priority:'medium', created_by:STATE.user.id }).select().single(); if(!t.error) task = t.data.id; } }catch(e){}
+    const { error } = await sb().from('sherq_actions').insert({ organisation_id:STATE.org.id, meeting_id:id, description:d, responsible_id:who, target_date:due, task_id:task }); if(error){ toast('Could not add: ' + error.message, 'error'); return; }
+    toast(task ? 'Action added and a task created.' : 'Action added.', 'success'); await loadSc(); try{ await loadTasks(); }catch(e){} scDetail();
+  };
+  window.scActDone = async id => { const { error } = await sb().from('sherq_actions').update({ status:'closed', closed_at:new Date().toISOString() }).eq('id', id); if(error){ toast('Could not close: ' + error.message, 'error'); return; } const a = SC.a.find(x => x.id === id); try{ if(a && a.task_id) await sb().from('tasks').update({ status:'completed' }).eq('id', a.task_id); }catch(e){} await loadSc(); scDetail(); };
+  window.scPrint = async function(id){
+    const m = SC.m.find(x => x.id === id); if(!m) return; const att = arr(m.attendees), acts = mAct(m.id); const sect = (t, b) => `<h3 style="font-size:13.5px;margin:16px 0 6px;">${t}</h3>${b}`;
+    const body = sect('Attendance', `<table style="width:100%;border-collapse:collapse;font-size:12px;"><tr><th align="left">Name</th><th align="left">Role</th><th align="left">Status</th></tr>${att.map(a => `<tr><td>${E(a.name)}</td><td>${E(a.role || '')}</td><td>${E(label(a.status))}</td></tr>`).join('')}</table>`)
+      + arr(m.agenda).map((it, i) => sect(`${i + 1}. ${E(it.title)}`, `<div style="font-size:10.5px;color:#667;">${E(it.basis || '')}</div>${(defOf(it.key) && defOf(it.key).live() && m.status !== 'planned') ? `<div style="font-size:11.5px;margin:4px 0;"><b>Data at the meeting:</b> ${E(defOf(it.key).live())}</div>` : ''}<div style="font-size:12px;white-space:pre-wrap;margin-top:4px;"><b>Discussion:</b> ${E(it.discussion || (m.status === 'planned' ? '' : 'None recorded.'))}</div><div style="font-size:12px;white-space:pre-wrap;"><b>Decisions:</b> ${E(it.decision || (m.status === 'planned' ? '' : 'None recorded.'))}</div>`)).join('')
+      + sect('Actions', acts.length ? `<table style="width:100%;border-collapse:collapse;font-size:12px;"><tr><th align="left">Action</th><th align="left">Responsible</th><th align="left">Due</th><th align="left">Status</th></tr>${acts.map(a => `<tr><td>${E(a.description)}</td><td>${E(nm(a.responsible_id))}</td><td>${fd(a.target_date)}</td><td>${E(label(a.status))}</td></tr>`).join('')}</table>` : '<p style="font-size:12px;">No actions.</p>')
+      + sect('Close', `<p style="font-size:12px;">Next meeting: ${fd(m.next_meeting_date)}. ${E(m.general_notes || '')}</p>${m.status === 'signed' ? `<p style="font-size:12px;">Signed by ${E(m.signed_chair)} (Chair) and ${E(m.signed_secretary)} (Secretary), ${fmtDateTime(m.signed_at)}.</p>` : '<p style="font-size:12px;margin-top:28px;">Chair: ______________________ &nbsp;&nbsp; Secretary: ______________________</p>'}`);
+    await printRecord('SHERQ Committee ' + (m.status === 'planned' ? 'Agenda' : 'Minutes'), m.ref_code, [['Quarter', m.quarter_label || ''], ['Date', fd(m.meeting_date)], ['Venue', m.venue || ''], ['Chair', nm(m.chair_id)], ['Secretary', nm(m.secretary_id)]], body, null, null);
+  };
+
+  /* the next meeting feeds reminders and the Compliance Dashboard */
+  try{ DATE_TRACKED_MODULES.push({ key:KEY, label:'SHERQ Committee: Next Meeting', list:() => { const h = arr(SC.m).filter(m => m.status !== 'planned')[0]; return h && h.next_meeting_date ? [Object.assign({}, h, { _t:'Next quarterly SHERQ committee meeting' })] : []; }, dateField:'next_meeting_date', isResolved:() => false, titleField:'_t', getPerson:x => E(nm(x.chair_id)) }); }catch(e){}
+  { const _l = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const r = await _l.apply(this, arguments); try{ if(STATE.org && canAccessModule(KEY)) await loadSc(); }catch(e){} return r; }; }
+})();
+
+
+/* ===== Release 32: issue statistics tiles on the Compliance Dashboard ===== */
+(function(){
+  const X = window.__wdExtra; if(!X || !window.wmIssueQuick) return;
+  [['nonconformances','nonconformances','Nonconformance Statistics'],['raga','raga','RAGA Statistics'],['incidents','incidents','Incident Statistics'],['infosec_incidents','infosec_incidents','Information Security Incident Statistics']].forEach(([mod, sc, label]) => {
+    if(X.some(e => e[0] === 'is_' + sc)) return;
+    X.push(['is_' + sc, label, () => { try{ if(!canAccessModule(mod)) return null; const q = window.wmIssueQuick(sc); if(!q || !q.total) return null; return [{label:'Raised last 3 months', count:q.raised3m, color:'amber'}, {label:'Closed last 3 months', count:q.closed3m, color:'green'}, {label:'Overdue', count:q.overdue, color:q.overdue ? 'red' : 'green'}, {label:'Major or critical open', count:q.serious, color:q.serious ? 'red' : 'green'}]; }catch(e){ return null; } }]);
+  });
+})();
 </script>
 </body>
 </html>
