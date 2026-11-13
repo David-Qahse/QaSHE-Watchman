@@ -51068,6 +51068,211 @@ Likelihood and impact are whole numbers from 1 to 5.`;
       return r; }; }
 })();
 
+
+/* ===== Release 35: sidebar grouped under clear headings ===== */
+(function(){
+  const side = document.querySelector('aside.sidebar'); if(!side) return;
+  const holder = side.querySelector('.nav-item') && side.querySelector('.nav-item').parentElement; if(!holder) return;
+  const GROUPS = [
+    ['issues', 'Issue Management', ['nonconformances', 'raga', 'incidents', 'infosec_incidents']],
+    ['audits', 'Audits', ['audits']],
+    ['tasks', 'Task Management', ['tasks']],
+    ['docs', 'Document Management', ['documents', 'master_register', 'all_documents']],
+    ['procs', 'Processes & KPIs Management', ['process_flowcharts', 'processes', 'checklists']],
+    ['general', 'General Management', ['bplan', 'business_health', 'risks', 'objectives', 'governance', 'policies', 'retention']],
+    ['cust', 'Customer Management', ['customers', 'crm', 'quotes']],
+    ['supp', 'Supplier & Subcontractor Management', ['suppliers']],
+    ['hr', 'Human Resources Management', ['personnel', 'orgchart', 'appraisals', 'training', 'hr', 'disciplinary']],
+    ['lcert', 'Legal Documents & Certificates', ['legal_certs']],
+    ['legal', 'Legal Compliance', ['legal']],
+    ['infosec', 'Information Security', ['soa', 'info_assets', 'threat_intel', 'privacy']],
+    ['weld', 'Welding Management', ['welding']],
+    ['assets', 'Assets & Maintenance Management', ['assets']],
+    ['she', 'Safety, Health & Environment', ['ptw', 'ohs', 'envdata', 'site_files', 'five_s', 'speakup']],
+    ['bull', 'Bulletins & Toolbox Talks', ['bulletins']],
+    ['meet', 'Management Meetings & Minutes', ['sherq_committee', 'management_review']],
+    ['bespoke', 'Bespoke Modules', ['asset_watchman', 'wt', 'projects', 'edu', 'it']],
+    ['admin', 'Administration', ['change_log', 'account_security', 'administration']],
+  ];
+  const TOP = ['overview', 'compliance', 'group_view'];
+  const RENAME = { tasks:['Tasks', 'Task Management'], customers:['Customers', 'Customer Management'], business_health:['Business Health Validation', 'Business Health Management'], personnel:['Personnel & Competence', 'Personnel and Competence'], suppliers:['Suppliers and Subcontractors', 'Suppliers & Subcontractors'] };
+  let open = {}; try{ open = JSON.parse(localStorage.getItem('wm_nav_open') || '{}') || {}; }catch(e){}
+  const save = () => { try{ localStorage.setItem('wm_nav_open', JSON.stringify(open)); }catch(e){} };
+  const css = document.createElement('style');
+  css.textContent = `.wm-ng{margin:2px 0}.wm-nh{display:flex;align-items:center;gap:6px;padding:11px 18px 5px;font:700 10.5px Arial,Helvetica,sans-serif;letter-spacing:.09em;text-transform:uppercase;color:var(--text-faint);cursor:pointer;user-select:none}
+  .wm-nh:hover{color:var(--text)}.wm-nh .ch{margin-left:auto;transition:transform .15s;font-size:10px}.wm-ng.shut .ch{transform:rotate(-90deg)}.wm-ng.shut .wm-nb{display:none}
+  .wm-nh .gd{width:6px;height:6px;border-radius:50%;background:#EF6C00;display:none}.wm-ng.shut.hasdot .wm-nh .gd{display:inline-block}
+  .wm-nb .nav-item{padding-left:26px}.wm-ng.hidden{display:none}`;
+  document.head.appendChild(css);
+  const keyGroup = {}; GROUPS.forEach(([g, , ks]) => ks.forEach(k => { if(!keyGroup[k]) keyGroup[k] = g; }));
+  let busy = false, mo = null;
+  function build(){
+    if(busy) return; busy = true; if(mo) mo.disconnect();
+    try{
+      const items = {}; holder.querySelectorAll('.nav-item[data-mod]').forEach(e => { items[e.dataset.mod] = e; });
+      holder.querySelectorAll('.nav-group-label').forEach(l => { if(/live modules/i.test(l.textContent)) l.remove(); });
+      let more = Object.keys(items).filter(k => !TOP.includes(k) && !keyGroup[k]);
+      const extra = more.length ? [['more', 'More Modules', more]] : [];
+      const order = GROUPS.slice(0, -1).concat(extra.map(x => [x[0], x[1], x[2]]), GROUPS.slice(-1));
+      /* the label that stays at the top */
+      const lastTop = TOP.map(k => items[k]).filter(Boolean).pop();
+      let anchor = lastTop || holder.querySelector('.nav-group-label');
+      order.forEach(([g, title, ks]) => {
+        let w = holder.querySelector('.wm-ng[data-g="' + g + '"]');
+        if(!w){ w = document.createElement('div'); w.className = 'wm-ng'; w.dataset.g = g; w.innerHTML = `<div class="wm-nh"><span>${title.replace(/&/g, '&amp;')}</span><span class="gd"></span><span class="ch">▾</span></div><div class="wm-nb"></div>`; w.querySelector('.wm-nh').onclick = () => { const shut = !w.classList.contains('shut'); w.classList.toggle('shut', shut); open[g] = !shut; save(); refresh(); }; if(open[g] === false) w.classList.add('shut'); }
+        const body = w.querySelector('.wm-nb');
+        ks.forEach(k => { const el = items[k]; if(el && el.parentElement !== body) body.appendChild(el); else if(el) body.appendChild(el); });
+        if(anchor && anchor.nextSibling !== w) anchor.after(w); else if(!anchor) holder.appendChild(w);
+        anchor = w;
+      });
+      /* friendlier names where the old name is still the default */
+      Object.keys(RENAME).forEach(k => { const el = items[k]; if(!el) return; const [from, to] = RENAME[k]; for(const n of el.childNodes){ if(n.nodeType === 3 && n.textContent.trim() === from){ n.textContent = ' ' + to + ' '; } } });
+    }catch(e){ console.warn('nav group', e); }
+    busy = false; refresh(); watch();
+  }
+  function refresh(){
+    holder.querySelectorAll('.wm-ng').forEach(w => {
+      const its = [...w.querySelectorAll('.nav-item')]; const vis = its.filter(i => i.style.display !== 'none');
+      w.classList.toggle('hidden', !vis.length);
+      const active = its.find(i => i.classList.contains('active'));
+      if(active && w.classList.contains('shut')){ w.classList.remove('shut'); }
+      w.classList.toggle('hasdot', vis.some(i => [...i.querySelectorAll('.nd')].some(d => d.style.display === 'block')));
+    });
+  }
+  let t = null; const later = fn => { clearTimeout(t); t = setTimeout(fn, 60); };
+  function watch(){ if(!mo) mo = new MutationObserver(m => { if(busy) return; if(m.every(x => x.target.classList && x.target.classList.contains('wm-ng'))) return; const structural = m.some(x => x.type === 'childList' && [...x.addedNodes].some(n => n.nodeType === 1 && (n.classList.contains('nav-item') || n.querySelector && n.querySelector('.nav-item')))); later(structural ? build : refresh); }); mo.observe(holder, { childList:true, subtree:true, attributes:true, attributeFilter:['style', 'class'] }); }
+  build();
+  setTimeout(build, 1500); setTimeout(build, 6000);
+  window.wmNavRefresh = () => { build(); };
+})();
+
+
+/* ===== Release 35: Statement of Applicability: evidence from the whole system, coverage and a Controls view ===== */
+(function(){
+  if(!window.SOA_CONTROLS || !window.soaEdit) return;
+  const arr = a => Array.isArray(a) ? a : [];
+  const E = s => escapeHtml(s == null ? '' : String(s));
+  const sb = () => STATE.supabase;
+  const KIND = { doc:'Controlled document', policy:'Policy', procedure:'Procedure', bulk:'Filed document', checklist:'Checklist', register:'Register' };
+  const COL = { doc:'#1d5a8f', policy:'#7b3fa0', procedure:'#0b7a6a', bulk:'#667', checklist:'#b86e00', register:'#2e7d32' };
+  const REG = [['info_assets', 'Information Asset Register'], ['risks', 'Risk & Opportunity Register'], ['legal', 'Legal Compliance Register'], ['legal_certs', 'Legal Documents & Certificates Register'], ['suppliers', 'Supplier & Subcontractor Register'], ['training', 'Training Records'], ['personnel', 'Personnel and Competence Register'], ['assets', 'Assets & Maintenance Register'], ['threat_intel', 'Threat Intelligence Register'], ['retention', 'Records Retention Schedule'], ['privacy', 'POPIA Registers'], ['infosec_incidents', 'Information Security Incident Register'], ['documents', 'Master Documents Register'], ['audits', 'Audit Register'], ['governance', 'Governance Register']];
+  const rows = () => arr(STATE.soa);
+  const linksOf = ref => { const r = rows().find(x => x.control_ref === ref) || {}; const l = arr(r.evidence_links).slice(); arr(r.evidence_document_ids).forEach(id => { if(!l.some(x => x.k === 'doc' && x.id === id)) l.push({ k:'doc', id, label:docLabel(id) }); }); return l; };
+  const docs = () => arr(STATE.documents).filter(d => !['withdrawn', 'superseded'].includes(d.status));
+  const typeName = d => { const t = arr(STATE.docTypes).find(x => x.id === d.type_id); return t ? t.name : ''; };
+  const docLabel = id => { const d = arr(STATE.documents).find(x => x.id === id); return d ? (d.doc_number ? d.doc_number + ': ' : '') + (d.title || '') : 'Document'; };
+  const isProc = d => /procedure|work instruction|sop|method/i.test(typeName(d) + ' ' + (d.title || ''));
+  const isPol = d => /policy/i.test(typeName(d) + ' ' + (d.title || ''));
+  /* every candidate, by kind */
+  function pool(kind){
+    if(kind === 'policy') return arr(STATE.orgPolicies).map(p => ({ k:'policy', id:p.id, label:p.title || 'Policy' })).concat(docs().filter(isPol).map(d => ({ k:'doc', id:d.id, label:(d.doc_number ? d.doc_number + ': ' : '') + d.title })));
+    if(kind === 'procedure') return docs().filter(isProc).map(d => ({ k:'doc', id:d.id, label:(d.doc_number ? d.doc_number + ': ' : '') + d.title }));
+    if(kind === 'doc') return docs().map(d => ({ k:'doc', id:d.id, label:(d.doc_number ? d.doc_number + ': ' : '') + d.title }));
+    if(kind === 'bulk') return arr(STATE.bulkDocuments).filter(d => !d.archived).map(d => ({ k:'bulk', id:d.id, label:(d.doc_number ? d.doc_number + ': ' : '') + (d.file_name || '') }));
+    if(kind === 'checklist') return arr(STATE.orgChecklists).map(c => ({ k:'checklist', id:c.id, label:c.title || c.name || 'Checklist' })).concat(arr(STATE.auditChecklistTemplates).map(c => ({ k:'checklist', id:c.id, label:(c.title || 'Audit checklist') + ' (audit)' })));
+    if(kind === 'register') return REG.filter(([k]) => { try{ return canAccessModule(k); }catch(e){ return false; } }).map(([k, l]) => ({ k:'register', id:k, label:l }));
+    return [];
+  }
+  const category = l => l.k === 'policy' ? 'policy' : l.k === 'checklist' ? 'checklist' : l.k === 'register' ? 'register' : l.k === 'bulk' ? 'other' : (() => { const d = arr(STATE.documents).find(x => x.id === l.id); return d && isPol(d) ? 'policy' : d && isProc(d) ? 'procedure' : 'other'; })();
+  const cover = ref => { const l = linksOf(ref), c = {}; l.forEach(x => { c[category(x)] = (c[category(x)] || 0) + 1; }); return { n:l.length, policy:c.policy || 0, procedure:c.procedure || 0, register:c.register || 0, checklist:c.checklist || 0, other:c.other || 0 }; };
+  window.soaCover = cover;
+
+  /* ---- editor: evidence picker ---- */
+  STATE._soaEv = { ref:null, list:[], kind:'policy' };
+  async function warm(){
+    try{ if(!arr(STATE.orgPolicies).length) await loadOrgPolicies(); }catch(e){}
+    try{ if(!arr(STATE.orgChecklists).length){ const r = await sb().from('org_checklists').select('id,title').eq('organisation_id', STATE.org.id); if(!r.error) STATE.orgChecklists = r.data || []; } }catch(e){}
+    try{ if(!arr(STATE.auditChecklistTemplates).length && window.loadAuditChecklistTemplates) await loadAuditChecklistTemplates(); }catch(e){}
+    try{ if(!arr(STATE.docTypes).length && window.loadDocTypes) await loadDocTypes(); }catch(e){}
+  }
+  const chipHtml = (l, i, ro) => `<span style="display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid ${COL[l.k] || '#999'};color:${COL[l.k] || '#333'};border-radius:999px;padding:3px 6px 3px 10px;font-size:11.5px;margin:3px 5px 3px 0;"><b style="font-size:10px;letter-spacing:.04em;text-transform:uppercase;">${E(KIND[category(l) === 'procedure' ? 'procedure' : l.k] || l.k)}</b><a style="cursor:pointer;color:inherit;text-decoration:underline;" onclick="soaOpenLink(${i})">${E(l.label)}</a>${ro ? '' : `<span style="cursor:pointer;font-weight:800;padding:0 4px;" onclick="soaEvRemove(${i})" title="Remove">×</span>`}</span>`;
+  function evPaint(){
+    const box = document.getElementById('soa-ev'); if(!box) return; const S = STATE._soaEv;
+    const q = (document.getElementById('soa-ev-q') || {}).value || '';
+    const have = new Set(S.list.map(x => x.k + ':' + x.id));
+    const res = pool(S.kind).filter(x => !have.has(x.k + ':' + x.id) && (!q || x.label.toLowerCase().includes(q.toLowerCase()))).slice(0, 12);
+    const list = box.querySelector('#soa-ev-list'); if(list) list.innerHTML = S.list.length ? S.list.map((l, i) => chipHtml(l, i)).join('') : '<span style="font-size:12px;color:var(--text-faint);">Nothing linked yet.</span>';
+    const rs = box.querySelector('#soa-ev-res'); if(rs) rs.innerHTML = res.length ? res.map((x, i) => `<div style="padding:6px 10px;border-bottom:1px solid #eee;cursor:pointer;font-size:12.5px;" onclick="soaEvAdd('${S.kind}',${i})">+ ${E(x.label)}</div>`).join('') : '<div style="padding:8px 10px;font-size:12px;color:var(--text-faint);">Nothing to add in this list.</div>';
+    S._res = res;
+  }
+  window.soaEvKind = k => { STATE._soaEv.kind = k; const q = document.getElementById('soa-ev-q'); if(q) q.value = ''; evPaint(); };
+  window.soaEvAdd = (k, i) => { const x = (STATE._soaEv._res || [])[i]; if(!x) return; STATE._soaEv.list.push(x); evPaint(); };
+  window.soaEvRemove = i => { STATE._soaEv.list.splice(i, 1); evPaint(); };
+  window.soaEvSearch = () => evPaint();
+  window.soaOpenLink = i => { const l = STATE._soaEv.list[i]; if(!l) return;
+    if(l.k === 'register') showModule(l.id); else if(l.k === 'policy') showModule('policies'); else if(l.k === 'checklist') showModule('checklists'); else if(l.k === 'bulk') showModule('all_documents'); else { showModule('documents'); setTimeout(() => { try{ hubOpenDoc(l.id); }catch(e){} }, 400); } };
+  window.soaEvSuggest = () => {
+    const ref = STATE._soaEv.ref, c = window.SOA_CONTROLS.find(x => x.ref === ref); if(!c) return;
+    const stop = new Set(['and', 'the', 'for', 'with', 'information', 'management', 'of', 'to', 'in', 'on', 'use', 'security', 'controls', 'control']);
+    const toks = c.title.toLowerCase().split(/[^a-z]+/).filter(t => t.length > 3 && !stop.has(t)); if(!toks.length){ toast('No keywords to match for this control.', 'info'); return; }
+    const have = new Set(STATE._soaEv.list.map(x => x.k + ':' + x.id));
+    const cand = [].concat(pool('policy'), pool('procedure'), pool('doc'), pool('checklist'), pool('register')).filter((x, i, a) => a.findIndex(y => y.k === x.k && y.id === x.id) === i && !have.has(x.k + ':' + x.id));
+    const scored = cand.map(x => ({ x, s:toks.filter(t => x.label.toLowerCase().includes(t.slice(0, 5))).length })).filter(y => y.s > 0).sort((a, b) => b.s - a.s).slice(0, 8);
+    STATE._soaEv._res = scored.map(y => y.x); const rs = document.getElementById('soa-ev-res'); STATE._soaEv.kind = '__s';
+    if(rs) rs.innerHTML = scored.length ? '<div style="padding:6px 10px;font-size:11px;color:var(--text-faint);">Suggested from the control name. Click to link.</div>' + scored.map((y, i) => `<div style="padding:6px 10px;border-bottom:1px solid #eee;cursor:pointer;font-size:12.5px;" onclick="soaEvAdd('__s',${i})">+ ${E(y.x.label)}</div>`).join('') : '<div style="padding:8px 10px;font-size:12px;color:var(--text-faint);">No matching documents found by name. Search the lists instead.</div>';
+  };
+  { const _e = window.soaEdit;
+    window.soaEdit = function(ref){
+      _e.apply(this, arguments);
+      const panel = document.getElementById('soa-edit-panel'); if(!panel) return;
+      STATE._soaEv = { ref, list:linksOf(ref).map(x => Object.assign({}, x)), kind:'policy', _res:[] };
+      const old = panel.querySelector('[id^="soa-doc"]'); const oldField = old && old.closest('.field'); if(oldField) oldField.style.display = 'none';
+      const acts = panel.querySelector('.form-actions');
+      const card = document.createElement('div'); card.id = 'soa-ev'; card.style.cssText = 'margin:10px 0 14px;border:1px solid var(--border,#dde2ea);border-radius:12px;padding:14px 16px;background:#fafbfd;';
+      card.innerHTML = `<div style="font-size:13px;font-weight:800;margin-bottom:2px;">Evidence and linked records</div><p style="font-size:11.5px;color:var(--text-faint);margin:0 0 8px;">Link the policies, procedures, registers and checklists that show how this control is met. They come from the Master Documents Register and the other modules, so one document can evidence many controls.</p><div id="soa-ev-list" style="margin-bottom:8px;"></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><select onchange="soaEvKind(this.value)" style="padding:7px 8px;"><option value="policy">Policies</option><option value="procedure">Procedures</option><option value="doc">Other controlled documents</option><option value="checklist">Checklists</option><option value="register">Registers</option><option value="bulk">Filed documents (All Documents)</option></select><input id="soa-ev-q" placeholder="Search…" oninput="soaEvSearch()" style="flex:1;min-width:160px;padding:7px 9px;"><button class="btn-small" type="button" onclick="soaEvSuggest()">Suggest evidence</button></div>
+        <div id="soa-ev-res" style="max-height:200px;overflow:auto;margin-top:6px;border:1px solid #e3e7ed;border-radius:8px;background:#fff;"></div>`;
+      panel.insertBefore(card, acts); warm().then(() => evPaint()); evPaint();
+    }; }
+  { const _s = window.soaSave;
+    window.soaSave = async function(){
+      const ref = (document.getElementById('soa-edit-panel') || {}).dataset ? document.getElementById('soa-edit-panel').dataset.ref : null; const list = (STATE._soaEv && STATE._soaEv.ref === ref) ? STATE._soaEv.list.slice() : null;
+      await _s.apply(this, arguments);
+      if(!ref || !list || document.getElementById('soa-edit-panel')) return; /* the original save did not complete */
+      const upd = { evidence_links:list, evidence_document_ids:list.filter(x => x.k === 'doc').map(x => x.id) };
+      const { error } = await sb().from('soa_controls').update(upd).eq('organisation_id', STATE.org.id).eq('control_ref', ref);
+      if(error){ toast(/evidence_links|column|schema cache/i.test(error.message || '') ? 'Run qashe-watchman-schema-soa-evidence.sql so the evidence links can be saved.' : 'Could not save the evidence links: ' + error.message, 'error'); return; }
+      const r = rows().find(x => x.control_ref === ref); if(r) Object.assign(r, upd);
+      try{ window.soaSet('q', STATE._soaF.q); }catch(e){}
+    }; }
+  /* table: evidence column shows what is linked */
+  { const _d = window.soaDecorate; window.soaDecorate = function(){ try{ _d && _d.apply(this, arguments); }catch(e){}
+      document.querySelectorAll('#soa-table-wrap tr.clickable').forEach(tr => { const m = (tr.getAttribute('onclick') || '').match(/'([^']+)'/); if(!m) return; const ref = m[1]; const c = cover(ref); const tds = tr.querySelectorAll('td'); const td = tds[5]; if(!td) return;
+        const row = rows().find(x => x.control_ref === ref) || {}; const rk = arr(row.risk_ids).length;
+        td.innerHTML = c.n || rk ? `<span title="Policies ${c.policy}, procedures ${c.procedure}, registers ${c.register}, checklists ${c.checklist}">${c.n} linked${rk ? ', ' + rk + ' risk' + (rk > 1 ? 's' : '') : ''}</span>` : '<span style="color:var(--text-faint)">None</span>'; }); }; }
+
+  /* ---- Controls view ---- */
+  STATE._soaView = STATE._soaView || 'soa'; STATE._soaCF = STATE._soaCF || { theme:'', gap:'' };
+  window.soaView = v => { STATE._soaView = v; paintView(); };
+  window.soaCF = (k, v) => { STATE._soaCF[k] = v; paintControls(); };
+  function appRows(){ return window.SOA_CONTROLS.map(c => { const r = rows().find(x => x.control_ref === c.ref) || {}; return { c, applicable:r.applicable !== false, status:r.status || 'not_started', owner:r.owner_id, cov:cover(c.ref) }; }); }
+  function paintView(){
+    const root = document.getElementById('soa-root'); if(!root) return; const v = STATE._soaView;
+    root.querySelectorAll('.soa-vtab').forEach(b => b.classList.toggle('primary', b.dataset.v === v));
+    const std = [...root.children].filter(e => !e.classList.contains('soa-vbar') && e.id !== 'soa-ctl');
+    std.forEach(e => { e.style.display = v === 'soa' ? '' : 'none'; });
+    let ctl = document.getElementById('soa-ctl'); if(v === 'controls'){ if(!ctl){ ctl = document.createElement('div'); ctl.id = 'soa-ctl'; root.appendChild(ctl); } ctl.style.display = ''; paintControls(); } else if(ctl) ctl.style.display = 'none';
+  }
+  function paintControls(){
+    const ctl = document.getElementById('soa-ctl'); if(!ctl) return; const F = STATE._soaCF; const all = appRows(); const app = all.filter(x => x.applicable);
+    const withPol = app.filter(x => x.cov.policy).length, withProc = app.filter(x => x.cov.procedure).length, withReg = app.filter(x => x.cov.register || x.cov.checklist).length, none = app.filter(x => !x.cov.n).length, done = app.filter(x => ['implemented', 'effective'].includes(x.status)).length;
+    const tile = (n, l, c) => `<div class="panel" style="padding:14px 16px;border-top:4px solid ${c};margin:0;"><div style="font-size:26px;font-weight:800;line-height:1.1;">${n}</div><div style="font-size:11.5px;color:var(--text-faint);margin-top:6px;">${l}</div></div>`;
+    const pc = n => app.length ? Math.round(n / app.length * 100) + '%' : '0%';
+    const shown = all.filter(x => x.applicable && (!F.theme || x.c.theme === F.theme) && (F.gap !== 'none' || !x.cov.n) && (F.gap !== 'nopol' || !x.cov.policy) && (F.gap !== 'noproc' || !x.cov.procedure) && (F.gap !== 'open' || !['implemented', 'effective'].includes(x.status)));
+    const themes = [...new Set(window.SOA_CONTROLS.map(c => c.theme))];
+    ctl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:14px;">${tile(app.length, 'applicable controls', '#0b1f3a')}${tile(pc(done), 'implemented', '#2e9e5b')}${tile(pc(withPol), 'backed by a policy', withPol / (app.length || 1) >= .8 ? '#2e9e5b' : '#f0b21a')}${tile(pc(withProc), 'backed by a procedure', withProc / (app.length || 1) >= .8 ? '#2e9e5b' : '#f0b21a')}${tile(pc(withReg), 'with a register or checklist', '#1d5a8f')}${tile(none, 'with no evidence at all', none ? '#d4262c' : '#2e9e5b')}</div>
+      <div class="toolbar"><div class="filters"><select onchange="soaCF('theme',this.value)"><option value="">All themes</option>${themes.map(t => `<option ${F.theme === t ? 'selected' : ''}>${E(t)}</option>`).join('')}</select><select onchange="soaCF('gap',this.value)"><option value="">All applicable controls</option><option value="none" ${F.gap === 'none' ? 'selected' : ''}>No evidence linked</option><option value="nopol" ${F.gap === 'nopol' ? 'selected' : ''}>No policy</option><option value="noproc" ${F.gap === 'noproc' ? 'selected' : ''}>No procedure</option><option value="open" ${F.gap === 'open' ? 'selected' : ''}>Not yet implemented</option></select></div></div>
+      <div class="panel" style="padding:0;overflow:hidden;"><table><tr><th>Control</th><th>Status</th><th>Owner</th><th>Policy</th><th>Procedure</th><th>Register or checklist</th><th>Other</th></tr>${shown.map(x => { const dot = n => n ? `<b style="color:#2e9e5b">${n}</b>` : '<span style="color:#d4262c">0</span>'; return `<tr class="clickable" onclick="soaView('soa');setTimeout(()=>soaEdit('${x.c.ref}'),50)"><td><span class="mono-cell">${x.c.ref}</span> <span class="strong">${E(x.c.title)}</span></td><td>${E(({ not_started:'Not started', planned:'Planned', partial:'Partly implemented', implemented:'Implemented', effective:'Implemented and reviewed' })[x.status] || x.status)}</td><td>${x.owner ? E(memberName(x.owner)) : '<span style="color:#d4262c">Unassigned</span>'}</td><td>${dot(x.cov.policy)}</td><td>${dot(x.cov.procedure)}</td><td>${dot(x.cov.register + x.cov.checklist)}</td><td>${x.cov.other}</td></tr>`; }).join('') || '<tr><td colspan="7" style="padding:16px;color:var(--text-faint);">No controls match.</td></tr>'}</table></div><p style="font-size:11.5px;color:var(--text-faint);margin-top:10px;">Click a control to open it and link evidence. A control with an implemented status but no policy or procedure behind it will not stand up to a certification audit.</p>`;
+  }
+  function addBar(){ const root = document.getElementById('soa-root'); if(!root || root.querySelector('.soa-vbar') || !root.querySelector('#soa-table-wrap')) return false;
+    root.insertAdjacentHTML('afterbegin', `<div class="soa-vbar" style="display:flex;gap:8px;margin-bottom:12px;"><button class="btn-small soa-vtab" data-v="soa" onclick="soaView('soa')">Statement of Applicability</button><button class="btn-small soa-vtab" data-v="controls" onclick="soaView('controls')">Controls (ISO/IEC 27002) and evidence</button></div>`); paintView(); return true; }
+  function waitBar(n){ if(addBar() || n > 40) return; setTimeout(() => waitBar(n + 1), 250); }
+  { const _sm = showModule; showModule = window.showModule = function(mod){ const r = _sm.apply(this, arguments); if(mod === 'soa'){ try{ MODULE_META.soa.title = 'Statement of Applicability and Controls'; }catch(e){} STATE._soaView = 'soa'; waitBar(0); } return r; }; }
+
+  /* ---- feeds Business Health and Management Review ---- */
+  try{ const D = window.__bhDomains; const d = D && D.find(x => x.k === 'infosec'); if(d && !d.__ev){ d.__ev = true; const _c = d.checks; d.checks = function(){ const out = _c.apply(this, arguments).slice(); try{ const app = appRows().filter(x => x.applicable); if(app.length && arr(STATE.soa).length){ const nn = app.filter(x => !x.cov.n).length, np = app.filter(x => !x.cov.policy).length; out.push({ label:'Applicable controls with evidence linked', status:nn === 0 ? 'pass' : nn / app.length <= .2 ? 'partial' : 'fail', detail:`${app.length - nn} of ${app.length} controls have a policy, procedure, register or checklist linked; ${np} have no policy.`, mod:'soa' }); } }catch(e){} return out; }; } }catch(e){}
+})();
+
 </script>
 </body>
 </html>
