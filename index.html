@@ -8696,17 +8696,7 @@ async function openDocumentDetail(id){
       </div>
       ${d.purpose ? `<p style="font-size:13px; color:var(--text-dim); margin-bottom:16px; line-height:1.5; background:var(--grey-tint); padding:10px 14px; border-radius:8px;"><b>Purpose, requirement &amp; scope:</b> ${d.purpose}</p>` : ''}
 
-      ${renderDocumentWorkflowCard(d, docReviewers || [], workflowComments || [])}
-
-      <div class="detail-card" style="padding:16px; margin-bottom:16px;">
-        <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:Arial,Helvetica,sans-serif; font-size:15px; font-weight:600;">Historical Reference Documents</h3></div>
-        <p style="font-size:11.5px; color:var(--text-faint); margin-bottom:10px;">Upload the client's own existing document (Word or PDF): used purely as context to make AI-assisted drafting genuinely specific to this client, not a generic template. Never appears in the final Word or PDF output.</p>
-        <div id="reference-uploads-list"></div>
-        <div style="display:flex; gap:6px; align-items:center; margin-top:10px;">
-          <input type="file" id="reference-upload-input-${d.id}" accept=".docx,.pdf">
-          <button class="btn-small primary" onclick="uploadReferenceDocument('${d.id}')" id="reference-upload-btn-${d.id}">Upload for context</button>
-        </div>
-      </div>
+      <div style="margin:0 0 12px;display:flex;gap:8px;flex-wrap:wrap;"><button class="btn-small" onclick="var e=document.getElementById('dwf-card');if(e)e.scrollIntoView({behavior:'smooth',block:'start'})">Done reviewing the content? Go to Review &amp; Approval</button></div>
 
       <div class="detail-card" style="padding:16px; margin-bottom:16px;">
         <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:Arial,Helvetica,sans-serif; font-size:15px; font-weight:600;">Content</h3>
@@ -8717,7 +8707,7 @@ async function openDocumentDetail(id){
             <div class="field span3"><label>What is this document about? Describe its purpose and scope in a sentence or two</label><textarea id="ai-draft-prompt" placeholder="e.g. A procedure for how nonconformances get raised, investigated, and closed out">${(d.purpose||'').replace(/</g,'&lt;')}</textarea></div>
           </div>
           <button class="btn-small primary" onclick="generateAiDraft('${d.id}')" id="ai-draft-btn">Generate draft sections</button>
-          <p style="font-size:11px; color:var(--text-faint); margin-top:6px;">Generates a starting draft for you to review and edit: nothing here gets treated as final or signed off automatically.${(referenceUploads||[]).length ? ' Uses your uploaded historical document(s) above as context, so this draft reflects how this client actually does things.' : ''}</p>
+          <p style="font-size:11px; color:var(--text-faint); margin-top:6px;">Generates a starting draft for you to review and edit: nothing here gets treated as final or signed off automatically.${(referenceUploads||[]).length ? ' Uses the historical document you uploaded when you started this document as context, so this draft reflects how this client actually does things.' : ''}</p>
         </div>
         <div id="document-toc" style="margin-bottom:14px;"></div>
         <div id="document-sections-list"></div>
@@ -8727,6 +8717,20 @@ async function openDocumentDetail(id){
           </div>
           <div class="field" style="margin-bottom:10px;"><label>Content</label><textarea id="sec-content" style="min-height:100px;"></textarea></div>
           <button class="btn-small primary" onclick="addDocumentSection('${d.id}')">Add section</button>
+        </div>
+      </div>
+
+      <div class="detail-card" style="padding:16px; margin-bottom:16px;">
+        <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:Arial,Helvetica,sans-serif; font-size:15px; font-weight:600;">Addendums</h3></div>
+        <p style="font-size:11.5px; color:var(--text-faint); margin-bottom:10px;">Appendices at the end of the document: genuinely separate from the main content, each with its own title and optional attached file.</p>
+        <div id="document-addendums-list"></div>
+        <div class="detail-card" style="margin-top:12px; background:var(--grey-tint);">
+          <div class="form-grid">
+            <div class="field"><label>Title</label><input id="add-addendum-title" placeholder="e.g. Annexure A: Risk Assessment"></div>
+            <div class="field"><label>Attached file (optional)</label><input type="file" id="add-addendum-file"></div>
+          </div>
+          <div class="field" style="margin-bottom:10px;"><label>Content (optional)</label><textarea id="add-addendum-content"></textarea></div>
+          <button class="btn-small primary" onclick="addDocumentAddendum('${d.id}')">Add addendum</button>
         </div>
       </div>
 
@@ -8745,19 +8749,10 @@ async function openDocumentDetail(id){
         <button class="btn-small primary" onclick="addDocumentLink('${d.id}')">Add link</button>
       </div>
 
-      <div class="detail-card" style="padding:16px; margin-bottom:16px;">
-        <div class="panel-head" style="margin-bottom:8px;"><h3 style="font-family:Arial,Helvetica,sans-serif; font-size:15px; font-weight:600;">Addendums</h3></div>
-        <p style="font-size:11.5px; color:var(--text-faint); margin-bottom:10px;">Appendices at the end of the document: genuinely separate from the main content, each with its own title and optional attached file.</p>
-        <div id="document-addendums-list"></div>
-        <div class="detail-card" style="margin-top:12px; background:var(--grey-tint);">
-          <div class="form-grid">
-            <div class="field"><label>Title</label><input id="add-addendum-title" placeholder="e.g. Annexure A: Risk Assessment"></div>
-            <div class="field"><label>Attached file (optional)</label><input type="file" id="add-addendum-file"></div>
-          </div>
-          <div class="field" style="margin-bottom:10px;"><label>Content (optional)</label><textarea id="add-addendum-content"></textarea></div>
-          <button class="btn-small primary" onclick="addDocumentAddendum('${d.id}')">Add addendum</button>
-        </div>
-      </div>
+      ${renderDocumentWorkflowCard(d, docReviewers || [], workflowComments || [])}
+
+
+      <div id="reference-uploads-list" style="display:none;"></div>
 
       <div class="status-row">
         <label class="mono" style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase;">Status</label>
@@ -20867,7 +20862,7 @@ function renderAdminSubtabContent(tab){
 // state.
 const ADMIN_CONSOLE_TOGGLES = [
   { field:'document_control_enabled', label:'Document Management', note:'Where documents are created, numbered and revisioned.' },
-  { field:'all_documents_enabled', label:'All Documents', note:'The unified find/search view across Document Management and legacy uploads.' },
+  { field:'all_documents_enabled', label:'All Documents (optional tab)', note:'Optional extra tab inside Document Management for legacy uploads by department and type. Leave off unless the client asks for it.' },
   { field:'hr_enabled', label:'HR: Attendance & Leave', note:'GPS clock-in/out, attendance register, employee mobile link.' },
   { field:'asset_watchman_enabled', label:'Asset Watchman', note:'Asset condition & performance monitoring: bespoke per client.' },
   { field:'site_files_enabled', label:'Site SHERQ Files', note:'Contractor site safety files per client site: legal docs, team competency, appointments, HIRA, registers, incidents. Run the site-files migration first.' },
@@ -42665,7 +42660,7 @@ window.WMTutorial = { open, lessons: () => Object.keys(window.WMLESSONS || {}), 
   /* Document access block: the three document views are shown together as toggles, with select all / clear all for the whole module list */
   window.wmDocBlock=function(scope){
     try{
-      const keys=[['master_register','Master Documents Register','Register of every controlled document number: for staff who only need to find the current document.'],['all_documents','All Documents','Every document the organisation has uploaded, by block.'],['documents','Document Management','Document control: draft, review, approve and issue. For senior people.']];
+      const keys=[['master_register','Find documents only','Shows only the Master Documents Register inside Document Management: for staff who just need to find the current document.'],['all_documents','All Documents tab','The optional All Documents tab inside Document Management (only if switched on for the organisation).'],['documents','Document Management','Document control: draft, review, approve and issue. For senior people.']];
       const cbs={}; keys.forEach(k=>{ const cb=scope.querySelector('input[type=checkbox][value="'+k[0]+'"]'); if(cb) cbs[k[0]]=cb; });
       if(!Object.keys(cbs).length || scope.querySelector('.wm-doc-block')) return;
       const grid=Object.values(cbs)[0].closest('div[style*="grid"]'); if(!grid) return;
@@ -47528,7 +47523,7 @@ add('personnel', 'tips', ['Aim for 100% onboarding before a new person works uns
       const now = new Date().toISOString(), org = STATE.org.id;
       const rows = PRESET_ON.map(k => ({ organisation_id:org, module_key:k, enabled:true, updated_at:now })).concat(PRESET_OFF.map(k => ({ organisation_id:org, module_key:k, enabled:false, updated_at:now })));
       let r = await STATE.supabase.from('org_modules').upsert(rows, { onConflict:'organisation_id,module_key' }); if(r.error) throw r.error;
-      r = await STATE.supabase.from('organisations').update({ document_control_enabled:true, all_documents_enabled:true, legal_certs_enabled:true, process_flowcharts_enabled:true, site_files_enabled:false, asset_watchman_enabled:false }).eq('id', org); if(r.error) throw r.error;
+      r = await STATE.supabase.from('organisations').update({ document_control_enabled:true, all_documents_enabled:false, legal_certs_enabled:true, process_flowcharts_enabled:true, site_files_enabled:false, asset_watchman_enabled:false }).eq('id', org); if(r.error) throw r.error;
       try{ await STATE.supabase.from('welding_settings').upsert({ organisation_id:org, enabled:false, updated_at:now }, { onConflict:'organisation_id' }); }catch(e){}
       try{ await STATE.supabase.from('org_disciplines').upsert({ organisation_id:org, discipline:'infosec', enabled:false, updated_at:now }, { onConflict:'organisation_id,discipline' }); }catch(e){}
     }catch(e){ try{ hideLoader(); }catch(x){} toast('Could not apply the preset: ' + (e.message || e), 'error'); return; }
@@ -50547,6 +50542,18 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     X.utils.book_append_sheet(wb, X.utils.json_to_sheet(d.mk.map((k, i) => ({ Month:k, Raised:d.raised[i], Closed:d.closedBy[i], Cost:d.costBy[i] }))), 'Monthly trend');
     X.writeFile(wb, 'Statistical-Analysis-' + d.sc.replace(/[^A-Za-z]+/g, '-') + '.xlsx');
   };
+  const CACHE = {};
+  window.__isUI = { lineChart, colChart, hbars, donut, tile, card, table, months, mlabel, mkey, R, N1, pct, CSS:CSS.split('@media print')[0].replace(/#is-modal/g, '.is-scope') + '</style>' };
+  window.wmIssueStatsHtml = async function(scope){ scope = SCOPES[scope] ? scope : 'nonconformances'; const d = await build(scope); CACHE[scope] = d; return html(d); };
+  window.wmIssueData = scope => CACHE[scope] || null;
+  window.wmIssueScopes = () => Object.keys(SCOPES);
+  let WARM = null;
+  window.wmIssueWarm = function(force){
+    if(WARM && !force) return WARM;
+    WARM = (async () => { for(const sc of Object.keys(SCOPES)){ try{ const mod = sc; if(typeof canAccessModule === 'function' && !canAccessModule(mod)) continue; CACHE[sc] = await build(sc); }catch(e){} } })();
+    return WARM;
+  };
+  setTimeout(() => { try{ if(STATE.org) window.wmIssueWarm(); }catch(e){} }, 6000);
   window.wmIssueQuick = function(scope){
     const rs = records(scope); const since = new Date(); since.setMonth(since.getMonth() - 3); const sd = since.toISOString().slice(0, 10);
     return { label:SCOPES[scope], total:rs.length, open:rs.filter(isOpen).length, overdue:rs.filter(overdue).length, raised3m:rs.filter(r => r.date >= sd).length, closed3m:rs.filter(r => r.closed && r.closed >= sd).length, cost:rs.reduce((a, r) => a + r.cost, 0), serious:rs.filter(r => ['major', 'critical'].includes(r.sev) && isOpen(r)).length };
@@ -50563,6 +50570,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   }
   { const _s = showModule; showModule = window.showModule = function(mod){ const r = _s.apply(this, arguments); [60, 500, 1400].forEach(t => setTimeout(() => { try{ if(BTN[mod] && document.getElementById('mod-title') && MODULE_META[mod] && document.getElementById('mod-title').textContent === MODULE_META[mod].title) addBtn(mod); }catch(e){} }, t)); return r; }; }
 })();
+
 
 /* ===== Release 32: Quarterly SHERQ Committee meeting and minutes ===== */
 (function(){
@@ -50619,7 +50627,9 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     add('opening', 'Opening, attendance, quorum and apologies', 'OHS Act 85 of 1993, sections 19 and 20: the committee meets at least every three months', () => 'Record who is present and whether the committee is quorate.');
     add('previous', 'Minutes and actions of the previous meeting', 'Follow up of earlier decisions', () => { const o = SC.a.filter(a => a.status === 'open').length; return o ? `${o} action${o === 1 ? '' : 's'} from earlier meetings still open.` : 'No open actions from earlier meetings.'; });
     const issueScopes = [['nonconformances', 'nonconformances'], ['raga', 'raga'], ['incidents', 'incidents'], ['infosec_incidents', 'infosec_incidents']].filter(([k]) => has(k === 'nonconformances' ? 'nonconformances' : k));
-    if(issueScopes.length) add('issues', 'Incidents, accidents, near misses and nonconformances: statistics and trends', 'OHS Act s24, Regulation on incident reporting; ISO 45001 cl 10.2, ISO 9001 cl 10.2', () => issueScopes.map(([, sc]) => qline(sc)).filter(Boolean).join(' ') + ' Open the Statistical Analysis in each module for trends, cost and recurring causes.');
+    if(issueScopes.length) add('issues', 'Incidents, accidents, near misses and nonconformances: statistics and trends', 'OHS Act s24, Regulation on incident reporting; ISO 45001 cl 10.2, ISO 9001 cl 10.2', () => (window.wmIssueLines ? window.wmIssueLines(issueScopes.map(([, sc]) => sc)) : issueScopes.map(([, sc]) => qline(sc)).filter(Boolean).join(' ')) + ' Open the Statistical Analysis in each module for the full trends, cost and recurring causes.');
+    add('integrated', 'Integrated performance: trends, statistics and interrelationships', 'ISO 45001 cl 9.1, 9.3; ISO 9001 cl 9.1, 9.3; ISO 14001 cl 9.1', () => window.wmLinksText ? window.wmLinksText() : 'Review the trends and how the modules relate to each other.');
+    if(has('assets')) add('assets', 'Assets, equipment and inspections', 'OHS Act s8 and s9; Driven Machinery and Pressure Equipment Regulations; ISO 45001 cl 8.1.2; ISO 9001 cl 7.1.3', () => window.wmAssetLine ? window.wmAssetLine() : 'Review overdue inspections, certificates and equipment condition.');
     if(has('risks')) add('hira', 'Hazard identification, risk assessment and controls', 'OHS Act s8; ISO 45001 cl 6.1; ISO 31000', () => { const r = arr(STATE.risks); const hi = r.filter(x => x.status !== 'closed' && Number(x.inherent_score) >= 15).length; return `${r.length} risks and opportunities on the register, ${hi} open with a high inherent score.`; });
     if(has('legal')) add('legal', 'Legal compliance, appointments and certificates', 'OHS Act s16 and s17; ISO 45001 cl 6.1.3; ISO 14001 cl 6.1.3', () => { const l = arr(STATE.legalRegister); const bad = l.filter(x => ['non_compliant', 'semi_compliant', 'partially_compliant'].includes(x.status || x.current_status)).length; return `${l.length} legal requirements registered, ${bad} not fully compliant.`; });
     if(has('audits')) add('audits', 'Inspections and audits', 'OHS Act s20; ISO 45001 cl 9.2; ISO 9001 cl 9.2', () => { const a = arr(STATE.audits); const yr = String(new Date().getFullYear()); return `${a.filter(x => String(x.planned_date || '').startsWith(yr)).length} audits planned or done this year; ${a.filter(x => x.closed_at == null && (x.published_at || x.status === 'completed')).length} awaiting close out.`; });
@@ -50691,7 +50701,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
       <div class="panel" style="padding:16px;"><h4 style="margin:0 0 8px;">Attendance</h4><p style="font-size:12px;color:var(--text-faint);margin:0 0 8px;">${pres} present of ${att.length} members${att.length ? (pres >= quorum ? ': quorum met' : `: quorum needs ${quorum} (a simple majority). Check your constitution for the rule that applies.`) : ''}</p>
         <table><tr><th>Name</th><th>Role</th><th>Status</th></tr>${att.map((a, i) => `<tr><td>${E(a.name)}</td><td><input value="${E(a.role || '')}" ${lock ? 'disabled' : ''} placeholder="e.g. H&S representative" onchange="scAtt('${m.id}',${i},'role',this.value)" style="width:100%;"></td><td><select ${lock ? 'disabled' : ''} onchange="scAtt('${m.id}',${i},'status',this.value)">${[['present', 'Present'], ['apology', 'Apology'], ['absent', 'Absent']].map(([k, l]) => `<option value="${k}" ${a.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td></tr>`).join('')}</table>
         ${lock ? '' : `<div style="display:flex;gap:8px;margin-top:8px;"><input id="sc-ext" placeholder="Add an invitee or other attendee (name)" style="flex:1;"><button class="btn-small" onclick="scAddAtt('${m.id}')">Add</button></div>`}</div>
-      ${ag.map((it, i) => { const df = defOf(it.key); const live = df ? df.live() : ''; return `<div class="panel" style="padding:16px;"><h4 style="margin:0 0 2px;">${i + 1}. ${E(it.title)}</h4><div style="font-size:11px;color:var(--text-faint);margin-bottom:8px;">${E(it.basis || '')}</div>${live ? `<div style="background:#eef3fb;border-radius:6px;padding:8px 10px;font-size:12px;margin-bottom:8px;"><b>Live data:</b> ${E(live)}</div>` : ''}<label style="font-size:12px;font-weight:700;">Discussion</label><textarea rows="3" ${lock ? 'disabled' : ''} onchange="scItem('${m.id}',${i},'discussion',this.value)" style="width:100%;box-sizing:border-box;">${E(it.discussion || '')}</textarea><label style="font-size:12px;font-weight:700;">Decisions</label><textarea rows="2" ${lock ? 'disabled' : ''} onchange="scItem('${m.id}',${i},'decision',this.value)" style="width:100%;box-sizing:border-box;">${E(it.decision || '')}</textarea></div>`; }).join('')}
+      ${ag.map((it, i) => { const df = defOf(it.key); const frozen = m.status !== 'planned' && it.snap; const live = frozen ? it.snap : (df ? df.live() : ''); return `<div class="panel" style="padding:16px;"><h4 style="margin:0 0 2px;">${i + 1}. ${E(it.title)}</h4><div style="font-size:11px;color:var(--text-faint);margin-bottom:8px;">${E(it.basis || '')}</div>${live ? `<div style="background:#eef3fb;border-radius:6px;padding:8px 10px;font-size:12px;margin-bottom:8px;"><b>${frozen ? 'Data at the meeting' : 'Live data'}:</b> ${E(live)}</div>` : ''}<label style="font-size:12px;font-weight:700;">Discussion</label><textarea rows="3" ${lock ? 'disabled' : ''} onchange="scItem('${m.id}',${i},'discussion',this.value)" style="width:100%;box-sizing:border-box;">${E(it.discussion || '')}</textarea><label style="font-size:12px;font-weight:700;">Decisions</label><textarea rows="2" ${lock ? 'disabled' : ''} onchange="scItem('${m.id}',${i},'decision',this.value)" style="width:100%;box-sizing:border-box;">${E(it.decision || '')}</textarea></div>`; }).join('')}
       <div class="panel" style="padding:16px;"><h4 style="margin:0 0 8px;">Actions</h4>${acts.length ? `<table><tr><th>Action</th><th>Responsible</th><th>Due</th><th>Status</th><th></th></tr>${acts.map(a => `<tr><td>${E(a.description)}${a.carried_from ? ' <span style="font-size:10.5px;color:#889;">(carried forward)</span>' : ''}</td><td>${E(nm(a.responsible_id))}</td><td>${fd(a.target_date)} ${a.status === 'open' && a.target_date && day(a.target_date) < todayISO() ? chip('Overdue', '#d4262c') : ''}</td><td>${a.status === 'closed' ? chip('Closed', '#2e9e5b') : chip('Open', '#f0b21a')}</td><td>${!lock && a.status === 'open' ? `<button class="btn-small" onclick="scActDone('${a.id}')">Close</button>` : ''}</td></tr>`).join('')}</table>` : '<p style="font-size:12.5px;color:var(--text-faint);">No actions yet.</p>'}
         ${lock ? '' : `<div class="form-grid" style="margin-top:10px;"><div class="field span3"><label>New action</label><input id="sc-ad" placeholder="What must be done"></div><div class="field"><label>Responsible</label><select id="sc-ar">${memberOptions(STATE.user.id)}</select></div><div class="field"><label>Due</label><input type="date" id="sc-at" value="${addMonths(todayISO(), 1)}"></div></div><div class="form-actions"><button class="btn-small primary" onclick="scAddAction('${m.id}')">Add action and create a task</button></div>`}</div>
       <div class="panel" style="padding:16px;"><h4 style="margin:0 0 8px;">Close of meeting</h4><div class="form-grid"><div class="field"><label>Next meeting</label><input type="date" ${lock ? 'disabled' : ''} value="${day(m.next_meeting_date)}" onchange="scField('${m.id}','next_meeting_date',this.value)"></div><div class="field span3"><label>General notes</label><textarea rows="2" ${lock ? 'disabled' : ''} onchange="scField('${m.id}','general_notes',this.value)" style="width:100%;box-sizing:border-box;">${E(m.general_notes || '')}</textarea></div></div>
@@ -50702,7 +50712,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   window.scItem = async (id, i, k, v) => { const m = SC.m.find(x => x.id === id); const ag = arr(m.agenda).map(x => Object.assign({}, x)); ag[i][k] = v; await patch(id, { agenda: ag }); };
   window.scAtt = async (id, i, k, v) => { const m = SC.m.find(x => x.id === id); const a = arr(m.attendees).map(x => Object.assign({}, x)); a[i][k] = v; if(await patch(id, { attendees: a }) && k === 'status') scDetail(); };
   window.scAddAtt = async id => { const v = (document.getElementById('sc-ext').value || '').trim(); if(!v) return; const m = SC.m.find(x => x.id === id); if(await patch(id, { attendees: arr(m.attendees).concat([{ name:v, role:'Invitee', status:'present' }]) })) scDetail(); };
-  window.scHeld = async id => { if(await patch(id, { status:'held' })){ toast('Marked as held. Complete the minutes, then sign them.', 'success'); scDetail(); } };
+  window.scHeld = async id => { try{ if(window.wmIssueWarm) await window.wmIssueWarm(true); }catch(e){} const mm = SC.m.find(x => x.id === id); const snap = arr(mm && mm.agenda).map(it => { const df = defOf(it.key); let t = ''; try{ t = df ? df.live() : ''; }catch(e){} return Object.assign({}, it, { snap:t }); }); if(await patch(id, { status:'held', agenda:snap })){ toast('Marked as held. Complete the minutes, then sign them.', 'success'); scDetail(); } };
   window.scSign = async id => {
     const a = (document.getElementById('sc-sg1').value || '').trim(), b = (document.getElementById('sc-sg2').value || '').trim(); if(a.length < 3 || b.length < 3){ toast('Both the Chair and the Secretary must type their full name.', 'error'); return; }
     const m = SC.m.find(x => x.id === id); if(!m.next_meeting_date){ toast('Set the date of the next meeting first.', 'error'); return; }
@@ -50720,7 +50730,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   window.scPrint = async function(id){
     const m = SC.m.find(x => x.id === id); if(!m) return; const att = arr(m.attendees), acts = mAct(m.id); const sect = (t, b) => `<h3 style="font-size:13.5px;margin:16px 0 6px;">${t}</h3>${b}`;
     const body = sect('Attendance', `<table style="width:100%;border-collapse:collapse;font-size:12px;"><tr><th align="left">Name</th><th align="left">Role</th><th align="left">Status</th></tr>${att.map(a => `<tr><td>${E(a.name)}</td><td>${E(a.role || '')}</td><td>${E(label(a.status))}</td></tr>`).join('')}</table>`)
-      + arr(m.agenda).map((it, i) => sect(`${i + 1}. ${E(it.title)}`, `<div style="font-size:10.5px;color:#667;">${E(it.basis || '')}</div>${(defOf(it.key) && defOf(it.key).live() && m.status !== 'planned') ? `<div style="font-size:11.5px;margin:4px 0;"><b>Data at the meeting:</b> ${E(defOf(it.key).live())}</div>` : ''}<div style="font-size:12px;white-space:pre-wrap;margin-top:4px;"><b>Discussion:</b> ${E(it.discussion || (m.status === 'planned' ? '' : 'None recorded.'))}</div><div style="font-size:12px;white-space:pre-wrap;"><b>Decisions:</b> ${E(it.decision || (m.status === 'planned' ? '' : 'None recorded.'))}</div>`)).join('')
+      + arr(m.agenda).map((it, i) => sect(`${i + 1}. ${E(it.title)}`, `<div style="font-size:10.5px;color:#667;">${E(it.basis || '')}</div>${(m.status !== 'planned' && (it.snap || (defOf(it.key) && defOf(it.key).live()))) ? `<div style="font-size:11.5px;margin:4px 0;"><b>Data at the meeting:</b> ${E(it.snap || defOf(it.key).live())}</div>` : ''}<div style="font-size:12px;white-space:pre-wrap;margin-top:4px;"><b>Discussion:</b> ${E(it.discussion || (m.status === 'planned' ? '' : 'None recorded.'))}</div><div style="font-size:12px;white-space:pre-wrap;"><b>Decisions:</b> ${E(it.decision || (m.status === 'planned' ? '' : 'None recorded.'))}</div>`)).join('')
       + sect('Actions', acts.length ? `<table style="width:100%;border-collapse:collapse;font-size:12px;"><tr><th align="left">Action</th><th align="left">Responsible</th><th align="left">Due</th><th align="left">Status</th></tr>${acts.map(a => `<tr><td>${E(a.description)}</td><td>${E(nm(a.responsible_id))}</td><td>${fd(a.target_date)}</td><td>${E(label(a.status))}</td></tr>`).join('')}</table>` : '<p style="font-size:12px;">No actions.</p>')
       + sect('Close', `<p style="font-size:12px;">Next meeting: ${fd(m.next_meeting_date)}. ${E(m.general_notes || '')}</p>${m.status === 'signed' ? `<p style="font-size:12px;">Signed by ${E(m.signed_chair)} (Chair) and ${E(m.signed_secretary)} (Secretary), ${fmtDateTime(m.signed_at)}.</p>` : '<p style="font-size:12px;margin-top:28px;">Chair: ______________________ &nbsp;&nbsp; Secretary: ______________________</p>'}`);
     await printRecord('SHERQ Committee ' + (m.status === 'planned' ? 'Agenda' : 'Minutes'), m.ref_code, [['Quarter', m.quarter_label || ''], ['Date', fd(m.meeting_date)], ['Venue', m.venue || ''], ['Chair', nm(m.chair_id)], ['Secretary', nm(m.secretary_id)]], body, null, null);
@@ -50731,7 +50741,6 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   { const _l = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const r = await _l.apply(this, arguments); try{ if(STATE.org && canAccessModule(KEY)) await loadSc(); }catch(e){} return r; }; }
 })();
 
-
 /* ===== Release 32: issue statistics tiles on the Compliance Dashboard ===== */
 (function(){
   const X = window.__wdExtra; if(!X || !window.wmIssueQuick) return;
@@ -50740,6 +50749,325 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     X.push(['is_' + sc, label, () => { try{ if(!canAccessModule(mod)) return null; const q = window.wmIssueQuick(sc); if(!q || !q.total) return null; return [{label:'Raised last 3 months', count:q.raised3m, color:'amber'}, {label:'Closed last 3 months', count:q.closed3m, color:'green'}, {label:'Overdue', count:q.overdue, color:q.overdue ? 'red' : 'green'}, {label:'Major or critical open', count:q.serious, color:q.serious ? 'red' : 'green'}]; }catch(e){ return null; } }]);
   });
 })();
+
+/* ===== Release 33: personal reminders, KPI trends on the dashboard, integrated performance for Management Review, SHERQ Committee and Business Health ===== */
+(function(){
+  const arr = a => Array.isArray(a) ? a : [];
+  const E = s => escapeHtml(s == null ? '' : String(s));
+  const UI = () => window.__isUI || null;
+  const t0 = () => todayISO();
+  const soon = () => new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+  const isMgr = () => STATE.myRole === 'admin' || STATE.myRole === 'manager' || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const has = k => { try{ return wmTenantHas(k); }catch(e){ return false; } };
+  const can = k => { try{ return canAccessModule(k); }catch(e){ return false; } };
+  const data = sc => (window.wmIssueData ? window.wmIssueData(sc) : null);
+  const lbl = { nonconformances:'Nonconformances', raga:'RAGA', incidents:'Incidents, accidents and near misses', infosec_incidents:'Information security incidents', audits:'Audits' };
+
+  /* ================= 1. Reminders: only what concerns the signed-in person ================= */
+  const myUid = () => STATE.user && STATE.user.id;
+  const myMail = () => String((STATE.user && STATE.user.email) || (STATE.profile && STATE.profile.email) || '').toLowerCase();
+  const myPers = () => new Set(arr(STATE.personnel).filter(p => p.user_id === myUid() || (p.email && myMail() && String(p.email).toLowerCase() === myMail())).map(p => p.id));
+  function mineItem(x){
+    const u = myUid(), P = myPers(); let any = false;
+    for(const f of ['owner_id', 'assignee_id', 'chair_id', 'responsible_id', 'secretary_id']) if(x[f]){ any = true; if(x[f] === u) return true; }
+    for(const f of ['personnel_id', 'responsible_person_id']) if(x[f]){ any = true; if(P.has(x[f])) return true; }
+    return any ? false : null;
+  }
+  const personalSummary = all => {
+    if(STATE._remScope === 'all' && isMgr()) return all;
+    return all.map(m => { const items = m.items.filter(({ item }) => { const r = mineItem(item); return r === true || (r === null && isMgr()); }); return Object.assign({}, m, { items, overdue:items.filter(i => i.state === 'red').length, dueSoon:items.filter(i => i.state === 'yellow').length }); }).filter(m => m.items.length);
+  };
+  { const _c = computeDueSummary; computeDueSummary = window.computeDueSummary = function(){ const all = _c.apply(this, arguments); return STATE._remFilter ? personalSummary(all) : all; }; }
+  { const _s = showReminderPopup;
+    showReminderPopup = window.showReminderPopup = function(manual){
+      STATE._remFilter = true; let sum; try{ sum = computeDueSummary(); }finally{ /* keep the flag for the render below */ }
+      try{
+        if(!sum.length){
+          if(manual === true){
+            const el = document.getElementById('reminder-modal-content'); el.classList.add('rm-info');
+            el.innerHTML = `<div class="rm-hero"><button class="rm-close" onclick="closeReminderPopup()" aria-label="Close"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button><h3>Reminders</h3><p class="rm-sub">${STATE._remScope === 'all' ? 'Nothing is overdue or due within 30 days in the organisation.' : 'Nothing assigned to you is overdue or due within 30 days.'}</p></div><div class="rm-body" style="padding:16px 20px;">${isMgr() ? `<button class="btn-small" onclick="remScope('${STATE._remScope === 'all' ? 'mine' : 'all'}')">${STATE._remScope === 'all' ? 'Show only mine' : 'Show the whole organisation'}</button>` : ''}</div>`;
+            document.getElementById('reminder-overlay').classList.add('active');
+          }
+          return;
+        }
+        _s.apply(this, arguments);
+        const sub = document.querySelector('#reminder-modal-content .rm-sub');
+        const nm = ((STATE.profile && STATE.profile.name) || '').split(' ')[0];
+        if(sub) sub.innerHTML = STATE._remScope === 'all' && isMgr() ? 'Everything due across the organisation' : 'Items assigned to you' + (nm ? ', ' + E(wmCap(nm)) : '');
+        if(isMgr()){ const hero = document.querySelector('#reminder-modal-content .rm-hero'); if(hero) hero.insertAdjacentHTML('beforeend', `<div style="margin-top:8px;"><a style="cursor:pointer;font-size:12px;text-decoration:underline;color:inherit;" onclick="remScope('${STATE._remScope === 'all' ? 'mine' : 'all'}')">${STATE._remScope === 'all' ? 'Show only my items' : 'Show the whole organisation'}</a></div>`); }
+      } finally { STATE._remFilter = false; }
+    }; }
+  window.remScope = function(s){ STATE._remScope = s; showReminderPopup(true); };
+  window.openMyReminders = function(){ showReminderPopup(true); };
+  { const _o = RENDERERS.overview;
+    RENDERERS.overview = function(){
+      let h = _o.apply(this, arguments);
+      try{ STATE._remFilter = true; const n = computeDueSummary().reduce((a, m) => a + m.items.length, 0); STATE._remFilter = false;
+        const bell = `<button id="ovx-bell" onclick="event.stopPropagation();openMyReminders()" title="Open my reminders" aria-label="Open my reminders" style="vertical-align:middle;margin-left:10px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.4);border-radius:999px;padding:5px 11px;cursor:pointer;color:inherit;display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg>Reminders${n ? ` <span style="background:#d4262c;color:#fff;border-radius:10px;padding:1px 7px;">${n}</span>` : ''}</button>`;
+        const i = h.indexOf('</h2>', h.indexOf('ovx-hero')); if(i > 0) h = h.slice(0, i) + bell + h.slice(i);
+      }catch(e){ STATE._remFilter = false; }
+      return h; }; }
+
+  /* ================= shared figures ================= */
+  function assetFig(){
+    const A = arr(STATE.assets).filter(a => a.lifecycle_status !== 'disposed'), t = t0(), s = soon();
+    const sc = A.map(a => { try{ return { a, s:assetComplianceScore(a.id) }; }catch(e){ return { a, s:null }; } });
+    const scored = sc.filter(x => x.s != null);
+    const insp = arr(STATE.assetInspectionsSummary);
+    const mk = UI() ? UI().months(12) : [];
+    const per = mk.map(k => insp.filter(i => String(i.inspection_date || '').slice(0, 7) === k));
+    const avgBy = per.map(l => { const v = l.flatMap(i => arr(i.asset_inspection_responses).map(r => conditionScoreToPct(r.result)).filter(x => x != null)); return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null; });
+    let cl = null; try{ cl = checklistStats(); }catch(e){}
+    const aw = arr(STATE.awAssets).filter(a => a.active);
+    let awRed = 0; try{ awRed = aw.filter(a => awHealthStatusInfo(a).state === 'red' || awDataStatusInfo(a).state === 'red').length; }catch(e){}
+    return { n:A.length, od:A.filter(a => a.next_inspection_date && a.next_inspection_date < t).length, due:A.filter(a => a.next_inspection_date && a.next_inspection_date >= t && a.next_inspection_date <= s).length, noPlan:A.filter(a => !a.next_inspection_date).length,
+      certExp:A.filter(a => a.certificate_expiry_date && a.certificate_expiry_date < t).length, certSoon:A.filter(a => a.certificate_expiry_date && a.certificate_expiry_date >= t && a.certificate_expiry_date <= s).length,
+      avg:scored.length ? Math.round(scored.reduce((a, x) => a + x.s, 0) / scored.length) : null, poor:scored.filter(x => x.s < 60).length, worst:scored.sort((p, q) => p.s - q.s).slice(0, 8), neverInspected:A.filter(a => !insp.some(i => i.asset_id === a.id)).length,
+      mk, counts:per.map(l => l.length), avgBy, cl, aw:aw.length, awRed };
+  }
+  window.wmAssetFig = assetFig;
+  const assetLine = () => { const f = assetFig(); if(!f.n && !(f.cl && f.cl.total)) return 'No assets or inspection programme recorded yet.'; return `${f.n} assets on the register: ${f.od} with an overdue inspection, ${f.due} due within 30 days, ${f.certExp} with an expired certificate${f.avg != null ? `, average condition ${f.avg}%` : ''}${f.poor ? `, ${f.poor} in poor condition` : ''}.${f.cl && f.cl.blendedScorePct != null ? ` Checklist inspection conformance ${Math.round(f.cl.blendedScorePct)}% across ${f.cl.totalCompletedRuns} completed runs.` : ''}`; };
+  window.wmAssetLine = assetLine;
+
+  /* generic statistics for any date tracked module */
+  function genericFig(key){
+    const mods = DATE_TRACKED_MODULES.filter(m => m.key === key); if(!mods.length) return null; const U = UI(), t = t0(), s = soon(); const mk = U.months(12);
+    const f = { total:0, ok:0, soon:0, od:0, done:0, created:mk.map(() => 0), by:new Map(), odItems:[] };
+    mods.forEach(m => { let l = []; try{ l = m.list() || []; }catch(e){} l.forEach(x => { f.total++; const res = m.isResolved(x), d = x[m.dateField]; if(res) f.done++; else if(!d) f.ok++; else if(d < t){ f.od++; let p = ''; try{ p = m.getPerson(x) || ''; }catch(e){} p = String(p).replace(/<[^>]*>/g, '') || 'Unassigned'; f.by.set(p, (f.by.get(p) || 0) + 1); } else if(d <= s) f.soon++; else f.ok++; const i = mk.indexOf(U.mkey(x.created_at)); if(i >= 0) f.created[i]++; }); });
+    return f;
+  }
+  function genericHtml(key, compact){
+    const f = genericFig(key), U = UI(); if(!f || !f.total) return '';
+    const tiles = [U.tile(f.total, 'records', '#0b1f3a'), U.tile(f.ok, 'on track', '#2e9e5b'), U.tile(f.soon, 'due within 30 days', f.soon ? '#f0b21a' : '#2e9e5b'), U.tile(f.od, 'overdue', f.od ? '#d4262c' : '#2e9e5b'), U.tile(f.done, 'resolved or closed', '#2e9e5b')].join('');
+    const wrapT = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:12px;">${tiles}</div>`;
+    const c1 = `<div class="is-card"><h4>Records added per month, last 12 months</h4>${U.colChart(f.mk || U.months(12), f.created, '#0b6fb5')}</div>`;
+    const c2 = `<div class="is-card"><h4>Status of records</h4>${U.donut([{ n:'On track', v:f.ok, c:'#2e9e5b' }, { n:'Due within 30 days', v:f.soon, c:'#f0b21a' }, { n:'Overdue', v:f.od, c:'#d4262c' }, { n:'Resolved', v:f.done, c:'#7aa6c9' }])}</div>`;
+    const c3 = `<div class="is-card"><h4>Overdue by person</h4>${U.hbars([...f.by.entries()].map(([label, n]) => ({ label, n })).sort((a, b) => b.n - a.n), { top:8, color:'#d4262c' })}</div>`;
+    return wrapT + (compact ? '' : `<div class="is-grid">${c1}${c2}${c3}</div>`);
+  }
+  function assetsHtml(){
+    const f = assetFig(), U = UI(); if(!f.n && !(f.cl && f.cl.total)) return '';
+    const tiles = [U.tile(f.n, 'assets', '#0b1f3a'), U.tile(f.od, 'inspections overdue', f.od ? '#d4262c' : '#2e9e5b'), U.tile(f.due, 'inspections due in 30 days', f.due ? '#f0b21a' : '#2e9e5b'), U.tile(f.certExp, 'certificates expired', f.certExp ? '#d4262c' : '#2e9e5b'), U.tile(f.avg == null ? '-' : f.avg + '%', 'average condition', f.avg == null ? '#888' : f.avg >= 80 ? '#2e9e5b' : f.avg >= 60 ? '#f0b21a' : '#d4262c'), U.tile(f.poor, 'in poor condition', f.poor ? '#d4262c' : '#2e9e5b'), U.tile(f.neverInspected, 'never inspected', f.neverInspected ? '#f0b21a' : '#2e9e5b')];
+    if(f.cl && f.cl.total) tiles.push(U.tile(f.cl.blendedScorePct == null ? '-' : Math.round(f.cl.blendedScorePct) + '%', 'checklist conformance', '#0b6fb5'), U.tile(f.cl.runsLast30d, 'checklist runs, last 30 days', '#0b1f3a'));
+    if(f.aw) tiles.push(U.tile(f.awRed, 'monitored assets needing attention', f.awRed ? '#d4262c' : '#2e9e5b'));
+    const worst = f.worst.map(x => [E(x.a.ref_code || ''), E(x.a.description || ''), x.s + '%', E(x.a.next_inspection_date ? fmtDate(x.a.next_inspection_date) : 'Not scheduled')]);
+    return `<div class="is-tiles">${tiles.join('')}</div><div class="is-grid"><div class="is-card"><h4>Inspections completed per month</h4>${U.colChart(f.mk, f.counts, '#0b6fb5')}</div><div class="is-card"><h4>Average condition score by month</h4>${U.lineChart(f.mk, [{ n:'Condition %', c:'#2e9e5b', v:f.avgBy.map(v => v == null ? 0 : v) }])}</div><div class="is-card" style="grid-column:1/-1"><h4>Lowest condition assets</h4>${U.table(['Asset', 'Description', 'Condition', 'Next inspection'], worst) || '<p class="is-none">No scored inspections yet.</p>'}</div></div>`;
+  }
+
+  /* ================= 2. Compliance Dashboard: trends and statistical analysis under the KPIs ================= */
+  const SCOPE_OF = { nonconformances:'nonconformances', raga:'raga', incidents:'incidents', infosec_incidents:'infosec_incidents', audits:'audits' };
+  { const _k = window.wdKpi;
+    window.wdKpi = function(key){
+      const r = _k.apply(this, arguments);
+      try{
+        if(STATE._wdKpiOpen !== key) return r; const box = document.getElementById('wd-kpi-panel'), U = UI(); if(!box || !U) return r;
+        const head = '<h3 style="font-size:15px;margin:18px 0 10px;border-top:1px solid #e3e7ed;padding-top:14px;">Trends and statistical analysis</h3>';
+        const holder = document.createElement('div'); holder.className = 'is-scope'; holder.innerHTML = U.CSS; box.appendChild(holder);
+        const sc = SCOPE_OF[key];
+        if(sc){
+          holder.insertAdjacentHTML('beforeend', head + '<p class="is-none">Analysing the records…</p>');
+          window.wmIssueStatsHtml(sc).then(h => { if(!holder.isConnected) return; holder.innerHTML = U.CSS + head + `<div style="margin-bottom:10px;"><button class="btn-small primary" onclick="openIssueStats('${sc}')">Open the full Statistical Analysis (print and Excel)</button></div>` + h; }).catch(() => { if(holder.isConnected) holder.remove(); });
+        } else {
+          const h = key === 'assets' ? assetsHtml() : genericHtml(key, false);
+          if(h) holder.insertAdjacentHTML('beforeend', head + h); else holder.remove();
+        }
+      }catch(e){ console.warn('r33 dash', e); }
+      return r; }; }
+
+  /* ================= interrelationships: how the modules talk to each other ================= */
+  const L = (title, from, to, status, detail, mod) => ({ title, from, to, status, detail, mod });
+  function links(){
+    const out = [], nc = data('nonconformances'), inc = data('incidents'), au = data('audits'), ra = data('raga');
+    const D = [nc, inc, ra].filter(Boolean);
+    const serious = D.reduce((a, d) => a + d.rs.filter(r => ['major', 'critical'].includes(r.sev)).length, 0), unl = D.reduce((a, d) => a + d.unlinkedSerious.length, 0);
+    out.push(D.length ? (serious ? L('Serious issues traced to a risk', 'Nonconformances, incidents, RAGA', 'Risk and opportunity register', unl === 0 ? 'pass' : unl <= 2 ? 'partial' : 'fail', `${serious - unl} of ${serious} major or critical records are linked to a risk or opportunity; ${unl} are not.`, 'risks') : L('Serious issues traced to a risk', 'Nonconformances, incidents, RAGA', 'Risk and opportunity register', 'pass', 'No major or critical records.', 'risks')) : L('Serious issues traced to a risk', 'Nonconformances, incidents, RAGA', 'Risk and opportunity register', 'nodata', 'Analysis not loaded yet.', 'risks'));
+    if(nc){ const sup = new Set(nc.rs.filter(r => r.sup).map(r => r.sup)); let late = 0; arr(STATE.suppliers).filter(s => sup.has(s.id)).forEach(s => { try{ const d = supplierAnnualDue(s); if(d && d < t0()) late++; }catch(e){} });
+      out.push(L('Supplier and subcontractor performance', 'Nonconformances caused by a supplier', 'Supplier re-assessment', sup.size ? (late ? 'fail' : 'pass') : 'nodata', sup.size ? `${sup.size} supplier${sup.size === 1 ? '' : 's'} or subcontractor${sup.size === 1 ? '' : 's'} named on records; ${late} with a re-assessment overdue.` : 'No records name a supplier or subcontractor.', 'suppliers'));
+      out.push(L('Legal contraventions', 'Records with a legal or regulatory element', 'Legal compliance register', nc.legal.length ? (nc.regBad.length ? 'partial' : 'fail') : 'pass', nc.legal.length ? `${nc.legal.length} record${nc.legal.length === 1 ? '' : 's'} touch legal requirements; the register shows ${nc.regBad.length} requirement${nc.regBad.length === 1 ? '' : 's'} not fully compliant${nc.regBad.length ? '' : ': review whether the register reflects these events'}.` : 'No legal contraventions recorded.', 'legal'));
+      const rep = nc.rep.length; out.push(L('Recurring issues', 'Repeat occurrences by category', 'Corrective action effectiveness', rep ? 'fail' : 'pass', rep ? `${rep} categor${rep === 1 ? 'y' : 'ies'} recurred within 12 months: the corrective actions are not holding. Revisit root cause.` : 'No repeat categories in the last 12 months.', 'nonconformances'));
+      out.push(L('Customer feedback', 'Customer complaints in the issue register', 'Customer satisfaction surveys', nc.csat == null ? 'nodata' : nc.csat >= 4 ? 'pass' : nc.csat >= 3.5 ? 'partial' : 'fail', nc.csat == null ? `${nc.compl.length} complaints; no completed surveys to compare.` : `${nc.compl.length} complaint record${nc.compl.length === 1 ? '' : 's'}; satisfaction averages ${Math.round(nc.csat * 10) / 10} out of 5.`, 'customers')); }
+    if(au){ const f = arr(au.aud).filter(x => !/positive|strength|good/i.test(x.finding_type || '')), ln = f.filter(x => x.nonconformance_id || x.raga_alert_id).length;
+      out.push(L('Audit findings into corrective action', 'Audit findings', 'Nonconformances and RAGA', f.length ? (ln === f.length ? 'pass' : ln / f.length >= 0.6 ? 'partial' : 'fail') : 'nodata', f.length ? `${ln} of ${f.length} findings that need action have a corrective record raised.` : 'No audit findings recorded.', 'audits')); }
+    const af = assetFig(); const openInc = arr(STATE.ncs).filter(n => ['incident', 'accident'].includes(n.record_class) && n.status !== 'closed').length;
+    out.push(L('Assets and inspections', 'Overdue inspections and expired certificates', 'Incidents and accidents', af.n ? ((af.od + af.certExp) === 0 ? 'pass' : openInc ? 'fail' : 'partial') : 'nodata', af.n ? `${af.od} overdue inspection${af.od === 1 ? '' : 's'} and ${af.certExp} expired certificate${af.certExp === 1 ? '' : 's'} while ${openInc} incident${openInc === 1 ? ' is' : 's are'} open.` : 'No assets recorded.', 'assets'));
+    const tr = arr(STATE.training), trOd = tr.filter(x => !['completed', 'cancelled'].includes(x.status) && x.due_date && x.due_date < t0()).length;
+    out.push(L('Competence', 'Overdue training', 'Incidents and nonconformances', tr.length ? (trOd === 0 ? 'pass' : trOd <= 3 ? 'partial' : 'fail') : 'nodata', tr.length ? `${trOd} training record${trOd === 1 ? ' is' : 's are'} overdue. Confirm whether any recent incident involved untrained people.` : 'No training recorded.', 'training'));
+    const ob = arr(STATE.objectives).filter(o => !['achieved', 'not_achieved', 'discontinued'].includes(o.status)), obOd = ob.filter(o => o.target_date && o.target_date < t0()).length;
+    out.push(L('Objectives and targets', 'Issue and cost trends', 'Objectives and targets', ob.length ? (obOd ? 'partial' : 'pass') : 'nodata', ob.length ? `${ob.length} objective${ob.length === 1 ? '' : 's'} in progress, ${obOd} past target date. Check that issue reduction targets exist for the worst categories.` : 'No objectives in progress.', 'objectives'));
+    const mrA = arr(STATE.managementReviewActions).filter(a => a.status === 'open'), scA = arr((STATE._sc || {}).a).filter(a => a.status === 'open');
+    const od2 = mrA.concat(scA).filter(a => (a.target_date || a.due_date) && String(a.target_date || a.due_date).slice(0, 10) < t0()).length;
+    out.push(L('Management decisions followed through', 'Management Review and SHERQ Committee actions', 'Tasks and owners', (mrA.length + scA.length) ? (od2 ? 'fail' : 'pass') : 'nodata', (mrA.length + scA.length) ? `${mrA.length + scA.length} open action${mrA.length + scA.length === 1 ? '' : 's'}, ${od2} overdue.` : 'No open actions.', 'management_review'));
+    return out;
+  }
+  window.wmLinks = links;
+  const ST3 = { pass:['Connected and healthy', '#2e9e5b'], partial:['Needs attention', '#f0b21a'], fail:['Broken link', '#d4262c'], nodata:['No data yet', '#889'] };
+  const linksTable = () => `<table style="width:100%;border-collapse:collapse;font-size:12px;"><tr><th align="left">Relationship</th><th align="left">From</th><th align="left">To</th><th align="left">Status</th><th align="left">What the data says</th></tr>${links().map(x => `<tr style="border-top:1px solid #e3e7ed;"><td style="padding:5px 6px;"><b>${E(x.title)}</b></td><td style="padding:5px 6px;">${E(x.from)}</td><td style="padding:5px 6px;">${E(x.to)}</td><td style="padding:5px 6px;"><span style="background:${ST3[x.status][1]};color:#fff;border-radius:10px;padding:1px 8px;font-size:10.5px;font-weight:700;white-space:nowrap;">${ST3[x.status][0]}</span></td><td style="padding:5px 6px;">${E(x.detail)}</td></tr>`).join('')}</table>`;
+  window.wmLinksText = () => links().filter(x => x.status !== 'nodata').map(x => x.title + ': ' + x.detail).join(' ');
+  window.wmIssueLines = scopes => scopes.map(sc => { const d = data(sc); const q = window.wmIssueQuick ? window.wmIssueQuick(sc) : null; if(!q) return ''; return `${q.label}: ${q.total} on record, ${q.open} open (${q.overdue} overdue, ${q.serious} major or critical), ${q.raised3m} raised and ${q.closed3m} closed in the last three months.` + (d ? ' ' + d.notes.slice(0, 3).join(' ') : ''); }).filter(Boolean).join(' ');
+
+  /* ================= 3. Management Review: KPIs and statistical analysis in every relevant agenda item ================= */
+  const MRMAP = { nonconformances:['nonconformances'], incidents_performance:['incidents', 'raga'], information_security:['infosec_incidents'], audits:['audits'] };
+  const MRGEN = { risk_opportunity:'risks', supplier_performance:'suppliers', assets_maintenance:'assets', resources_training:'training', legal_compliance:'legal', objectives:'objectives', document_control:'documents' };
+  function mrExtra(key){
+    const U = UI(); if(!U) return '';
+    const wrap = h => `<div style="margin-top:12px;border-top:1px solid #e3e7ed;padding-top:10px;"><div style="font-size:12px;font-weight:800;margin-bottom:6px;">Trends and statistical analysis</div>${h}</div>`;
+    if(MRMAP[key]) return wrap(MRMAP[key].map(sc => { const d = data(sc); if(!d) return `<p style="font-size:12px;color:#667;">${E(window.wmIssueLines ? window.wmIssueLines([sc]) : '')} Detailed trends appear once the analysis has loaded: reopen this item in a moment.</p>`;
+      return `<div style="margin-bottom:12px;"><div style="font-size:12px;font-weight:700;">${E(d.sc)}</div><ul style="margin:4px 0 6px;padding-left:18px;font-size:12px;line-height:1.5;">${d.notes.map(n => `<li>${E(n)}</li>`).join('')}</ul><div style="display:flex;gap:18px;flex-wrap:wrap;"><div style="flex:1;min-width:280px;">${U.lineChart(d.mk, [{ n:'Raised', c:'#d4262c', v:d.raised }, { n:'Closed', c:'#2e9e5b', v:d.closedBy }])}</div><div style="flex:1;min-width:240px;">${U.hbars(d.cats.map(c => ({ label:c.k, n:c.n })), { top:6 })}</div></div></div>`; }).join(''));
+    if(key === 'assets_maintenance'){ const h = assetsHtml(); return h ? wrap(h) : ''; }
+    if(MRGEN[key]){ const h = genericHtml(MRGEN[key], true); return h ? wrap(h) : ''; }
+    if(key === 'integrated_performance') return wrap(linksTable());
+    return '';
+  }
+  { const A = window.MGMT_REVIEW_AGENDA || MGMT_REVIEW_AGENDA;
+    if(!A.some(a => a.key === 'integrated_performance')){ const i = A.findIndex(a => a.key === 'ims_health'); A.splice(i + 1, 0, { key:'integrated_performance', title:'Integrated Performance: Trends, Statistics and Interrelationships', iso:'ISO 9.3.2: all standards; ISO 37000', grp:'Direction and governance' }); }
+    const _s = computeMRAgendaStats;
+    computeMRAgendaStats = window.computeMRAgendaStats = function(key){
+      let base = ''; try{ base = key === 'integrated_performance' ? '' : _s.apply(this, arguments); }catch(e){ base = ''; }
+      let extra = ''; try{ extra = mrExtra(key); }catch(e){ console.warn('r33 mr', key, e); }
+      return (base || '') + extra; }; }
+
+  /* ================= 4. Business Health Validation: statistics, assets and interrelationships ================= */
+  { const D = window.__bhDomains, C = (label, status, detail, mod) => ({ label, status, detail:detail || '', mod:mod || null });
+    const add = d => { if(D && !D.some(x => x.k === d.k)) D.push(d); };
+    const trendCheck = (label, sc, mod) => { const d = data(sc); if(!d || !d.rs.length) return C(label, 'nodata', d ? 'Nothing recorded yet.' : 'Analysis not loaded yet: open the module or refresh.', mod);
+      const k6 = d.mk.slice(-6), k12 = d.mk.slice(0, 6); const sum = (ks, arrv) => d.mk.reduce((a, k, i) => a + (ks.includes(k) ? arrv[i] : 0), 0); const now = sum(k6, d.raised), before = sum(k12, d.raised);
+      const st = now <= before ? 'pass' : (before && (now - before) / before <= 0.2) ? 'partial' : 'fail'; return C(label, st, `${now} in the last six months against ${before} in the six months before.`, mod); };
+    add({ k:'assets', label:'Assets and Inspections', mod:'assets', checks:() => { const f = assetFig(); if(!f.n && !(f.cl && f.cl.total)) return [C('Assets and inspections', 'nodata', 'No assets or inspection programme recorded.', 'assets')];
+      const out = []; if(f.n){ out.push(C('Inspections up to date', f.od === 0 ? 'pass' : f.od / f.n <= 0.1 ? 'partial' : 'fail', `${f.od} of ${f.n} assets have an overdue inspection.`, 'assets'), C('Every asset has an inspection scheduled', f.noPlan === 0 ? 'pass' : f.noPlan / f.n <= 0.2 ? 'partial' : 'fail', `${f.noPlan} without a next inspection date.`, 'assets'), C('Certificates valid', f.certExp === 0 ? 'pass' : 'fail', `${f.certExp} expired, ${f.certSoon} expiring within 30 days.`, 'assets'));
+        out.push(f.avg == null ? C('Average asset condition', 'nodata', 'No scored inspections yet.', 'assets') : C('Average asset condition', f.avg >= 80 ? 'pass' : f.avg >= 60 ? 'partial' : 'fail', `${f.avg}% across scored assets; ${f.poor} in poor condition.`, 'assets')); }
+      if(f.cl && f.cl.total){ out.push(f.cl.blendedScorePct == null ? C('Inspection checklist conformance', 'nodata', 'No scored checklist runs yet.', 'assets') : C('Inspection checklist conformance', f.cl.blendedScorePct >= 90 ? 'pass' : f.cl.blendedScorePct >= 75 ? 'partial' : 'fail', `${Math.round(f.cl.blendedScorePct)}% conformance; ${f.cl.neverRun} checklists never run.`, 'assets')); }
+      return out; } });
+    add({ k:'integration', label:'Performance Trends and Integration', mod:'compliance', checks:() => {
+      const out = []; [['nonconformances', 'nonconformances', 'Nonconformance occurrences'], ['incidents', 'incidents', 'Incidents, accidents and near misses'], ['infosec_incidents', 'infosec_incidents', 'Information security incidents']].forEach(([m, sc, l]) => { if(can(m)) out.push(trendCheck(l + ': trend', sc, m)); });
+      const nc = data('nonconformances'); if(nc && nc.rs.length){ out.push(C('Nonconformances closed on or before target', nc.withTarget ? (nc.onTime / nc.withTarget >= 0.9 ? 'pass' : nc.onTime / nc.withTarget >= 0.7 ? 'partial' : 'fail') : 'nodata', nc.withTarget ? `${nc.onTime} of ${nc.withTarget} closed on time.` : 'No targets recorded.', 'nonconformances')); out.push(C('Cost of poor quality, safety and environment', 'na', `R${Math.round(nc.cost).toLocaleString('en-ZA')} recorded, R${Math.round(nc.openCost).toLocaleString('en-ZA')} on open records.`, 'nonconformances')); }
+      links().forEach(x => out.push(C(x.title + ' (' + x.from + ' to ' + x.to + ')', x.status, x.detail, x.mod)));
+      return out; } });
+  }
+  window.wmIntegHtml = linksTable;
+  setTimeout(() => { try{ if(window.wmIssueWarm) window.wmIssueWarm(); }catch(e){} }, 8000);
+})();
+
+
+/* ===== Release 34: Document Management: one module (Master Documents Register, workflow, requests, All Documents when switched on) ===== */
+(function(){
+  const arr = a => Array.isArray(a) ? a : [];
+  const E = s => escapeHtml(s == null ? '' : String(s));
+  const today = () => todayISO();
+  const origCan = canAccessModule;
+  const orgOnAll = () => { try{ return orgHasModule('all_documents'); }catch(e){ return false; } };
+
+  /* ---- access: one Document Management; the old keys stay underneath so ticks, switches and links keep working ---- */
+  canAccessModule = window.canAccessModule = function(mod){
+    if(mod === 'documents') return origCan('documents') || origCan('master_register') || (orgOnAll() && origCan('all_documents'));
+    if(mod === 'master_register') return origCan('master_register') || origCan('documents');
+    if(mod === 'all_documents') return orgOnAll() && (origCan('all_documents') || origCan('documents'));
+    return origCan.apply(this, arguments);
+  };
+  const has = () => ({ ctl:origCan('documents'), mst:origCan('master_register') || origCan('documents'), all:orgOnAll() && (origCan('all_documents') || origCan('documents')) });
+
+  /* ---- the sidebar shows Document Management only ---- */
+  { const _n = applyModuleAccessToNav; applyModuleAccessToNav = window.applyModuleAccessToNav = function(){ const r = _n.apply(this, arguments);
+      ['master_register', 'all_documents'].forEach(k => { const el = document.querySelector('.nav-item[data-mod="' + k + '"]'); if(el) el.style.display = 'none'; });
+      const d = document.querySelector('.nav-item[data-mod="documents"]'); if(d) d.style.display = canAccessModule('documents') ? '' : 'none';
+      return r; }; }
+  try{ applyModuleAccessToNav(); }catch(e){}
+  MODULE_META.documents = { title:'Document Management', sub:() => 'Find any document, or develop a new one: numbered, reviewed, approved and revisioned in one place' };
+
+  /* ---- old entry points land inside the hub ---- */
+  { const _s = showModule; showModule = window.showModule = function(mod){
+      if(mod === 'master_register'){ STATE._docSubtab = 'master'; mod = 'documents'; }
+      else if(mod === 'all_documents'){ STATE._docSubtab = has().all ? 'alldocs' : 'master'; mod = 'documents'; }
+      const a = Array.prototype.slice.call(arguments); a[0] = mod; return _s.apply(this, a); }; }
+
+  /* ---- no separate dashboard tile for the register ---- */
+  try{ const X = window.__wdExtra; if(X){ const i = X.findIndex(e => e[0] === 'master_register'); if(i >= 0) X.splice(i, 1); } }catch(e){}
+
+  /* ---- hub page ---- */
+  const CSS = `<style>
+  .dh{margin:0 0 16px}
+  .dh-banner{background:linear-gradient(135deg,#0b1f3a 0%,#173a66 60%,#1d5a8f 100%);border-radius:16px;padding:22px 24px;color:#fff;position:relative;overflow:hidden}
+  .dh-banner:after{content:"";position:absolute;right:-60px;top:-60px;width:220px;height:220px;border-radius:50%;background:rgba(255,255,255,.07)}
+  .dh-banner h2{margin:0 0 4px;font-size:21px;font-weight:800;color:#fff}.dh-banner p{margin:0;font-size:12.5px;opacity:.85}
+  .dh-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-top:16px;position:relative;z-index:1}
+  .dh-stat{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:12px;padding:10px 12px;cursor:pointer}
+  .dh-stat b{display:block;font-size:22px;line-height:1.1}.dh-stat span{font-size:11px;opacity:.85}
+  .dh-stat.warn b{color:#ffd166}.dh-stat.bad b{color:#ff8a80}
+  .dh-actions{display:grid;grid-template-columns:1.5fr 1fr;gap:14px;margin-top:14px}
+  .dh-card{background:var(--panel,#fff);border:1px solid var(--border,#dde2ea);border-radius:14px;padding:16px 18px;display:flex;gap:14px;align-items:flex-start}
+  .dh-ic{flex:0 0 42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#e8f0fb;color:#1d5a8f}
+  .dh-ic.n{background:#fdeceb;color:#A52A22}.dh-ic svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .dh-card h4{margin:0 0 3px;font-size:15px}.dh-card p{margin:0 0 8px;font-size:12px;color:var(--text-faint)}
+  .dh-card input{width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--border,#cfd6e0);border-radius:10px;font-size:13.5px}
+  .dh-card.go{cursor:pointer;transition:box-shadow .15s,transform .15s}.dh-card.go:hover{box-shadow:0 6px 18px rgba(165,42,34,.18);transform:translateY(-1px)}
+  .dh-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:16px 0 4px;border-bottom:1px solid var(--border,#dde2ea)}
+  .dh-tab{padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;border:none;background:none;color:var(--text-dim);border-bottom:3px solid transparent;margin-bottom:-1px}
+  .dh-tab.on{color:var(--accent,#A52A22);border-bottom-color:var(--accent,#A52A22)}
+  .doc-hub .toolbar>.filters:first-child{display:none}
+  #mr2-table td:last-child{white-space:nowrap}
+  .doc-hub .toolbar{justify-content:flex-end}
+  @media(max-width:800px){.dh-actions{grid-template-columns:1fr}}
+  /* the new document wizard, neater */
+  #doc-form{border-radius:16px;box-shadow:0 10px 30px rgba(11,31,58,.12);padding:22px 24px;border:1px solid var(--border,#dde2ea)}
+  #doc-form .dw-steps{gap:10px;margin-bottom:20px}
+  #doc-form .dw-step{border-radius:999px;padding:9px 16px;font-size:12.5px;text-align:center;border:1px solid var(--border,#dde2ea);background:#fff}
+  #doc-form .dw-step.on{background:var(--accent,#A52A22);color:#fff;border-color:transparent}
+  #doc-form .dw-step.done{background:#e7f4ec;color:#1b8e3e;border-color:#bfe3cc}
+  #doc-form .dw-tpl{border-radius:12px;transition:box-shadow .15s}#doc-form .dw-tpl:hover{box-shadow:0 3px 10px rgba(0,0,0,.08)}
+  </style>`;
+  function figs(){
+    const d = arr(STATE.documents).filter(x => !['withdrawn', 'superseded'].includes(x.status)); const t = today();
+    const inRev = ['submitted_for_review', 'reviewers_satisfied', 'submitted_for_approval', 'approver_requested_changes', 'reviewers_finalized'];
+    return { total:d.length, approved:d.filter(x => (x.workflow_status || '') === 'approved' || x.approval_status === 'approved').length, review:d.filter(x => inRev.includes(x.workflow_status)).length, draft:d.filter(x => !x.workflow_status || x.workflow_status === 'draft').length,
+      od:d.filter(x => x.next_review_date && x.next_review_date < t).length, req:arr(STATE.docReviewRequests).filter(r => ['pending', 'in_progress'].includes(r.status)).length, reg:arr(STATE.documents).filter(x => x.doc_number).length + arr(STATE.bulkDocuments).filter(x => x.doc_number && !x.archived).length };
+  }
+  const SVG = { search:'<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>', plus:'<svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>' };
+  function header(){
+    const f = figs(), h = has(), nm = (STATE.org && STATE.org.name) || '';
+    const tabs = [h.mst ? ['master', 'Master Documents Register'] : null, h.ctl ? ['register', 'Document Workflow'] : null, h.ctl ? ['requests', 'Review Requests' + (f.req ? ' (' + f.req + ')' : '')] : null, h.ctl ? ['setup', 'Naming Convention Setup'] : null, h.all ? ['alldocs', 'All Documents'] : null].filter(Boolean);
+    return CSS + `<div class="dh"><div class="dh-banner"><h2>Document Management</h2><p>${E(nm)}: every controlled document, numbered, reviewed, approved and revisioned in one place.</p>
+      <div class="dh-stats"><div class="dh-stat" onclick="switchDocSubtab('master')"><b>${f.reg}</b><span>numbers on the Master Register</span></div><div class="dh-stat" onclick="switchDocSubtab('register')"><b>${f.approved}</b><span>approved and in force</span></div><div class="dh-stat ${f.review ? 'warn' : ''}" onclick="switchDocSubtab('register')"><b>${f.review}</b><span>in review or approval</span></div><div class="dh-stat ${f.draft ? 'warn' : ''}" onclick="switchDocSubtab('register')"><b>${f.draft}</b><span>drafts</span></div><div class="dh-stat ${f.od ? 'bad' : ''}" onclick="switchDocSubtab('register')"><b>${f.od}</b><span>past their review date</span></div><div class="dh-stat ${f.req ? 'warn' : ''}" onclick="switchDocSubtab('requests')"><b>${f.req}</b><span>update requests open</span></div></div></div>
+      ${h.mst || h.ctl ? `<div class="dh-actions"><div class="dh-card"><div class="dh-ic">${SVG.search}</div><div style="flex:1;min-width:0;"><h4>Search for a document</h4><p>Type a number, title, department or type. Results filter the Master Documents Register instantly.</p><input id="dh-q" placeholder="e.g. corrective action, QMS-PRO, welding…" oninput="dhSearch(this.value)"></div></div>
+        ${h.ctl ? `<div class="dh-card go" onclick="dhNewDoc()"><div class="dh-ic n">${SVG.plus}</div><div><h4>Develop a new document</h4><p>Name it, start from your own document or a template, let the assistant draft it, then review, approve and issue.</p><button class="btn-primary" style="pointer-events:none;">Start a new document</button></div></div>` : ''}</div>` : ''}
+      <div class="dh-tabs" id="dh-tabs">${tabs.map(([k, l]) => `<button class="dh-tab" data-t="${k}" onclick="switchDocSubtab('${k}')">${E(l)}</button>`).join('')}</div></div>`;
+  }
+  { const _r = RENDERERS.documents; RENDERERS.documents = function(){ return '<div class="doc-hub">' + header() + _r.apply(this, arguments) + '</div>'; }; }
+
+  /* ---- tabs ---- */
+  { const _sw = window.switchDocSubtab;
+    window.switchDocSubtab = function(tab){
+      const h = has();
+      if(tab === 'alldocs' && !h.all) tab = 'master';
+      if(tab === 'master' && !h.mst) tab = h.ctl ? 'register' : (h.all ? 'alldocs' : 'master');
+      if(['register', 'requests', 'setup'].includes(tab) && !h.ctl) tab = h.mst ? 'master' : 'alldocs';
+      if(tab === 'master' || tab === 'alldocs'){
+        _sw.call(this, 'register');  /* sets up the toolbar, then replaced below */
+        STATE._docSubtab = tab;
+        const tb = document.getElementById('doc-register-toolbar-extra'); if(tb) tb.style.display = 'none';
+        const w = document.getElementById('doc-subtab-content'); const tw = document.getElementById('doc-table-wrap'); if(tw) tw.innerHTML = '';
+        if(w){ if(tab === 'master'){ w.innerHTML = '<div id="mr2-root"></div>'; try{ renderMasterRegisterPage(); }catch(e){ console.error(e); } } else { w.innerHTML = '<div id="alldocs-root"></div>'; try{ renderBulkDocumentsRegister(); }catch(e){ console.error(e); } } }
+      } else { _sw.call(this, tab); }
+      document.querySelectorAll('#dh-tabs .dh-tab').forEach(b => b.classList.toggle('on', b.dataset.t === STATE._docSubtab));
+    }; }
+
+  /* ---- actions ---- */
+  window.dhSearch = function(v){
+    if(STATE._docSubtab !== 'master') window.switchDocSubtab('master');
+    const q = document.getElementById('mr2-q'); if(q){ q.value = v; try{ mr2Render(); }catch(e){} }
+  };
+  window.dhNewDoc = function(){
+    const f = document.getElementById('doc-form'); if(f && !f.classList.contains('open')) toggleDocForm();
+    setTimeout(() => { const g = document.getElementById('doc-form'); if(g) g.scrollIntoView({ behavior:'smooth', block:'start' }); const t = document.getElementById('df-title'); if(t) t.focus(); }, 60);
+  };
+  window.hubOpenDoc = function(id){
+    if(STATE._docSubtab !== 'register') window.switchDocSubtab('register');
+    Promise.resolve(openDocumentDetail(id)).then(() => { const s = document.getElementById('doc-detail-slot'); if(s) s.scrollIntoView({ behavior:'smooth', block:'start' }); });
+  };
+  /* Open button beside View Document and Request update on the Master Register rows */
+  { const _m = window.mr2Render; window.mr2Render = function(){ const r = _m.apply(this, arguments);
+      try{ const w = document.getElementById('mr2-table'); if(w && has().ctl) w.querySelectorAll('button[onclick^="downloadDocumentPdf("]').forEach(b => { const id = (b.getAttribute('onclick').match(/'([^']+)'/) || [])[1]; if(id && !b.previousElementSibling) b.insertAdjacentHTML('beforebegin', `<button class="btn-small primary" onclick="hubOpenDoc('${id}')">Open</button> `); }); }catch(e){}
+      return r; }; }
+})();
+
 </script>
 </body>
 </html>
