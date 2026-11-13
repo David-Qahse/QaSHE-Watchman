@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer"><meta name="robots" content="noindex,nofollow">
+<title>Confidential Reporting Channel</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f4f6f9;color:#1b2430}
+.w{max-width:680px;margin:0 auto;padding:20px 16px 60px}h1{font-size:22px;margin:8px 0 2px;color:#0b1f3a}.org{color:#5b6675;font-size:14px;margin-bottom:16px}
+.c{background:#fff;border-radius:10px;padding:18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+label{display:block;font-weight:700;font-size:13px;margin:12px 0 4px}input,select,textarea{width:100%;padding:10px;border:1px solid #c9d1dc;border-radius:6px;font:inherit;font-size:14px}
+textarea{min-height:150px}button{background:#0b1f3a;color:#fff;border:0;border-radius:6px;padding:11px 18px;font-size:14px;font-weight:700;cursor:pointer;margin-top:14px}
+button.s{background:#e4e9f0;color:#0b1f3a}.pol{font-size:13px;line-height:1.6;white-space:pre-wrap;color:#34404f}.err{color:#b3261e;font-size:13px;margin-top:8px}
+.key{font-family:Consolas,monospace;font-size:20px;background:#eef3fb;padding:10px;border-radius:6px;letter-spacing:1px;word-break:break-all}
+.m{padding:8px 10px;border-radius:6px;margin:6px 0;font-size:13px;white-space:pre-wrap}.m.r{background:#eef3fb}.m.o{background:#f1f8f3}.tabs{display:flex;gap:8px;margin-bottom:12px}
+.tabs button{margin:0}.hide{display:none}small{color:#5b6675}
+</style></head><body><div class="w">
+<h1>Confidential Reporting Channel</h1><div class="org" id="org">Loading…</div>
+<div id="off" class="c hide">This reporting channel is not available. Check the link you were given.</div>
+<div id="app" class="hide">
+<div class="c"><div class="pol" id="pol"></div></div>
+<div class="tabs"><button id="t1" onclick="tab(1)">Report a concern</button><button id="t2" class="s" onclick="tab(2)">Check progress</button></div>
+<div id="p1" class="c"><label>Type of concern</label><select id="cat"><option value="fraud">Fraud or theft</option><option value="safety">Health and safety</option><option value="harassment">Harassment or discrimination</option><option value="corruption">Bribery or corruption</option><option value="environment">Environmental harm</option><option value="privacy">Privacy or data breach</option><option value="other">Other</option></select>
+<label>Describe your concern</label><textarea id="desc" maxlength="8000" placeholder="What happened, when, where and who was involved. Do not include details that identify you unless you choose to."></textarea>
+<label>Contact details <small>(optional: leave empty to stay anonymous)</small></label><input id="con" maxlength="200" autocomplete="off">
+<button onclick="send()">Submit report</button><div class="err" id="e1"></div></div>
+<div id="done" class="c hide"><b>Your report was received.</b><p>Keep these two details. They are the only way to check progress or answer questions without identifying yourself. They cannot be recovered.</p>
+<label>Reference</label><div class="key" id="kr"></div><label>Key</label><div class="key" id="kk"></div></div>
+<div id="p2" class="c hide"><label>Reference</label><input id="sr" autocomplete="off"><label>Key</label><input id="sk" autocomplete="off"><button onclick="check()">Check</button><div class="err" id="e2"></div>
+<div id="st" class="hide" style="margin-top:14px"></div></div>
+</div></div>
+<script>
+const U="https://uzywxhptwavnvpfzbhkb.supabase.co",K="sb_publishable_8XxT0I-Qdmswhd2I-TT_jg_CuI8a24f",T=new URLSearchParams(location.search).get("o")||"";
+async function rpc(n,b){const r=await fetch(U+"/rest/v1/rpc/"+n,{method:"POST",referrerPolicy:"no-referrer",headers:{"apikey":K,"Authorization":"Bearer "+K,"Content-Type":"application/json"},body:JSON.stringify(b)});return r.json()}
+const $=i=>document.getElementById(i),esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const SL={received:"Received",acknowledged:"Acknowledged",investigating:"Being investigated",outcome_given:"Outcome given",closed:"Closed"};
+function tab(n){$("p1").classList.toggle("hide",n!==1);$("p2").classList.toggle("hide",n!==2);$("done").classList.add("hide");$("t1").className=n===1?"":"s";$("t2").className=n===2?"":"s"}
+(async()=>{try{const r=await rpc("speakup_org_info",{p_token:T});if(!r||!r.ok){$("org").textContent="";$("off").classList.remove("hide");return}
+$("org").textContent=r.organisation||"";$("pol").textContent=r.policy||"";$("app").classList.remove("hide");tab(1)}catch(e){$("org").textContent="";$("off").classList.remove("hide")}})();
+async function send(){$("e1").textContent="";const r=await rpc("speakup_submit",{p_token:T,p_category:$("cat").value,p_description:$("desc").value,p_contact:$("con").value});
+if(!r||!r.ok){$("e1").textContent=(r&&r.error)||"Could not submit. Please try again.";return}
+$("p1").classList.add("hide");$("done").classList.remove("hide");$("kr").textContent=r.ref;$("kk").textContent=r.key}
+async function check(){$("e2").textContent="";const r=await rpc("speakup_status",{p_ref:$("sr").value,p_key:$("sk").value});
+if(!r||!r.ok){$("e2").textContent=(r&&r.error)||"Could not check.";$("st").classList.add("hide");return}
+const ms=(r.messages||[]).map(m=>'<div class="m '+(m.from_reporter?"r":"o")+'"><b>'+(m.from_reporter?"You":"Response")+'</b><br>'+esc(m.message)+'</div>').join("");
+$("st").classList.remove("hide");$("st").innerHTML='<b>'+esc(r.ref)+'</b>: '+esc(SL[r.status]||r.status)+(r.outcome?'<div class="m o"><b>Outcome</b><br>'+esc(r.outcome)+'</div>':'')+ms+'<label>Add information or reply</label><textarea id="fm" style="min-height:80px"></textarea><button onclick="fu()">Send</button><div class="err" id="e3"></div>'}
+async function fu(){const r=await rpc("speakup_followup",{p_ref:$("sr").value,p_key:$("sk").value,p_message:$("fm").value});if(!r||!r.ok){$("e3").textContent=(r&&r.error)||"Could not send.";return}check()}
+</script></body></html>
