@@ -148,7 +148,7 @@
   .sb-brand{display:flex; align-items:center; gap:12px; padding:6px 18px 18px; border-bottom:1px solid var(--border-soft); margin-bottom:12px;}
   .sb-brand .ring-mark{width:36px; height:36px;}
   .sb-brand span{font-family:Arial,Helvetica,sans-serif; font-weight:700; font-size:18.5px;}
-  .nav-group-label{font-family:Arial,Helvetica,sans-serif; font-size:10px; color:var(--text-faint); letter-spacing:.1em; text-transform:uppercase; padding:10px 18px 6px;}
+  .nav-group-label{font-family:Arial,Helvetica,sans-serif; font-size:10px; font-weight:700; color:var(--red); letter-spacing:.1em; text-transform:uppercase; padding:10px 18px 6px;}
   .nav-item{display:flex; align-items:center; gap:10px; padding:9px 18px; font-size:13.5px; color:var(--text-dim); border-left:2px solid transparent; transition:all .15s ease; cursor:pointer;}
   .nav-item svg{width:16px; height:16px; flex-shrink:0;}
   .nav-item:hover{color:var(--text); background:var(--grey-tint);}
@@ -201,11 +201,14 @@
   .mr-section{background:#fff; border:1px solid var(--border); border-radius:12px; padding:20px 22px; margin-bottom:16px;}
   .mr-section-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;}
   .mr-section-head h3{font-family:Arial,Helvetica,sans-serif; font-size:15.5px; font-weight:600; color:var(--text);}
-  .mr-stat-row{display:flex; gap:28px; flex-wrap:wrap; margin-bottom:6px;}
-  .mr-stat{min-width:130px;}
-  .mr-stat-value{font-family:Arial,Helvetica,sans-serif; font-size:26px; font-weight:700; line-height:1.1;}
-  .mr-stat-label{font-size:11.5px; color:var(--text-dim); margin-top:2px;}
-  .mr-stat-sub{font-size:10.5px; color:var(--text-faint); margin-top:1px;}
+  /* Release 36: one block style for every information strip above a register (same as Business Health Management) */
+  .oa-tiles,.mr-stat-row{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:14px;}
+  .oa-tile,.mr-stat{background:var(--panel,#fff); border:1px solid var(--border,#E3E1DF); border-radius:10px; padding:12px 14px; min-width:0; transition:border-color .15s ease, box-shadow .15s ease;}
+  .oa-tile b,.mr-stat-value{display:block; font-family:Arial,Helvetica,sans-serif; font-size:22px; font-weight:700; line-height:1.15;}
+  .oa-tile span,.mr-stat-label{display:block; font-size:11px; color:var(--text-dim,#615C59); margin-top:3px; line-height:1.35;}
+  .oa-tile small,.mr-stat-sub{display:block; font-size:10.5px; color:var(--text-faint,#9C9895); margin-top:1px;}
+  .oa-tile[onclick],.mr-stat[onclick]{cursor:pointer;}
+  .oa-tile[onclick]:hover,.mr-stat[onclick]:hover{border-color:var(--red,#B21616); box-shadow:0 2px 10px rgba(30,28,27,.08);}
   .mr-subhead{font-family:Arial,Helvetica,sans-serif; font-size:10px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.05em; margin:14px 0 8px;}
   .mr-bar{display:flex; height:14px; border-radius:7px; overflow:hidden; background:var(--border-soft); margin-bottom:8px;}
   .mr-bar-legend{display:flex; gap:16px; flex-wrap:wrap; font-size:11.5px; color:var(--text-dim);}
@@ -329,8 +332,6 @@
   .wd-open{font-size:11.5px; font-weight:600; color:var(--wd-c);}
 
   /* Report sections — stat tiles + segmented bars */
-  .mr-stat{padding:10px 14px; border-radius:12px; background:var(--bg); transition:transform .2s, box-shadow .2s, background .2s;}
-  .mr-stat:hover{transform:translateY(-3px); background:#fff; box-shadow:0 8px 22px rgba(30,28,27,.12);}
   .mr-bar.wd-bar{height:16px; gap:2px; overflow:visible; background:transparent; border-radius:0;}
   .wd-seg{border-radius:4px; transition:transform .2s, filter .2s; min-width:6px; outline:none;}
   .wd-seg:hover,.wd-seg:focus-visible{transform:scaleY(1.45); filter:brightness(1.1);}
@@ -23061,7 +23062,7 @@ function renderComplianceDashboard(){
       html += `<div class="wd-panel" style="display:flex;flex-wrap:wrap;align-items:center;gap:18px;padding:14px 20px;margin-bottom:14px;">
         <div style="font-size:34px;font-weight:900;line-height:1;color:${WD_BRIGHT[hst.key]};">${Math.round(health.score)}%</div>
         <div style="flex:1;min-width:220px;"><div style="font-size:13px;font-weight:800;">Compliance average: ${hst.label}</div>
-        <div style="font-size:12px;color:var(--text-dim);margin-top:2px;">The average of ${health.components.length} live indicator${health.components.length===1?'':'s'}, each carrying equal weight${low ? '. Lowest: ' + wdEsc(low.label) + ' at ' + Math.round(low.value) + '%' : ''}. The same figure is shown next to the welcome message on the Overview.</div></div></div>`;
+        <div style="font-size:12px;color:var(--text-dim);margin-top:2px;">The average of ${health.components.length} live indicator${health.components.length===1?'':'s'}, each carrying equal weight${low ? '. Lowest: ' + wdEsc(low.label) + ' at ' + Math.round(low.value) + '%' : ''}. The same figure is shown on the Overview.</div></div></div>`;
     }
     html += `<div class="wd-hero">
       <div class="wd-panel wd-dial-card">
@@ -30676,8 +30677,8 @@ RENDERERS.overview = () => {
   ].join('');
   return `<div class="ovx">
     <div class="ovx-hero"><div style="flex:1;min-width:240px;position:relative;z-index:1;"><div class="ovx-eye">${escapeHtml(STATE.org.name)} · ${fmtDate(today)}</div>
-      <h2>${greet}${first?', '+escapeHtml(first):''}${(hs.score!=null && (hs.components||[]).length) ? ` <span onclick="showModule('compliance')" title="Open the compliance dashboard" style="cursor:pointer;display:inline-block;vertical-align:middle;margin-left:10px;padding:5px 12px;border-radius:999px;font-size:13px;font-weight:800;letter-spacing:.02em;background:${col};color:#fff;white-space:nowrap;">Compliance average ${hs.score}%</span>` : ''}</h2>
-      <div class="ovx-sub">${overdueNC.length+overdueTasks.length ? `${overdueNC.length+overdueTasks.length} item${overdueNC.length+overdueTasks.length===1?'':'s'} need your attention today.` : 'Nothing is overdue. Keep the momentum going.'} ${hs.score!=null ? 'Your live compliance average is shown next to the welcome and on the right.' : 'Start using the registers to build your live compliance health score.'}</div></div>
+      <h2>${greet}${first?', '+escapeHtml(first):''}</h2>
+      <div class="ovx-sub">${overdueNC.length+overdueTasks.length ? `${overdueNC.length+overdueTasks.length} item${overdueNC.length+overdueTasks.length===1?'':'s'} need your attention today.` : 'Nothing is overdue. Keep the momentum going.'} ${hs.score!=null ? 'Your live compliance average is shown on the right.' : 'Start using the registers to build your live compliance health score.'}</div></div>
       <div class="ovx-ring" style="background:conic-gradient(${col} ${hs.score==null?0:hs.score*3.6}deg,rgba(255,255,255,.15) 0);cursor:pointer;" onclick="showModule('compliance')"><div><b>${hs.score==null?'—':hs.score}</b><span>Compliance average</span></div></div></div>
     <div class="ovx-tiles">${tile(openNC.length,'Open nonconformances','k','nonconformances')}${tile(overdueNC.length,'Overdue nonconformances',overdueNC.length?'r':'g','nonconformances')}${tile(openTasks.length,'Open tasks','o','tasks')}${tile(overdueTasks.length,'Overdue tasks',overdueTasks.length?'r':'g','tasks')}${tile(hiRisks.length,'High risks',hiRisks.length?'o':'g','risks')}</div>
     <div class="ovx-grid">
@@ -31544,12 +31545,11 @@ window.brandFromLogo = function(){
   .mdr-hero{background:linear-gradient(135deg,var(--charcoal,#26241F),#3b3733);color:#fff;border-radius:16px;padding:22px 24px;margin-bottom:16px;font-family:Arial,Helvetica,sans-serif}
   .mdr-hero h3{margin:0 0 4px;font-size:20px;color:#fff}
   .mdr-hero p{margin:0 0 16px;font-size:13px;opacity:.82;line-height:1.5;max-width:880px}
-  .mdr-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
-  .mdr-tile{border-radius:12px;padding:14px 16px;background:rgba(255,255,255,.1);border-left:6px solid #2E7D32}
-  .mdr-tile.bad{border-left-color:#E53935;background:rgba(229,57,53,.2)}
-  .mdr-tile.warn{border-left-color:#FB8C00;background:rgba(251,140,0,.2)}
-  .mdr-tile b{display:block;font-size:34px;line-height:1;font-weight:800}
-  .mdr-tile span{display:block;margin-top:6px;font-size:12px;letter-spacing:.3px;text-transform:uppercase;opacity:.9}
+  .mdr-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+  .mdr-tile{border-radius:10px;padding:12px 14px;background:var(--panel,#fff);border:1px solid var(--border,#E3E1DF);color:var(--text)}
+  .mdr-tile b{display:block;font-size:22px;line-height:1.15;font-weight:700;color:var(--green)}
+  .mdr-tile.bad b{color:var(--red)}.mdr-tile.warn b{color:var(--amber)}
+  .mdr-tile span{display:block;margin-top:3px;font-size:11px;color:var(--text-dim,#615C59)}
   .mdr-step{display:flex;align-items:center;gap:10px;margin:22px 0 8px;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--text-dim,#555)}
   .mdr-step i{font-style:normal;width:24px;height:24px;border-radius:50%;background:var(--red);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:12px}
   #admin-subtab-content .mdr-seq table tr.mdr-bad td{background:rgba(229,57,53,.07)}
@@ -31989,10 +31989,10 @@ window.brandFromLogo = function(){
   .ds-empty{padding:10px 12px;font-size:12.5px;color:#888}
   .ds-hint{font-size:11px;color:#8a8a8a;margin-top:3px}
   /* master register page */
-  .mr2-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:14px 0 4px}
-  .mr2-tile{border-radius:14px;padding:14px 16px;background:#14171F;color:#fff}
-  .mr2-tile b{display:block;font-size:26px}.mr2-tile span{font-size:11.5px;color:#B7BECC;text-transform:uppercase;letter-spacing:.06em}
-  .mr2-tile.g b{color:#6EE07A}.mr2-tile.r b{color:#FF8A80}.mr2-tile.o b{color:#FFB74D}
+  .mr2-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0 4px}
+  .mr2-tile{border-radius:10px;padding:12px 14px;background:var(--panel,#fff);border:1px solid var(--border,#E3E1DF);color:var(--text)}
+  .mr2-tile b{display:block;font-size:22px;font-weight:700;line-height:1.15}.mr2-tile span{display:block;font-size:11px;color:var(--text-dim,#615C59);margin-top:3px}
+  .mr2-tile.g b{color:var(--green)}.mr2-tile.r b{color:var(--red)}.mr2-tile.o b{color:var(--amber)}
   `; document.head.appendChild(css);
   const _t=toast;
   toast=function(msg,kind){
@@ -32197,8 +32197,8 @@ window.brandFromLogo = function(){
   .prog-grid .h{background:#14171F;color:#fff;font-weight:700;font-size:11px;letter-spacing:.08em;text-transform:uppercase}
   .prog-c{justify-content:center;gap:6px;flex-wrap:wrap}.prog-b{display:inline-block;min-width:24px;text-align:center;border-radius:99px;padding:3px 9px;font-weight:700;font-size:11.5px;color:#fff}
   .prog-b.done{background:#2E7D32}.prog-b.plan{background:#EF6C00}.prog-b.over{background:#C62828}
-  .prog-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:12px 0 16px}
-  .prog-t{border-radius:14px;padding:14px 16px;background:#14171F;color:#fff}.prog-t b{display:block;font-size:26px}.prog-t span{font-size:11px;color:#B7BECC;text-transform:uppercase;letter-spacing:.06em}
+  .prog-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0 14px}
+  .prog-t{border-radius:10px;padding:12px 14px;background:var(--panel,#fff);border:1px solid var(--border,#E3E1DF);color:var(--text)}.prog-t b{display:block;font-size:22px;font-weight:700;line-height:1.15}.prog-t span{display:block;font-size:11px;color:var(--text-dim,#615C59);margin-top:3px}
   `; document.head.appendChild(css);
 
   /* ---------- plan form ---------- */
@@ -32343,7 +32343,7 @@ window.brandFromLogo = function(){
     wrap.innerHTML=`<div class="detail-card"><div class="panel-head"><h3>Audit Programme</h3>
         <div style="display:flex;gap:8px;align-items:center;"><select onchange="renderAuditProgramme(this.value)">${yrs}</select><button class="btn-small primary" onclick="switchAuditSubtab('plan'); setTimeout(()=>{ var f=document.getElementById('af-title'); if(f&&!f.offsetParent&&typeof toggleScheduleAuditForm==='function') toggleScheduleAuditForm(); },50)">Plan an audit</button></div></div>
       <p class="wm-hint" style="margin-bottom:6px;">Coverage across the year by standard and discipline, built from your planned and completed audits. Hover a cell for the audit references. Green: completed. Orange: planned. Red: overdue.</p>
-      <div class="prog-tiles"><div class="prog-t"><b>${inYear.length}</b><span>Audits in ${year}</span></div><div class="prog-t"><b style="color:#6EE07A">${done.length}</b><span>Completed</span></div><div class="prog-t"><b style="color:${over.length?'#FF8A80':'#6EE07A'}">${over.length}</b><span>Overdue</span></div><div class="prog-t"><b>${rows.filter(k=>inYear.some(a=>has(a,k))).length}/${rows.length}</b><span>Covered this year</span></div></div>
+      <div class="prog-tiles"><div class="prog-t"><b>${inYear.length}</b><span>Audits in ${year}</span></div><div class="prog-t"><b style="color:#2E7D4F">${done.length}</b><span>Completed</span></div><div class="prog-t"><b style="color:${over.length?'#B21616':'#2E7D4F'}">${over.length}</b><span>Overdue</span></div><div class="prog-t"><b>${rows.filter(k=>inYear.some(a=>has(a,k))).length}/${rows.length}</b><span>Covered this year</span></div></div>
       ${rows.length?`<div class="prog-grid"><div class="h">Standard or discipline</div><div class="h" style="justify-content:center">Q1</div><div class="h" style="justify-content:center">Q2</div><div class="h" style="justify-content:center">Q3</div><div class="h" style="justify-content:center">Q4</div><div class="h">${year} status</div>
         ${rows.map(k=>{ const cov=inYear.some(a=>has(a,k)); const dn=inYear.some(a=>has(a,k)&&['completed','report_issued'].includes(a.status));
           return `<div><b>${escapeHtml(k.slice(2))}</b>${k[0]==='D'?' <span class="wm-chip" style="margin-left:6px">discipline</span>':''}</div>${cell(k,0)}${cell(k,1)}${cell(k,2)}${cell(k,3)}<div>${dn?'<span class="prog-b done">Covered</span>':(cov?'<span class="prog-b plan">Planned</span>':'<span class="prog-b over">No audit</span>')}</div>`; }).join('')}</div>`
@@ -32414,7 +32414,7 @@ window.brandFromLogo = function(){
     const tiles=soaTiles();
     root.innerHTML=`
     ${STATE._soaMissing?'<div class="panel" style="padding:14px 18px;border-left:4px solid #f07a1a;margin-bottom:14px;font-size:13px;">The Statement of Applicability tables are not set up yet. Run <b>qashe-watchman-schema-isms.sql</b> in the Supabase SQL editor, then refresh.</div>':''}
-    <div id="soa-tiles" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px;">${tiles}</div>
+    <div id="soa-tiles" class="oa-tiles">${tiles}</div>
     <div class="toolbar">
       <div class="filters">
         <input id="soa-q" placeholder="Search control number or name" oninput="soaSet('q',this.value)" style="min-width:230px;" value="${E(STATE._soaF.q)}">
@@ -32440,7 +32440,7 @@ window.brandFromLogo = function(){
     const today=new Date().toISOString().slice(0,10);
     const overdue=app.filter(r=>r.review_date&&r.review_date<today).length;
     const noJust=rows.filter(r=>!r.applicable&&!r.justification.trim()).length;
-    const t=(n,l,c)=>`<div class="panel" style="padding:14px 16px;border-top:4px solid ${c};"><div style="font-size:28px;font-weight:800;line-height:1;">${n}</div><div style="font-size:11.5px;color:var(--text-faint);margin-top:6px;">${l}</div></div>`;
+    const t=(n,l,c)=>`<div class="oa-tile"><b style="color:${c}">${n}</b><span>${l}</span></div>`;
     return t(SOA_CONTROLS.length,'controls in ISO/IEC 27002:2022','#0b1f3a')+t(app.length,'applicable','#2e9e5b')+t(SOA_CONTROLS.length-app.length,'not applicable','#9aa3ad')+t(app.length?Math.round(done/app.length*100)+'%':'0%','of applicable controls implemented','#2e9e5b')+t(noOwner,'applicable without an owner',noOwner?'#f07a1a':'#2e9e5b')+t(overdue,'reviews overdue',overdue?'#d4262c':'#2e9e5b')+t(noJust,'exclusions without a justification',noJust?'#d4262c':'#2e9e5b');
   }
   function filtered(){
@@ -32647,9 +32647,9 @@ window.brandFromLogo = function(){
     const root=document.getElementById('ia-root'); if(!root) return; root.innerHTML='<p style="padding:24px;color:var(--text-faint);">Loading…</p>';
     await loadIa();
     const a=STATE.infoAssets; const crit=a.filter(x=>x.criticality>=3||x.classification==='Restricted').length; const noOwner=a.filter(x=>!x.owner_id).length; const pii=a.filter(x=>x.personal_info).length;
-    const t=(n,l,c)=>`<div class="panel" style="padding:14px 16px;border-top:4px solid ${c};"><div style="font-size:28px;font-weight:800;line-height:1;">${n}</div><div style="font-size:11.5px;color:var(--text-faint);margin-top:6px;">${l}</div></div>`;
+    const t=(n,l,c)=>`<div class="oa-tile"><b style="color:${c}">${n}</b><span>${l}</span></div>`;
     root.innerHTML=`${STATE._iaMissing?'<div class="panel" style="padding:14px 18px;border-left:4px solid #f07a1a;margin-bottom:14px;font-size:13px;">Run <b>qashe-watchman-schema-threat-intel.sql</b> in the Supabase SQL editor, then refresh.</div>':''}
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px;">${t(a.length,'assets registered','#0b1f3a')}${t(crit,'critical or restricted','#d4262c')}${t(pii,'hold personal information','#f07a1a')}${t(noOwner,'without an owner',noOwner?'#f07a1a':'#2e9e5b')}</div>
+    <div class="oa-tiles">${t(a.length,'assets registered','#0b1f3a')}${t(crit,'critical or restricted','#d4262c')}${t(pii,'hold personal information','#f07a1a')}${t(noOwner,'without an owner',noOwner?'#f07a1a':'#2e9e5b')}</div>
     <div class="toolbar"><div class="filters"><input id="ia-q" placeholder="Search assets" oninput="iaRenderTable()" style="min-width:220px;"></div>
       <button class="btn-small" onclick="iaImportAssets()">Import from Assets and Maintenance</button><button class="btn-small" onclick="iaExport()">Export Excel</button><button class="btn-primary btn-add" onclick="iaEdit('')">Add asset</button></div>
     <div id="ia-edit-slot"></div><div class="panel" style="padding:0;overflow:hidden;"><div id="ia-table"></div></div>`;
@@ -32711,9 +32711,9 @@ window.brandFromLogo = function(){
     const c=getCtx(); const th=STATE.threats; const open=th.filter(t=>t.status!=='closed'&&t.status!=='accepted');
     const unrev=th.filter(t=>!t.reviewed_at).length; const high=open.filter(t=>score(t)>=15).length; const today=new Date().toISOString().slice(0,10); const over=open.filter(t=>t.due_date&&t.due_date<today).length;
     const last=th.filter(t=>t.source==='ai_briefing')[0]; const days=last?Math.floor((Date.now()-new Date(last.created_at))/864e5):null;
-    const tile=(n,l,col)=>`<div class="panel" style="padding:14px 16px;border-top:4px solid ${col};"><div style="font-size:28px;font-weight:800;line-height:1;">${n}</div><div style="font-size:11.5px;color:var(--text-faint);margin-top:6px;">${l}</div></div>`;
+    const tile=(n,l,col)=>`<div class="oa-tile"><b style="color:${col}">${n}</b><span>${l}</span></div>`;
     root.innerHTML=`${STATE._tiMissing?'<div class="panel" style="padding:14px 18px;border-left:4px solid #f07a1a;margin-bottom:14px;font-size:13px;">Run <b>qashe-watchman-schema-threat-intel.sql</b> in the Supabase SQL editor, then refresh.</div>':''}
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px;">${tile(open.length,'open threats','#0b1f3a')}${tile(high,'high priority (score 15 or more)',high?'#d4262c':'#2e9e5b')}${tile(unrev,'AI items awaiting human review',unrev?'#f07a1a':'#2e9e5b')}${tile(over,'actions overdue',over?'#d4262c':'#2e9e5b')}${tile(days==null?'Never':days+' d','since the last AI briefing',days==null||days>30?'#f07a1a':'#2e9e5b')}</div>
+    <div class="oa-tiles">${tile(open.length,'open threats','#0b1f3a')}${tile(high,'high priority (score 15 or more)',high?'#d4262c':'#2e9e5b')}${tile(unrev,'AI items awaiting human review',unrev?'#f07a1a':'#2e9e5b')}${tile(over,'actions overdue',over?'#d4262c':'#2e9e5b')}${tile(days==null?'Never':days+' d','since the last AI briefing',days==null||days>30?'#f07a1a':'#2e9e5b')}</div>
     <div class="panel" style="padding:16px 18px;margin-bottom:16px;"><div class="panel-head"><h3>Your context (sharpens the analysis)</h3></div>
       <div class="form-grid"><div class="field span2"><label>Country and sector</label><input id="ti-sector" value="${E(c.sector||'')}" placeholder="For example: South Africa, engineering and consulting services"></div>
       <div class="field span3"><label>Technologies and services in use</label><input id="ti-tech" value="${E(c.tech||'')}" placeholder="Microsoft 365, Windows laptops, Supabase, WhatsApp, Sage, mobile phones"></div></div>
@@ -32972,7 +32972,7 @@ window.brandFromLogo = function(){
     const popia=(STATE.secIncidents||[]).filter(s=>s.personal_info_involved&&(!s.regulator_notified_at||!s.subjects_notified_at)).length;
     const noOwn=(STATE.infoAssets||[]).filter(a=>!a.owner_id).length;
     if(!soa.length&&!(STATE.threats||[]).length&&!(STATE.secIncidents||[]).length&&!(STATE.infoAssets||[]).length) return '';
-    const k=(n,l,c,m)=>`<div onclick="showModule('${m}')" style="cursor:pointer;padding:12px 14px;border-radius:10px;border:1px solid var(--border);border-top:4px solid ${c};"><div style="font-size:24px;font-weight:800;line-height:1;">${n}</div><div style="font-size:11.5px;color:var(--text-faint);margin-top:5px;">${l}</div></div>`;
+    const k=(n,l,c,m)=>`<div class="oa-tile" onclick="showModule('${m}')"><b style="color:${c}">${n}</b><span>${l}</span></div>`;
     return `<div class="panel" id="isms-glance"><div class="panel-head"><h3 style="margin-bottom:0;">Information security at a glance</h3><button class="btn-small" onclick="showModule('soa')">Statement of Applicability</button></div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:10px;">${k(pct==null?'-':pct+'%','applicable controls implemented','#2e9e5b','soa')}${k(hi,'high priority threats',hi?'#d4262c':'#2e9e5b','threat_intel')}${k(unrev,'AI threat items to review',unrev?'#f07a1a':'#2e9e5b','threat_intel')}${k(inc,'open security incidents',inc?'#f07a1a':'#2e9e5b','nonconformances')}${k(popia,'POPIA notifications outstanding',popia?'#d4262c':'#2e9e5b','nonconformances')}${k(noOwn,'information assets without an owner',noOwn?'#f07a1a':'#2e9e5b','info_assets')}</div></div>`;
   }
@@ -33088,7 +33088,7 @@ window.brandFromLogo = function(){
     if(!noReload){ root.innerHTML='<p style="padding:24px;color:var(--text-faint);">Loading…</p>'; await loadGov(); }
     const today=new Date().toISOString().slice(0,10), yr=new Date().getFullYear(); const R=k=>STATE.govRecords.filter(r=>r.kind===k);
     const last=asmts().find(a=>a.status==='final'); const avg=last?avgOf(last.scores):null;
-    const t=(n,l,c)=>`<div class="panel" style="padding:14px 16px;border-top:4px solid ${c};"><div style="font-size:28px;font-weight:800;line-height:1;">${n}</div><div style="font-size:11.5px;color:var(--text-faint);margin-top:6px;">${l}</div></div>`;
+    const t=(n,l,c)=>`<div class="oa-tile"><b style="color:${c}">${n}</b><span>${l}</span></div>`;
     const mat=(l)=>t(avg==null?'-':avg.toFixed(1)+' / 4',l,avg==null?'#9aa3ad':lvlColour(Math.round(avg)));
     let tiles='';
     if(mode==='governance'){
@@ -33106,7 +33106,7 @@ window.brandFromLogo = function(){
     }
     const tabName=k=>k==='principles'?FW[govFw()].label:KINDS[k].tab;
     root.innerHTML=`${STATE._govMissing?'<div class="panel" style="padding:14px 18px;border-left:4px solid #f07a1a;margin-bottom:14px;font-size:13px;">Run <b>qashe-watchman-schema-governance.sql</b> and <b>qashe-watchman-schema-enterprise.sql</b> in the Supabase SQL editor, then refresh.</div>':''}
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px;">${tiles}</div>
+    <div class="oa-tiles">${tiles}</div>
     <div class="toolbar"><div class="filters" style="flex-wrap:wrap;">${TABS[mode].map(k=>`<button class="btn-small ${STATE._govTab===k?'primary':''}" onclick="govTab('${k}')">${tabName(k)}</button>`).join('')}</div></div>
     <div id="gov-body"></div>`;
     if(STATE._govTab==='principles') renderPrinciples(); else renderRegister(STATE._govTab);
@@ -39108,7 +39108,7 @@ async function renderNcResponsePage(token){
     const nm = by('near_miss').length;
     return { by, openN, overdue, acc, lti, lost:acc.reduce((a,n) => a + (n.lost_time_days || 0), 0), days, ratio: acc.length ? (nm / acc.length).toFixed(1) : null, nm };
   }
-  function tile(v, l, c){ return `<div class="detail-card" style="padding:14px;"><div style="font-size:26px;font-weight:800;color:${c||'inherit'};">${v}</div><div style="font-size:12px;color:var(--text-faint);">${l}</div></div>`; }
+  function tile(v, l, c){ return `<div class="oa-tile"><b${c && c!=='inherit' ? ` style="color:${c}"` : ''}>${v}</b><span>${l}</span></div>`; }
   function periodBar(){ const f = F(); return `<div class="toolbar"><div class="filters"><select onchange="ianSet2('period',this.value)"><option value="12m" ${f.period==='12m'?'selected':''}>Last 12 months</option><option value="ytd" ${f.period==='ytd'?'selected':''}>This year</option><option value="last" ${f.period==='last'?'selected':''}>Last year</option><option value="all" ${f.period==='all'?'selected':''}>All time</option></select>
       <label style="font-size:12.5px;display:inline-flex;gap:6px;align-items:center;cursor:pointer;"><input type="checkbox" style="width:auto;" ${f.all?'checked':''} onchange="ianSet2('all',this.checked)"> Include nonconformances</label></div></div>`; }
   window.ianSet2 = (k, v) => { F()[k] = v; renderIan(); };
@@ -39118,7 +39118,7 @@ async function renderNcResponsePage(token){
     const body = document.getElementById('ian-body'); if(!body) return; const set = statSet(), s = summary(set), cr = catRows(set);
     const sev = ['critical','major','minor'].map(k => [label(k), set.filter(n => n.severity === k).length]);
     const locs = {}; set.forEach(n => { if(n.location) locs[n.location.trim()] = (locs[n.location.trim()] || 0) + 1; });
-    body.innerHTML = periodBar() + `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:12px 0;">
+    body.innerHTML = periodBar() + `<div class="oa-tiles" style="margin:12px 0;">
         ${tile(set.length, 'records in this period')}${tile(s.by('incident').length, 'incidents', CLS.incident[1])}${tile(s.acc.length, 'accidents', CLS.accident[1])}${tile(s.nm, 'near misses', CLS.near_miss[1])}
         ${tile(s.openN.length, 'still open')}${tile(s.overdue.length, 'overdue', s.overdue.length ? '#B3261E' : '#2E7D4F')}${tile(s.lti.length, 'lost time injuries or fatalities', s.lti.length ? '#B3261E' : '#2E7D4F')}${tile(s.lost, 'days lost')}
         ${tile(s.days == null ? '—' : s.days, 'days since the last accident', s.days != null && s.days > 90 ? '#2E7D4F' : 'inherit')}${tile(s.ratio == null ? '—' : s.ratio + ' : 1', 'near misses reported per accident')}</div>
@@ -40112,7 +40112,7 @@ async function renderNcResponsePage(token){
   const openOpps = () => D().opps.filter(o => !['won','lost'].includes(o.stage) && ownerOk(o));
   const lastContact = cid => { const a = D().acts.filter(x => x.customer_id === cid && x.status === 'done').map(x => day(x.completed_at || x.scheduled_for)).sort().pop(); return a || null; };
   const satAvg = cid => { try{ const s = custSurveyStats(cid); return s.avg; }catch(e){ return null; } };
-  const tile = (v, l, c, go) => `<div class="detail-card" ${go ? `style="padding:14px;cursor:pointer;" onclick="${go}"` : 'style="padding:14px;"'}><div style="font-size:24px;font-weight:800;color:${c || 'inherit'};">${v}</div><div style="font-size:12px;color:var(--text-faint);">${l}</div></div>`;
+  const tile = (v, l, c, go) => `<div class="oa-tile" ${go ? `onclick="${go}"` : ''}><b${c ? ` style="color:${c}"` : ''}>${v}</b><span>${l}</span></div>`;
   const tb = (k, l) => `<button class="btn-small ${tab() === k ? 'primary' : ''}" onclick="crmTab('${k}')">${l}</button>`;
   const field = (id, l, h, span) => `<div class="field ${span || ''}"><label>${l}</label>${h}</div>`;
   const opts = (map, sel) => Object.keys(map).map(k => `<option value="${k}" ${k === sel ? 'selected' : ''}>${map[k]}</option>`).join('');
@@ -40146,7 +40146,7 @@ async function renderNcResponsePage(token){
     const noPlan = cs.filter(c => ['strategic','key'].includes(c.tier) && !D().plans.some(p => p.customer_id === c.id && p.plan_year === yr()));
     const closing = op.filter(o => o.expected_close && o.expected_close <= addDays(30)).sort((a,b) => a.expected_close.localeCompare(b.expected_close));
     const list = (arr, f, none) => arr.length ? arr.slice(0, 8).map(f).join('') : `<p style="font-size:12.5px;color:var(--text-faint);">${none}</p>`;
-    body(`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px;margin:12px 0;">
+    body(`<div class="oa-tiles" style="margin:12px 0;">
       ${tile(money(pipe), 'open pipeline', null, "crmTab('pipeline')")}${tile(money(wtd), 'weighted forecast')}${tile(money(wonV), `won in ${yr()}`, '#2E7D4F')}
       ${tile(tg ? Math.round(wonV / tg * 100) + '%' : '—', tg ? `of target to date (${money(tg)})` : 'target not set', tg && wonV >= tg ? '#2E7D4F' : '#B8791C', "crmTab('plan')")}
       ${tile(wr === null ? '—' : wr + '%', 'win rate')}${tile(over.length, 'activities overdue', over.length ? '#B3261E' : '#2E7D4F', "crmTab('activities')")}${tile(today.length, 'activities today')}
@@ -42596,11 +42596,15 @@ window.WMTutorial = { open, lessons: () => Object.keys(window.WMLESSONS || {}), 
     const rows=kpiRows(key);
     box.style.display='';
     box.innerHTML=`<div class="wd-h"><h3>${E(title)}: Key Performance Indicators</h3><span><button class="btn-small primary" onclick="${key==='audits_ext'?`showModule('audits');switchAuditSubtab('external')`:`showModule('${key}')`}">Open ${E(title)}</button> <button class="btn-small" onclick="wdKpi('${key}')">Close</button></span></div>`+
-      (rows.length?`<table><tr><th>Indicator</th><th>Status</th><th>Detail</th></tr>${rows.map(r=>`<tr><td class="strong">${E(r.label)}</td><td><span class="date-badge ${ST[r.status][1]}"><span class="dd"></span>${ST[r.status][0]}</span></td><td style="font-size:12.5px;color:var(--text-dim)">${E(r.detail)}</td></tr>`).join('')}</table>`:`<p style="font-size:13px;color:var(--text-dim)">Nothing recorded in this module yet, so there are no indicators to show.</p>`);
+      (rows.length?(()=>{ const CL={pass:'#2E7D4F',partial:'#D98A00',fail:'#B21616',nodata:'#6B7A90'}; const cnt={pass:0,partial:0,fail:0,nodata:0}; rows.forEach(r=>cnt[r.status]++); const sc=rows.filter(r=>r.status!=='nodata').length||1;
+        const strip=['pass','partial','fail'].filter(k=>cnt[k]).map(k=>`<i style="width:${cnt[k]/sc*100}%;background:${CL[k]}" title="${ST[k][0]}: ${cnt[k]}"></i>`).join('');
+        const tiles=`<div class="oa-tiles" style="margin-bottom:12px"><div class="oa-tile"><b style="color:#2E7D4F">${cnt.pass}</b><span>Met</span></div><div class="oa-tile"><b style="color:#D98A00">${cnt.partial}</b><span>Watch</span></div><div class="oa-tile"><b style="color:#B21616">${cnt.fail}</b><span>Gaps</span></div><div class="oa-tile"><b style="color:#6B7A90">${cnt.nodata}</b><span>Information</span></div></div><div class="kpi-strip">${strip}</div>`;
+        const list=rows.map(r=>{ const m=/\((\d+)%\)/.exec(r.detail||''); const pc=m?+m[1]:null; return `<div class="kpi-row"><span class="kpi-dot" style="background:${CL[r.status]}"></span><div class="kpi-main"><div class="kpi-l">${E(r.label)}</div><div class="kpi-d">${E(r.detail)}</div>${pc!==null?`<div class="kpi-bar"><i style="width:${Math.max(pc?2:0,pc)}%;background:${CL[r.status]}"></i></div>`:''}</div><span class="date-badge ${ST[r.status][1]}"><span class="dd"></span>${ST[r.status][0]}</span></div>`; }).join('');
+        return tiles+`<div class="kpi-list">${list}</div>`; })():`<p style="font-size:13px;color:var(--text-dim)">Nothing recorded in this module yet, so there are no indicators to show.</p>`);
     document.querySelectorAll('#compliance-report .wd-card').forEach(c=>c.classList.toggle('wd-sel',(c.getAttribute('onclick')||'').includes("wdKpi('"+key+"')")));
     box.scrollIntoView({behavior:'smooth',block:'nearest'});
   };
-  const css=document.createElement('style'); css.textContent='#compliance-report .wd-card.wd-sel{outline:2px solid var(--accent,#A52A22);outline-offset:2px}#wd-kpi-panel{margin:6px 0 22px;padding:16px 18px;border:1px solid var(--border,#ddd);border-radius:12px;background:var(--surface,#fff)}';
+  const css=document.createElement('style'); css.textContent='#compliance-report .wd-card.wd-sel{outline:2px solid var(--accent,#A52A22);outline-offset:2px}#wd-kpi-panel{margin:6px 0 22px;padding:16px 18px;border:1px solid var(--border,#ddd);border-radius:14px;background:var(--surface,#fff);box-shadow:0 1px 2px rgba(20,30,50,.04),0 4px 14px rgba(20,30,50,.04)}#wd-kpi-panel .kpi-strip{display:flex;height:8px;border-radius:999px;overflow:hidden;background:#eff2f6;margin:0 0 14px;gap:2px}#wd-kpi-panel .kpi-strip i{display:block;height:8px}#wd-kpi-panel .kpi-row{display:flex;align-items:flex-start;gap:12px;padding:11px 2px;border-bottom:1px solid #eef0f4}#wd-kpi-panel .kpi-row:last-child{border:0}#wd-kpi-panel .kpi-dot{width:9px;height:9px;border-radius:50%;margin-top:5px;flex:none}#wd-kpi-panel .kpi-main{flex:1;min-width:0}#wd-kpi-panel .kpi-l{font-weight:700;font-size:13px}#wd-kpi-panel .kpi-d{font-size:12px;color:var(--text-dim);margin-top:2px}#wd-kpi-panel .kpi-bar{height:5px;border-radius:999px;background:#eff2f6;margin-top:7px;overflow:hidden}#wd-kpi-panel .kpi-bar i{display:block;height:5px;border-radius:999px}';
   document.head.appendChild(css);
   const _rd=renderComplianceDashboard;
   renderComplianceDashboard=window.renderComplianceDashboard=function(){
@@ -44610,7 +44614,7 @@ ask:'How do you control who has access to what?'};
   }
 
   /* ---------- dashboard ---------- */
-  const tile = (l, v, sub) => `<div class="detail-card" style="padding:14px 16px;flex:1;min-width:170px;"><div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;">${l}</div><div style="font-size:22px;font-weight:800;margin-top:4px;">${v}</div>${sub ? `<div style="font-size:11.5px;color:var(--text-dim);margin-top:2px;">${sub}</div>` : ''}</div>`;
+  const tile = (l, v, sub) => `<div class="oa-tile"><b>${v}</b><span>${l}</span>${sub ? `<small>${sub}</small>` : ''}</div>`;
   function dashHtml(){
     const d = D(), b = S().base_currency || 'ZAR', yr = String(new Date().getFullYear());
     const qs = d.quotes, open = qs.filter(q => quoteStatus(q) === 'sent'), won = qs.filter(q => ['accepted','invoiced'].includes(q.status)), lost = qs.filter(q => q.status === 'declined');
@@ -44620,7 +44624,7 @@ ask:'How do you control who has access to what?'};
     const overdue = outstanding.filter(i => invStatus(i) === 'overdue');
     const invYear = d.invoices.filter(i => i.status !== 'draft' && i.status !== 'cancelled' && String(i.issue_date).startsWith(yr));
     const awaitingInvoice = d.pos.filter(p => p.status === 'received');
-    return `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+    return `<div class="oa-tiles">
       ${tile('Quotes awaiting response', open.length, money(sum(open, x => x.total), b))}
       ${tile('Win rate', winRate == null ? '—' : winRate + '%', `${won.length} accepted, ${lost.length} declined`)}
       ${tile('Invoiced this year', money(sum(invYear, x => x.total), b), invYear.length + ' invoices')}
@@ -45272,8 +45276,8 @@ Prices must be in ${doc.currency}. If you are unsure of a price, set it to your 
     if(f.type) rows = rows.filter(p => p.project_type === f.type);
     if(f.mine) rows = rows.filter(p => p.owner_id === STATE.user.id || d.members.some(m => m.project_id === p.id && m.user_id === STATE.user.id));
     const all = d.projects.filter(p => !['completed','cancelled'].includes(p.status)), sts = all.map(stats);
-    const tile = (l, v, c) => `<div class="detail-card" style="padding:12px 16px;flex:1;min-width:140px;"><div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;">${l}</div><div style="font-size:24px;font-weight:800;color:${c || 'inherit'};">${v}</div></div>`;
-    return `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+    const tile = (l, v, c) => `<div class="oa-tile"><b${c ? ` style="color:${c}"` : ''}>${v}</b><span>${l}</span></div>`;
+    return `<div class="oa-tiles">
       ${tile('Open projects', all.length)}${tile('Off track', sts.filter(s => s.health === 'red').length, sts.some(s => s.health === 'red') ? '#B3261E' : '')}${tile('At risk', sts.filter(s => s.health === 'amber').length, sts.some(s => s.health === 'amber') ? '#B26A16' : '')}
       ${tile('Overdue project tasks', sts.reduce((s, x) => s + x.overdue, 0), sts.some(s => s.overdue) ? '#B3261E' : '')}${tile('Completed', d.projects.filter(p => p.status === 'completed').length)}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
@@ -46142,7 +46146,7 @@ Prices must be in ${doc.currency}. If you are unsure of a price, set it to your 
     const apLate = arr(STATE.appraisals).filter(a => a.status !== 'completed' && a.period_end && a.period_end < tdy()).length;
     const trLate = arr(STATE.training).filter(t => !['completed','cancelled'].includes(t.status) && t.due_date && t.due_date < tdy()).length;
     const dOpen = G().disc.filter(c => c.status !== 'closed').length;
-    const tile = (n, l, c, m) => `<div onclick="${m}" style="cursor:pointer;padding:10px 14px;border-radius:10px;border:1px solid var(--border);border-top:4px solid ${c};min-width:130px;flex:1;"><div style="font-size:22px;font-weight:800;line-height:1;">${n}</div><div style="font-size:11.5px;color:#777;margin-top:4px;">${l}</div></div>`;
+    const tile = (n, l, c, m) => `<div class="oa-tile" onclick="${m}"><b style="color:${c}">${n}</b><span>${l}</span></div>`;
     return `<div id="wb-hub" class="panel" style="margin-bottom:14px;"><div class="panel-head"><h3 style="margin-bottom:0;">People overview</h3></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">${tile(avg + '%', 'average onboarding', ringCol(avg), "document.getElementById('wb-onb-list').open=true")}${tile(low, 'people below 60% onboarded', low ? '#D50000' : '#1B8E3E', "document.getElementById('wb-onb-list').open=true")}${tile(noJd, 'positions without a job description', noJd ? '#EF6C00' : '#1B8E3E', "togglePositionsPanel()")}${tile(apLate, 'appraisals past period end', apLate ? '#EF6C00' : '#1B8E3E', "showModule('appraisals')")}${tile(trLate, 'overdue training', trLate ? '#D50000' : '#1B8E3E', "showModule('training')")}${canAccessModule('disciplinary') ? tile(dOpen, 'open disciplinary cases', dOpen ? '#EF6C00' : '#1B8E3E', "showModule('disciplinary')") : ''}</div>
       <details id="wb-onb-list" style="margin-top:12px;"><summary style="cursor:pointer;font-weight:700;font-size:13px;">Onboarding by person, lowest first</summary>
@@ -46236,8 +46240,8 @@ Prices must be in ${doc.currency}. If you are unsure of a price, set it to your 
     const all = D().disc, open = all.filter(c => c.status !== 'closed'), od = open.filter(caseOverdue).length;
     const live = all.filter(c => c.outcome && c.sanction_valid_until && c.sanction_valid_until >= tdy()).length;
     const rows = all.filter(c => !fStatus || c.status === fStatus).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-    const t = (n, l, c) => `<div style="padding:10px 14px;border-radius:10px;border:1px solid var(--border);border-top:4px solid ${c};min-width:130px;"><div style="font-size:22px;font-weight:800;line-height:1;">${n}</div><div style="font-size:11.5px;color:#777;margin-top:4px;">${l}</div></div>`;
-    return `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">${t(open.length, 'open cases', open.length ? '#EF6C00' : '#1B8E3E')}${t(od, 'with a step overdue', od ? '#D50000' : '#1B8E3E')}${t(live, 'sanctions still valid', '#4B3F72')}${t(all.length, 'cases on record', '#8A8785')}</div>
+    const t = (n, l, c) => `<div class="oa-tile"><b style="color:${c}">${n}</b><span>${l}</span></div>`;
+    return `<div class="oa-tiles">${t(open.length, 'open cases', open.length ? '#EF6C00' : '#1B8E3E')}${t(od, 'with a step overdue', od ? '#D50000' : '#1B8E3E')}${t(live, 'sanctions still valid', '#4B3F72')}${t(all.length, 'cases on record', '#8A8785')}</div>
       <div style="margin-bottom:10px;"><select onchange="daFilter(this.value)"><option value="">All statuses</option>${Object.keys(STATUS).map(k => `<option value="${k}" ${fStatus === k ? 'selected' : ''}>${STATUS[k][0]}</option>`).join('')}</select></div>
       ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Ref</th><th>Employee</th><th>Type</th><th>Status</th><th>Hearing</th><th>Outcome</th><th>Linked KPI</th></tr></thead><tbody>${rows.map(c => `<tr style="cursor:pointer;" onclick="daOpen('${c.id}')"><td class="mono">${E(c.ref_code)}</td><td><b>${E(pname(c.personnel_id))}</b></td><td>${E(TYPES[c.case_type] || c.case_type)}</td><td>${pill(c.status)}${caseOverdue(c) ? ' <span style="color:#D50000;font-weight:800;font-size:11px;">overdue</span>' : ''}</td><td>${c.hearing_date ? fmtDate(day(c.hearing_date)) : '—'}</td><td>${c.outcome ? E(OUTCOME[c.outcome] || c.outcome) : '—'}</td><td>${E(c.linked_kpi || '—')}</td></tr>`).join('')}</tbody></table></div>`
       : '<div class="panel"><p style="margin:0;">No cases yet. Use "Register a case" to start one, or open "How to manage disciplinary action" for the training presentation.</p></div>'}`;
@@ -46453,13 +46457,13 @@ Prices must be in ${doc.currency}. If you are unsure of a price, set it to your 
     root.innerHTML = `<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">${tabs.map(([k, l]) => `<button class="btn-small ${tab === k ? 'primary' : ''}" onclick="bpTab('${k}')">${l}</button>`).join('')}</div><div id="bp-body"></div>`;
     document.getElementById('bp-body').innerHTML = ({ overview:overviewHtml, plan:planHtml, cont:contHtml, succ:succHtml })[tab]();
   }
-  const tile = (n, l, c, on) => `<div ${on ? `onclick="${on}"` : ''} style="${on ? 'cursor:pointer;' : ''}padding:12px 14px;border-radius:10px;border:1px solid var(--border);border-top:4px solid ${c};"><div style="font-size:24px;font-weight:800;line-height:1;">${n}</div><div style="font-size:11.5px;color:#777;margin-top:5px;">${l}</div></div>`;
+  const tile = (n, l, c, on) => `<div class="oa-tile" ${on ? `onclick="${on}"` : ''}><b style="color:${c}">${n}</b><span>${l}</span></div>`;
 
   function overviewHtml(){
     const m = metrics(), ix = index(), gp = gaps();
     return `<div class="panel"><div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;"><div style="width:110px;height:110px;border-radius:50%;background:conic-gradient(${ix == null ? '#ccc' : col(ix)} ${(ix || 0) * 3.6}deg,#e6e3e1 0);display:flex;align-items:center;justify-content:center;"><div style="width:90px;height:90px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;"><b style="font-size:28px;line-height:1;">${ix == null ? '—' : ix + '%'}</b><span style="font-size:9.5px;color:#777;">governance index</span></div></div>
       <div style="flex:1;min-width:260px;"><h3 style="margin:0 0 4px;">Corporate governance at a glance</h3><p style="margin:0;font-size:13px;color:#666;">Direction (business plan and goals), accountability (roles, job descriptions, succession), resilience (continuity), and discipline (people records). The index is the plain average of the measures below, and each measure also appears on the Compliance Dashboard, in Business Health and in the Management Review.</p></div></div></div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:14px 0;">${m.map(x => tile(Math.round(x.value) + '%', E(x.label) + '<br><span style="color:#999;">' + E(x.detail) + '</span>', col(x.value), `showModule('${x.mod}')`)).join('')}</div>
+      <div class="oa-tiles" style="margin:14px 0;">${m.map(x => tile(Math.round(x.value) + '%', E(x.label) + '<br><span style="color:#999;">' + E(x.detail) + '</span>', col(x.value), `showModule('${x.mod}')`)).join('')}</div>
       <div class="panel"><h3 style="margin-top:0;">What to improve next</h3>${gp.length ? '<ul style="margin:0 0 0 18px;font-size:13.5px;line-height:1.7;">' + gp.map(([t, mod]) => `<li><a class="sf-a" style="cursor:pointer" onclick="showModule('${mod}')">${E(t)}</a></li>`).join('') + '</ul>' : '<p style="color:#1B8E3E;font-weight:700;margin:0;">✓ No governance gaps found.</p>'}</div>
       <div class="panel"><h3 style="margin-top:0;">How governance is measured in Watchman</h3><table style="width:100%;font-size:12.5px;border-collapse:collapse;"><tr style="text-align:left;color:#777;"><th>Governance question</th><th>Where it lives</th><th>Standard reference</th></tr>
         ${[['Is there a direction and are we delivering it?','Business plan, goals, objectives','ISO 37000 purpose and strategy; ISO 9001 4.1, 6.2; ISO 9.3.2'],['Do we know and manage the risks and legal duties behind the plan?','Risk register, legal register, goal links','ISO 31000; ISO 9001 6.1; ISO 14001 6.1.3; ISO 45001 6.1.3'],['Are roles, responsibilities and accountabilities defined?','Job descriptions, org charts, appointments','ISO 9001 5.3; ISO 14001 5.3; ISO 45001 5.3; ISO 27001 5.3'],['Can we continue if something goes wrong?','Continuity plans and tests','ISO 22301; ISO 27001 A.5.29, A.5.30'],['Will key roles survive the loss of a key person?','Succession plans','ISO 37000 organisational resilience; ISO 9001 7.1.2'],['Is conduct managed fairly and consistently?','Disciplinary action, KPIs, appraisals','ISO 37001 7.3, 8.8; ISO 9001 7.2'],['Does top management review it all?','Management Review, dashboard snapshot','ISO 9.3 of every standard in scope']].map(r => `<tr style="border-top:1px solid var(--border);"><td style="padding:6px 0;">${r[0]}</td><td>${r[1]}</td><td style="color:#777;">${r[2]}</td></tr>`).join('')}</table></div>`;
@@ -49833,8 +49837,8 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   const base = () => location.origin + location.pathname.replace(/[^/]*$/, '');
   const toLocalInput = iso => { if(!iso) return ''; const d = new Date(iso); if(isNaN(d)) return ''; const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
   const chip = (t, c) => `<span style="display:inline-block;background:${c};color:#fff;border-radius:10px;padding:2px 9px;font-size:11px;font-weight:700;white-space:nowrap;">${E(t)}</span>`;
-  const tile = (n, l, c) => `<div class="panel" style="padding:14px 16px;border-top:4px solid ${c};margin:0;"><div style="font-size:28px;font-weight:800;line-height:1;">${n}</div><div style="font-size:11.5px;color:var(--text-faint);margin-top:6px;">${l}</div></div>`;
-  const tiles = a => `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px;">${a.join('')}</div>`;
+  const tile = (n, l, c) => `<div class="oa-tile"><b style="color:${c}">${n}</b><span>${l}</span></div>`;
+  const tiles = a => `<div class="oa-tiles">${a.join('')}</div>`;
   const tabsBar = (cur, list, fn) => `<div class="toolbar" style="flex-wrap:wrap;gap:6px;margin-bottom:12px;">${list.map(([k, l]) => `<button class="btn-small ${cur === k ? 'primary' : ''}" onclick="${fn}('${k}')">${E(l)}</button>`).join('')}</div>`;
   const sqlNote = () => '<div class="panel" style="padding:14px 18px;border-left:4px solid #f07a1a;margin-bottom:14px;font-size:13px;">Run <b>qashe-watchman-schema-safety-legal.sql</b> in the Supabase SQL editor, then refresh.</div>';
   const noRows = t => `<div class="empty-state"><p>${t}</p></div>`;
@@ -50402,21 +50406,33 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   const tally = (list, keyFn, valFn) => { const m = new Map(); list.forEach(r => { const k = keyFn(r); if(k == null || k === '') return; const o = m.get(k) || { k, n:0, cost:0 }; o.n++; o.cost += valFn ? valFn(r) : 0; m.set(k, o); }); return [...m.values()].sort((a, b) => b.n - a.n || b.cost - a.cost); };
 
   /* ---------- chart helpers ---------- */
-  const hbars = (rows, o) => { o = o || {}; const max = Math.max(1, ...rows.map(r => r[o.val || 'n'])); return rows.length ? `<div>${rows.slice(0, o.top || 10).map(r => `<div style="display:grid;grid-template-columns:minmax(120px,38%) 1fr auto;gap:8px;align-items:center;margin:4px 0;font-size:12px;"><div title="${E(r.label || r.k)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${E(r.label || r.k)}</div><div style="background:#eef1f5;border-radius:4px;height:14px;"><div style="width:${Math.max(2, r[o.val || 'n'] / max * 100)}%;height:14px;border-radius:4px;background:${o.color || '#B21616'};"></div></div><div style="min-width:60px;text-align:right;font-weight:700;">${o.fmt ? o.fmt(r[o.val || 'n']) : r[o.val || 'n']}</div></div>`).join('')}</div>` : '<p class="is-none">No data yet.</p>'; };
+  let __cid = 0;
+  const FF = "font-family:Arial,Helvetica,sans-serif;";
+  const shade = (c, f) => c; 
+  const hbars = (rows, o) => { o = o || {}; const key = o.val || 'n'; const list = rows.slice(0, o.top || 10); const max = Math.max(1, ...list.map(r => r[key])); const tot = list.reduce((a, r) => a + (r[key] || 0), 0) || 1;
+    return list.length ? `<div class="is-hb">${list.map(r => { const v = r[key], w = Math.max(v > 0 ? 3 : 0, v / max * 100); const lb = E(r.label || r.k); return `<div class="is-hb-row"><div class="is-hb-top"><span class="is-hb-l" title="${lb}">${lb}</span><span class="is-hb-v">${o.fmt ? o.fmt(v) : v}${o.fmt ? '' : `<em>${Math.round(v / tot * 100)}%</em>`}</span></div><div class="is-hb-track"><div class="is-hb-fill" style="width:${w}%;background:linear-gradient(90deg,${o.color || '#B21616'}CC,${o.color || '#B21616'});"></div></div></div>`; }).join('')}</div>` : '<p class="is-none">No data yet.</p>'; };
+  const smooth = (pts) => { if(pts.length < 2) return ''; let d = `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`; for(let i = 0; i < pts.length - 1; i++){ const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2; const t = 0.18; const c1x = p1[0] + (p2[0] - p0[0]) * t, c1y = p1[1] + (p2[1] - p0[1]) * t, c2x = p2[0] - (p3[0] - p1[0]) * t, c2y = p2[1] - (p3[1] - p1[1]) * t; const lo = Math.min(p1[1], p2[1]), hi = Math.max(p1[1], p2[1]); d += ` C${c1x.toFixed(1)},${Math.min(hi, Math.max(lo, c1y)).toFixed(1)} ${c2x.toFixed(1)},${Math.min(hi, Math.max(lo, c2y)).toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`; } return d; };
   function lineChart(keys, series, o){
-    o = o || {}; const W = 560, H = 170, L = 34, B = 24, T = 10, Rr = 8; const max = Math.max(1, ...series.flatMap(s => s.v)); const x = i => L + (keys.length > 1 ? i * (W - L - Rr) / (keys.length - 1) : 0); const y = v => T + (H - T - B) * (1 - v / max);
-    const grid = [0, .5, 1].map(f => `<line x1="${L}" x2="${W - Rr}" y1="${y(max * f)}" y2="${y(max * f)}" stroke="#e3e7ed"/><text x="${L - 4}" y="${y(max * f) + 3}" font-size="9" text-anchor="end" fill="#888">${o.fmt ? o.fmt(max * f) : Math.round(max * f)}</text>`).join('');
-    const lab = keys.map((k, i) => i % 2 === 0 || keys.length < 8 ? `<text x="${x(i)}" y="${H - 8}" font-size="9" text-anchor="middle" fill="#888">${mlabel(k)}</text>` : '').join('');
-    const lines = series.map(s => `<polyline fill="none" stroke="${s.c}" stroke-width="2.2" points="${s.v.map((v, i) => x(i) + ',' + y(v)).join(' ')}"/>${s.v.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="2.6" fill="${s.c}"><title>${E(s.n)} ${mlabel(keys[i])}: ${o.fmt ? o.fmt(v) : v}</title></circle>`).join('')}`).join('');
-    const leg = series.map(s => `<span style="margin-right:14px;font-size:11.5px;"><span style="display:inline-block;width:10px;height:10px;background:${s.c};border-radius:2px;margin-right:4px;"></span>${E(s.n)}</span>`).join('');
-    return `<div>${leg}</div><svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px;">${grid}${lab}${lines}</svg>`;
+    o = o || {}; const id = 'isg' + (++__cid); const W = 900, H = 220, L = 56, B = 26, T = 12, Rr = 12; const max = Math.max(1, ...series.flatMap(s => s.v)); const x = i => L + (keys.length > 1 ? i * (W - L - Rr) / (keys.length - 1) : (W - L - Rr) / 2); const y = v => T + (H - T - B) * (1 - v / max); const fm = v => o.fmt ? o.fmt(v) : Math.round(v);
+    const grid = [0, .25, .5, .75, 1].map(f => `<line x1="${L}" x2="${W - Rr}" y1="${y(max * f)}" y2="${y(max * f)}" stroke="${f === 0 ? '#cfd5de' : '#edf0f4'}" stroke-width="1"${f === 0 ? '' : ' stroke-dasharray="3 4"'}/><text x="${L - 8}" y="${y(max * f) + 3}" font-size="10" text-anchor="end" fill="#8a94a3">${fm(max * f)}</text>`).join('');
+    const lab = keys.map((k, i) => i % 2 === 0 || keys.length < 8 ? `<text x="${x(i)}" y="${H - 8}" font-size="10" text-anchor="middle" fill="#8a94a3">${mlabel(k)}</text>` : '').join('');
+    const defs = series.map((s, j) => `<linearGradient id="${id}_${j}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${s.c}" stop-opacity="${series.length > 1 ? .14 : .28}"/><stop offset="1" stop-color="${s.c}" stop-opacity="0"/></linearGradient>`).join('');
+    const lines = series.map((s, j) => { const pts = s.v.map((v, i) => [x(i), y(v)]); const d = smooth(pts); const last = pts.length - 1; return (pts.length > 1 ? `<path d="${d} L${pts[last][0].toFixed(1)},${y(0)} L${pts[0][0].toFixed(1)},${y(0)} Z" fill="url(#${id}_${j})" stroke="none"/><path d="${d}" fill="none" stroke="${s.c}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>` : '') + s.v.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="${i === last ? 4.2 : 2.4}" fill="${i === last ? '#fff' : s.c}" stroke="${i === last ? s.c : 'none'}" stroke-width="${i === last ? 2.2 : 0}"><title>${E(s.n)} · ${mlabel(keys[i])}: ${fm(v)}</title></circle>`).join(''); }).join('');
+    const leg = series.length > 1 || (series[0] && series[0].n) ? `<div class="is-leg">${series.map(s => `<span><i style="background:${s.c}"></i>${E(s.n)}</span>`).join('')}</div>` : '';
+    return `${leg}<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;stroke:none;${FF}" role="img"><defs>${defs}</defs>${grid}${lab}${lines}</svg>`;
   }
   function colChart(keys, vals, color, fmt){
-    const W = 560, H = 150, L = 34, B = 22, T = 8; const max = Math.max(1, ...vals); const bw = (W - L - 8) / keys.length;
-    return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px;">${[0, .5, 1].map(f => `<line x1="${L}" x2="${W - 8}" y1="${T + (H - T - B) * (1 - f)}" y2="${T + (H - T - B) * (1 - f)}" stroke="#e3e7ed"/><text x="${L - 4}" y="${T + (H - T - B) * (1 - f) + 3}" font-size="9" text-anchor="end" fill="#888">${fmt ? fmt(max * f) : Math.round(max * f)}</text>`).join('')}${keys.map((k, i) => { const h = (H - T - B) * vals[i] / max; return `<rect x="${L + i * bw + 3}" y="${H - B - h}" width="${Math.max(2, bw - 6)}" height="${h}" fill="${color}" rx="2"><title>${mlabel(k)}: ${fmt ? fmt(vals[i]) : vals[i]}</title></rect>${i % 2 === 0 || keys.length < 8 ? `<text x="${L + i * bw + bw / 2}" y="${H - 6}" font-size="9" text-anchor="middle" fill="#888">${mlabel(k)}</text>` : ''}`; }).join('')}</svg>`;
+    const id = 'isc' + (++__cid); const W = 600, H = 190, L = 56, B = 26, T = 14, Rr = 8; const max = Math.max(1, ...vals); const n = keys.length || 1; const bw = (W - L - Rr) / n; const bar = Math.min(34, Math.max(6, bw * .62)); const fm = v => fmt ? fmt(v) : Math.round(v);
+    const grid = [0, .5, 1].map(f => { const yy = T + (H - T - B) * (1 - f); return `<line x1="${L}" x2="${W - Rr}" y1="${yy}" y2="${yy}" stroke="${f === 0 ? '#cfd5de' : '#edf0f4'}"${f === 0 ? '' : ' stroke-dasharray="3 4"'}/><text x="${L - 8}" y="${yy + 3}" font-size="10" text-anchor="end" fill="#8a94a3">${fm(max * f)}</text>`; }).join('');
+    const bars = keys.map((k, i) => { const h = Math.max(vals[i] > 0 ? 3 : 0, (H - T - B) * vals[i] / max); const cx = L + i * bw + bw / 2, x0 = cx - bar / 2, y0 = H - B - h, r = Math.min(6, bar / 2, h); const path = h > 0 ? `M${x0},${H - B} V${y0 + r} Q${x0},${y0} ${x0 + r},${y0} H${x0 + bar - r} Q${x0 + bar},${y0} ${x0 + bar},${y0 + r} V${H - B} Z` : ''; return `<path d="${path}" fill="url(#${id})" stroke="none"><title>${mlabel(k)}: ${fm(vals[i])}</title></path>${n <= 12 && vals[i] > 0 ? `<text x="${cx}" y="${y0 - 4}" font-size="9.5" font-weight="700" text-anchor="middle" fill="#4a5568">${fm(vals[i])}</text>` : ''}${i % 2 === 0 || n < 8 ? `<text x="${cx}" y="${H - 8}" font-size="10" text-anchor="middle" fill="#8a94a3">${mlabel(k)}</text>` : ''}`; }).join('');
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;stroke:none;${FF}" role="img"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${color}"/><stop offset="1" stop-color="${color}" stop-opacity=".62"/></linearGradient></defs>${grid}${bars}</svg>`;
   }
-  const donut = (parts) => { const tot = parts.reduce((a, p) => a + p.v, 0) || 1; let a0 = -Math.PI / 2; const r = 52, c = 60; const arcs = parts.filter(p => p.v > 0).map(p => { const a1 = a0 + p.v / tot * 2 * Math.PI; const big = a1 - a0 > Math.PI ? 1 : 0; const d = parts.filter(q => q.v > 0).length === 1 ? `M ${c} ${c - r} A ${r} ${r} 0 1 1 ${c - .01} ${c - r}` : `M ${c + r * Math.cos(a0)} ${c + r * Math.sin(a0)} A ${r} ${r} 0 ${big} 1 ${c + r * Math.cos(a1)} ${c + r * Math.sin(a1)}`; a0 = a1; return `<path d="${d}" fill="none" stroke="${p.c}" stroke-width="22"><title>${E(p.n)}: ${p.v}</title></path>`; }).join(''); return `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;"><svg viewBox="0 0 120 120" width="120" height="120">${arcs}<text x="60" y="64" text-anchor="middle" font-size="18" font-weight="700">${tot === 1 && !parts.some(p => p.v) ? 0 : parts.reduce((a, p) => a + p.v, 0)}</text></svg><div>${parts.map(p => `<div style="font-size:12px;margin:2px 0;"><span style="display:inline-block;width:10px;height:10px;background:${p.c};border-radius:2px;margin-right:6px;"></span>${E(p.n)}: <b>${p.v}</b></div>`).join('')}</div></div>`; };
-  const tile = (v, l, c) => `<div style="background:#fff;border:1px solid #e3e7ed;border-top:4px solid ${c || '#0b1f3a'};border-radius:8px;padding:10px 12px;"><div style="font-size:22px;font-weight:800;line-height:1.1;">${v}</div><div style="font-size:11px;color:#667;margin-top:4px;">${l}</div></div>`;
+  const donut = (parts) => { const live = parts.filter(p => p.v > 0); const tot = live.reduce((a, p) => a + p.v, 0); const r = 46, c = 60, sw = 15, C = 2 * Math.PI * r; const gap = live.length > 1 ? 2.2 : 0; let off = 0;
+    const arcs = live.map(p => { const len = p.v / tot * C; const seg = Math.max(0.5, len - gap); const el = `<circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${p.c}" stroke-width="${sw}" stroke-dasharray="${seg.toFixed(2)} ${(C - seg).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 ${c} ${c})"><title>${E(p.n)}: ${p.v} (${Math.round(p.v / tot * 100)}%)</title></circle>`; off += len; return el; }).join('');
+    const track = `<circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="#eef1f5" stroke-width="${sw}"/>`;
+    const leg = parts.map(p => `<div class="is-dl"><i style="background:${p.c}"></i><span class="is-dl-n">${E(p.n)}</span><b>${p.v}</b><em>${tot ? Math.round(p.v / tot * 100) : 0}%</em></div>`).join('');
+    return `<div class="is-donut"><svg viewBox="0 0 120 120" width="132" height="132" style="flex:none;${FF}" role="img">${track}${arcs}<text x="60" y="62" text-anchor="middle" font-size="24" font-weight="700" fill="#1b2434">${tot}</text><text x="60" y="76" text-anchor="middle" font-size="8.5" letter-spacing=".08em" fill="#8a94a3">TOTAL</text></svg><div class="is-dleg">${leg}</div></div>`; };
+  const tile = (v, l, c) => `<div class="oa-tile"><b style="color:${c || '#0b1f3a'}">${v}</b><span>${l}</span></div>`;
   const card = (h, body, wide) => `<div class="is-card"${wide ? ' style="grid-column:1/-1"' : ''}><h4>${E(h)}</h4>${body}</div>`;
   const table = (head, rows) => rows.length ? `<table class="is-t"><tr>${head.map(h => `<th>${E(h)}</th>`).join('')}</tr>${rows.map(r => `<tr>${r.map(c => `<td>${c == null ? '' : c}</td>`).join('')}</tr>`).join('')}</table>` : '<p class="is-none">None recorded.</p>';
 
@@ -50524,7 +50540,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     h += '</div>';
     return h;
   }
-  const CSS = '<style>#is-modal .is-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}#is-modal .is-card{background:#fff;border:1px solid #e3e7ed;border-radius:10px;padding:14px 16px}#is-modal .is-card h4{margin:0 0 10px;font-size:14px}#is-modal .is-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}#is-modal .is-ul{margin:0;padding-left:18px;font-size:12.5px;line-height:1.55}#is-modal .is-t{width:100%;border-collapse:collapse;font-size:12px}#is-modal .is-t th,#is-modal .is-t td{border-bottom:1px solid #e8ebf0;padding:5px 6px;text-align:left}#is-modal .is-none{font-size:12px;color:#889;margin:0}@media(max-width:900px){#is-modal .is-grid{grid-template-columns:1fr}}@media print{body>*:not(#is-modal){display:none!important}#is-modal{position:static!important;background:#fff!important;padding:0!important}#is-modal .is-bar{display:none!important}}</style>';
+  const CSS = '<style>#is-modal .is-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}#is-modal .is-card svg{height:auto;max-width:100%}#is-modal .is-card .is-donut svg{width:132px;height:132px;flex:none}#is-modal .is-card svg text{stroke:none!important;paint-order:normal}#is-modal .is-card{background:#fff;border:1px solid #e6e9ef;border-radius:14px;padding:16px 18px 18px;box-shadow:0 1px 2px rgba(20,30,50,.04),0 4px 14px rgba(20,30,50,.04)}#is-modal .is-card h4{margin:0 0 14px;font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#5b6677}#is-modal .is-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}#is-modal .is-ul{margin:0;padding-left:18px;font-size:12.5px;line-height:1.6}#is-modal .is-t{width:100%;border-collapse:collapse;font-size:12px}#is-modal .is-t th{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:#7a8596;font-weight:700}#is-modal .is-t th,#is-modal .is-t td{border-bottom:1px solid #eef0f4;padding:7px 8px;text-align:left}#is-modal .is-none{font-size:12px;color:#889;margin:0}#is-modal .is-hb-row{margin:0 0 11px}#is-modal .is-hb-top{display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px}#is-modal .is-hb-l{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#2b3445}#is-modal .is-hb-v{font-weight:700;color:#1b2434;white-space:nowrap}#is-modal .is-hb-v em{font-style:normal;font-weight:400;color:#8a94a3;margin-left:6px;font-size:11px}#is-modal .is-hb-track{background:#eff2f6;border-radius:999px;height:8px;overflow:hidden}#is-modal .is-hb-fill{height:8px;border-radius:999px}#is-modal .is-leg{display:flex;flex-wrap:wrap;gap:6px 16px;margin:-4px 0 8px;font-size:11.5px;color:#4a5568}#is-modal .is-leg i,#is-modal .is-dl i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}#is-modal .is-donut{display:flex;align-items:center;gap:20px;flex-wrap:wrap}#is-modal .is-dleg{flex:1;min-width:150px}#is-modal .is-dl{display:flex;align-items:center;font-size:12px;padding:5px 0;border-bottom:1px solid #f0f2f6}#is-modal .is-dl:last-child{border:0}#is-modal .is-dl-n{flex:1;color:#2b3445}#is-modal .is-dl b{margin-left:8px}#is-modal .is-dl em{font-style:normal;color:#8a94a3;width:38px;text-align:right;font-size:11px}@media(max-width:900px){#is-modal .is-grid{grid-template-columns:1fr}}@media print{body>*:not(#is-modal){display:none!important}#is-modal{position:static!important;background:#fff!important;padding:0!important}#is-modal .is-bar{display:none!important}}</style>';
   let LAST = null;
   window.openIssueStats = async function(scope){
     scope = SCOPES[scope] ? scope : 'nonconformances';
@@ -50590,7 +50606,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   const addMonths = (iso, n) => { const d = new Date(day(iso) + 'T00:00:00'); d.setMonth(d.getMonth() + n); return d.toISOString().slice(0, 10); };
   const daysTo = iso => iso ? Math.round((new Date(day(iso) + 'T00:00:00') - new Date(todayISO() + 'T00:00:00')) / 864e5) : null;
   const chip = (t, c) => `<span style="display:inline-block;background:${c};color:#fff;border-radius:10px;padding:2px 9px;font-size:11px;font-weight:700;">${E(t)}</span>`;
-  const tile = (n, l, c) => `<div class="panel" style="padding:14px 16px;border-top:4px solid ${c};margin:0;"><div style="font-size:26px;font-weight:800;line-height:1.1;">${n}</div><div style="font-size:11.5px;color:var(--text-faint);margin-top:6px;">${l}</div></div>`;
+  const tile = (n, l, c) => `<div class="oa-tile"><b style="color:${c}">${n}</b><span>${l}</span></div>`;
 
   /* ---------- registration ---------- */
   MODULE_META[KEY] = { title:'SHERQ Committee', sub:() => 'Quarterly safety, health, environment, risk and quality committee: agenda from your live data, minutes, actions and signatures' };
@@ -50666,7 +50682,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     const yr = new Date().getFullYear(); const thisYr = SC.m.filter(m => String(m.meeting_date).startsWith(String(yr)) && m.status !== 'planned').length;
     const dd = dueOn ? daysTo(dueOn) : null; const openA = SC.a.filter(a => a.status === 'open'), odA = openA.filter(a => a.target_date && day(a.target_date) < todayISO());
     const nextTile = !last ? tile('None yet', 'no meeting held: schedule the first', '#d4262c') : tile(fd(dueOn), dd < 0 ? 'next meeting overdue by ' + (-dd) + ' days' : 'next meeting due in ' + dd + ' days', dd < 0 ? '#d4262c' : dd <= 21 ? '#f07a1a' : '#2e9e5b');
-    root.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:14px;">${nextTile}${tile(thisYr + ' of 4', 'meetings held in ' + yr + ' (one every three months)', thisYr >= 4 ? '#2e9e5b' : '#0b1f3a')}${tile(openA.length, 'open actions', openA.length ? '#f0b21a' : '#2e9e5b')}${tile(odA.length, 'overdue actions', odA.length ? '#d4262c' : '#2e9e5b')}</div>
+    root.innerHTML = `<div class="oa-tiles">${nextTile}${tile(thisYr + ' of 4', 'meetings held in ' + yr + ' (one every three months)', thisYr >= 4 ? '#2e9e5b' : '#0b1f3a')}${tile(openA.length, 'open actions', openA.length ? '#f0b21a' : '#2e9e5b')}${tile(odA.length, 'overdue actions', odA.length ? '#d4262c' : '#2e9e5b')}</div>
       <div class="toolbar"><div style="font-size:12.5px;color:var(--text-dim);">The OHS Act requires the health and safety committee to meet at least every three months. The agenda is built from the modules and legal obligations of this organisation.</div>${canW() ? '<button class="btn-primary btn-add" onclick="scNewForm()">New meeting</button>' : ''}</div>
       <div id="sc-form"></div>
       <div class="panel" style="padding:0;overflow:hidden;">${SC.m.length ? `<table><tr><th>Ref</th><th>Quarter</th><th>Date</th><th>Chair</th><th>Actions open</th><th>Status</th></tr>${SC.m.map(m => `<tr class="clickable" onclick="scOpen('${m.id}')"><td class="mono-cell">${E(m.ref_code)}</td><td class="strong">${E(m.quarter_label || '')}</td><td>${fd(m.meeting_date)}</td><td>${E(nm(m.chair_id))}</td><td>${mAct(m.id).filter(a => a.status === 'open').length}</td><td>${chip(m.status === 'signed' ? 'Signed' : m.status === 'held' ? 'Held, minutes open' : 'Planned', m.status === 'signed' ? '#2e9e5b' : m.status === 'held' ? '#f07a1a' : '#888')}</td></tr>`).join('')}</table>` : '<div class="empty-state"><p>No SHERQ committee meetings recorded yet.</p></div>'}</div>`;
@@ -50839,7 +50855,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   function genericHtml(key, compact){
     const f = genericFig(key), U = UI(); if(!f || !f.total) return '';
     const tiles = [U.tile(f.total, 'records', '#0b1f3a'), U.tile(f.ok, 'on track', '#2e9e5b'), U.tile(f.soon, 'due within 30 days', f.soon ? '#f0b21a' : '#2e9e5b'), U.tile(f.od, 'overdue', f.od ? '#d4262c' : '#2e9e5b'), U.tile(f.done, 'resolved or closed', '#2e9e5b')].join('');
-    const wrapT = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:12px;">${tiles}</div>`;
+    const wrapT = `<div class="oa-tiles">${tiles}</div>`;
     const c1 = `<div class="is-card"><h4>Records added per month, last 12 months</h4>${U.colChart(f.mk || U.months(12), f.created, '#0b6fb5')}</div>`;
     const c2 = `<div class="is-card"><h4>Status of records</h4>${U.donut([{ n:'On track', v:f.ok, c:'#2e9e5b' }, { n:'Due within 30 days', v:f.soon, c:'#f0b21a' }, { n:'Overdue', v:f.od, c:'#d4262c' }, { n:'Resolved', v:f.done, c:'#7aa6c9' }])}</div>`;
     const c3 = `<div class="is-card"><h4>Overdue by person</h4>${U.hbars([...f.by.entries()].map(([label, n]) => ({ label, n })).sort((a, b) => b.n - a.n), { top:8, color:'#d4262c' })}</div>`;
@@ -50988,10 +51004,11 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   .dh-banner{background:linear-gradient(135deg,#0b1f3a 0%,#173a66 60%,#1d5a8f 100%);border-radius:16px;padding:22px 24px;color:#fff;position:relative;overflow:hidden}
   .dh-banner:after{content:"";position:absolute;right:-60px;top:-60px;width:220px;height:220px;border-radius:50%;background:rgba(255,255,255,.07)}
   .dh-banner h2{margin:0 0 4px;font-size:21px;font-weight:800;color:#fff}.dh-banner p{margin:0;font-size:12.5px;opacity:.85}
-  .dh-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-top:16px;position:relative;z-index:1}
-  .dh-stat{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:12px;padding:10px 12px;cursor:pointer}
-  .dh-stat b{display:block;font-size:22px;line-height:1.1}.dh-stat span{font-size:11px;opacity:.85}
-  .dh-stat.warn b{color:#ffd166}.dh-stat.bad b{color:#ff8a80}
+  .dh-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:16px;position:relative;z-index:1}
+  .dh-stat{background:var(--panel,#fff);border:1px solid var(--border,#E3E1DF);border-radius:10px;padding:12px 14px;cursor:pointer;color:var(--text);transition:border-color .15s ease, box-shadow .15s ease}
+  .dh-stat:hover{border-color:var(--red,#B21616);box-shadow:0 2px 10px rgba(30,28,27,.08)}
+  .dh-stat b{display:block;font-size:22px;font-weight:700;line-height:1.15}.dh-stat span{display:block;font-size:11px;color:var(--text-dim,#615C59);margin-top:3px;opacity:1}
+  .dh-stat.warn b{color:var(--amber)}.dh-stat.bad b{color:var(--red)}
   .dh-actions{display:grid;grid-template-columns:1.5fr 1fr;gap:14px;margin-top:14px}
   .dh-card{background:var(--panel,#fff);border:1px solid var(--border,#dde2ea);border-radius:14px;padding:16px 18px;display:flex;gap:14px;align-items:flex-start}
   .dh-ic{flex:0 0 42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#e8f0fb;color:#1d5a8f}
@@ -51099,8 +51116,8 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   let open = {}; try{ open = JSON.parse(localStorage.getItem('wm_nav_open') || '{}') || {}; }catch(e){}
   const save = () => { try{ localStorage.setItem('wm_nav_open', JSON.stringify(open)); }catch(e){} };
   const css = document.createElement('style');
-  css.textContent = `.wm-ng{margin:2px 0}.wm-nh{display:flex;align-items:center;gap:6px;padding:11px 18px 5px;font:700 10.5px Arial,Helvetica,sans-serif;letter-spacing:.09em;text-transform:uppercase;color:var(--text-faint);cursor:pointer;user-select:none}
-  .wm-nh:hover{color:var(--text)}.wm-nh .ch{margin-left:auto;transition:transform .15s;font-size:10px}.wm-ng.shut .ch{transform:rotate(-90deg)}.wm-ng.shut .wm-nb{display:none}
+  css.textContent = `.wm-ng{margin:2px 0}.wm-nh{display:flex;align-items:center;gap:6px;padding:11px 18px 5px;font:700 10.5px Arial,Helvetica,sans-serif;letter-spacing:.09em;text-transform:uppercase;color:var(--red);cursor:pointer;user-select:none}
+  .wm-nh:hover{color:var(--red-dark)}.wm-nh .ch{margin-left:auto;transition:transform .15s;font-size:10px}.wm-ng.shut .ch{transform:rotate(-90deg)}.wm-ng.shut .wm-nb{display:none}
   .wm-nh .gd{width:6px;height:6px;border-radius:50%;background:#EF6C00;display:none}.wm-ng.shut.hasdot .wm-nh .gd{display:inline-block}
   .wm-nb .nav-item{padding-left:26px}.wm-ng.hidden{display:none}`;
   document.head.appendChild(css);
@@ -51256,11 +51273,11 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   function paintControls(){
     const ctl = document.getElementById('soa-ctl'); if(!ctl) return; const F = STATE._soaCF; const all = appRows(); const app = all.filter(x => x.applicable);
     const withPol = app.filter(x => x.cov.policy).length, withProc = app.filter(x => x.cov.procedure).length, withReg = app.filter(x => x.cov.register || x.cov.checklist).length, none = app.filter(x => !x.cov.n).length, done = app.filter(x => ['implemented', 'effective'].includes(x.status)).length;
-    const tile = (n, l, c) => `<div class="panel" style="padding:14px 16px;border-top:4px solid ${c};margin:0;"><div style="font-size:26px;font-weight:800;line-height:1.1;">${n}</div><div style="font-size:11.5px;color:var(--text-faint);margin-top:6px;">${l}</div></div>`;
+    const tile = (n, l, c) => `<div class="oa-tile"><b style="color:${c}">${n}</b><span>${l}</span></div>`;
     const pc = n => app.length ? Math.round(n / app.length * 100) + '%' : '0%';
     const shown = all.filter(x => x.applicable && (!F.theme || x.c.theme === F.theme) && (F.gap !== 'none' || !x.cov.n) && (F.gap !== 'nopol' || !x.cov.policy) && (F.gap !== 'noproc' || !x.cov.procedure) && (F.gap !== 'open' || !['implemented', 'effective'].includes(x.status)));
     const themes = [...new Set(window.SOA_CONTROLS.map(c => c.theme))];
-    ctl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:14px;">${tile(app.length, 'applicable controls', '#0b1f3a')}${tile(pc(done), 'implemented', '#2e9e5b')}${tile(pc(withPol), 'backed by a policy', withPol / (app.length || 1) >= .8 ? '#2e9e5b' : '#f0b21a')}${tile(pc(withProc), 'backed by a procedure', withProc / (app.length || 1) >= .8 ? '#2e9e5b' : '#f0b21a')}${tile(pc(withReg), 'with a register or checklist', '#1d5a8f')}${tile(none, 'with no evidence at all', none ? '#d4262c' : '#2e9e5b')}</div>
+    ctl.innerHTML = `<div class="oa-tiles">${tile(app.length, 'applicable controls', '#0b1f3a')}${tile(pc(done), 'implemented', '#2e9e5b')}${tile(pc(withPol), 'backed by a policy', withPol / (app.length || 1) >= .8 ? '#2e9e5b' : '#f0b21a')}${tile(pc(withProc), 'backed by a procedure', withProc / (app.length || 1) >= .8 ? '#2e9e5b' : '#f0b21a')}${tile(pc(withReg), 'with a register or checklist', '#1d5a8f')}${tile(none, 'with no evidence at all', none ? '#d4262c' : '#2e9e5b')}</div>
       <div class="toolbar"><div class="filters"><select onchange="soaCF('theme',this.value)"><option value="">All themes</option>${themes.map(t => `<option ${F.theme === t ? 'selected' : ''}>${E(t)}</option>`).join('')}</select><select onchange="soaCF('gap',this.value)"><option value="">All applicable controls</option><option value="none" ${F.gap === 'none' ? 'selected' : ''}>No evidence linked</option><option value="nopol" ${F.gap === 'nopol' ? 'selected' : ''}>No policy</option><option value="noproc" ${F.gap === 'noproc' ? 'selected' : ''}>No procedure</option><option value="open" ${F.gap === 'open' ? 'selected' : ''}>Not yet implemented</option></select></div></div>
       <div class="panel" style="padding:0;overflow:hidden;"><table><tr><th>Control</th><th>Status</th><th>Owner</th><th>Policy</th><th>Procedure</th><th>Register or checklist</th><th>Other</th></tr>${shown.map(x => { const dot = n => n ? `<b style="color:#2e9e5b">${n}</b>` : '<span style="color:#d4262c">0</span>'; return `<tr class="clickable" onclick="soaView('soa');setTimeout(()=>soaEdit('${x.c.ref}'),50)"><td><span class="mono-cell">${x.c.ref}</span> <span class="strong">${E(x.c.title)}</span></td><td>${E(({ not_started:'Not started', planned:'Planned', partial:'Partly implemented', implemented:'Implemented', effective:'Implemented and reviewed' })[x.status] || x.status)}</td><td>${x.owner ? E(memberName(x.owner)) : '<span style="color:#d4262c">Unassigned</span>'}</td><td>${dot(x.cov.policy)}</td><td>${dot(x.cov.procedure)}</td><td>${dot(x.cov.register + x.cov.checklist)}</td><td>${x.cov.other}</td></tr>`; }).join('') || '<tr><td colspan="7" style="padding:16px;color:var(--text-faint);">No controls match.</td></tr>'}</table></div><p style="font-size:11.5px;color:var(--text-faint);margin-top:10px;">Click a control to open it and link evidence. A control with an implemented status but no policy or procedure behind it will not stand up to a certification audit.</p>`;
   }
