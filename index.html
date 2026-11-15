@@ -24,7 +24,7 @@
 (function(){ try{
   window.__wmSb = import('https://esm.sh/@supabase/supabase-js@2').catch(function(){ return null; });
   var q = new URLSearchParams(location.search);
-  if(q.get('sp')||q.get('sv')||q.get('sq')||q.get('g')||q.get('nr')||q.get('ss')||q.get('ps')||q.has('tutorial')) return;
+  if(q.get('sp')||q.get('sv')||q.get('sq')||q.get('g')||q.get('nr')||q.get('ss')||q.get('ps')||q.get('ap')||q.has('tutorial')) return;
   for(var i=0;i<localStorage.length;i++){
     var k = localStorage.key(i);
     if(/^sb-.+-auth-token$/.test(k)){
@@ -1800,7 +1800,7 @@ async function enterApp(){
 // already signed in on this device.
 document.addEventListener('DOMContentLoaded', async () => {
   try {
-    { const _q = new URLSearchParams(location.search); if(_q.get('sp') || _q.get('sv') || _q.get('sq') || _q.get('g') || _q.get('nr') || _q.get('ss') || _q.get('ps') || _q.has('tutorial')) return; } // public page modes
+    { const _q = new URLSearchParams(location.search); if(_q.get('sp') || _q.get('sv') || _q.get('sq') || _q.get('g') || _q.get('nr') || _q.get('ss') || _q.get('ps') || _q.get('ap') || _q.has('tutorial')) return; } // public page modes
     await ensureSupabaseLib();
     if(!STATE.supabase) initSupabase(SUPABASE_URL, SUPABASE_ANON_KEY);
     const { data:{ session } } = await STATE.supabase.auth.getSession();
@@ -4157,8 +4157,6 @@ const RENDERERS = {
         </select>
       </div>
       <div style="display:flex; gap:8px;">
-        <button class="btn-small" onclick="toggleKpisPanel()">Manage KPIs</button>
-        <button class="btn-small" onclick="exportModuleExcel('appraisals')">Export Excel</button>
       <button class="btn-small" onclick="printCurrentRegister('appraisals','KPIs & Appraisals Register')">Print Register</button>
       <button class="btn-primary btn-add" onclick="toggleAppraisalForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Appraisal</button>
       </div>
@@ -46969,7 +46967,7 @@ add('personnel', 'tips', ['Aim for 100% onboarding before a new person works uns
   /* signed-out visitors open straight to sign-in */
   document.addEventListener('DOMContentLoaded', async () => {
     try{
-      const q = new URLSearchParams(location.search); if(q.get('sp') || q.get('sv') || q.get('sq') || q.get('g') || q.get('nr') || q.get('ss') || q.get('ps') || q.has('tutorial')) return;
+      const q = new URLSearchParams(location.search); if(q.get('sp') || q.get('sv') || q.get('sq') || q.get('g') || q.get('nr') || q.get('ss') || q.get('ps') || q.get('ap') || q.has('tutorial')) return;
       await ensureSupabaseLib(); if(!STATE.supabase) initSupabase(SUPABASE_URL, SUPABASE_ANON_KEY);
       const { data:{ session } } = await STATE.supabase.auth.getSession();
       if(!session || !session.user){ if(!document.getElementById('view-dashboard').classList.contains('active')) showGate('gate-auth'); }
@@ -52350,6 +52348,184 @@ Likelihood and impact are whole numbers from 1 to 5.`;
       return r;
     };
   }catch(e){ console.warn('r39 wdKpi', e); }
+})();
+
+
+/* ============================================================================
+   R40: appraisals initiated from the published documents; self-assessment through the emailed link
+   ============================================================================ */
+(function(){
+  'use strict';
+  const arr = x => Array.isArray(x) ? x : [];
+  const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const sb = () => STATE.supabase;
+  const plain = s => String(s == null ? '' : s).replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li|h\d)>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
+  const day = d => { try{ return fmtDate(String(d).slice(0, 10)); }catch(e){ return d || ''; } };
+  const base = () => location.origin + location.pathname;
+  const linkOf = a => `${base()}?ap=${a.token}`;
+  const pubd = d => !!(d && window.r37IsPublished && window.r37IsPublished(d));
+  const docsFor = pid => ({
+    jd: arr(STATE.documents).find(d => d.personnel_id === pid && d.personal_kind === 'job_description' && pubd(d)) || null,
+    kd: arr(STATE.documents).find(d => d.personnel_id === pid && d.personal_kind === 'kpi_appraisal' && pubd(d)) || null,
+  });
+
+  /* ---------------- the email ---------------- */
+  function mailBody(a, person){
+    return `Hello ${person.full_name.split(' ')[0]},\n\nYour performance appraisal for ${day(a.period_start)} to ${day(a.period_end)} (${a.ref_code}) has been started.\n\nPlease open your private link, read your job description and KPI and Appraisal document, rate yourself against each KPI and submit. You do not need to sign in. The link is personal to you, so please keep it to yourself:\n\n${linkOf(a)}\n\nYour line manager will then complete their assessment, preferably together with you, and finalise the result.\n\nThank you,\n${STATE.org.name}`;
+  }
+  async function emailPerson(a){
+    const person = personById(a.personnel_id);
+    if(!person || !person.email) return { sent:false, why:'no email on file' };
+    const ok = await sendEmailToAddress(person.email, `Your self-assessment: ${STATE.org.name}`, mailBody(a, person));
+    return { sent: ok, to: person.email };
+  }
+  function resultCard(a, mail){
+    const person = personById(a.personnel_id);
+    const st = mail.sent ? `<div style="color:var(--green);font-weight:700;font-size:12.5px;margin-bottom:8px;">✓ Emailed to ${E(mail.to)}</div>`
+      : `<div style="color:#8a5a00;font-weight:700;font-size:12.5px;margin-bottom:8px;">${mail.why ? E(person ? person.full_name : 'This person') + ' has no email address on file: copy the link and give it to them (or print it).' : 'The email could not be sent automatically: copy the link and send it yourself.'}</div>`;
+    return `<div class="link-box" style="margin-top:12px;">${st}<div class="link-box-row"><input type="text" readonly id="r40-link-${a.id}" value="${E(linkOf(a))}"><button class="btn-small primary" onclick="copyApprLink('r40-link-${a.id}')">Copy</button></div></div>`;
+  }
+
+  /* ---------------- the "New Appraisal" form: person first, documents shown, then Initiate ---------------- */
+  async function sections(docId){
+    const { data } = await sb().from('document_content_sections').select('section_title, content, sort_order').eq('document_id', docId).order('sort_order', { ascending:true });
+    return arr(data);
+  }
+  function docBox(label, d, secs){
+    if(!d) return '';
+    return `<details style="border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:#fff;"><summary style="cursor:pointer;padding:10px 14px;font-weight:700;font-size:13px;">${E(label)}: ${E(d.doc_number)} <span style="font-weight:400;color:var(--text-faint);">Rev ${E(d.current_revision)}</span> <a href="#" style="font-weight:600;font-size:12px;margin-left:8px;" onclick="event.preventDefault();event.stopPropagation();r37OpenDoc('${d.id}')">Open the controlled document</a></summary>
+      <div style="padding:4px 16px 12px;max-height:300px;overflow:auto;font-size:12.5px;">${secs.map(s => `<div style="margin-top:10px;"><b>${E(s.section_title || '')}</b><div style="white-space:pre-wrap;color:var(--text-dim);">${E(plain(s.content))}</div></div>`).join('') || '<i>No content recorded.</i>'}</div></details>`;
+  }
+  window.r40Preview = async function(){
+    const sel = document.getElementById('af-personnel'), box = document.getElementById('r40-preview'); if(!sel || !box) return;
+    const pid = sel.value; if(!pid){ box.innerHTML = ''; return; }
+    box.innerHTML = '<p style="font-size:12px;color:var(--text-faint);">Loading the documents…</p>';
+    const { jd, kd } = docsFor(pid); const [js, ks] = await Promise.all([jd ? sections(jd.id) : [], kd ? sections(kd.id) : []]);
+    if(sel.value !== pid) return;
+    box.innerHTML = `<div style="margin:6px 0 4px;font-weight:700;font-size:13px;">Review what this appraisal will be based on</div>
+      <p style="font-size:11.5px;color:var(--text-faint);margin:0 0 8px;">The job description and the KPI and Appraisal document, both approved and published, are the source. The KPIs below are copied into the appraisal exactly as published. When you initiate, ${E((personById(pid) || {}).full_name || 'the person')} is emailed a private link to complete the self-assessment.</p>
+      ${docBox('Job description', jd, js)}${docBox('KPI and Appraisal document', kd, ks)}`;
+  };
+  function enhance(){
+    const form = document.getElementById('appraisal-form'); if(!form || !form.classList.contains('open')) return;
+    const sel = document.getElementById('af-personnel'); if(!sel) return;
+    if(!document.getElementById('r40-preview')){ form.querySelector('.form-grid').insertAdjacentHTML('afterend', '<div id="r40-preview"></div>'); }
+    sel.setAttribute('onchange', 'autofillAppraisalManager();r40Preview()');
+    const go = form.querySelector('.form-actions .btn-primary'); if(go){ go.textContent = 'Initiate appraisal and email the link'; go.setAttribute('onclick', 'r40Initiate()'); }
+    const h = form.querySelector('h3'); if(h) h.textContent = 'Initiate an appraisal';
+    window.r40Preview();
+  }
+  try{ const _t = toggleAppraisalForm; toggleAppraisalForm = window.toggleAppraisalForm = function(){ const r = _t.apply(this, arguments); [200, 900].forEach(t => setTimeout(() => { try{ enhance(); }catch(e){ console.warn('r40 form', e); } }, t)); return r; }; }catch(e){ console.warn(e); }
+
+  window.r40Initiate = async function(){
+    const personnelId = document.getElementById('af-personnel').value, managerId = document.getElementById('af-manager').value;
+    const periodStart = document.getElementById('af-period-start').value, periodEnd = document.getElementById('af-period-end').value;
+    if(!personnelId || !managerId || !periodStart || !periodEnd){ alert('Select the person, the line manager and the appraisal period.'); return; }
+    if(periodEnd < periodStart){ alert('The period end is before the period start.'); return; }
+    const sc = window.wmPeopleScope();
+    if(!sc.all && !(sc.ids.has(personnelId) && sc.me && sc.me.id !== personnelId)){ toast('Only a line manager, or someone permitted to see everyone, initiates an appraisal.', 'error'); return; }
+    const primary = primaryCompetenceFor(personnelId);
+    if(!primary){ alert('This person has no primary position set. Set it on their personal page first.'); return; }
+    const { jd, kd } = docsFor(personnelId);
+    if(!jd || !kd){ alert('An appraisal can only be initiated once the job description and the KPI and Appraisal document are approved and published.\n\nMissing: ' + [!jd ? 'job description' : '', !kd ? 'KPI and Appraisal document' : ''].filter(Boolean).join(', ')); return; }
+    const kpis = await window.r37ParseKpis(kd.id);
+    if(!kpis.length){ alert(`The published KPI document ${kd.doc_number} has no readable KPI lines. Issue a new revision with a section titled "Key Performance Indicators" and one KPI per line (Title | Target | Weight % | Source of measure | Description).`); return; }
+    const person = personById(personnelId);
+    if(!confirm(`Initiate the appraisal for ${person.full_name}?\n\n${kpis.length} KPIs from ${kd.doc_number} (Rev ${kd.current_revision}) and the job description ${jd.doc_number} (Rev ${jd.current_revision}) will be used. ${person.email ? 'A private link is emailed to ' + person.email + '.' : 'There is no email address on file, so you will be given the link to pass on.'}`)) return;
+    const btn = document.querySelector('#appraisal-form .form-actions .btn-primary'); if(btn){ btn.disabled = true; btn.textContent = 'Initiating…'; }
+    const row = { organisation_id: STATE.org.id, personnel_id: personnelId, position_id: primary.position_id, line_manager_id: managerId, period_start: periodStart, period_end: periodEnd, created_by: STATE.user.id,
+      kpi_document_id: kd.id, kpi_document_revision: String(kd.current_revision), jd_document_id: jd.id, jd_document_revision: String(jd.current_revision), status: 'awaiting_self_assessment', initiated_at: new Date().toISOString() };
+    const { data: na, error } = await sb().from('appraisals').insert(row).select().single();
+    if(error){ toast('Could not initiate the appraisal: ' + error.message + (/jd_document_id|initiated_at/.test(error.message) ? ' (run the R40 SQL script first)' : ''), 'error'); if(btn){ btn.disabled = false; btn.textContent = 'Initiate appraisal and email the link'; } return; }
+    const { error: kErr } = await sb().from('appraisal_kpis').insert(kpis.map((k, i) => ({ organisation_id: STATE.org.id, appraisal_id: na.id, kpi_title: k.title, kpi_description: k.description, sort_order: (i + 1) * 10, target: k.target, source_of_measure: k.source_of_measure, weight: k.weight || 0 })));
+    if(kErr) toast('Appraisal created, but the KPIs could not be copied in: ' + kErr.message, 'error');
+    const mail = await emailPerson(na);
+    toggleAppraisalForm(); await loadAppraisals(); renderAppraisalsTable(); updateNavBadges();
+    await openAppraisalDetail(na.id);
+    const slot = document.getElementById('apr-link-result-' + na.id) || document.getElementById('r40-await-' + na.id);
+    if(slot) slot.innerHTML = resultCard(na, mail);
+    toast(`${na.ref_code} initiated${mail.sent ? ' and emailed' : ''}.`, mail.sent ? 'success' : 'info');
+  };
+  try{ submitAppraisal = window.submitAppraisal = window.r40Initiate; }catch(e){}
+
+  /* ---------------- the appraisal's own page: link, resend, and older draft appraisals ---------------- */
+  renderSendSelfAssessment = window.renderSendSelfAssessment = function(a){
+    return `<div class="detail-card" style="padding:16px;margin-bottom:16px;"><div class="panel-head" style="margin-bottom:10px;"><h3 style="font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:600;">Initiate the self-assessment</h3></div>
+      <p style="font-size:12.5px;color:var(--text-dim);margin:0 0 10px;">This appraisal has not yet been sent. ${E((personById(a.personnel_id) || {}).full_name || 'The person')} is emailed a private link to complete the self-assessment.</p>
+      <button class="btn-small primary" onclick="r40Send('${a.id}')">Initiate and email the link</button><div id="apr-link-result-${a.id}"></div></div>`;
+  };
+  renderAwaitingSelfAssessment = window.renderAwaitingSelfAssessment = function(a){
+    return `<div class="detail-card" style="padding:16px;margin-bottom:16px;background:var(--amber-tint);"><p style="font-size:13px;color:#8A5D14;margin:0 0 8px;">Waiting for ${E((personById(a.personnel_id) || {}).full_name || 'the individual')} to complete the self-assessment through the emailed link. You will find a task here when it is submitted.</p>
+      <div id="r40-await-${a.id}">${resultCard(a, { sent:false, why:'' }).replace(/<div style="color:#8a5a00[^]*?<\/div>/, '')}</div>
+      <button class="btn-small" style="margin-top:8px;" onclick="r40Send('${a.id}')">Email the link again</button></div>`;
+  };
+  window.r40Send = async function(id){
+    let a = appraisalById(id); if(!a) return;
+    if(a.status === 'draft'){
+      const { error } = await sb().from('appraisals').update({ status:'awaiting_self_assessment', initiated_at:new Date().toISOString() }).eq('id', id);
+      if(error){ toast('Could not update the appraisal: ' + error.message, 'error'); return; }
+      await loadAppraisals(); a = appraisalById(id);
+    }
+    const mail = await emailPerson(a); renderAppraisalsTable(); updateNavBadges(); await openAppraisalDetail(id);
+    const slot = document.getElementById('r40-await-' + id); if(slot) slot.innerHTML = resultCard(a, mail);
+    toast(mail.sent ? 'Link emailed.' : 'Link ready to copy.', mail.sent ? 'success' : 'info');
+  };
+  window.sendSelfAssessment = window.r40Send;
+  /* manager prompt when it is their turn */
+  try{ const _o = openAppraisalDetail; openAppraisalDetail = window.openAppraisalDetail = async function(id){
+    const r = await _o.apply(this, arguments);
+    try{ const a = appraisalById(id); const slot = document.getElementById('appraisal-detail-slot');
+      if(a && a.status === 'self_assessment_done' && slot && !document.getElementById('r40-mgr-note')){ const first = slot.querySelector('.panel-head'); if(first) first.insertAdjacentHTML('beforebegin', `<div id="r40-mgr-note" style="background:#F2F7FC;border:1px solid #CFE0F2;border-radius:10px;padding:10px 14px;font-size:12.5px;margin-bottom:12px;"><b>${E((personById(a.personnel_id) || {}).full_name || 'The employee')} has submitted the self-assessment${a.self_submitted_at ? ' on ' + day(a.self_submitted_at) : ''}.</b> Complete your assessment below, preferably together with them, then finalise: the result is published and becomes part of the Statistical Analysis.</div>`); } }catch(e){}
+    return r; }; }catch(e){}
+  /* tell the person when the result is final */
+  try{ const _f = finalizeAppraisal; finalizeAppraisal = window.finalizeAppraisal = async function(id){
+    const r = await _f.apply(this, arguments);
+    try{ await loadAppraisals(); const a = appraisalById(id), p = a && personById(a.personnel_id);
+      if(a && a.status === 'finalized' && p && p.email && !a._r40Told){ a._r40Told = true;
+        sendEmailToAddress(p.email, `Your appraisal is finalised: ${STATE.org.name}`, `Hello ${p.full_name.split(' ')[0]},\n\nYour performance appraisal ${a.ref_code} (${day(a.period_start)} to ${day(a.period_end)}) has been finalised by your line manager. Your manager will share the outcome and the agreed objectives for the next period with you.\n\nThank you,\n${STATE.org.name}`); } }catch(e){}
+    return r; }; }catch(e){}
+
+  /* ---------------- the public self-assessment page (?ap=) ---------------- */
+  const RATE = { 1:'#D7242B', 2:'#F07C1A', 3:'#E0B122', 4:'#7CB342', 5:'#2E9E5B' };
+  let APK = [];
+  window.__apAns = {};
+  const secHtml = (t, secs) => secs.length ? `<details style="margin-top:10px;"><summary style="cursor:pointer;font-weight:800;font-size:14px;">${E(t)}</summary>${secs.map(s => `<div style="margin-top:10px;"><b>${E(s.title || '')}</b><div style="white-space:pre-wrap;font-size:13.5px;color:#444;">${E(plain(s.body))}</div></div>`).join('')}</details>` : '';
+  window.apPick = function(id, v){ window.__apAns[id] = window.__apAns[id] || {}; window.__apAns[id].rating = v; const b = document.getElementById('apk-' + id); if(b) b.querySelectorAll('.rate button').forEach(x => x.classList.toggle('on', Number(x.dataset.v) === v)); apProg(); };
+  window.apNote = function(id, t){ window.__apAns[id] = window.__apAns[id] || {}; window.__apAns[id].notes = t; };
+  window.apProg = function(){ const got = APK.filter(k => window.__apAns[k.id] && window.__apAns[k.id].rating).length; const f = document.getElementById('ap-fill'), l = document.getElementById('ap-prog'); if(f) f.style.width = Math.round(got / (APK.length || 1) * 100) + '%'; if(l) l.textContent = `${got} of ${APK.length} KPIs rated`; };
+  window.renderApPage = async function(token){
+    const ov = pubMount('ap-public'); await pubInit();
+    const { data: info } = await sb().rpc('ap_info', { p_token: token });
+    if(!info || !info.ok){ pubBad(ov, info && info.notopen ? 'This self-assessment is not open' : 'This link is not active'); return; }
+    if(info.done){ ov.innerHTML = PUB_CSS + `<div class="pb"><div class="w">${pubHero(info, 'Performance appraisal', info.person, 'Thank you')}<div class="card" style="text-align:center;"><div style="font-size:56px;">✅</div><h2 style="margin:6px 0;">${info.finalized ? 'Your appraisal has been finalised' : 'Your self-assessment has been submitted'}</h2><p style="color:#555;">${info.finalized ? 'Your line manager will share the outcome with you.' : 'Your line manager will now complete their assessment, preferably together with you.'}</p></div></div></div>`; return; }
+    APK = arr(info.kpis); window.__apAns = {};
+    ov.innerHTML = PUB_CSS + `<div class="pb"><div class="w">${pubHero(info, 'Performance appraisal', info.person, `${info.position ? info.position + ' · ' : ''}${day(info.period_start)} to ${day(info.period_end)}`)}
+      <div class="card"><p style="margin:0;font-size:14.5px;line-height:1.55;">Please read your job description and your KPIs, then rate how you performed against each KPI during the period. Rate honestly: a fair rating is more useful than a comfortable one. Add a short note on what supports your rating. Your line manager will complete their assessment afterwards, preferably together with you.</p>
+      ${secHtml('Your job description', arr(info.jd))}${secHtml('Your KPI and Appraisal document', arr(info.kpi_doc))}
+      <details style="margin-top:10px;"><summary style="cursor:pointer;font-weight:800;font-size:14px;">What the ratings mean</summary><div style="font-size:13.5px;margin-top:8px;">${KPI_RATING_LEGEND.map(r => `<div><b>${r.value}</b> ${E(r.label)}</div>`).join('')}</div></details></div>
+      <div class="bar"><div class="track"><div class="fill" id="ap-fill" style="width:0"></div></div><div id="ap-prog" style="font-size:12px;color:#666;margin-top:4px;"></div></div>
+      ${APK.map((k, i) => `<div class="card" id="apk-${E(k.id)}"><h3>KPI ${i + 1} · weight ${E(k.weight || 0)}%</h3><div style="font-weight:800;font-size:16px;">${E(k.title)}</div>
+        ${k.target ? `<div style="font-size:13px;color:#555;margin-top:4px;"><b>Target:</b> ${E(k.target)}</div>` : ''}${k.source ? `<div style="font-size:12.5px;color:#777;"><b>Measured by:</b> ${E(k.source)}</div>` : ''}${k.description ? `<div style="font-size:12.5px;color:#777;">${E(k.description)}</div>` : ''}
+        <div class="rate sm">${[1, 2, 3, 4, 5].map(v => `<button type="button" style="background:${RATE[v]}" data-v="${v}" onclick="apPick('${E(k.id)}',${v})" title="${E((KPI_RATING_LEGEND.find(r => r.value === v) || {}).label || '')}">${v}</button>`).join('')}</div>
+        <textarea rows="2" maxlength="2000" placeholder="What supports this rating? (optional)" oninput="apNote('${E(k.id)}',this.value)"></textarea></div>`).join('')}
+      <div class="card"><h3>Your overall comment</h3><textarea id="ap-comment" rows="4" maxlength="4000" placeholder="Anything you would like your line manager to know, and what support or development you need (optional)"></textarea></div>
+      <div id="ap-err" class="msg bad" style="display:none;"></div>
+      <div style="text-align:center;margin-top:18px;"><button class="btn" id="ap-send" onclick="apSubmit('${E(token)}')">Submit my self-assessment</button></div></div></div>`;
+    apProg();
+  };
+  window.apSubmit = async function(token){
+    const err = document.getElementById('ap-err'), btn = document.getElementById('ap-send');
+    const miss = APK.filter(k => !(window.__apAns[k.id] && window.__apAns[k.id].rating));
+    if(miss.length){ err.style.display = 'block'; err.textContent = `Please rate every KPI (${miss.length} left).`; const el = document.getElementById('apk-' + miss[0].id); if(el) el.scrollIntoView({ behavior:'smooth', block:'center' }); return; }
+    if(!confirm('Submit your self-assessment? You will not be able to change it afterwards.')) return;
+    btn.disabled = true; btn.textContent = 'Sending…';
+    const out = {}; APK.forEach(k => { out[k.id] = { rating: window.__apAns[k.id].rating, notes: window.__apAns[k.id].notes || '' }; });
+    const { data, error } = await sb().rpc('ap_submit', { p_token: token, p_ratings: out, p_comment: (document.getElementById('ap-comment') || {}).value || '' });
+    if(error || !data || !data.ok){ btn.disabled = false; btn.textContent = 'Submit my self-assessment'; err.style.display = 'block'; err.textContent = (data && data.error) || (error && error.message) || 'Something went wrong. Please try again.'; return; }
+    const w = document.querySelector('#ap-public .w'), hero = w.querySelector('.hero');
+    w.innerHTML = (hero ? hero.outerHTML : '') + '<div class="card" style="text-align:center;"><div style="font-size:64px;">✅</div><h2 style="margin:6px 0;">Thank you</h2><p style="color:#555;">Your self-assessment has been received. Your line manager will now complete their assessment, preferably together with you, and finalise the result.</p></div>';
+  };
+  (function(){ const ap = new URLSearchParams(location.search).get('ap'); if(ap) document.addEventListener('DOMContentLoaded', () => renderApPage(ap)); })();
 })();
 
 </script>
