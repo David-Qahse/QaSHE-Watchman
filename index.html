@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://esm.sh" crossorigin>
 <link rel="preconnect" href="https://uzywxhptwavnvpfzbhkb.supabase.co" crossorigin>
 <link rel="modulepreload" href="https://esm.sh/@supabase/supabase-js@2">
-<style>html.wm-boot #view-landing{display:none!important} html.wm-boot #boot-loading-overlay{display:flex}</style>
+<style>html.wm-boot #view-landing{display:none!important} html.wm-boot #boot-loading-overlay{display:flex} html.wm-gate #boot-loading-overlay{display:none!important}</style>
 <script>
 /* Fast start: begin downloading the data library before the large page script is parsed, and if this browser already
    holds a saved sign-in, never paint the marketing landing page: show the opening screen straight away instead. */
@@ -31,6 +31,11 @@
       var v = JSON.parse(localStorage.getItem(k) || 'null');
       if(v && (v.refresh_token || v.access_token)){ document.documentElement.classList.add('wm-boot'); break; }
     }
+  }
+  /* Returning user or installed app with no usable session: go straight to sign in, never flash the marketing page. */
+  if(!document.documentElement.classList.contains('wm-boot')){
+    /* The app itself sends signed-out visitors straight to sign in, so the marketing page must never paint first. */
+    document.documentElement.classList.add('wm-boot'); window.__wmGateFirst = true; document.documentElement.classList.add('wm-gate');
   }
 }catch(e){} })();
 </script>
@@ -1804,9 +1809,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       showBootLoading();
       await afterSignIn(session.user);
       hideBootLoading();
+    } else if(window.__wmGateFirst || document.documentElement.classList.contains('wm-boot')){
+      showGate('gate-auth');
     }
-  } catch(e){ /* leave the landing page showing as normal: nothing lost here */ }
-  finally { document.documentElement.classList.remove('wm-boot'); }
+  } catch(e){ if(window.__wmGateFirst){ try{ showGate('gate-auth'); }catch(_){} } }
+  finally { document.documentElement.classList.remove('wm-boot'); document.documentElement.classList.remove('wm-gate'); }
 });
 
 window.doSignIn = async function(){
@@ -1884,7 +1891,7 @@ window.doSignOut = async function(){
 };
 
 async function afterSignIn(user){
-  STATE.user = user;
+  STATE.user = user; try{ localStorage.setItem('wm_returning','1'); }catch(e){}
   // Both lookups start together instead of one after the other (neither depends on the other).
   const _memP = Promise.resolve(STATE.supabase
     .from('organisation_members')
@@ -7860,6 +7867,7 @@ window.submitDocument = async function(mode){
       introduced_date: todayISO(), current_revision_date: todayISO(), current_revision: 0,
       created_by: STATE.user.id, workflow_status: 'draft',
       promoted_from_bulk_document_id: STATE._activePromotionBulkDocId || null,
+      ...(STATE._personalDoc ? { personnel_id: STATE._personalDoc.personnel_id, personal_kind: STATE._personalDoc.kind } : {}),
     };
     const { data: newDoc, error: docErr } = await STATE.supabase.from('documents').insert(payload).select().single();
     if(docErr){ toast('Could not add document: ' + docErr.message, 'error'); return; }
@@ -7903,13 +7911,20 @@ window.submitDocument = async function(mode){
         toast(sections.length ? 'The assistant could not produce a draft, so the template text was used instead.' : 'The assistant could not produce a draft. You can try again from the document.', 'error');
       }
     }
+    if(!sections.length && STATE._personalDoc && window.r37Starter){
+      try{
+        const pdc = STATE._personalDoc, pp = (STATE.personnel||[]).find(x=>x.id===pdc.personnel_id), cc = primaryCompetenceFor(pdc.personnel_id), ps = cc ? positionById(cc.position_id) : null;
+        const mg = pp && pp.line_manager_id ? (STATE.personnel||[]).find(x=>x.id===pp.line_manager_id) : null;
+        sections = window.r37Starter(pdc.kind, pp, ps, ps ? (STATE.positionKpis||[]).filter(k=>k.position_id===ps.id && k.is_active) : [], mg && mg.full_name);
+      }catch(e){}
+    }
     if(sections.length){
       const rows = sections.map((x,i) => ({ organisation_id: STATE.org.id, document_id: newDoc.id, section_title: x.title, content: x.content, sort_order: (i+1)*10 }));
       const { error: secErr } = await STATE.supabase.from('document_content_sections').insert(rows);
       if(secErr) toast('Document created, but the draft text could not be saved: ' + secErr.message, 'error');
     }
 
-    toggleDocForm();
+    toggleDocForm(); STATE._personalDoc = null;
     ['df-title','df-purpose','df-review'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
     const rf = document.getElementById('dw-ref-file'); if(rf) rf.value='';
     await loadDocuments();
@@ -51288,6 +51303,416 @@ Likelihood and impact are whole numbers from 1 to 5.`;
 
   /* ---- feeds Business Health and Management Review ---- */
   try{ const D = window.__bhDomains; const d = D && D.find(x => x.k === 'infosec'); if(d && !d.__ev){ d.__ev = true; const _c = d.checks; d.checks = function(){ const out = _c.apply(this, arguments).slice(); try{ const app = appRows().filter(x => x.applicable); if(app.length && arr(STATE.soa).length){ const nn = app.filter(x => !x.cov.n).length, np = app.filter(x => !x.cov.policy).length; out.push({ label:'Applicable controls with evidence linked', status:nn === 0 ? 'pass' : nn / app.length <= .2 ? 'partial' : 'fail', detail:`${app.length - nn} of ${app.length} controls have a policy, procedure, register or checklist linked; ${np} have no policy.`, mod:'soa' }); } }catch(e){} return out; }; } }catch(e){}
+})();
+
+
+/* ============================================================================
+   R37: personal records, job description and KPI / Appraisal documents
+   1. Who may see which person's records (own, downline for line managers, everyone for permitted people)
+   2. Job description and KPI / Appraisal documents run through Document Management
+   3. Statistical analysis for KPIs & Appraisals (Compliance Dashboard board and the module)
+   ============================================================================ */
+(function(){
+  'use strict';
+  const arr = x => Array.isArray(x) ? x : [];
+  const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const sb = () => STATE.supabase;
+  const PEOPLE_ALL = 'people_all';
+  const KINDS = {
+    job_description: { label:'Job description', docName:'Job Description', code:'JDS' },
+    kpi_appraisal:   { label:'KPI and Appraisal', docName:'KPI and Appraisal', code:'KPA' },
+  };
+
+  /* ---------------- 1. visibility ---------------- */
+  let FULL = null;
+  const fullPeople = () => FULL || arr(STATE.personnel);
+  window.wmPeopleScope = function(){
+    const mods = arr(STATE.myModuleAccess);
+    const staff = !!(STATE.profile && STATE.profile.is_platform_staff);
+    const all = staff || STATE.myRole === 'admin' || mods.includes(PEOPLE_ALL);
+    const people = fullPeople();
+    const me = people.find(p => p.linked_profile_id && STATE.user && p.linked_profile_id === STATE.user.id) || null;
+    const ids = new Set(); let team = 0;
+    if(me){
+      ids.add(me.id);
+      const kids = {}; people.forEach(p => { if(p.line_manager_id){ (kids[p.line_manager_id] = kids[p.line_manager_id] || []).push(p.id); } });
+      const q = [me.id], seen = new Set([me.id]);
+      while(q.length){ const x = q.shift(); (kids[x] || []).forEach(k => { if(!seen.has(k)){ seen.add(k); ids.add(k); team++; q.push(k); } }); }
+    }
+    return { all, me, ids, team, can: id => all || ids.has(id) };
+  };
+  const canSee = id => window.wmPeopleScope().can(id);
+  const apprAllowed = (a, sc) => sc.all || sc.ids.has(a.personnel_id) || (STATE.user && a.line_manager_id === STATE.user.id);
+
+  function scoped(fn){
+    return function(){
+      const sc = window.wmPeopleScope();
+      if(sc.all) return fn.apply(this, arguments);
+      const prev = FULL, fp = STATE.personnel, fa = STATE.appraisals, fpos = STATE.positions;
+      FULL = prev || fp;
+      try{
+        STATE.personnel = arr(fp).filter(p => sc.ids.has(p.id));
+        STATE.appraisals = arr(fa).filter(a => apprAllowed(a, sc));
+        const posIds = new Set(arr(STATE.competence).filter(c => sc.ids.has(c.personnel_id)).map(c => c.position_id));
+        STATE.positions = arr(fpos).filter(p => posIds.has(p.id));
+        return fn.apply(this, arguments);
+      } finally { STATE.personnel = fp; STATE.appraisals = fa; STATE.positions = fpos; FULL = prev; }
+    };
+  }
+  function guarded(fn, getPerson){
+    return function(id){
+      const sc = window.wmPeopleScope();
+      if(!sc.all){
+        const pid = getPerson.apply(null, arguments);
+        const ok = pid === 'APPR' ? true : pid ? sc.ids.has(pid) : false;
+        if(!ok){ toast('You can only open your own record, and the records of people who report to you.', 'error'); return; }
+      }
+      return fn.apply(this, arguments);
+    };
+  }
+
+  /* wrap the personnel, organisation chart, appraisal and position views */
+  ['renderOrgChart', 'renderPersonnelView', 'renderPersonnelTable', 'renderPersonnelMatrix', 'renderAppraisalsTable', 'renderPositionsList', 'printCompanyOrgChart'].forEach(n => {
+    try{
+      const f = eval(n); if(typeof f !== 'function') return;
+      const w = scoped(f);
+      eval(n + ' = w'); window[n] = w;
+    }catch(e){ console.warn('r37 scope wrap', n, e); }
+  });
+  try{
+    const _pd = openPersonDetail;
+    openPersonDetail = window.openPersonDetail = guarded(_pd, id => id);
+  }catch(e){ console.warn('r37 pd', e); }
+  try{
+    const _ad = openAppraisalDetail;
+    openAppraisalDetail = window.openAppraisalDetail = async function(id){
+      const sc = window.wmPeopleScope(); const a = arr(STATE.appraisals).find(x => x.id === id);
+      if(!sc.all && a && !apprAllowed(a, sc)){ toast('You can only open your own appraisal, and the appraisals of people who report to you.', 'error'); return; }
+      const r = await _ad.apply(this, arguments);
+      try{
+        if(a && a.kpi_document_id){
+          const d = arr(STATE.documents).find(x => x.id === a.kpi_document_id);
+          const meta = document.querySelector('#appraisal-detail-slot .detail-meta');
+          if(meta && d) meta.insertAdjacentHTML('beforeend', `<div class="dm-item"><div class="l">KPI source document</div><div class="v">${E(d.doc_number)} · Rev ${E(a.kpi_document_revision || d.current_revision)}</div></div>`);
+        }
+      }catch(e){}
+      return r;
+    };
+  }catch(e){ console.warn('r37 ad', e); }
+
+  /* exports and prints of the personal registers use the same view */
+  ['exportModuleExcel', 'printCurrentRegister'].forEach(n => {
+    try{
+      const f = eval(n); if(typeof f !== 'function') return;
+      const w = function(key){ return (key === 'personnel' || key === 'appraisals' || key === 'orgchart') ? scoped(f).apply(this, arguments) : f.apply(this, arguments); };
+      eval(n + ' = w'); window[n] = w;
+    }catch(e){}
+  });
+
+  /* ---------------- permission tick in Administration ---------------- */
+  try{
+    const _re = window.toggleAdminMemberEdit;
+    if(typeof _re === 'function'){
+      window.toggleAdminMemberEdit = function(userId){
+        const r = _re.apply(this, arguments);
+        try{
+          const m = arr(STATE.members).find(x => x.user_id === userId);
+          const ap = document.getElementById('admin-edit-approver-' + userId);
+          if(m && ap && !document.getElementById('admin-edit-peopleall-' + userId)){
+            const holder = ap.closest('.field');
+            holder.insertAdjacentHTML('afterend', `<div class="field" style="display:flex; align-items:center; gap:8px; margin-top:6px;"><input type="checkbox" id="admin-edit-peopleall-${userId}" style="width:auto;" ${arr(m.module_access).includes(PEOPLE_ALL) ? 'checked' : ''}><label for="admin-edit-peopleall-${userId}" style="text-transform:none; font-family:Arial,Helvetica,sans-serif; font-size:12.5px; color:var(--text-dim);">Can see everyone's personal records (personnel, organisation chart, job descriptions, KPIs and appraisals). Without this, a person sees only their own, and line managers also see the people who report to them. Admins always see everyone.</label></div>`);
+          }
+        }catch(e){}
+        return r;
+      };
+    }
+  }catch(e){}
+  try{
+    const _sv = window.saveAdminMemberAccess;
+    window.saveAdminMemberAccess = async function(userId){
+      const cb = document.getElementById('admin-edit-peopleall-' + userId);
+      const m = arr(STATE.members).find(x => x.user_id === userId);
+      if(cb && m){
+        const had = arr(m.module_access).includes(PEOPLE_ALL);
+        /* the existing save keeps modules that are not shown on screen, so add or remove the marker on the stored list first */
+        if(cb.checked && !had) m.module_access = [...arr(m.module_access), PEOPLE_ALL];
+        if(!cb.checked && had) m.module_access = arr(m.module_access).filter(k => k !== PEOPLE_ALL);
+      }
+      return _sv.apply(this, arguments);
+    };
+  }catch(e){}
+
+  /* ---------------- 2. personal documents through Document Management ---------------- */
+  const isPersonal = d => !!(d && d.personnel_id);
+  function docAllowed(d){
+    if(!isPersonal(d)) return true;
+    const sc = window.wmPeopleScope();
+    return sc.all || sc.ids.has(d.personnel_id) || (STATE.user && d.created_by === STATE.user.id);
+  }
+  window.r37DocAllowed = docAllowed;
+  function redactedDocs(){
+    return arr(STATE.documents).map(d => (isPersonal(d) && !docAllowed(d)) ? Object.assign({}, d, { title:'Personal record (restricted)', purpose:'' }) : d);
+  }
+  function withRedaction(fn){
+    return function(){
+      const orig = STATE.documents; STATE.documents = redactedDocs();
+      try{ return fn.apply(this, arguments); } finally { STATE.documents = orig; }
+    };
+  }
+  ['renderDocumentsTable', 'renderAdminMasterDocRegister', 'renderBulkDocumentsRegister', 'renderAllDocsRegisterShell', 'renderDocRegisterTab'].forEach(n => {
+    try{ const f = eval(n); if(typeof f !== 'function') return; const w = withRedaction(f); eval(n + ' = w'); window[n] = w; }catch(e){ console.warn('r37 redact', n, e); }
+  });
+  try{
+    const _od = openDocumentDetail;
+    openDocumentDetail = window.openDocumentDetail = async function(id){
+      const d = arr(STATE.documents).find(x => x.id === id);
+      if(d && !docAllowed(d)){ toast('This is a personal record. Only the person it belongs to and their line managers can open it.', 'error'); return; }
+      return _od.apply(this, arguments);
+    };
+  }catch(e){ console.warn('r37 od', e); }
+
+  async function ensureSetup(kind){
+    const K = KINDS[kind];
+    const dept0 = () => arr(STATE.docDepartments).find(d => d.is_active && (/^(HR|HRM|PER|HUM)$/i.test(d.code) || /human|people|personnel|hr\b/i.test(d.name)));
+    const type0 = () => arr(STATE.docTypes).find(t => t.is_active && (t.code.toUpperCase() === K.code || (kind === 'job_description' ? /job desc/i.test(t.name) : /kpi|apprais/i.test(t.name))));
+    let dept = dept0(), type = type0();
+    try{
+      if(!dept){ await sb().from('document_departments').insert({ organisation_id: STATE.org.id, code:'HR', name:'Human Resources', created_by: STATE.user.id }); await loadDocDepartments(); dept = dept0(); }
+      if(!type){ await sb().from('document_types').insert({ organisation_id: STATE.org.id, code: K.code, name: K.docName, created_by: STATE.user.id }); await loadDocTypes(); type = type0(); }
+    }catch(e){ console.warn('r37 setup', e); }
+    return { dept, type };
+  }
+
+  const KPI_FORMAT = 'Format: one KPI per line: Title | Target | Weight % | Source of measure | Description';
+  function starter(kind, person, pos, kpis, mgrName){
+    if(kind === 'job_description'){
+      return [
+        { title:'Purpose of the role', content: (pos && pos.purpose) || '' },
+        { title:'Reporting line', content: `Reports to: ${mgrName || '(line manager)'}` },
+        { title:'Key duties and responsibilities', content: (pos && (pos.job_description || pos.responsibilities)) || '' },
+        { title:'Accountabilities and authorities', content: (pos && pos.accountabilities) || '' },
+        { title:'Qualifications, experience and competence', content: '' },
+        { title:'SHERQ responsibilities', content: '' },
+        { title:'Working conditions and special requirements', content: '' },
+      ];
+    }
+    const lines = arr(kpis).map(k => [k.title, k.target || '', k.weight || '', k.source_of_measure || '', k.description || ''].join(' | ')).join('\n');
+    return [
+      { title:'Purpose and appraisal cycle', content:'This document sets out the key performance indicators against which performance is appraised for the period, and how each is measured.' },
+      { title:'Key Performance Indicators', content: KPI_FORMAT + '\n' + lines },
+      { title:'Rating scale', content: arr(typeof KPI_RATING_LEGEND !== 'undefined' ? KPI_RATING_LEGEND : []).map(r => `${r.value}: ${r.label}`).join('\n') },
+      { title:'Development and training expectations', content:'' },
+    ];
+  }
+  window.r37Starter = starter;
+
+  window.r37Develop = async function(personId, kind){
+    const p = arr(STATE.personnel).find(x => x.id === personId) || fullPeople().find(x => x.id === personId);
+    if(!p) return;
+    const sc = window.wmPeopleScope();
+    if(!(sc.all || (sc.ids.has(personId) && sc.me && sc.me.id !== personId))){ toast('Only the line manager, or someone permitted to see everyone, develops these documents.', 'error'); return; }
+    const K = KINDS[kind];
+    const comp = primaryCompetenceFor(personId); const pos = comp ? positionById(comp.position_id) : null;
+    const mgr = p.line_manager_id ? fullPeople().find(x => x.id === p.line_manager_id) : null;
+    const { dept, type } = await ensureSetup(kind);
+    showModule('documents');
+    await new Promise(r => setTimeout(r, 60));
+    const f = document.getElementById('doc-form');
+    if(f && !f.classList.contains('open')) toggleDocForm();
+    STATE._personalDoc = { personnel_id: personId, kind };
+    const set = (id, v) => { const el = document.getElementById(id); if(el && v != null) el.value = v; };
+    set('df-title', `${K.docName}: ${pos ? pos.title : 'Position'} [${p.ref_code || ''}]`);
+    const posKpis = pos ? arr(STATE.positionKpis).filter(k => k.position_id === pos.id && k.is_active).map(k => `${k.title} | ${k.target || ''} | ${k.weight || ''}`).join('; ') : '';
+    set('df-purpose', kind === 'job_description'
+      ? `Job description for the position ${pos ? pos.title : ''}${mgrName(mgr) ? ', reporting to ' + mgrName(mgr) : ''}. It sets out the purpose of the role, reporting line, key duties, accountabilities and authorities, qualifications and competence, and SHERQ responsibilities.${pos && pos.job_description ? ' Existing position text: ' + String(pos.job_description).slice(0, 1200) : ''}`
+      : `KPI and Appraisal document for the position ${pos ? pos.title : ''}. Include a section titled "Key Performance Indicators" with one KPI per line in the format: Title | Target | Weight % | Source of measure | Description. Weights should total 100.${posKpis ? ' Existing position KPIs: ' + posKpis : ''}`);
+    if(dept) set('df-department', dept.id); if(type) set('df-type', type.id);
+    try{ updateDfNextNumberPreview(); }catch(e){}
+    const pane = document.getElementById('dw-pane-1');
+    if(pane && !document.getElementById('r37-pd-note')) pane.insertAdjacentHTML('afterbegin', `<div id="r37-pd-note" style="background:#FFF6E5;border:1px solid #F0D79A;border-radius:10px;padding:10px 14px;font-size:12.5px;margin-bottom:12px;"><b>Personal document.</b> Once approved it is numbered and controlled like any other document, but it can be opened only by the person it belongs to and their line managers. Next step: upload any existing ${K.label.toLowerCase()} if you have one, then let the AI assistant draft it, or build it from scratch. Invite the person to review and recommend amendments before you approve it.</div>`);
+    const warn = [];
+    if(!dept) warn.push('department'); if(!type) warn.push('document type');
+    if(warn.length) toast('Choose the ' + warn.join(' and ') + ' for this document (none was found and it could not be added automatically).', 'error');
+  };
+  function mgrName(m){ return m ? m.full_name : ''; }
+
+  try{
+    const _t = toggleDocForm;
+    toggleDocForm = window.toggleDocForm = function(){
+      const f = document.getElementById('doc-form');
+      if(f && f.classList.contains('open')){ STATE._personalDoc = null; const n = document.getElementById('r37-pd-note'); if(n) n.remove(); }
+      return _t.apply(this, arguments);
+    };
+  }catch(e){}
+
+  /* the published KPI document is the source for an appraisal */
+  const isPublished = d => d && d.status !== 'withdrawn' && d.status !== 'superseded' && (d.approval_status === 'approved' || d.workflow_status === 'approved');
+  function plain(html){
+    return String(html || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li|tr|h\d)>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+  }
+  window.r37ParseKpis = async function(docId){
+    const { data } = await sb().from('document_content_sections').select('section_title, content, sort_order').eq('document_id', docId).order('sort_order', { ascending:true });
+    const secs = arr(data);
+    const sec = secs.find(s => /key performance|kpi/i.test(s.section_title || '')) || null;
+    if(!sec) return [];
+    const rows = [];
+    plain(sec.content).split(/\n+/).map(l => l.trim()).filter(Boolean).forEach(l => {
+      if(/^format\s*:/i.test(l) || /^#/.test(l)) return;
+      l = l.replace(/^[-*•\d.)\s]+/, '').trim(); if(!l) return;
+      const c = l.split('|').map(x => x.trim());
+      const w = parseFloat(String(c[2] || '').replace('%', ''));
+      rows.push({ title: c[0], target: c[1] || null, weight: isFinite(w) ? w : null, source_of_measure: c[3] || null, description: c[4] || null });
+    });
+    if(rows.length && rows.every(r => r.weight == null)){ const w = Math.round(1000 / rows.length) / 10; rows.forEach(r => r.weight = w); }
+    rows.forEach(r => { if(r.weight == null) r.weight = 0; });
+    return rows;
+  };
+  window.submitAppraisal = async function(){
+    const personnelId = document.getElementById('af-personnel').value;
+    const managerId = document.getElementById('af-manager').value;
+    const periodStart = document.getElementById('af-period-start').value;
+    const periodEnd = document.getElementById('af-period-end').value;
+    if(!personnelId || !managerId || !periodStart || !periodEnd){ alert('All fields are required.'); return; }
+    const sc = window.wmPeopleScope();
+    if(!sc.all && !(sc.ids.has(personnelId) && sc.me && sc.me.id !== personnelId)){ toast('Only a line manager, or someone permitted to see everyone, starts an appraisal.', 'error'); return; }
+    const primary = primaryCompetenceFor(personnelId);
+    if(!primary){ alert('This person has no primary position set: go set one on their Personnel record first.'); return; }
+    let kpiDoc = arr(STATE.documents).find(d => d.personnel_id === personnelId && d.personal_kind === 'kpi_appraisal' && isPublished(d));
+    let kpis = [];
+    if(kpiDoc){
+      kpis = await window.r37ParseKpis(kpiDoc.id);
+      if(!kpis.length){ alert(`The published KPI document ${kpiDoc.doc_number} has no readable KPI lines. Issue a new revision with a section titled "Key Performance Indicators" and one KPI per line (Title | Target | Weight % | Source of measure | Description).`); return; }
+    } else {
+      kpis = arr(STATE.positionKpis).filter(k => k.position_id === primary.position_id && k.is_active).map(k => ({ title:k.title, description:k.description, target:k.target, source_of_measure:k.source_of_measure, weight:k.weight || 0 }));
+      if(!kpis.length){ alert('There is no published KPI and Appraisal document for this person, and no KPIs on their position. Develop and approve the KPI and Appraisal document first.'); return; }
+      if(!confirm('There is no published KPI and Appraisal document for this person. Use the general KPIs set for their position instead?')) return;
+    }
+    const row = { organisation_id: STATE.org.id, personnel_id: personnelId, position_id: primary.position_id, line_manager_id: managerId, period_start: periodStart, period_end: periodEnd, created_by: STATE.user.id };
+    if(kpiDoc){ row.kpi_document_id = kpiDoc.id; row.kpi_document_revision = String(kpiDoc.current_revision); }
+    const { data: na, error: aErr } = await sb().from('appraisals').insert(row).select().single();
+    if(aErr){ toast('Could not start appraisal: ' + aErr.message, 'error'); return; }
+    const { error: kErr } = await sb().from('appraisal_kpis').insert(kpis.map((k, i) => ({ organisation_id: STATE.org.id, appraisal_id: na.id, kpi_title: k.title, kpi_description: k.description, sort_order: (i + 1) * 10, target: k.target, source_of_measure: k.source_of_measure, weight: k.weight || 0 })));
+    if(kErr) toast('Appraisal created, but KPIs could not be copied in: ' + kErr.message, 'error');
+    toggleAppraisalForm(); await loadAppraisals(); renderAppraisalsTable(); updateNavBadges();
+    toast(`${na.ref_code} started${kpiDoc ? ' from ' + kpiDoc.doc_number : ''}.`, 'success');
+  };
+  try{ submitAppraisal = window.submitAppraisal; }catch(e){}
+
+  /* ---------------- panel: documents per person ---------------- */
+  function docOf(personId, kind){
+    return arr(STATE.documents).filter(d => d.personnel_id === personId && d.personal_kind === kind && d.status !== 'withdrawn' && d.status !== 'superseded')[0] || null;
+  }
+  function cell(p, kind, canDev){
+    const d = docOf(p.id, kind);
+    if(d){
+      const st = documentWorkflowBadge(d);
+      return `<a href="#" onclick="event.preventDefault();r37OpenDoc('${d.id}')" style="font-weight:700;">${E(d.doc_number)}</a> <span style="font-size:11px;color:var(--text-faint)">Rev ${E(d.current_revision)}</span> <span class="sev-badge" style="background:${st.color};color:#fff;font-size:10px;">${E(st.label)}</span>`;
+    }
+    return canDev ? `<button class="btn-small" onclick="r37Develop('${p.id}','${kind}')">Develop</button>` : '<span style="color:var(--text-faint);font-size:12px;">Not yet issued</span>';
+  }
+  window.r37OpenDoc = function(id){ showModule('documents'); setTimeout(() => openDocumentDetail(id), 80); };
+  function panelHtml(){
+    const sc = window.wmPeopleScope(); const people = arr(STATE.personnel).filter(p => p.status !== 'inactive' && sc.can(p.id));
+    if(!people.length) return '';
+    const rows = people.slice(0, 300).map(p => {
+      const comp = primaryCompetenceFor(p.id); const pos = comp ? positionById(comp.position_id) : null;
+      const canDev = sc.all || (sc.me && sc.me.id !== p.id && sc.ids.has(p.id));
+      return `<tr><td class="strong">${E(p.full_name)}</td><td>${E(pos ? pos.title : '')}</td><td>${cell(p, 'job_description', canDev)}</td><td>${cell(p, 'kpi_appraisal', canDev)}</td></tr>`;
+    }).join('');
+    return `<details class="detail-card" style="margin-bottom:16px;padding:14px 16px;" ${STATE._r37PdOpen ? 'open' : ''} ontoggle="STATE._r37PdOpen=this.open"><summary style="cursor:pointer;font-weight:700;font-size:14px;">Job descriptions and KPI &amp; Appraisal documents <span style="font-weight:400;color:var(--text-faint);font-size:12px;">${sc.all ? 'everyone' : (sc.team ? 'you and your team' : 'yours')}</span></summary>
+      <p style="font-size:12px;color:var(--text-faint);margin:8px 0 10px;">These are controlled documents: numbered to the company naming convention, with revision history, review and approval, and listed in the Master Documents Register. They can be opened only by the person they belong to and their line managers. A published KPI and Appraisal document is the source when an appraisal is started.</p>
+      <div class="table-wrap"><table><thead><tr><th>Person</th><th>Position</th><th>Job description</th><th>KPI and Appraisal</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
+  }
+  function mountPanel(afterFn){
+    return function(){
+      const r = afterFn.apply(this, arguments);
+      try{
+        const root = document.getElementById('content-root'); if(!root) return r;
+        let host = document.getElementById('r37-pd'); if(!host){ host = document.createElement('div'); host.id = 'r37-pd'; root.insertBefore(host, root.firstChild); }
+        host.innerHTML = panelHtml();
+        if(document.getElementById('appraisal-table-wrap')) mountStats(host);
+      }catch(e){ console.warn('r37 panel', e); }
+      return r;
+    };
+  }
+  ['renderPersonnelView', 'renderAppraisalsTable'].forEach(n => { try{ const f = eval(n); const w = mountPanel(f); eval(n + ' = w'); window[n] = w; }catch(e){ console.warn('r37 mount', n, e); } });
+
+  /* ---------------- 3. statistical analysis for KPIs & Appraisals ---------------- */
+  const UI = () => window.__isUI || null;
+  async function loadAppraisalData(){
+    const sc = window.wmPeopleScope();
+    const ap = arr(STATE.appraisals).filter(a => apprAllowed(a, sc));
+    let kp = [];
+    try{ const r = await sb().from('appraisal_kpis').select('appraisal_id, kpi_title, final_achievement_pct, weight').eq('organisation_id', STATE.org.id); kp = arr(r.data); }catch(e){}
+    return { ap, kp, sc };
+  }
+  const band = v => v >= 100 ? 'At or above expectation' : v >= 80 ? 'Close to expectation (80 to 99%)' : v >= 60 ? 'Below expectation (60 to 79%)' : 'Well below expectation (under 60%)';
+  window.r37AppraisalStatsHtml = async function(){
+    const U = UI(); if(!U) return '';
+    const { ap, kp, sc } = await loadAppraisalData();
+    const fin = ap.filter(a => a.status === 'finalized' && a.overall_achievement_pct != null);
+    const open = ap.filter(a => a.status !== 'finalized');
+    if(!ap.length) return `<p class="is-none">No appraisals have been started yet, so there is nothing to analyse.</p>`;
+    const avg = a => a.length ? a.reduce((s, x) => s + Number(x.overall_achievement_pct), 0) / a.length : 0;
+    const company = avg(fin);
+    const atOrAbove = fin.filter(a => Number(a.overall_achievement_pct) >= 100).length;
+    const below = fin.filter(a => Number(a.overall_achievement_pct) < 100).length;
+    /* per person: average of that person's finalised appraisals */
+    const byP = new Map(); fin.forEach(a => { const o = byP.get(a.personnel_id) || { s:0, n:0 }; o.s += Number(a.overall_achievement_pct); o.n++; byP.set(a.personnel_id, o); });
+    const personRows = [...byP.entries()].map(([id, o]) => { const p = fullPeople().find(x => x.id === id) || arr(STATE.personnel).find(x => x.id === id); return { label: p ? p.full_name : 'Unknown', v: Math.round(o.s / o.n * 10) / 10 }; }).sort((a, b) => b.v - a.v);
+    const bands = ['At or above expectation', 'Close to expectation (80 to 99%)', 'Below expectation (60 to 79%)', 'Well below expectation (under 60%)'];
+    const colours = ['#2E9E5B', '#E0B122', '#F07C1A', '#D7242B'];
+    const bandParts = bands.map((b, i) => ({ n:b, c:colours[i], v: fin.filter(a => band(Number(a.overall_achievement_pct)) === b).length }));
+    /* trend: average by the month the period ended */
+    const mk = U.months(12); const tm = {}; fin.forEach(a => { const k = String(a.period_end || '').slice(0, 7); (tm[k] = tm[k] || []).push(Number(a.overall_achievement_pct)); });
+    const trend = mk.map(k => tm[k] ? tm[k].reduce((s, x) => s + x, 0) / tm[k].length : 0);
+    /* opportunities for improvement: KPIs most often rated below 100 */
+    const finIds = new Set(fin.map(a => a.id)); const oi = new Map();
+    kp.filter(k => finIds.has(k.appraisal_id) && k.final_achievement_pct != null).forEach(k => {
+      const key = String(k.kpi_title || '').trim().toLowerCase(); if(!key) return;
+      const o = oi.get(key) || { label: k.kpi_title, n:0, tot:0, below:0, s:0 }; o.tot++; o.s += Number(k.final_achievement_pct); if(Number(k.final_achievement_pct) < 100) o.below++; oi.set(key, o);
+    });
+    const oiRows = [...oi.values()].filter(o => o.below > 0).sort((a, b) => b.below - a.below || a.s / a.tot - b.s / b.tot).slice(0, 10).map(o => ({ label: o.label, n: o.below, note: `${Math.round(o.s / o.tot)}% average` }));
+    const obs = [];
+    if(fin.length){
+      obs.push(`${sc.all ? 'The company performance average' : 'The average performance across the appraisals you can see'} is ${company.toFixed(1)}% from ${fin.length} finalised appraisal${fin.length === 1 ? '' : 's'} (target 100%).`);
+      obs.push(`${atOrAbove} of ${fin.length} (${Math.round(atOrAbove / fin.length * 100)}%) are at or above expectation; ${below} are below.`);
+      if(personRows.length > 1 && (sc.all || sc.team)) obs.push(`Highest average: ${personRows[0].label} (${personRows[0].v}%). Lowest: ${personRows[personRows.length - 1].label} (${personRows[personRows.length - 1].v}%).`);
+      if(oiRows.length) obs.push(`The most common opportunity for improvement is "${oiRows[0].label}", rated below expectation in ${oiRows[0].n} appraisal${oiRows[0].n === 1 ? '' : 's'}.`);
+    } else obs.push('No appraisal has been finalised yet, so averages cannot be calculated.');
+    if(open.length) obs.push(`${open.length} appraisal${open.length === 1 ? ' is' : 's are'} still in progress.`);
+    const scopeNote = sc.all ? '' : `<p class="is-none" style="margin-bottom:10px;">Based only on the appraisals you are permitted to see.</p>`;
+    const pct = v => Math.round(v) + '%';
+    const tiles = `<div class="oa-tiles">${U.tile(fin.length ? company.toFixed(1) + '%' : '-', sc.all ? 'company average' : 'average performance', fin.length ? (company >= 100 ? '#2E7D4F' : company >= 80 ? '#D98A00' : '#B21616') : '#6B7A90')}${U.tile(fin.length, 'finalised appraisals', '#1b2434')}${U.tile(atOrAbove, 'at or above expectation', '#2E7D4F')}${U.tile(below, 'below expectation', below ? '#B21616' : '#2E7D4F')}${U.tile(open.length, 'in progress', open.length ? '#D98A00' : '#2E7D4F')}</div>`;
+    const grid = [
+      U.card('Opportunities for improvement: KPIs most often below expectation', oiRows.length ? U.hbars(oiRows, { color:'#D7242B', top:10 }) : '<p class="is-none">No KPI has been rated below expectation yet.</p>', true),
+      U.card('Performance distribution', fin.length ? U.donut(bandParts) : '<p class="is-none">No data yet.</p>'),
+      U.card('Average performance by period end (last 12 months)', fin.length ? U.colChart(mk, trend, '#B21616', pct) : '<p class="is-none">No data yet.</p>'),
+    ];
+    if(sc.all || sc.team) grid.push(U.card('Average performance per person', personRows.length ? U.hbars(personRows, { val:'v', color:'#2E5AA8', top:12, fmt: v => v + '%' }) : '<p class="is-none">No data yet.</p>', true));
+    return `${scopeNote}${tiles}${U.card('Executive observations', `<ul class="is-ul">${obs.map(o => `<li>${E(o)}</li>`).join('')}</ul>`)}<div class="is-grid" style="margin-top:16px;">${grid.join('')}</div>`;
+  };
+  async function mountStats(host){
+    const U = UI(); if(!U) return;
+    let box = document.getElementById('r37-stats');
+    if(!box){ box = document.createElement('details'); box.id = 'r37-stats'; box.className = 'detail-card is-scope'; box.style.cssText = 'margin-bottom:16px;padding:14px 16px;'; box.innerHTML = '<summary style="cursor:pointer;font-weight:700;font-size:14px;">Statistical analysis: performance averages and opportunities for improvement</summary><div class="r37-body" style="margin-top:12px;"></div>'; host.appendChild(box);
+      box.addEventListener('toggle', async () => { if(box.open && !box.dataset.done){ box.dataset.done = '1'; const b = box.querySelector('.r37-body'); b.innerHTML = U.CSS + '<p class="is-none">Analysing…</p>'; try{ b.innerHTML = U.CSS + await window.r37AppraisalStatsHtml(); }catch(e){ b.innerHTML = '<p class="is-none">Could not build the analysis.</p>'; } } }); }
+  }
+  /* the Compliance Dashboard board for KPIs & Appraisals */
+  try{
+    const _k = window.wdKpi;
+    window.wdKpi = function(key){
+      const r = _k.apply(this, arguments);
+      try{
+        if(key !== 'appraisals' || STATE._wdKpiOpen !== key) return r;
+        const U = UI(), panel = document.getElementById('wd-kpi-panel'); if(!U || !panel) return r;
+        const holder = document.createElement('div'); holder.className = 'is-scope'; holder.innerHTML = U.CSS + '<h3 style="font-size:15px;margin:18px 0 10px;border-top:1px solid #e3e7ed;padding-top:14px;">Performance analysis: KPIs &amp; Appraisals</h3><p class="is-none">Analysing the appraisals…</p>';
+        panel.appendChild(holder);
+        window.r37AppraisalStatsHtml().then(h => { if(holder.isConnected) holder.innerHTML = U.CSS + '<h3 style="font-size:15px;margin:18px 0 10px;border-top:1px solid #e3e7ed;padding-top:14px;">Performance analysis: KPIs &amp; Appraisals</h3>' + h; }).catch(() => { if(holder.isConnected) holder.remove(); });
+      }catch(e){ console.warn('r37 dash', e); }
+      return r;
+    };
+  }catch(e){ console.warn('r37 wdKpi', e); }
 })();
 
 </script>
