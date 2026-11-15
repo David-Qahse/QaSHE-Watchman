@@ -24,7 +24,7 @@
 (function(){ try{
   window.__wmSb = import('https://esm.sh/@supabase/supabase-js@2').catch(function(){ return null; });
   var q = new URLSearchParams(location.search);
-  if(q.get('sp')||q.get('sv')||q.get('sq')||q.get('g')||q.get('nr')||q.get('ss')||q.has('tutorial')) return;
+  if(q.get('sp')||q.get('sv')||q.get('sq')||q.get('g')||q.get('nr')||q.get('ss')||q.get('ps')||q.has('tutorial')) return;
   for(var i=0;i<localStorage.length;i++){
     var k = localStorage.key(i);
     if(/^sb-.+-auth-token$/.test(k)){
@@ -1800,7 +1800,7 @@ async function enterApp(){
 // already signed in on this device.
 document.addEventListener('DOMContentLoaded', async () => {
   try {
-    { const _q = new URLSearchParams(location.search); if(_q.get('sp') || _q.get('sv') || _q.get('sq') || _q.get('g') || _q.get('nr') || _q.get('ss') || _q.has('tutorial')) return; } // public page modes
+    { const _q = new URLSearchParams(location.search); if(_q.get('sp') || _q.get('sv') || _q.get('sq') || _q.get('g') || _q.get('nr') || _q.get('ss') || _q.get('ps') || _q.has('tutorial')) return; } // public page modes
     await ensureSupabaseLib();
     if(!STATE.supabase) initSupabase(SUPABASE_URL, SUPABASE_ANON_KEY);
     const { data:{ session } } = await STATE.supabase.auth.getSession();
@@ -41073,6 +41073,11 @@ const MODS = [
  iso:['ISO 9001 cl 7.3','ISO 37001 cl 7.3','ISO 45001 cl 7.3'],link:['personnel','appraisals','training'],
  steps:['Register the case','Send notice of the hearing','Record the minutes','Issue the verdict and outcome'],
  d:{a:'flow',st:[['Registered','allegation'],['Notice','emailed'],['Hearing','minutes'],['Verdict','reasons'],['Closed','on profile']]}},
+{id:'staff_survey',ch:'ppl',n:'Personnel Satisfaction Survey',ic:'users',tag:'Ask personnel what it is like to work here, confidentially, and act on the answers.',
+ feat:['Standard question set you can adjust before sending','Personal link by email, or a printed questionnaire a line manager completes with people who have no internet','Confidential by default, with results only shown for groups large enough to protect people','Averages, favourable ratings by theme, strengths, opportunities for improvement and employee net promoter score','Trend across surveys and tasks raised from the results'],
+ iso:['ISO 45001 cl 5.4','ISO 9001 cl 7.1.4','ISO 45003 (alignment)'],link:['personnel','appraisals','training'],
+ steps:['Create the survey','Send the personal links','Collect paper responses','Review the statistics'],
+ d:{a:'flow',st:[['Create','questions'],['Send','email or print'],['Respond','confidential'],['Analyse','themes'],['Improve','tasks']]}},
 {id:'ptw',ch:'ops',n:'Permit to Work',ic:'shield',tag:'Controlled permits for high risk work: requested, approved, issued, handed back and closed, with a checklist at every step.',
  feat:['Permit types: hot work, work at height, confined space, lock-out and isolation, excavation, lifting and general','A checklist for each type that must be complete before a permit is issued','The approver must be a different person from the requester','Suspend, resume, hand back with an area-safe confirmation, then close or cancel with a reason','Expired permits are flagged, and the permit prints with its evidence attached'],
  iso:['ISO 45001 cl 8.1 operational planning and control','ISO 45001 cl 8.1.3 management of change','OHS Act 85 of 1993 and its regulations'],link:['incidents','legal','personnel','documents'],
@@ -46151,7 +46156,7 @@ Prices must be in ${doc.currency}. If you are unsure of a price, set it to your 
     const p = positionById(id); Object.assign(p, row); kpiCloseOverlay(); toast('Job description saved.', 'success'); renderPositionsList(); };
 
   /* ---------- people hub on Personnel, plus a shared sub-navigation ---------- */
-  const SUBNAV = [['personnel','Personnel'],['appraisals','KPIs and Appraisals'],['training','Training'],['orgchart','Org Charts'],['disciplinary','Disciplinary Action']];
+  const SUBNAV = [['personnel','Personnel'],['appraisals','KPIs and Appraisals'],['training','Training'],['orgchart','Org Charts'],['disciplinary','Disciplinary Action'],['staff_survey','Satisfaction Survey']];
   function subnav(cur){ return `<div id="wb-subnav" style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px;">${SUBNAV.filter(([k]) => k === 'personnel' || canAccessModule(k)).map(([k, l]) => `<button class="btn-small ${k === cur ? 'primary' : ''}" onclick="showModule('${k}')">${l}</button>`).join('')}</div>`; }
   function hub(){
     const ps = activePeople(); if(!ps.length) return '';
@@ -46962,7 +46967,7 @@ add('personnel', 'tips', ['Aim for 100% onboarding before a new person works uns
   /* signed-out visitors open straight to sign-in */
   document.addEventListener('DOMContentLoaded', async () => {
     try{
-      const q = new URLSearchParams(location.search); if(q.get('sp') || q.get('sv') || q.get('sq') || q.get('g') || q.get('nr') || q.get('ss') || q.has('tutorial')) return;
+      const q = new URLSearchParams(location.search); if(q.get('sp') || q.get('sv') || q.get('sq') || q.get('g') || q.get('nr') || q.get('ss') || q.get('ps') || q.has('tutorial')) return;
       await ensureSupabaseLib(); if(!STATE.supabase) initSupabase(SUPABASE_URL, SUPABASE_ANON_KEY);
       const { data:{ session } } = await STATE.supabase.auth.getSession();
       if(!session || !session.user){ if(!document.getElementById('view-dashboard').classList.contains('active')) showGate('gate-auth'); }
@@ -50424,7 +50429,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   let __cid = 0;
   const FF = "font-family:Arial,Helvetica,sans-serif;";
   const shade = (c, f) => c; 
-  const hbars = (rows, o) => { o = o || {}; const key = o.val || 'n'; const list = rows.slice(0, o.top || 10); const max = Math.max(1, ...list.map(r => r[key])); const tot = list.reduce((a, r) => a + (r[key] || 0), 0) || 1;
+  const hbars = (rows, o) => { o = o || {}; const key = o.val || 'n'; const list = rows.slice(0, o.top || 10); const max = Math.max(o.max || 1, ...list.map(r => r[key])); const tot = list.reduce((a, r) => a + (r[key] || 0), 0) || 1;
     return list.length ? `<div class="is-hb">${list.map(r => { const v = r[key], w = Math.max(v > 0 ? 3 : 0, v / max * 100); const lb = E(r.label || r.k); return `<div class="is-hb-row"><div class="is-hb-top"><span class="is-hb-l" title="${lb}">${lb}</span><span class="is-hb-v">${o.fmt ? o.fmt(v) : v}${o.fmt ? '' : `<em>${Math.round(v / tot * 100)}%</em>`}</span></div><div class="is-hb-track"><div class="is-hb-fill" style="width:${w}%;background:linear-gradient(90deg,${o.color || '#B21616'}CC,${o.color || '#B21616'});"></div></div></div>`; }).join('')}</div>` : '<p class="is-none">No data yet.</p>'; };
   const smooth = (pts) => { if(pts.length < 2) return ''; let d = `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`; for(let i = 0; i < pts.length - 1; i++){ const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2; const t = 0.18; const c1x = p1[0] + (p2[0] - p0[0]) * t, c1y = p1[1] + (p2[1] - p0[1]) * t, c2x = p2[0] - (p3[0] - p1[0]) * t, c2y = p2[1] - (p3[1] - p1[1]) * t; const lo = Math.min(p1[1], p2[1]), hi = Math.max(p1[1], p2[1]); d += ` C${c1x.toFixed(1)},${Math.min(hi, Math.max(lo, c1y)).toFixed(1)} ${c2x.toFixed(1)},${Math.min(hi, Math.max(lo, c2y)).toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`; } return d; };
   function lineChart(keys, series, o){
@@ -51114,7 +51119,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     ['general', 'General Management', ['bplan', 'business_health', 'risks', 'objectives', 'governance', 'policies', 'retention']],
     ['cust', 'Customer Management', ['customers', 'crm', 'quotes']],
     ['supp', 'Supplier & Subcontractor Management', ['suppliers']],
-    ['hr', 'Human Resources Management', ['personnel', 'orgchart', 'appraisals', 'training', 'hr', 'disciplinary']],
+    ['hr', 'Human Resources Management', ['personnel', 'orgchart', 'appraisals', 'training', 'hr', 'disciplinary', 'staff_survey']],
     ['lcert', 'Legal Documents & Certificates', ['legal_certs']],
     ['legal', 'Legal Compliance', ['legal']],
     ['infosec', 'Information Security', ['soa', 'info_assets', 'threat_intel', 'privacy']],
@@ -51689,7 +51694,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
       U.card('Performance distribution', fin.length ? U.donut(bandParts) : '<p class="is-none">No data yet.</p>'),
       U.card('Average performance by period end (last 12 months)', fin.length ? U.colChart(mk, trend, '#B21616', pct) : '<p class="is-none">No data yet.</p>'),
     ];
-    if(sc.all || sc.team) grid.push(U.card('Average performance per person', personRows.length ? U.hbars(personRows, { val:'v', color:'#2E5AA8', top:12, fmt: v => v + '%' }) : '<p class="is-none">No data yet.</p>', true));
+    if(sc.all || sc.team) grid.push(U.card('Average performance per person', personRows.length ? U.hbars(personRows, { val:'v', color:'#2E5AA8', top:12, max:100, fmt: v => v + '%' }) : '<p class="is-none">No data yet.</p>', true));
     return `${scopeNote}${tiles}${U.card('Executive observations', `<ul class="is-ul">${obs.map(o => `<li>${E(o)}</li>`).join('')}</ul>`)}<div class="is-grid" style="margin-top:16px;">${grid.join('')}</div>`;
   };
   async function mountStats(host){
@@ -51713,6 +51718,480 @@ Likelihood and impact are whole numbers from 1 to 5.`;
       return r;
     };
   }catch(e){ console.warn('r37 wdKpi', e); }
+})();
+
+
+/* ============================================================================
+   R38: Personnel Satisfaction Survey (Human Resources Management)
+   - module switch (Admin Console), confidential by default
+   - HR / admins create a survey, send a personal link by email, print the questionnaire for
+     people without internet, line managers record paper responses for their own people
+   - public page opened from the emailed link (?ps=token)
+   - statistics page: averages, favourable %, themes, strengths, opportunities for improvement,
+     eNPS, groups (with a minimum group size), trend and unattributed comments
+   ============================================================================ */
+(function(){
+  'use strict';
+  const arr = x => Array.isArray(x) ? x : [];
+  const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const sb = () => STATE.supabase;
+  const KEYM = 'staff_survey';
+  const mOff = () => !!(STATE.org && STATE.org._modOff && STATE.org._modOff.has(KEYM));
+  const scope = () => (window.wmPeopleScope ? window.wmPeopleScope() : { all: STATE.myRole === 'admin', ids: new Set(), team: 0, can: () => false });
+  const isHR = () => scope().all;
+  const isLead = () => !isHR() && scope().team > 0;
+  const day = d => d ? new Date(String(d).slice(0, 10) + 'T00:00:00').toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '';
+  const linkOf = t => `${location.origin}${location.pathname}?ps=${t}`;
+  const RATE = { 1:['Strongly disagree','#D7242B'], 2:['Disagree','#F07C1A'], 3:['Neutral','#E0B122'], 4:['Agree','#7CB342'], 5:['Strongly agree','#2E9E5B'] };
+  const npsCol = v => v <= 6 ? '#D7242B' : v <= 8 ? '#E0B122' : '#2E9E5B';
+
+  /* ---------------- the standard question set ---------------- */
+  const BANK = [
+    ['My role and job satisfaction', ['I understand what is expected of me in my job.', 'My work makes good use of my skills and abilities.', 'I find my work meaningful and satisfying.', 'My workload is reasonable.']],
+    ['Management and supervision', ['My line manager treats me with respect.', 'My line manager gives me clear direction and useful feedback.', 'I can raise a concern with my line manager without fear of negative consequences.', 'Management makes fair and consistent decisions.']],
+    ['Communication', ['I am kept informed about matters that affect my work.', 'I understand the goals of the company and how my work contributes to them.', 'Management listens to my ideas and suggestions.']],
+    ['Health, safety and wellbeing', ['I feel safe at work.', 'My supervisor takes health and safety seriously.', 'I am confident to stop work if I believe it is unsafe.', 'I have the tools, equipment and PPE I need to work safely.', 'The company supports my wellbeing and a healthy balance between work and home.']],
+    ['Training and development', ['I receive the training I need to do my job well.', 'I have opportunities to grow and develop my career here.', 'My KPIs and appraisals are fair and help me to improve.']],
+    ['Recognition and reward', ['I am recognised when I do good work.', 'I believe my pay and benefits are fair for the work I do.']],
+    ['Teamwork and culture', ['People in my team cooperate and support each other.', 'People are treated fairly, whoever they are.', 'I can trust the people I work with.', 'The values of the company are lived in practice.']],
+    ['Working conditions and resources', ['My working environment is clean, safe and suitable.', 'I have the systems, information and resources I need to do my job.', 'Policies and procedures help me to do my job well.']],
+    ['Commitment', ['I am proud to work for this company.', 'I see myself still working here in two years.']],
+  ];
+  const NPS_Q = 'How likely are you to recommend this company as a place to work to a friend or family member?';
+  const TEXT_Q = [['What does the company do well that it should keep doing?'], ['What one thing, if improved, would make the biggest difference to you?'], ['Any other comments?']];
+  function standardQuestions(){
+    const out = []; let i = 0;
+    BANK.forEach(([theme, qs]) => qs.forEach(t => out.push({ sort_order: ++i, theme, kind:'scale', text:t, required:true })));
+    out.push({ sort_order: ++i, theme:'Commitment', kind:'nps', text:NPS_Q, required:true });
+    TEXT_Q.forEach(([t]) => out.push({ sort_order: ++i, theme:'Your comments', kind:'text', text:t, required:false }));
+    return out;
+  }
+  const INTRO = 'Your views matter. This survey helps us understand what is working well and what we must improve. It takes about 10 minutes. Please answer honestly: there are no right or wrong answers.';
+
+  /* ---------------- switch, navigation, access ---------------- */
+  ADMIN_CONSOLE_TOGGLES.push({ field:'staff_survey_module_enabled', label:'Personnel Satisfaction Survey', note:'Send a confidential satisfaction survey to all personnel by emailed link, print it for people without email or internet, and analyse the results. Administrators and permitted HR leads run it; line managers record paper responses for their own people. On by default.' });
+  { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
+      if(field !== 'staff_survey_module_enabled') return _t.apply(this, arguments);
+      const { error } = await sb().from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:KEYM, enabled:!!value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
+      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
+    }; }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __in = _lc.apply(this, arguments);
+      const r = await __in; if(STATE.org) STATE.org.staff_survey_module_enabled = !mOff(); return r; }; }
+  { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){
+      if(mod === KEYM){ if(mOff()) return false; return isHR() || isLead(); }
+      return _c.apply(this, arguments); }; }
+  MODULE_META[KEYM] = { title:'Personnel Satisfaction Survey', sub:() => 'Ask personnel what it is like to work here, confidentially, and turn the answers into improvements' };
+  RENDERERS[KEYM] = () => '<div id="ps-root"></div>';
+  { const anchor = document.querySelector('.nav-item[data-mod="disciplinary"]') || document.querySelector('.nav-item[data-mod="personnel"]');
+    if(anchor && !document.querySelector('.nav-item[data-mod="' + KEYM + '"]')) anchor.insertAdjacentHTML('afterend', '<div class="nav-item" data-mod="' + KEYM + '" onclick="showModule(\'' + KEYM + '\')"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg> Personnel Satisfaction Survey</div>'); }
+  { const _a = applyModuleAccessToNav; applyModuleAccessToNav = window.applyModuleAccessToNav = function(){ const r = _a.apply(this, arguments);
+      const el = document.querySelector('.nav-item[data-mod="' + KEYM + '"]'); if(el) el.style.display = canAccessModule(KEYM) ? '' : 'none'; return r; }; }
+  { const _s = showModule; showModule = window.showModule = function(mod){ const r = _s.apply(this, arguments); if(mod === KEYM && document.getElementById('ps-root')) psInit(); return r; }; }
+  setTimeout(() => { try{ applyModuleAccessToNav(); }catch(e){} }, 0);
+
+  /* ---------------- data ---------------- */
+  const P = () => STATE._ps = STATE._ps || { surveys:[], qs:[], inv:[], res:[], team:{}, sel:null, tab:'run', loaded:false, broken:false };
+  async function loadAll(){
+    const p = P(), org = STATE.org.id;
+    const s = await sb().from('personnel_surveys').select('*').eq('organisation_id', org).order('created_at', { ascending:false });
+    if(s.error){ p.broken = true; p.surveys = []; p.loaded = true; return; }
+    p.broken = false; p.surveys = arr(s.data);
+    const ids = p.surveys.map(x => x.id);
+    p.qs = []; p.inv = []; p.res = []; p.team = {};
+    if(ids.length){
+      const q = await sb().from('personnel_survey_questions').select('*').in('survey_id', ids).order('sort_order'); p.qs = arr(q.data);
+      if(isHR()){
+        const i = await sb().from('personnel_survey_invites').select('*').in('survey_id', ids).limit(20000); p.inv = arr(i.data);
+        const r = await sb().from('personnel_survey_responses').select('*').in('survey_id', ids).limit(20000); p.res = arr(r.data);
+      } else {
+        for(const sv of p.surveys.filter(x => x.status === 'open')){ const t = await sb().rpc('ps_team_status', { p_survey: sv.id }); p.team[sv.id] = arr(t.data); }
+      }
+    }
+    p.loaded = true;
+  }
+  const qsOf = id => arr(P().qs).filter(q => q.survey_id === id).sort((a, b) => a.sort_order - b.sort_order);
+  const invOf = id => arr(P().inv).filter(i => i.survey_id === id);
+  const resOf = id => arr(P().res).filter(r => r.survey_id === id);
+  const people = () => arr(STATE.personnel).filter(p => p.status !== 'inactive' && p.employment_type !== 'terminated');
+  const pname = id => { const p = arr(STATE.personnel).find(x => x.id === id); return p ? p.full_name : 'Unknown'; };
+  function groupOf(p){
+    try{ const c = typeof primaryCompetenceFor === 'function' ? primaryCompetenceFor(p.id) : null; const pos = c && typeof positionById === 'function' ? positionById(c.position_id) : null;
+      if(pos && pos.department) return pos.department; }catch(e){}
+    return 'General';
+  }
+  async function emailOf(p){ try{ await ensureMemberEmails(); return (commsPerson({ personnelId:p.id }) || {}).email || ''; }catch(e){ return p.email || ''; } }
+
+  /* ---------------- module home ---------------- */
+  window.psInit = async function(){
+    const root = document.getElementById('ps-root'); if(!root) return;
+    root.innerHTML = '<div class="panel"><p style="margin:0;">Loading…</p></div>';
+    try{ await loadAll(); }catch(e){ console.warn('ps load', e); P().broken = true; }
+    psRender();
+  };
+  const statusPill = s => { const m = { draft:['Draft','#8A8785'], open:['Open','#2E7D4F'], closed:['Closed','#4B3F72'] }[s] || [s, '#888']; return `<span class="sev-badge" style="background:${m[1]};color:#fff;">${m[0]}</span>`; };
+  const rate = sv => { const inv = invOf(sv.id); if(!inv.length) return null; const done = inv.filter(i => ['submitted','paper'].includes(i.status)).length; return { done, total: inv.length, pct: Math.round(done / inv.length * 100) }; };
+
+  window.psRender = function(){
+    const root = document.getElementById('ps-root'); if(!root) return;
+    const p = P(), nav = window.__wbSubnav ? window.__wbSubnav(KEYM) : '';
+    if(p.broken){ root.innerHTML = nav + '<div class="panel"><h3 style="margin-top:0;">Setup needed</h3><p>Run <b>qashe-watchman-schema-r38-personnel-survey.sql</b> in the Supabase SQL editor, then reload this page.</p></div>'; return; }
+    if(p.sel){ const sv = p.surveys.find(x => x.id === p.sel); if(sv){ return isHR() ? hrDetail(root, nav, sv) : leadDetail(root, nav, sv); } p.sel = null; }
+    const cards = p.surveys.filter(s => isHR() || s.status === 'open').map(s => { const r = rate(s);
+      return `<div class="panel" style="margin-bottom:10px;cursor:pointer;" onclick="psOpen('${s.id}')"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;"><b style="font-size:15px;">${E(s.title)}</b>${statusPill(s.status)}${s.anonymous ? '<span class="sev-badge" style="background:#1F5FA8;color:#fff;">Confidential</span>' : '<span class="sev-badge" style="background:#B26A16;color:#fff;">Named</span>'}
+        <span style="margin-left:auto;font-size:12px;color:#666;">${s.closes_on ? 'Closes ' + day(s.closes_on) : ''}</span></div>
+        ${r ? `<div style="margin-top:8px;font-size:12.5px;color:#555;">${r.done} of ${r.total} completed (${r.pct}%)</div><div style="height:8px;background:#eee;border-radius:99px;overflow:hidden;margin-top:4px;"><div style="height:100%;width:${r.pct}%;background:#2E9E5B;"></div></div>` : '<div style="margin-top:6px;font-size:12.5px;color:#777;">Not yet sent.</div>'}</div>`; }).join('');
+    root.innerHTML = nav + `<div class="panel" style="margin-bottom:12px;"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;"><div style="flex:1;min-width:240px;"><h3 style="margin:0 0 4px;">Personnel Satisfaction Survey</h3><p style="margin:0;font-size:12.5px;color:#666;">Ask personnel what it is like to work here. Answers are recorded without names unless you choose a named survey, and results are only shown for groups large enough to protect people.</p></div>
+      ${isHR() ? '<button class="btn primary" onclick="psNew()">New survey</button>' : ''}</div></div>${cards || `<div class="panel"><p style="margin:0;">${isHR() ? 'No survey yet. Choose "New survey" to start from the standard question set.' : 'There is no survey open at the moment.'}</p></div>`}`;
+  };
+  window.psOpen = function(id){ const p = P(); p.sel = id; p.tab = isHR() ? (p.surveys.find(s => s.id === id).status === 'draft' ? 'questions' : 'run') : 'team'; psRender(); };
+  window.psBack = function(){ P().sel = null; psRender(); };
+
+  /* ---------------- create a survey ---------------- */
+  window.psNew = function(){
+    const d = new Date(); const mon = d.toLocaleDateString('en-GB', { month:'long', year:'numeric' });
+    const due = new Date(Date.now() + 21 * 86400000).toISOString().slice(0, 10);
+    kpiOverlay(`<div style="padding:6px;max-width:680px;"><h3 style="margin:0 0 4px;">New personnel satisfaction survey</h3>
+      <p style="font-size:12.5px;color:#666;margin:0 0 12px;">You will review and adjust the questions before anything is sent.</p>
+      <div class="field"><label>Title</label><input id="psn-t" value="Personnel Satisfaction Survey, ${E(mon)}"></div>
+      <div class="field"><label>Message shown at the top of the form</label><textarea id="psn-i" rows="3">${E(INTRO)}</textarea></div>
+      <div class="form-grid"><div class="field"><label>Closing date</label><input type="date" id="psn-c" value="${due}"></div>
+      <div class="field"><label>Smallest group results are shown for</label><input type="number" id="psn-m" min="3" max="50" value="5"></div></div>
+      <div class="field"><label>Type of survey</label><select id="psn-a"><option value="1">Confidential: answers are stored without the person's name (recommended)</option><option value="0">Named: answers are linked to the person</option></select></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;"><button class="btn-small" onclick="kpiCloseOverlay()">Cancel</button><button class="btn primary" id="psn-go" onclick="psCreate()">Create survey</button></div></div>`);
+  };
+  window.psCreate = async function(){
+    const g = id => document.getElementById(id), title = g('psn-t').value.trim(); if(!title){ toast('Give the survey a title.', 'error'); return; }
+    const b = g('psn-go'); b.disabled = true; b.textContent = 'Creating…';
+    const row = { organisation_id:STATE.org.id, title, intro:g('psn-i').value.trim() || null, closes_on:g('psn-c').value || null, min_group:Math.max(3, Math.min(50, parseInt(g('psn-m').value, 10) || 5)), anonymous:g('psn-a').value === '1', created_by:STATE.user.id };
+    const { data, error } = await sb().from('personnel_surveys').insert(row).select().single();
+    if(error){ b.disabled = false; b.textContent = 'Create survey'; toast('Could not create: ' + error.message + (/personnel_surveys/.test(error.message) ? ' (run qashe-watchman-schema-r38-personnel-survey.sql first)' : ''), 'error'); return; }
+    const qs = standardQuestions().map(q => ({ ...q, organisation_id:STATE.org.id, survey_id:data.id }));
+    const r = await sb().from('personnel_survey_questions').insert(qs);
+    if(r.error){ toast('Survey created but the questions could not be added: ' + r.error.message, 'error'); }
+    kpiCloseOverlay(); await loadAll(); P().sel = data.id; P().tab = 'questions'; psRender();
+  };
+
+  /* ---------------- HR detail ---------------- */
+  function hrDetail(root, nav, sv){
+    const p = P(), tabs = [['questions', sv.status === 'draft' ? 'Questions' : 'Questions (locked)'], ['run', 'Send and track'], ['results', 'Statistics']];
+    const tab = tabs.some(t => t[0] === p.tab) ? p.tab : 'questions';
+    const head = `<div class="panel" style="margin-bottom:12px;"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;"><button class="btn-small" onclick="psBack()">All surveys</button><b style="font-size:16px;">${E(sv.title)}</b>${statusPill(sv.status)}${sv.anonymous ? '<span class="sev-badge" style="background:#1F5FA8;color:#fff;">Confidential</span>' : '<span class="sev-badge" style="background:#B26A16;color:#fff;">Named</span>'}<span style="margin-left:auto;font-size:12px;color:#666;">${sv.closes_on ? 'Closes ' + day(sv.closes_on) : ''}</span></div>
+      <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">${tabs.map(([k, l]) => `<button class="btn-small ${k === tab ? 'primary' : ''}" onclick="psTab('${k}')">${l}</button>`).join('')}</div></div>`;
+    root.innerHTML = nav + head + '<div id="ps-body"></div>';
+    const body = document.getElementById('ps-body');
+    if(tab === 'questions') body.innerHTML = questionsHtml(sv);
+    else if(tab === 'run') body.innerHTML = runHtml(sv);
+    else { body.innerHTML = '<div class="panel"><p style="margin:0;">Analysing…</p></div>'; statsHtml(sv).then(h => { if(body.isConnected) body.innerHTML = h; }).catch(e => { console.warn('ps stats', e); if(body.isConnected) body.innerHTML = '<div class="panel"><p>Could not build the statistics.</p></div>'; }); }
+  }
+  window.psTab = function(k){ P().tab = k; psRender(); };
+
+  /* questions */
+  function questionsHtml(sv){
+    const qs = qsOf(sv.id), draft = sv.status === 'draft';
+    const rows = qs.map((q, i) => `<tr><td style="width:34px;color:#888;">${i + 1}</td><td style="width:150px;font-size:12px;color:#666;">${E(q.theme)}</td><td>${E(q.text)}</td><td style="width:90px;font-size:12px;">${{ scale:'Agree scale', nps:'0 to 10', text:'Comment' }[q.kind]}${q.required ? '' : ' (optional)'}</td>
+      <td style="width:130px;white-space:nowrap;">${draft ? `<button class="btn-small" onclick="psMove('${q.id}',-1)">↑</button> <button class="btn-small" onclick="psMove('${q.id}',1)">↓</button> <button class="btn-small" onclick="psQEdit('${q.id}')">Edit</button> <button class="btn-small" onclick="psQDel('${q.id}')">✕</button>` : ''}</td></tr>`).join('');
+    return `<div class="panel">${draft ? `<div class="field"><label>Title</label><input id="psd-t" value="${E(sv.title)}" onchange="psSaveHead('${sv.id}')"></div>
+      <div class="field"><label>Message shown at the top of the form</label><textarea id="psd-i" rows="3" onchange="psSaveHead('${sv.id}')">${E(sv.intro || '')}</textarea></div>
+      <div class="form-grid"><div class="field"><label>Closing date</label><input type="date" id="psd-c" value="${E(sv.closes_on || '')}" onchange="psSaveHead('${sv.id}')"></div>
+      <div class="field"><label>Smallest group results are shown for</label><input type="number" id="psd-m" min="3" max="50" value="${sv.min_group}" onchange="psSaveHead('${sv.id}')"></div></div>` : '<p style="margin:0 0 10px;font-size:12.5px;color:#666;">The questions cannot change once a survey is open, so results always match what was asked.</p>'}
+      <div style="display:flex;align-items:center;gap:8px;margin:10px 0;"><b>${qs.length} questions</b>${draft ? '<button class="btn-small" onclick="psQEdit()">Add a question</button><button class="btn primary" style="margin-left:auto;" onclick="psOpenSurvey(\'' + sv.id + '\')">Open the survey and prepare to send</button>' : ''}</div>
+      <table class="data-table" style="width:100%;font-size:13px;"><tbody>${rows}</tbody></table></div>`;
+  }
+  window.psSaveHead = async function(id){
+    const g = x => document.getElementById(x); const patch = { title:g('psd-t').value.trim() || 'Personnel Satisfaction Survey', intro:g('psd-i').value.trim() || null, closes_on:g('psd-c').value || null, min_group:Math.max(3, Math.min(50, parseInt(g('psd-m').value, 10) || 5)) };
+    const { error } = await sb().from('personnel_surveys').update(patch).eq('id', id); if(error){ toast('Could not save: ' + error.message, 'error'); return; }
+    const s = P().surveys.find(x => x.id === id); if(s) Object.assign(s, patch); toast('Saved.', 'success');
+  };
+  window.psMove = async function(id, dir){
+    const sv = P().sel, qs = qsOf(sv), i = qs.findIndex(q => q.id === id), j = i + dir; if(i < 0 || j < 0 || j >= qs.length) return;
+    const a = qs[i], b = qs[j]; const ao = a.sort_order, bo = b.sort_order;
+    await sb().from('personnel_survey_questions').update({ sort_order: bo }).eq('id', a.id); await sb().from('personnel_survey_questions').update({ sort_order: ao }).eq('id', b.id);
+    a.sort_order = bo; b.sort_order = ao; psRender();
+  };
+  window.psQDel = async function(id){
+    if(!confirm('Delete this question?')) return; const { error } = await sb().from('personnel_survey_questions').delete().eq('id', id); if(error){ toast(error.message, 'error'); return; }
+    P().qs = P().qs.filter(q => q.id !== id); psRender();
+  };
+  window.psQEdit = function(id){
+    const q = id ? P().qs.find(x => x.id === id) : { theme:'', kind:'scale', text:'', required:true };
+    const themes = [...new Set(qsOf(P().sel).map(x => x.theme))];
+    kpiOverlay(`<div style="padding:6px;max-width:620px;"><h3 style="margin:0 0 10px;">${id ? 'Edit question' : 'Add a question'}</h3>
+      <div class="field"><label>Theme</label><input id="psq-th" list="psq-tl" value="${E(q.theme)}"><datalist id="psq-tl">${themes.map(t => `<option value="${E(t)}">`).join('')}</datalist></div>
+      <div class="field"><label>Question or statement</label><textarea id="psq-tx" rows="3">${E(q.text)}</textarea></div>
+      <div class="form-grid"><div class="field"><label>Answer type</label><select id="psq-k"><option value="scale" ${q.kind === 'scale' ? 'selected' : ''}>Agreement scale, 1 to 5</option><option value="nps" ${q.kind === 'nps' ? 'selected' : ''}>Recommend, 0 to 10</option><option value="text" ${q.kind === 'text' ? 'selected' : ''}>Written comment</option></select></div>
+      <div class="field"><label>Must be answered</label><select id="psq-r"><option value="1" ${q.required ? 'selected' : ''}>Yes</option><option value="0" ${!q.required ? 'selected' : ''}>No, optional</option></select></div></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;"><button class="btn-small" onclick="kpiCloseOverlay()">Cancel</button><button class="btn primary" onclick="psQSave('${id || ''}')">Save</button></div></div>`);
+  };
+  window.psQSave = async function(id){
+    const g = x => document.getElementById(x).value; const text = g('psq-tx').trim(); if(!text){ toast('Enter the question.', 'error'); return; }
+    const row = { theme:g('psq-th').trim() || 'General', text, kind:g('psq-k'), required:g('psq-r') === '1' };
+    let error;
+    if(id){ ({ error } = await sb().from('personnel_survey_questions').update(row).eq('id', id)); if(!error){ Object.assign(P().qs.find(x => x.id === id), row); } }
+    else { const so = Math.max(0, ...qsOf(P().sel).map(q => q.sort_order)) + 1; const r = await sb().from('personnel_survey_questions').insert({ ...row, sort_order:so, organisation_id:STATE.org.id, survey_id:P().sel }).select().single(); error = r.error; if(!error) P().qs.push(r.data); }
+    if(error){ toast(error.message, 'error'); return; } kpiCloseOverlay(); psRender();
+  };
+
+  /* open the survey: creates one personal link per person */
+  window.psOpenSurvey = async function(id){
+    const sv = P().surveys.find(s => s.id === id), qs = qsOf(id);
+    if(qs.filter(q => q.kind !== 'text').length < 5){ toast('Add at least five rating questions before opening the survey.', 'error'); return; }
+    const ps = people(); if(!ps.length){ toast('There are no active personnel to invite. Add personnel first.', 'error'); return; }
+    if(!confirm(`Open "${sv.title}" for ${ps.length} people? The questions will be locked.`)) return;
+    showLoader('Preparing the invitations…');
+    try{
+      const rows = []; for(const person of ps){ const em = await emailOf(person); rows.push({ organisation_id:STATE.org.id, survey_id:id, personnel_id:person.id, group_label:groupOf(person), method: em ? 'email' : 'print' }); }
+      const ins = await sb().from('personnel_survey_invites').upsert(rows, { onConflict:'survey_id,personnel_id', ignoreDuplicates:true }); if(ins.error) throw ins.error;
+      const up = await sb().from('personnel_surveys').update({ status:'open', opens_on:new Date().toISOString().slice(0, 10) }).eq('id', id); if(up.error) throw up.error;
+      await loadAll(); P().tab = 'run'; hideLoader(); psRender(); toast('The survey is open. Send the emails next.', 'success');
+    }catch(e){ hideLoader(); toast('Could not open the survey: ' + (e.message || e), 'error'); }
+  };
+
+  /* send and track */
+  function runHtml(sv){
+    if(sv.status === 'draft') return '<div class="panel"><p style="margin:0;">Review the questions, then open the survey to prepare the invitations.</p></div>';
+    const inv = invOf(sv.id), done = i => ['submitted','paper'].includes(i.status);
+    const emailP = inv.filter(i => i.method === 'email' && !done(i) && i.status !== 'declined'), unsent = inv.filter(i => i.method === 'email' && i.status === 'pending');
+    const printP = inv.filter(i => i.method === 'print' && !done(i) && i.status !== 'declined');
+    const r = rate(sv) || { done:0, total:0, pct:0 };
+    const byG = {}; inv.forEach(i => { const k = i.group_label || 'General'; (byG[k] = byG[k] || { t:0, d:0 }).t++; if(done(i)) byG[k].d++; });
+    const open = sv.status === 'open';
+    const stLabel = { pending:'Not sent', sent:'Sent', opened:'Opened', submitted:'Completed', paper:'Completed (paper)', declined:'Declined' };
+    const list = inv.slice().sort((a, b) => pname(a.personnel_id).localeCompare(pname(b.personnel_id))).map(i => `<tr><td>${E(pname(i.personnel_id))}</td><td>${E(i.group_label || '')}</td><td>${i.method === 'email' ? 'Email' : 'Paper'}</td><td>${stLabel[i.status] || i.status}</td><td style="text-align:right;">${i.method === 'email' && open && !done(i) && i.status !== 'declined' ? `<button class="btn-small" onclick="psSendOne('${i.id}')">${i.status === 'pending' ? 'Send' : 'Resend'}</button> <button class="btn-small" onclick="psCopy('${i.token}')">Copy link</button>` : ''}${open && !done(i) && i.status !== 'declined' ? ` <button class="btn-small" onclick="psCapture('${i.id}')">Enter paper response</button>` : ''}</td></tr>`).join('');
+    return `<div class="panel" style="margin-bottom:12px;"><div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;">
+        <div><div style="font-size:30px;font-weight:900;line-height:1;">${r.pct}%</div><div style="font-size:12px;color:#666;">${r.done} of ${r.total} completed</div></div>
+        <div style="flex:1;min-width:220px;font-size:12.5px;color:#555;">${inv.filter(i => i.method === 'email').length} people have an email address and receive a personal link. ${inv.filter(i => i.method === 'print').length} have none: print the questionnaire and their line manager completes it with them.</div></div>
+      ${open ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+        <button class="btn primary" onclick="psSendAll('${sv.id}','new')" ${unsent.length ? '' : 'disabled'}>Email the survey to ${unsent.length} ${unsent.length === 1 ? 'person' : 'people'}</button>
+        <button class="btn-small" onclick="psSendAll('${sv.id}','remind')" ${emailP.length ? '' : 'disabled'}>Send a reminder to ${emailP.filter(i => i.status !== 'pending').length} who have not finished</button>
+        <button class="btn-small" onclick="psPrintForm('${sv.id}')">Print the questionnaire</button>
+        <button class="btn-small" onclick="psPrintSheet('${sv.id}')">Print the line manager's tick list (${printP.length})</button>
+        <button class="btn-small" onclick="psClose('${sv.id}')" style="margin-left:auto;">Close the survey</button></div>` : '<p style="margin:10px 0 0;font-size:12.5px;color:#666;">This survey is closed.</p>'}
+      <div id="ps-send-result" style="margin-top:10px;"></div></div>
+      <div class="panel" style="margin-bottom:12px;"><b>Response by group</b><div style="margin-top:8px;">${Object.entries(byG).sort().map(([k, o]) => `<div style="display:flex;gap:10px;align-items:center;margin:4px 0;font-size:13px;"><span style="width:200px;">${E(k)}</span><div style="flex:1;height:10px;background:#eee;border-radius:99px;overflow:hidden;"><div style="height:100%;width:${Math.round(o.d / o.t * 100)}%;background:#2E9E5B;"></div></div><span style="width:90px;text-align:right;color:#555;">${o.d} of ${o.t}</span></div>`).join('')}</div></div>
+      <div class="panel"><b>Everyone invited</b>${sv.anonymous ? '<p style="margin:4px 0 8px;font-size:12px;color:#666;">This list shows who has responded, never what they said.</p>' : '<p style="margin:4px 0 8px;font-size:12px;color:#B26A16;">This is a named survey: answers are linked to the person.</p>'}<table class="data-table" style="width:100%;font-size:13px;"><thead><tr><th>Name</th><th>Group</th><th>Way</th><th>Status</th><th></th></tr></thead><tbody>${list}</tbody></table></div>`;
+  }
+  const emailBody = (sv, p, tok) => `Dear ${(p.full_name || '').split(' ')[0] || 'colleague'},\n\n${STATE.org.name} is running a Personnel Satisfaction Survey and your views matter.\n\n${sv.anonymous ? 'Your answers are recorded without your name, and results are only reported for groups of at least ' + sv.min_group + ' people.' : 'This is a named survey: your answers will be linked to your name.'}\n\nIt takes about 10 minutes. Please open your personal link${sv.closes_on ? ' by ' + day(sv.closes_on) : ''}:\n${linkOf(tok)}\n\nThe link is personal to you. Please do not forward it.\n\nThank you for taking part.`;
+  async function sendInvite(sv, i){
+    const person = arr(STATE.personnel).find(x => x.id === i.personnel_id); if(!person) return { ok:false, why:'Person not found' };
+    const em = await emailOf(person); if(!em) return { ok:false, why:'No email address' };
+    const ok = await actuallySendEmail(em, `${sv.title}: your link`, emailBody(sv, person, i.token));
+    try{ await logNotification({ kind:'Survey', recipient_personnel_id:person.id, recipient_name:person.full_name, recipient_email:em, subject:sv.title, status: ok ? 'sent' : 'failed', detail: ok ? null : STATE._lastEmailError }); }catch(e){}
+    if(ok){ const patch = { sent_at:new Date().toISOString() }; if(i.status === 'pending') patch.status = 'sent'; await sb().from('personnel_survey_invites').update(patch).eq('id', i.id); Object.assign(i, patch); }
+    return { ok, why: STATE._lastEmailError };
+  }
+  window.psSendAll = async function(svId, mode){
+    const sv = P().surveys.find(s => s.id === svId), inv = invOf(svId).filter(i => i.method === 'email' && !['submitted','paper','declined'].includes(i.status) && (mode === 'new' ? i.status === 'pending' : i.status !== 'pending'));
+    if(!inv.length){ toast('Nobody to send to.', 'info'); return; }
+    if(!confirm(`${mode === 'new' ? 'Email the survey to' : 'Send a reminder to'} ${inv.length} ${inv.length === 1 ? 'person' : 'people'}?`)) return;
+    const out = document.getElementById('ps-send-result'); let ok = 0, bad = [];
+    for(let n = 0; n < inv.length; n++){ if(out) out.innerHTML = `<div class="panel" style="margin:0;">Sending ${n + 1} of ${inv.length}…</div>`; const r = await sendInvite(sv, inv[n]); if(r.ok) ok++; else bad.push(`${pname(inv[n].personnel_id)} (${r.why || 'failed'})`); }
+    await loadAll(); P().tab = 'run'; psRender();
+    const o2 = document.getElementById('ps-send-result'); if(o2) o2.innerHTML = `<div class="panel" style="margin:0;border-left:4px solid ${bad.length ? '#B3261E' : '#2E7D4F'};"><b>${ok} emailed.</b>${bad.length ? ` ${bad.length} could not be sent: ${E(bad.join('; '))}. You can copy their link and send it yourself.` : ''}</div>`;
+  };
+  window.psSendOne = async function(id){ const i = P().inv.find(x => x.id === id), sv = P().surveys.find(s => s.id === i.survey_id); showLoader('Sending…'); const r = await sendInvite(sv, i); hideLoader(); toast(r.ok ? 'Sent.' : 'Could not send: ' + r.why, r.ok ? 'success' : 'error'); psRender(); };
+  window.psCopy = async function(tok){ try{ await navigator.clipboard.writeText(linkOf(tok)); toast('Link copied. It is personal to that person.', 'success'); }catch(e){ prompt('Copy this personal link', linkOf(tok)); } };
+  window.psClose = async function(id){
+    if(!confirm('Close the survey? Nobody will be able to answer it afterwards.')) return;
+    const { error } = await sb().from('personnel_surveys').update({ status:'closed', closed_at:new Date().toISOString() }).eq('id', id); if(error){ toast(error.message, 'error'); return; }
+    await loadAll(); P().tab = 'results'; psRender();
+  };
+
+  /* ---------------- the questionnaire form (public page, paper capture) ---------------- */
+  window.__psAns = {};
+  function qHtml(q, n){
+    const id = q.id; let h = `<div class="qrow" id="psq-${id}"><div class="q">${n}. ${E(q.text)}${q.required ? '' : ' <span style="font-weight:400;color:#888;font-size:12px;">(optional)</span>'}</div>`;
+    if(q.kind === 'scale'){
+      h += `<div class="rate sm">${[1, 2, 3, 4, 5].map(v => `<button type="button" style="background:${RATE[v][1]}" data-v="${v}" onclick="psPick('${id}',${v})" title="${RATE[v][0]}">${v}</button>`).join('')}</div><div style="display:flex;justify-content:space-between;font-size:11px;color:#888;"><span>Strongly disagree</span><span>Strongly agree</span></div>`;
+    } else if(q.kind === 'nps'){
+      h += `<div class="rate sm" style="gap:6px;">${[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => `<button type="button" style="background:${npsCol(v)};width:40px;height:40px;font-size:15px;" data-v="${v}" onclick="psPick('${id}',${v})">${v}</button>`).join('')}</div><div style="display:flex;justify-content:space-between;font-size:11px;color:#888;"><span>Not at all likely</span><span>Extremely likely</span></div>`;
+    } else h += `<textarea rows="3" maxlength="3000" oninput="__psAns['${id}']=this.value;psProg()"></textarea>`;
+    return h + '</div>';
+  }
+  function formBody(qs){
+    const themes = []; qs.forEach(q => { if(!themes.includes(q.theme)) themes.push(q.theme); });
+    let n = 0; return themes.map(t => `<div class="card"><h3>${E(t)}</h3>${qs.filter(q => q.theme === t).map(q => qHtml(q, ++n)).join('')}</div>`).join('');
+  }
+  window.psPick = function(id, v){
+    window.__psAns[id] = v; const box = document.getElementById('psq-' + id);
+    if(box) box.querySelectorAll('.rate button').forEach(b => b.classList.toggle('on', Number(b.dataset.v) === v)); psProg();
+  };
+  let PS_QS = [];
+  window.psProg = function(){
+    const need = PS_QS.filter(q => q.required && q.kind !== 'text'), got = need.filter(q => window.__psAns[q.id] != null).length;
+    const f = document.getElementById('ps-fill'), l = document.getElementById('ps-prog'); if(f) f.style.width = (need.length ? Math.round(got / need.length * 100) : 0) + '%'; if(l) l.textContent = `${got} of ${need.length} required questions answered`;
+  };
+  const missing = () => PS_QS.filter(q => q.required && q.kind !== 'text' && window.__psAns[q.id] == null);
+  const answersOut = () => { const o = {}; PS_QS.forEach(q => { const v = window.__psAns[q.id]; if(v != null && String(v).trim() !== '') o[q.id] = v; }); return o; };
+  const progBar = () => `<div class="bar"><div class="track"><div class="fill" id="ps-fill" style="width:0"></div></div><div id="ps-prog" style="font-size:12px;color:#666;margin-top:4px;"></div></div>`;
+
+  /* the public page */
+  window.renderPsPage = async function(token){
+    const ov = pubMount('ps-public'); await pubInit();
+    const { data: info } = await STATE.supabase.rpc('ps_info', { p_token: token });
+    if(!info || !info.ok){ pubBad(ov, info && info.closed ? 'This survey is now closed' : 'This link is not active'); return; }
+    if(info.done){ ov.innerHTML = PUB_CSS + `<div class="pb"><div class="w">${pubHero(info, 'Personnel survey', info.title, 'Thank you')}<div class="card" style="text-align:center;"><div style="font-size:56px;">✅</div><h2 style="margin:6px 0;">You have already completed this survey</h2><p style="color:#555;">Thank you for taking part.</p></div></div></div>`; return; }
+    PS_QS = arr(info.questions); window.__psAns = {};
+    const conf = info.anonymous ? `<div class="msg ok">🔒 Your answers are recorded <b>without your name</b>. Results are only reported for groups of at least ${E(info.min_group)} people. Please do not write anything in the comments that would identify you.</div>` : `<div class="msg bad" style="background:#fff7e6;border-color:#B26A16;">This is a <b>named</b> survey: your answers will be linked to your name.</div>`;
+    ov.innerHTML = PUB_CSS + `<div class="pb"><div class="w">${pubHero(info, 'Personnel survey', info.title, info.closes_on ? 'Please complete by ' + day(info.closes_on) : 'Your views matter')}
+      ${info.intro ? `<div class="card"><p style="margin:0;font-size:15px;line-height:1.55;white-space:pre-wrap;">${E(info.intro)}</p></div>` : ''}${conf}${progBar()}${formBody(PS_QS)}
+      <div id="ps-err" class="msg bad" style="display:none;"></div>
+      <div style="text-align:center;margin-top:18px;"><button class="btn" id="ps-send" onclick="psSubmit('${E(token)}')">Submit my answers</button></div></div></div>`;
+    psProg();
+  };
+  window.psSubmit = async function(token){
+    const err = document.getElementById('ps-err'), btn = document.getElementById('ps-send'), m = missing();
+    if(m.length){ err.style.display = 'block'; err.textContent = `Please answer every required question (${m.length} left).`; const el = document.getElementById('psq-' + m[0].id); if(el) el.scrollIntoView({ behavior:'smooth', block:'center' }); return; }
+    btn.disabled = true; btn.textContent = 'Sending…';
+    const { data, error } = await STATE.supabase.rpc('ps_submit', { p_token: token, p_answers: answersOut() });
+    if(error || !data || !data.ok){ btn.disabled = false; btn.textContent = 'Submit my answers'; err.style.display = 'block'; err.textContent = (data && data.error) || (error && error.message) || 'Something went wrong. Please try again.'; return; }
+    const w = document.querySelector('#ps-public .w'); const hero = w.querySelector('.hero');
+    w.innerHTML = (hero ? hero.outerHTML : '') + '<div class="card" style="text-align:center;"><div style="font-size:64px;">✅</div><h2 style="margin:6px 0;">Thank you</h2><p style="color:#555;">Your answers have been received. You can close this page.</p></div>';
+  };
+  (function(){ const ps = new URLSearchParams(location.search).get('ps'); if(ps) document.addEventListener('DOMContentLoaded', () => renderPsPage(ps)); })();
+
+  /* paper capture (line managers and HR) */
+  window.psCapture = function(inviteId){
+    const p = P(), inv = p.inv.find(i => i.id === inviteId) || null;
+    const svId = inv ? inv.survey_id : p.sel, sv = p.surveys.find(s => s.id === svId); const personId = inv ? inv.personnel_id : (arr(p.team[svId]).find(t => t.invite_id === inviteId) || {}).personnel_id;
+    PS_QS = qsOf(svId); window.__psAns = {};
+    kpiOverlay(`<div style="padding:4px;max-width:760px;"><h3 style="margin:0 0 4px;">Enter the paper response</h3>
+      <p style="font-size:12.5px;color:#666;margin:0 0 8px;">${E(pname(personId))}. ${sv.anonymous ? 'The answers are stored without the name. Record exactly what is written; do not add or change anything.' : 'This is a named survey: the answers will be linked to the person.'}</p>
+      <div class="pb" style="min-height:0;background:none;padding:0;">${progBar()}${formBody(PS_QS)}<div id="ps-err" class="msg bad" style="display:none;"></div></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;"><button class="btn-small" onclick="kpiCloseOverlay()">Cancel</button><button class="btn primary" id="ps-send" onclick="psCaptureSave('${inviteId}')">Save the response</button></div></div>`);
+    const ov = document.getElementById('kpi-overlay'); if(ov && !document.getElementById('ps-pubcss')){ const d = document.createElement('div'); d.id = 'ps-pubcss'; d.innerHTML = PUB_CSS; ov.appendChild(d); }
+    psProg();
+  };
+  window.psCaptureSave = async function(inviteId){
+    const err = document.getElementById('ps-err'), btn = document.getElementById('ps-send'), m = missing();
+    if(m.length){ err.style.display = 'block'; err.textContent = `${m.length} required question${m.length === 1 ? ' is' : 's are'} not answered. If the person left some blank, ask them to complete them.`; return; }
+    btn.disabled = true; btn.textContent = 'Saving…';
+    const { data, error } = await sb().rpc('ps_capture_paper', { p_invite: inviteId, p_answers: answersOut() });
+    if(error || !data || !data.ok){ btn.disabled = false; btn.textContent = 'Save the response'; err.style.display = 'block'; err.textContent = (data && data.error) || (error && error.message) || 'Could not save.'; return; }
+    kpiCloseOverlay(); toast('Response recorded.', 'success'); await loadAll(); psRender();
+  };
+  window.psDecline = async function(inviteId, declined){
+    const { data, error } = await sb().rpc('ps_set_declined', { p_invite: inviteId, p_declined: !!declined }); if(error || !data || !data.ok){ toast((data && data.error) || (error && error.message) || 'Could not update', 'error'); return; }
+    await loadAll(); psRender();
+  };
+
+  /* line manager view */
+  function leadDetail(root, nav, sv){
+    const rows = arr(P().team[sv.id]).map(t => ({ ...t, name:pname(t.personnel_id) })).sort((a, b) => a.name.localeCompare(b.name));
+    const st = { pending:'Not yet', sent:'Link emailed', opened:'Link opened', submitted:'Completed online', paper:'Completed on paper', declined:'Declined to take part' };
+    root.innerHTML = nav + `<div class="panel" style="margin-bottom:12px;"><button class="btn-small" onclick="psBack()">Back</button> <b style="font-size:16px;margin-left:8px;">${E(sv.title)}</b></div>
+      <div class="panel"><p style="margin:0 0 10px;font-size:13px;color:#555;">${rows.length ? 'People who report to you. Those with an email address have received a personal link. For anyone without internet or email, print the questionnaire, sit with them, and enter exactly what they write. You cannot see anybody\'s answers.' : 'No one reporting to you is on this survey.'}</p>
+      ${rows.length ? `<table class="data-table" style="width:100%;font-size:13px;"><thead><tr><th>Name</th><th>Status</th><th></th></tr></thead><tbody>${rows.map(r => `<tr><td>${E(r.name)}</td><td>${st[r.status] || r.status}</td><td style="text-align:right;">${['submitted', 'paper'].includes(r.status) ? '' : `<button class="btn-small" onclick="psCapture('${r.invite_id}')">Enter paper response</button> <button class="btn-small" onclick="psDecline('${r.invite_id}',${r.status !== 'declined'})">${r.status === 'declined' ? 'Undo' : 'Declined'}</button>`}</td></tr>`).join('')}</tbody></table>` : ''}
+      <div style="margin-top:12px;"><button class="btn-small" onclick="psPrintForm('${sv.id}')">Print the questionnaire</button></div></div>`;
+  }
+
+  /* ---------------- printing ---------------- */
+  function openPrint(title, html){
+    const w = window.open('', '_blank'); if(!w){ toast('Allow pop-ups to print.', 'error'); return; }
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${E(title)}</title><style>
+      body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:0}.pg{padding:16mm 14mm;page-break-after:always}.pg:last-child{page-break-after:auto}
+      h1{font-size:20px;margin:0 0 4px}h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:#B21616;margin:16px 0 6px}.sm{font-size:11.5px;color:#444}
+      .q{display:flex;gap:10px;align-items:flex-start;padding:6px 0;border-bottom:1px solid #ddd;font-size:12.5px}.q .t{flex:1}.q .b{display:flex;gap:4px}.q .b span{width:22px;height:22px;border:1.5px solid #333;border-radius:4px;text-align:center;font-size:11px;line-height:20px}
+      .ln{border-bottom:1px solid #999;height:24px}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #999;padding:6px 8px;text-align:left}.box{display:inline-block;width:16px;height:16px;border:1.5px solid #333;vertical-align:middle}
+      @media print{@page{margin:0}}</style></head><body>${html}<script>window.onload=function(){setTimeout(function(){window.print()},300)}<\/script></body></html>`); w.document.close();
+  }
+  function formPage(sv, qs){
+    const themes = []; qs.forEach(q => { if(!themes.includes(q.theme)) themes.push(q.theme); }); let n = 0;
+    const scale = `<div class="b">${[1, 2, 3, 4, 5].map(v => `<span>${v}</span>`).join('')}</div>`, nps = `<div class="b">${[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => `<span>${v}</span>`).join('')}</div>`;
+    return `<div class="pg"><h1>${E(sv.title)}</h1><div class="sm">${E(STATE.org.name)}</div><p class="sm" style="margin:8px 0;">${E(sv.intro || INTRO)}</p>
+      <p class="sm" style="border:1.5px solid #333;padding:8px 10px;border-radius:6px;">${sv.anonymous ? '<b>Confidential.</b> Do not write your name on this form. Your answers are recorded without your name and results are only reported for groups of at least ' + sv.min_group + ' people.' : '<b>Named survey.</b> Your answers will be linked to your name.'}</p>
+      <p class="sm"><b>For each statement circle one number:</b> 1 = Strongly disagree, 2 = Disagree, 3 = Neutral, 4 = Agree, 5 = Strongly agree.</p>
+      ${themes.map(t => `<h2>${E(t)}</h2>${qs.filter(q => q.theme === t).map(q => { n++; return q.kind === 'text' ? `<div style="padding:6px 0;font-size:12.5px;"><b>${n}.</b> ${E(q.text)}<div class="ln"></div><div class="ln"></div></div>` : `<div class="q"><span><b>${n}.</b></span><span class="t">${E(q.text)}${q.kind === 'nps' ? '<div class="sm">0 = not at all likely, 10 = extremely likely</div>' : ''}</span>${q.kind === 'nps' ? nps : scale}</div>`; }).join('')}`).join('')}
+      <p class="sm" style="margin-top:14px;">Thank you. Hand the completed form to your line manager${sv.anonymous ? ', who will record the answers without your name' : ''}.</p></div>`;
+  }
+  window.psPrintForm = function(id){
+    const sv = P().surveys.find(s => s.id === id), inv = invOf(id), need = inv.filter(i => i.method === 'print' && !['submitted', 'paper', 'declined'].includes(i.status)).length;
+    const n = isHR() ? Math.max(1, parseInt(prompt('How many copies do you want to print?', String(Math.max(1, need))), 10) || 1) : Math.max(1, parseInt(prompt('How many copies do you want to print?', '1'), 10) || 1);
+    const qs = qsOf(id); openPrint(sv.title, Array.from({ length:Math.min(n, 300) }, () => formPage(sv, qs)).join(''));
+  };
+  window.psPrintSheet = function(id){
+    const sv = P().surveys.find(s => s.id === id), inv = invOf(id).filter(i => !['submitted', 'paper', 'declined'].includes(i.status) && i.method === 'print');
+    const lm = i => { const p = arr(STATE.personnel).find(x => x.id === i.personnel_id); const m = p && p.line_manager_id ? arr(STATE.personnel).find(x => x.id === p.line_manager_id) : null; return m ? m.full_name : 'No line manager set'; };
+    const rows = inv.slice().sort((a, b) => lm(a).localeCompare(lm(b)) || pname(a.personnel_id).localeCompare(pname(b.personnel_id))).map(i => `<tr><td>${E(lm(i))}</td><td>${E(pname(i.personnel_id))}</td><td>${E(i.group_label || '')}</td><td style="text-align:center;"><span class="box"></span></td><td style="text-align:center;"><span class="box"></span></td></tr>`).join('');
+    openPrint(sv.title + ' tick list', `<div class="pg"><h1>${E(sv.title)}: line manager tick list</h1><div class="sm">${E(STATE.org.name)}. People with no email address or internet access, who complete the printed questionnaire with their line manager.</div>
+      <p class="sm">After each person completes the form, record it under Personnel Satisfaction Survey in QaSHE Watchman${sv.closes_on ? ' before ' + day(sv.closes_on) : ''}. Do not influence or change any answer.</p>
+      <table style="margin-top:10px;"><thead><tr><th>Line manager</th><th>Person</th><th>Group</th><th>Completed</th><th>Declined</th></tr></thead><tbody>${rows || '<tr><td colspan="5">Everyone has an email address or has completed the survey.</td></tr>'}</tbody></table></div>`);
+  };
+
+  /* ---------------- statistics ---------------- */
+  const UI = () => window.__isUI || null;
+  const fav = vals => vals.length ? vals.filter(v => v >= 4).length / vals.length * 100 : 0;
+  const mean = vals => vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
+  function analyse(sv){
+    const qs = qsOf(sv.id), res = resOf(sv.id), sc = qs.filter(q => q.kind === 'scale');
+    const vals = q => res.map(r => r.answers && r.answers[q.id]).filter(v => v != null && !isNaN(v)).map(Number);
+    const items = sc.map(q => { const v = vals(q); return { q, n:v.length, mean:mean(v), fav:fav(v), unfav: v.length ? v.filter(x => x <= 2).length / v.length * 100 : 0 }; }).filter(x => x.n > 0);
+    const all = items.flatMap(i => vals(i.q));
+    const themes = {}; items.forEach(i => { const t = themes[i.q.theme] = themes[i.q.theme] || { vals:[], theme:i.q.theme }; t.vals.push(...vals(i.q)); });
+    const th = Object.values(themes).map(t => ({ theme:t.theme, mean:mean(t.vals), fav:fav(t.vals), n:t.vals.length }));
+    const nq = qs.find(q => q.kind === 'nps'), nv = nq ? vals(nq) : [];
+    const prom = nv.filter(v => v >= 9).length, pass = nv.filter(v => v >= 7 && v <= 8).length, det = nv.filter(v => v <= 6).length;
+    const enps = nv.length ? Math.round((prom - det) / nv.length * 100) : null;
+    const comments = qs.filter(q => q.kind === 'text').map(q => ({ q, list: res.map(r => r.answers && r.answers[q.id]).filter(v => v && String(v).trim()).map(String).sort((a, b) => a.localeCompare(b)) })).filter(c => c.list.length);
+    return { qs, res, items, all, th, enps, nv, prom, pass, det, comments, mean:mean(all), fav:fav(all) };
+  }
+  async function statsHtml(sv){
+    const U = UI(); if(!U) return '<div class="panel"><p>The chart library is not available.</p></div>';
+    const A = analyse(sv), inv = invOf(sv.id), done = inv.filter(i => ['submitted', 'paper'].includes(i.status)).length, n = A.res.length, rt = inv.length ? Math.round(done / inv.length * 100) : 0;
+    if(!n) return `<div class="panel"><p style="margin:0;">No responses have been received yet. Statistics appear as soon as the first response arrives.</p></div>`;
+    const min = sv.min_group;
+    if(n < min) return `<div class="panel"><b>${n} response${n === 1 ? '' : 's'} so far.</b><p style="margin:6px 0 0;font-size:13px;color:#555;">To protect people, results are shown once at least ${min} responses have been received.</p></div>`;
+    const pct = v => Math.round(v) + '%', col = v => v >= 75 ? '#2E7D4F' : v >= 60 ? '#D98A00' : '#B21616';
+    const byFav = A.items.slice().sort((a, b) => b.fav - a.fav), top = byFav.slice(0, 5), low = byFav.slice().reverse().slice(0, 5);
+    const th = A.th.slice().sort((a, b) => a.fav - b.fav);
+    const bands = [['Favourable (agree)', '#2E9E5B', A.all.filter(v => v >= 4).length], ['Neutral', '#E0B122', A.all.filter(v => v === 3).length], ['Unfavourable (disagree)', '#D7242B', A.all.filter(v => v <= 2).length]].map(([nm, c, v]) => ({ n:nm, c, v }));
+    /* groups, only where the group is large enough */
+    const gl = [...new Set(A.res.map(r => r.group_label || 'General'))]; const grp = [], hidden = [];
+    gl.forEach(g => { const rs = A.res.filter(r => (r.group_label || 'General') === g); if(rs.length < min){ hidden.push(g); return; } const vv = A.items.flatMap(i => rs.map(r => r.answers && r.answers[i.q.id]).filter(v => v != null).map(Number)); grp.push({ label:g, n:rs.length, v:Math.round(fav(vv)), mean:mean(vv) }); });
+    grp.sort((a, b) => b.v - a.v);
+    /* trend across surveys */
+    const prev = P().surveys.filter(s => s.id !== sv.id && resOf(s.id).length >= s.min_group).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+    const trend = prev.concat([sv]).map(s => { const a = analyse(s); return { label:s.title.replace(/^Personnel Satisfaction Survey,?\s*/i, '') || day(s.created_at), v:Math.round(a.fav), mean:a.mean }; });
+    const last = prev.length ? trend[trend.length - 2] : null, now = trend[trend.length - 1];
+    const obs = [];
+    obs.push(`${n} people responded (${rt}% of ${inv.length} invited). ${A.res.filter(r => r.source === 'paper').length} responses were recorded from paper questionnaires.`);
+    obs.push(`The overall average is ${A.mean.toFixed(2)} out of 5 and ${pct(A.fav)} of all ratings are favourable (agree or strongly agree).`);
+    if(th.length > 1) obs.push(`The strongest theme is "${th[th.length - 1].theme}" (${pct(th[th.length - 1].fav)} favourable). The weakest is "${th[0].theme}" (${pct(th[0].fav)}).`);
+    if(low.length) obs.push(`The lowest scoring statement is "${low[0].q.text}" with ${pct(low[0].fav)} favourable and ${pct(low[0].unfav)} unfavourable.`);
+    if(A.enps != null) obs.push(`The employee net promoter score is ${A.enps > 0 ? '+' : ''}${A.enps}: ${A.prom} promoters, ${A.pass} passives and ${A.det} detractors.`);
+    if(last) obs.push(`Compared with the previous survey the favourable rating has ${now.v > last.v ? 'improved' : now.v < last.v ? 'declined' : 'not changed'} (${last.v}% to ${now.v}%).`);
+    const tiles = `<div class="oa-tiles">${U.tile(A.mean.toFixed(2), 'average out of 5', col(A.mean / 5 * 100))}${U.tile(pct(A.fav), 'favourable ratings', col(A.fav))}${U.tile(rt + '%', 'response rate (' + done + ' of ' + inv.length + ')', rt >= 70 ? '#2E7D4F' : rt >= 50 ? '#D98A00' : '#B21616')}${A.enps != null ? U.tile((A.enps > 0 ? '+' : '') + A.enps, 'employee net promoter score', A.enps >= 30 ? '#2E7D4F' : A.enps >= 0 ? '#D98A00' : '#B21616') : ''}</div>`;
+    const grid = [
+      U.card('Favourable rating by theme', U.hbars(th.map(t => ({ label:t.theme, v:Math.round(t.fav) })), { val:'v', color:'#2E5AA8', top:12, max:100, fmt: v => v + '%' }), true),
+      U.card('Opportunities for Improvement: lowest scoring statements', U.hbars(low.map(i => ({ label:i.q.text, v:Math.round(i.fav), note:i.mean.toFixed(2) + ' average' })), { val:'v', color:'#D7242B', top:5, max:100, fmt: v => v + '%' }), true),
+      U.card('Strengths: highest scoring statements', U.hbars(top.map(i => ({ label:i.q.text, v:Math.round(i.fav), note:i.mean.toFixed(2) + ' average' })), { val:'v', color:'#2E9E5B', top:5, max:100, fmt: v => v + '%' }), true),
+      U.card('All ratings', U.donut(bands)),
+    ];
+    if(A.nv.length >= 1) grid.push(U.card('Would they recommend us as a place to work?', U.donut([{ n:'Promoters (9 to 10)', c:'#2E9E5B', v:A.prom }, { n:'Passives (7 to 8)', c:'#E0B122', v:A.pass }, { n:'Detractors (0 to 6)', c:'#D7242B', v:A.det }])));
+    if(trend.length > 1) grid.push(U.card('Favourable rating across surveys', U.hbars(trend.map(t => ({ label:t.label, v:t.v })), { val:'v', color:'#B21616', top:12, max:100, fmt: v => v + '%' })));
+    const groupCard = grp.length ? U.card('Favourable rating by group (groups of at least ' + min + ' responses)', U.hbars(grp.map(g => ({ label:g.label, v:g.v, note:g.n + ' responses' })), { val:'v', color:'#2E5AA8', top:12, max:100, fmt: v => v + '%' }) + (hidden.length ? `<p class="is-none" style="margin-top:8px;">Not shown, to protect people: ${hidden.map(E).join(', ')} (fewer than ${min} responses).</p>` : ''), true) : (hidden.length ? U.card('Groups', `<p class="is-none">Every group has fewer than ${min} responses, so group results are not shown.</p>`) : '');
+    const itemRows = A.items.slice().sort((a, b) => a.fav - b.fav).map(i => `<tr><td>${E(i.q.theme)}</td><td>${E(i.q.text)}</td><td style="text-align:right;">${i.mean.toFixed(2)}</td><td style="text-align:right;">${pct(i.fav)}</td><td style="text-align:right;">${pct(i.unfav)}</td></tr>`).join('');
+    const comm = A.comments.map(c => `<div style="margin:12px 0;"><div style="font-weight:700;font-size:13px;">${E(c.q.text)}</div><ul style="margin:6px 0 0;padding-left:18px;font-size:13px;line-height:1.5;">${c.list.map(t => `<li>${E(t)}</li>`).join('')}</ul></div>`).join('');
+    return `<div class="is-scope">${U.CSS}${tiles}${U.card('Executive observations', `<ul class="is-ul">${obs.map(o => `<li>${E(o)}</li>`).join('')}</ul><p class="is-none" style="margin-top:8px;">This survey can support evidence of worker consultation and participation (ISO 45001 clause 5.4), employee satisfaction and engagement monitoring, and the review of the people and work environment inputs to management review. Responses are anonymous and shown only for groups of at least ${min}.</p>`)}
+      <div class="is-grid" style="margin-top:16px;">${grid.join('')}${groupCard}</div>
+      <div class="panel" style="margin-top:16px;"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;"><b>What to do with the results</b><span style="flex:1;"></span><button class="btn-small" onclick="psTasks('${sv.id}')">Raise tasks for the five opportunities for improvement</button><button class="btn-small" onclick="psPrintResults('${sv.id}')">Print the results</button><button class="btn-small" onclick="psCsv('${sv.id}')">Download the answers (no names)</button></div></div>
+      <details class="detail-card" style="margin-top:12px;padding:12px 16px;"><summary style="cursor:pointer;font-weight:700;">Every statement, lowest first</summary><table class="data-table" style="width:100%;font-size:12.5px;margin-top:8px;"><thead><tr><th>Theme</th><th>Statement</th><th style="text-align:right;">Average</th><th style="text-align:right;">Favourable</th><th style="text-align:right;">Unfavourable</th></tr></thead><tbody>${itemRows}</tbody></table></details>
+      ${comm ? `<details class="detail-card" style="margin-top:12px;padding:12px 16px;"><summary style="cursor:pointer;font-weight:700;">Comments (no names, in alphabetical order)</summary><p style="font-size:12px;color:#B26A16;margin:8px 0;">Read these before sharing them. A comment may identify someone by what it says.</p>${comm}</details>` : ''}</div>`;
+  }
+  window.psTasks = async function(id){
+    const sv = P().surveys.find(s => s.id === id), A = analyse(sv), low = A.items.slice().sort((a, b) => a.fav - b.fav).slice(0, 5);
+    if(!low.length || !confirm(`Raise ${low.length} tasks, assigned to you, due in 30 days? You can reassign them in Tasks.`)) return;
+    const due = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10); let ok = 0, err = '';
+    for(const i of low){ const r = await sb().from('tasks').insert({ organisation_id:STATE.org.id, title:`BMS Upgrade: improve "${i.q.text}"`.slice(0, 120), description:`Personnel Satisfaction Survey (${sv.title}): ${Math.round(i.fav)}% favourable, ${i.mean.toFixed(2)} average out of 5, theme ${i.q.theme}. Agree the cause with the team and an improvement action.`, linked_type:'none', linked_id:null, assignee_id:STATE.user.id, priority:'medium', due_date:due, created_by:STATE.user.id }); if(r.error) err = r.error.message; else ok++; }
+    toast(ok ? `${ok} tasks raised in Task Management.` : 'Could not raise tasks: ' + err, ok ? 'success' : 'error');
+  };
+  window.psPrintResults = async function(id){ const sv = P().surveys.find(s => s.id === id), h = await statsHtml(sv); const U = UI(); openPrint(sv.title + ' results', `<div class="pg"><h1>${E(sv.title)}: results</h1><div class="sm">${E(STATE.org.name)}</div>${h}</div>`); };
+  window.psCsv = function(id){
+    const sv = P().surveys.find(s => s.id === id), qs = qsOf(id), res = resOf(id).slice().sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+    const lines = [['Group', 'Source'].concat(qs.map(x => x.text)).map(q).join(',')].concat(res.map(r => [r.group_label || '', r.source].concat(qs.map(x => r.answers && r.answers[x.id])).map(q).join(',')));
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([lines.join('\r\n')], { type:'text/csv' })); a.download = (sv.title || 'survey').replace(/[^a-z0-9]+/gi, '-') + '.csv'; document.body.appendChild(a); a.click(); a.remove();
+  };
 })();
 
 </script>
