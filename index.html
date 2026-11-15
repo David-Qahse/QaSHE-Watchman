@@ -34199,6 +34199,7 @@ window.brandFromLogo = function(){
   const apDef = a => OA_BY_KEY[a.appointment_type] || { label: a.title || a.appointment_type, cat:'other' };
   const apLabel = a => (a.appointment_type === 'custom' ? (a.title || 'Appointment') : apDef(a).label);
   const apRef = a => 'APT-' + (a.id || '').slice(0, 6).toUpperCase();
+  window.__oaLabel = apLabel; window.__oaLive = apLive;
 
   function compStatus(personId, tag){
     if(!tag) return { k:'na', text:'Not required', cls:'blue' };
@@ -34661,6 +34662,7 @@ window.brandFromLogo = function(){
         <p style="font-size:11.5px;color:var(--text-faint);margin-bottom:8px">A person can hold several job titles, positions and appointments. Positions are set below; legal appointments appear here and on the organisation charts.</p>
         ${comps.length ? comps.map(c => { const pos = (STATE.positions || []).find(x => x.id === c.position_id); return `<span class="oc-chip sub" style="display:inline-block;margin:0 4px 4px 0">${esc(pos ? pos.title : 'Position')}${c.is_primary ? ' (primary)' : ''}</span>`; }).join('') : ''}
         ${appts.length ? appts.map(a => { const s = apState(a); return `<div class="oa-row"><span><b>${esc(apLabel(a))}</b><br><span style="font-size:11px;color:var(--text-faint)">${esc(a.legal_reference || '')}${a.end_date ? ' · valid until ' + fmtDate(a.end_date) : ''}</span></span><span style="display:flex;gap:6px;align-items:center">${badge(s.text, s.cls)}<button class="btn-small" onclick="oaView('${a.id}')">Letter</button></span></div>`; }).join('') : '<p style="font-size:12.5px;color:var(--text-faint)">No legal appointments yet.</p>'}
+        ${window.r39PersonDocsHtml ? window.r39PersonDocsHtml(pid) : ''}
       </div>
 
       <div class="oa-sec"><div class="panel-head"><h3>Qualifications and experience</h3>${canEdit() ? `<button class="btn-small" onclick="oaQualForm('${pid}')">+ Add</button>` : ''}</div>
@@ -51488,6 +51490,10 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     return { dept, type };
   }
 
+  function legalAppts(person){
+    try{ if(!person || !window.__oaLive) return []; return arr(STATE.orgAppts).filter(a => a.personnel_id === person.id && window.__oaLive(a)).map(a => ({ label: window.__oaLabel(a), ref: a.legal_reference || '', until: a.end_date || '' })); }catch(e){ return []; }
+  }
+  const legalLines = L => L.map(a => `- ${a.label}${a.ref ? ' (' + a.ref + ')' : ''}${a.until ? ', valid until ' + a.until : ''}`).join('\n');
   const KPI_FORMAT = 'Format: one KPI per line: Title | Target | Weight % | Source of measure | Description';
   function starter(kind, person, pos, kpis, mgrName){
     if(kind === 'job_description'){
@@ -51496,6 +51502,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
         { title:'Reporting line', content: `Reports to: ${mgrName || '(line manager)'}` },
         { title:'Key duties and responsibilities', content: (pos && (pos.job_description || pos.responsibilities)) || '' },
         { title:'Accountabilities and authorities', content: (pos && pos.accountabilities) || '' },
+        { title:'Legal appointments and statutory responsibilities', content: legalAppts(person).length ? 'The holder is formally appointed as:\n' + legalLines(legalAppts(person)) + '\nThe duties, authority and competence required by each appointment form part of this job description.' : 'No legal appointments are recorded for this person. Add any statutory appointment (for example section 16(2) delegation, first aider, fire marshal, safety representative) on their personal page, then reflect it here.' },
         { title:'Qualifications, experience and competence', content: '' },
         { title:'SHERQ responsibilities', content: '' },
         { title:'Working conditions and special requirements', content: '' },
@@ -51505,11 +51512,14 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     return [
       { title:'Purpose and appraisal cycle', content:'This document sets out the key performance indicators against which performance is appraised for the period, and how each is measured.' },
       { title:'Key Performance Indicators', content: KPI_FORMAT + '\n' + lines },
+      { title:'Legal appointment responsibilities', content: legalAppts(person).length ? 'Include at least one KPI for the duties of each legal appointment held:\n' + legalLines(legalAppts(person)) : 'No legal appointments are recorded for this person.' },
       { title:'Rating scale', content: arr(typeof KPI_RATING_LEGEND !== 'undefined' ? KPI_RATING_LEGEND : []).map(r => `${r.value}: ${r.label}`).join('\n') },
       { title:'Development and training expectations', content:'' },
     ];
   }
   window.r37Starter = starter;
+  window.r37DocOf = docOf; window.r37DocCell = cell;
+  window.r37CanDevelop = id => { const sc = window.wmPeopleScope(); return !!(sc.all || (sc.me && sc.me.id !== id && sc.ids.has(id))); };
 
   window.r37Develop = async function(personId, kind){
     const p = arr(STATE.personnel).find(x => x.id === personId) || fullPeople().find(x => x.id === personId);
@@ -51528,9 +51538,10 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     const set = (id, v) => { const el = document.getElementById(id); if(el && v != null) el.value = v; };
     set('df-title', `${K.docName}: ${pos ? pos.title : 'Position'} [${p.ref_code || ''}]`);
     const posKpis = pos ? arr(STATE.positionKpis).filter(k => k.position_id === pos.id && k.is_active).map(k => `${k.title} | ${k.target || ''} | ${k.weight || ''}`).join('; ') : '';
+    const legalNote = legalAppts(p).length ? ' Legal appointments held: ' + legalAppts(p).map(a => a.label).join(', ') + '. Reflect the duties, authority and competence each appointment requires.' : '';
     set('df-purpose', kind === 'job_description'
-      ? `Job description for the position ${pos ? pos.title : ''}${mgrName(mgr) ? ', reporting to ' + mgrName(mgr) : ''}. It sets out the purpose of the role, reporting line, key duties, accountabilities and authorities, qualifications and competence, and SHERQ responsibilities.${pos && pos.job_description ? ' Existing position text: ' + String(pos.job_description).slice(0, 1200) : ''}`
-      : `KPI and Appraisal document for the position ${pos ? pos.title : ''}. Include a section titled "Key Performance Indicators" with one KPI per line in the format: Title | Target | Weight % | Source of measure | Description. Weights should total 100.${posKpis ? ' Existing position KPIs: ' + posKpis : ''}`);
+      ? `Job description for the position ${pos ? pos.title : ''}${mgrName(mgr) ? ', reporting to ' + mgrName(mgr) : ''}. It sets out the purpose of the role, reporting line, key duties, accountabilities and authorities, qualifications and competence, and SHERQ responsibilities.${legalNote}${pos && pos.job_description ? ' Existing position text: ' + String(pos.job_description).slice(0, 1200) : ''}`
+      : `KPI and Appraisal document for the position ${pos ? pos.title : ''}.${legalNote} Include a section titled "Key Performance Indicators" with one KPI per line in the format: Title | Target | Weight % | Source of measure | Description. Weights should total 100.${posKpis ? ' Existing position KPIs: ' + posKpis : ''}`);
     if(dept) set('df-department', dept.id); if(type) set('df-type', type.id);
     try{ updateDfNextNumberPreview(); }catch(e){}
     const pane = document.getElementById('dw-pane-1');
@@ -51552,6 +51563,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
 
   /* the published KPI document is the source for an appraisal */
   const isPublished = d => d && d.status !== 'withdrawn' && d.status !== 'superseded' && (d.approval_status === 'approved' || d.workflow_status === 'approved');
+  window.r37IsPublished = isPublished;
   function plain(html){
     return String(html || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li|tr|h\d)>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
   }
@@ -51582,7 +51594,9 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     if(!sc.all && !(sc.ids.has(personnelId) && sc.me && sc.me.id !== personnelId)){ toast('Only a line manager, or someone permitted to see everyone, starts an appraisal.', 'error'); return; }
     const primary = primaryCompetenceFor(personnelId);
     if(!primary){ alert('This person has no primary position set: go set one on their Personnel record first.'); return; }
+    const jdDoc = arr(STATE.documents).find(d => d.personnel_id === personnelId && d.personal_kind === 'job_description' && isPublished(d));
     let kpiDoc = arr(STATE.documents).find(d => d.personnel_id === personnelId && d.personal_kind === 'kpi_appraisal' && isPublished(d));
+    if(!jdDoc || !kpiDoc){ alert('An appraisal can only be started once this person has a published job description and a published KPI and Appraisal document.\n\nMissing: ' + [!jdDoc ? 'job description' : '', !kpiDoc ? 'KPI and Appraisal document' : ''].filter(Boolean).join(' and ') + '.\n\nDevelop them on the person\'s personal page (Personnel and Competence, Job titles, positions and appointments).'); return; }
     let kpis = [];
     if(kpiDoc){
       kpis = await window.r37ParseKpis(kpiDoc.id);
@@ -51640,7 +51654,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
       return r;
     };
   }
-  ['renderPersonnelView', 'renderAppraisalsTable'].forEach(n => { try{ const f = eval(n); const w = mountPanel(f); eval(n + ' = w'); window[n] = w; }catch(e){ console.warn('r37 mount', n, e); } });
+  /* the per-person Develop panel was moved onto each person's personal page (Release 39) */
 
   /* ---------------- 3. statistical analysis for KPIs & Appraisals ---------------- */
   const UI = () => window.__isUI || null;
@@ -51709,7 +51723,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     window.wdKpi = function(key){
       const r = _k.apply(this, arguments);
       try{
-        if(key !== 'appraisals' || STATE._wdKpiOpen !== key) return r;
+        return r;
         const U = UI(), panel = document.getElementById('wd-kpi-panel'); if(!U || !panel) return r;
         const holder = document.createElement('div'); holder.className = 'is-scope'; holder.innerHTML = U.CSS + '<h3 style="font-size:15px;margin:18px 0 10px;border-top:1px solid #e3e7ed;padding-top:14px;">Performance analysis: KPIs &amp; Appraisals</h3><p class="is-none">Analysing the appraisals…</p>';
         panel.appendChild(holder);
@@ -51719,7 +51733,6 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     };
   }catch(e){ console.warn('r37 wdKpi', e); }
 })();
-
 
 /* ============================================================================
    R38: Personnel Satisfaction Survey (Human Resources Management)
@@ -52192,6 +52205,151 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     const lines = [['Group', 'Source'].concat(qs.map(x => x.text)).map(q).join(',')].concat(res.map(r => [r.group_label || '', r.source].concat(qs.map(x => r.answers && r.answers[x.id])).map(q).join(',')));
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([lines.join('\r\n')], { type:'text/csv' })); a.download = (sv.title || 'survey').replace(/[^a-z0-9]+/gi, '-') + '.csv'; document.body.appendChild(a); a.click(); a.remove();
   };
+})();
+
+
+/* ============================================================================
+   R39: streamlining Human Resources Management
+   1. Job description and KPI & Appraisal development moved onto each person's personal page
+      (Job titles, positions and appointments, after Appointments); legal appointments flow into them
+   2. KPIs & Appraisals: Statistical Analysis button opens the analysis after the register
+   3. Appraisals can only be started for people with a published job description AND KPI & Appraisal document
+   4. Compliance Dashboard: KPI & Appraisal Statistics block, and the issue statistics blocks
+      (RAGA, Nonconformance, Incident, Information Security) now open their full analysis
+   ============================================================================ */
+(function(){
+  'use strict';
+  const arr = x => Array.isArray(x) ? x : [];
+  const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const UI = () => window.__isUI || null;
+  const pub = d => !!(d && window.r37IsPublished && window.r37IsPublished(d));
+
+  /* ---------------- 1. the person's page ---------------- */
+  window.r39PersonDocsHtml = function(pid){
+    try{
+      if(typeof window.r37DocCell !== 'function') return '';
+      const p = arr(STATE.personnel).find(x => x.id === pid); if(!p) return '';
+      const canDev = window.r37CanDevelop(pid);
+      const comp = primaryCompetenceFor(pid), pos = comp ? positionById(comp.position_id) : null;
+      const jd = window.r37DocOf(pid, 'job_description'), kd = window.r37DocOf(pid, 'kpi_appraisal');
+      const legal = window.__oaLive ? arr(STATE.orgAppts).filter(a => a.personnel_id === pid && window.__oaLive(a)).map(a => window.__oaLabel(a)) : [];
+      const cell = (kind, d) => (!pos && !d) ? '<span style="color:var(--text-faint);font-size:12px;">Set the primary position first</span>' : window.r37DocCell(p, kind, canDev);
+      const ready = pos && pub(jd) && pub(kd);
+      return `<div id="r39-person-docs" style="margin-top:14px;padding-top:12px;border-top:1px solid #e3e7ed;">
+        <div style="font-weight:700;font-size:13px;margin-bottom:4px;">Job description and KPI &amp; Appraisal document</div>
+        <p style="font-size:11.5px;color:var(--text-faint);margin:0 0 8px;">Controlled documents, developed through Document Management: upload an externally prepared document first, then AI assistance, a template, or start from scratch. The line manager drafts, invites ${E(p.full_name.split(' ')[0] || 'the person')} to review and recommend amendments, then approves. Once approved the document is numbered to the company naming convention, carries its revision history and is listed in the Master Documents Register, visible only to this person and their line managers.</p>
+        <p style="font-size:11.5px;margin:0 0 8px;">${legal.length ? '<b>Legal appointments carried into both documents:</b> ' + legal.map(E).join(', ') + '.' : '<span style="color:var(--text-faint);">No legal appointments are recorded above. Any you add are carried into both documents when they are developed.</span>'}</p>
+        <div class="oa-row"><span><b>Job description</b></span><span>${cell('job_description', jd)}</span></div>
+        <div class="oa-row"><span><b>KPI and Appraisal document</b></span><span>${cell('kpi_appraisal', kd)}</span></div>
+        <p style="font-size:11.5px;margin:8px 0 0;color:${ready ? '#2E7D4F' : '#8a5a00'};">${ready ? 'Ready: an appraisal can be started for this person.' : 'An appraisal can only be started once the position is set and both documents are approved and published.'}</p>
+      </div>`;
+    }catch(e){ console.warn('r39 person docs', e); return ''; }
+  };
+
+  /* ---------------- 2. Statistical Analysis button on KPIs & Appraisals ---------------- */
+  const BTN = 'ap-stats-btn', PANEL = 'ap-stats-panel';
+  function addBtn(){
+    const root = document.getElementById('content-root'); if(!root || !document.getElementById('appraisal-table-wrap') || root.querySelector('#' + BTN)) return;
+    const tb = root.querySelector('.toolbar'); const host = tb || root.firstElementChild; if(!host) return;
+    const b = document.createElement('button'); b.id = BTN; b.className = 'btn-small'; b.style.cssText = 'background:#0b1f3a;color:#fff;border-color:#0b1f3a;'; b.textContent = 'Statistical Analysis'; b.onclick = () => window.apStatsToggle();
+    if(tb){ const first = tb.querySelector('.btn-small, .btn-primary'); if(first) first.parentNode.insertBefore(b, first); else tb.appendChild(b); } else host.insertBefore(b, host.firstChild);
+  }
+  window.apStatsToggle = async function(forceOpen){
+    const wrap = document.getElementById('appraisal-table-wrap'); if(!wrap) return;
+    let panel = document.getElementById(PANEL);
+    if(panel && !forceOpen){ panel.remove(); return; }
+    if(panel) panel.remove();
+    const U = UI(); if(!U){ toast('The chart library is not available.', 'error'); return; }
+    const after = wrap.closest('.panel') || wrap;
+    after.insertAdjacentHTML('afterend', `<div id="${PANEL}" class="is-scope" style="margin-top:16px;background:#f4f6f9;border-radius:14px;padding:18px;">${U.CSS}<p class="is-none">Analysing the appraisals…</p></div>`);
+    panel = document.getElementById(PANEL); panel.scrollIntoView({ behavior:'smooth', block:'start' });
+    try{
+      const body = await window.r37AppraisalStatsHtml();
+      if(!panel.isConnected) return;
+      panel.innerHTML = U.CSS + `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px;"><div><h2 style="margin:0;font-size:20px;">Statistical Analysis: KPIs &amp; Appraisals</h2><div style="font-size:12px;color:#667;">${E(STATE.org.name)} · as at ${fmtDate(new Date().toISOString().slice(0, 10))} · every figure is calculated from the live appraisals you are permitted to see</div></div><div><button class="btn-small" onclick="apStatsPrint()">Print</button> <button class="btn-small" onclick="apStatsExcel()">Excel</button> <button class="btn-small" onclick="apStatsToggle()">Close</button></div></div>` + body;
+    }catch(e){ console.warn('ap stats', e); if(panel.isConnected) panel.innerHTML = '<p class="is-none">Could not build the analysis.</p>'; }
+  };
+  window.apStatsPrint = function(){
+    const panel = document.getElementById(PANEL); const U = UI(); if(!panel || !U) return;
+    const w = window.open('', '_blank'); if(!w){ toast('Allow pop-ups to print.', 'error'); return; }
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>KPI and Appraisal statistics</title><style>body{font-family:Arial,Helvetica,sans-serif;margin:14mm;color:#111}button{display:none}@media print{@page{margin:10mm}}</style></head><body><div class="is-scope">${panel.innerHTML}</div><script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script></body></html>`); w.document.close();
+  };
+  window.apStatsExcel = async function(){
+    try{
+      const X = await ensureXLSX(); const d = await window.r37AppraisalData(); const nm = id => { const p = arr(STATE.personnel).find(x => x.id === id); return p ? p.full_name : ''; };
+      const wb = X.utils.book_new();
+      X.utils.book_append_sheet(wb, X.utils.json_to_sheet(d.ap.map(a => ({ Reference:a.ref_code, Person:nm(a.personnel_id), 'Period start':a.period_start, 'Period end':a.period_end, Status:a.status, 'Overall achievement %':a.overall_achievement_pct }))), 'Appraisals');
+      const fin = new Set(d.ap.filter(a => a.status === 'finalized').map(a => a.id));
+      X.utils.book_append_sheet(wb, X.utils.json_to_sheet(d.kp.filter(k => fin.has(k.appraisal_id)).map(k => ({ KPI:k.kpi_title, 'Achievement %':k.final_achievement_pct, Weight:k.weight }))), 'KPI results');
+      X.writeFile(wb, 'Statistical-Analysis-KPIs-and-Appraisals.xlsx');
+    }catch(e){ toast('Could not export: ' + (e.message || e), 'error'); }
+  };
+  { const _s = showModule; showModule = window.showModule = function(mod){ const r = _s.apply(this, arguments); if(mod === 'appraisals') [60, 500, 1400].forEach(t => setTimeout(() => { try{ addBtn(); }catch(e){} }, t)); return r; }; }
+  try{ const _r = renderAppraisalsTable; renderAppraisalsTable = window.renderAppraisalsTable = function(){ const r = _r.apply(this, arguments); try{ addBtn(); }catch(e){} return r; }; }catch(e){}
+
+  /* ---------------- 3. start an appraisal only where both documents are published ---------------- */
+  async function formPrep(){
+    const sel = document.getElementById('af-personnel'), form = document.getElementById('appraisal-form'); if(!sel || !form) return;
+    try{ if(!arr(STATE.documents).length && typeof loadDocuments === 'function') await loadDocuments(); }catch(e){}
+    const sc = window.wmPeopleScope();
+    const mine = arr(STATE.personnel).filter(p => p.status !== 'inactive' && p.employment_type !== 'terminated' && (sc.all || (sc.me && sc.me.id !== p.id && sc.ids.has(p.id))));
+    const ok = [], wait = [];
+    mine.forEach(p => {
+      const jd = arr(STATE.documents).find(d => d.personnel_id === p.id && d.personal_kind === 'job_description' && pub(d));
+      const kd = arr(STATE.documents).find(d => d.personnel_id === p.id && d.personal_kind === 'kpi_appraisal' && pub(d));
+      const pos = primaryCompetenceFor(p.id);
+      (pos && jd && kd ? ok : wait).push({ p, why: [!pos ? 'position' : '', !jd ? 'job description' : '', !kd ? 'KPI and Appraisal document' : ''].filter(Boolean) });
+    });
+    const keep = sel.value;
+    sel.innerHTML = ok.map(o => `<option value="${o.p.id}">${E(o.p.full_name)} (${E(o.p.ref_code || '')})</option>`).join('');
+    if(ok.some(o => o.p.id === keep)) sel.value = keep;
+    let note = document.getElementById('r39-af-note');
+    if(!note){ form.querySelector('h3').insertAdjacentHTML('afterend', '<div id="r39-af-note"></div>'); note = document.getElementById('r39-af-note'); }
+    note.innerHTML = `<div style="background:${ok.length ? '#F2F7FC' : '#FFF6E5'};border:1px solid ${ok.length ? '#CFE0F2' : '#F0D79A'};border-radius:10px;padding:10px 14px;font-size:12.5px;margin-bottom:12px;">`
+      + (ok.length ? `${ok.length} ${ok.length === 1 ? 'person is' : 'people are'} ready: position set, job description and KPI and Appraisal document approved and published. The appraisal takes its KPIs from the published KPI and Appraisal document.` : 'Nobody is ready yet. An appraisal can only be started once a person has a position and a published job description and KPI and Appraisal document.')
+      + (wait.length ? `<div style="margin-top:6px;color:#8a5a00;"><b>Not yet ready (${wait.length}):</b> ${wait.slice(0, 12).map(w => E(w.p.full_name) + ' (needs ' + w.why.join(', ') + ')').join('; ')}${wait.length > 12 ? '…' : ''}. Develop them on the person's personal page: Personnel and Competence, Job titles, positions and appointments.</div>` : '') + '</div>';
+    const go = form.querySelector('.form-actions .btn-primary'); if(go) go.disabled = !ok.length;
+    try{ autofillAppraisalManager(); }catch(e){}
+  }
+  try{ const _t = toggleAppraisalForm; toggleAppraisalForm = window.toggleAppraisalForm = function(){ const r = _t.apply(this, arguments); try{ const f = document.getElementById('appraisal-form'); if(f && f.classList.contains('open')) formPrep(); }catch(e){} return r; }; }catch(e){ console.warn('r39 form', e); }
+
+  /* ---------------- 4. Compliance Dashboard ---------------- */
+  try{
+    const X = window.__wdExtra;
+    if(X && !X.some(e => e[0] === 'is_appraisals')) X.push(['is_appraisals', 'KPI & Appraisal Statistics', () => { try{
+      if(!canAccessModule('appraisals')) return null;
+      const sc = window.wmPeopleScope(); const ap = arr(STATE.appraisals).filter(a => sc.all || a.personnel_id === (sc.me && sc.me.id) || sc.ids.has(a.personnel_id)); if(!ap.length) return null;
+      const fin = ap.filter(a => a.status === 'finalized' && a.overall_achievement_pct != null).map(a => Number(a.overall_achievement_pct));
+      const avg = fin.length ? Math.round(fin.reduce((s, v) => s + v, 0) / fin.length) : null;
+      return [{ label:'At or above expectation', count:fin.filter(v => v >= 100).length, color:'green' }, { label:'Close to expectation', count:fin.filter(v => v >= 80 && v < 100).length, color:'amber' }, { label:'Below expectation', count:fin.filter(v => v < 80).length, color:fin.some(v => v < 80) ? 'red' : 'green' }, { label:'In progress', count:ap.length - fin.length, color:'grey' }];
+    }catch(e){ return null; } }]);
+  }catch(e){ console.warn('r39 tile', e); }
+
+  const IS = { is_nonconformances:['nonconformances', 'nonconformances'], is_raga:['raga', 'raga'], is_incidents:['incidents', 'incidents'], is_infosec_incidents:['infosec_incidents', 'infosec_incidents'], is_appraisals:['appraisals', null], appraisals:['appraisals', null] };
+  try{
+    const _k = window.wdKpi;
+    window.wdKpi = function(key){
+      const r = _k.apply(this, arguments);
+      try{
+        if(STATE._wdKpiOpen !== key || !IS[key]) return r;
+        const box = document.getElementById('wd-kpi-panel'), U = UI(); if(!box || !U) return r;
+        const [mod, scope] = IS[key];
+        const ex = arr(window.__wdExtra).find(e => e[0] === key), h3 = box.querySelector('.wd-h h3');
+        if(ex && h3) h3.textContent = ex[1];
+        box.querySelectorAll(':scope > p').forEach(p => { if(/Nothing recorded in this module/.test(p.textContent)) p.remove(); });
+        const ob = box.querySelector('.wd-h .btn-small.primary'); if(ob && key !== mod){ ob.setAttribute('onclick', `showModule('${mod}')`); ob.textContent = 'Open ' + ((MODULE_META[mod] && MODULE_META[mod].title) || mod); }
+        const holder = document.createElement('div'); holder.className = 'is-scope'; box.appendChild(holder);
+        const head = '<h3 style="font-size:15px;margin:18px 0 10px;border-top:1px solid #e3e7ed;padding-top:14px;">Statistical analysis</h3>';
+        holder.innerHTML = U.CSS + head + '<p class="is-none">Analysing the records…</p>';
+        if(scope){
+          window.wmIssueStatsHtml(scope).then(h => { if(holder.isConnected) holder.innerHTML = U.CSS + head + `<div style="margin-bottom:10px;"><button class="btn-small primary" onclick="openIssueStats('${scope}')">Open the full Statistical Analysis (print and Excel)</button></div>` + h; }).catch(() => { if(holder.isConnected) holder.remove(); });
+        } else {
+          window.r37AppraisalStatsHtml().then(h => { if(holder.isConnected) holder.innerHTML = U.CSS + head + `<div style="margin-bottom:10px;"><button class="btn-small primary" onclick="showModule('appraisals');setTimeout(function(){apStatsToggle(true)},700)">Open the full Statistical Analysis in KPIs &amp; Appraisals</button></div>` + h; }).catch(() => { if(holder.isConnected) holder.remove(); });
+        }
+      }catch(e){ console.warn('r39 dash', e); }
+      return r;
+    };
+  }catch(e){ console.warn('r39 wdKpi', e); }
 })();
 
 </script>
