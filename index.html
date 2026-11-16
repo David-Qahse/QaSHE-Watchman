@@ -32167,7 +32167,7 @@ window.brandFromLogo = function(){
   const tn=id=>{ const t=(STATE.docTypes||[]).find(x=>x.id===id); return t?t.name:''; };
   function mrRows(){
     const ctl=(STATE.documents||[]).filter(d=>d.doc_number).map(d=>({src:'Document Management',num:d.doc_number,title:d.title||'',dept:dn(d.department_id),deptId:d.department_id||'',type:tn(d.type_id),rev:d.current_revision||'',status:documentWorkflowBadge(d).label,id:d.id,kind:'c'}));
-    const bulk=(STATE.bulkDocuments||[]).filter(d=>d.doc_number&&!d.archived).map(d=>({src:'All Documents',num:d.doc_number,title:d.file_name||'',dept:dn(d.department_id),deptId:d.department_id||'',type:tn(d.document_type_id),rev:'',status:d.approved_status?'Approved':(d.current_status===false?'Superseded':'Filed'),id:d.id,path:d.storage_path,kind:'b'}));
+    const bulk=(STATE.bulkDocuments||[]).filter(d=>!d.archived).map(d=>({src:'All Documents',num:d.doc_number||'Not numbered',title:d.file_name||'',dept:dn(d.department_id),deptId:d.department_id||'',type:tn(d.document_type_id),rev:'',status:d.approved_status?'Approved':(d.current_status===false?'Superseded':'Filed'),id:d.id,path:d.storage_path,kind:'b'}));
     return [...ctl,...bulk].sort((a,b)=>String(a.num).localeCompare(String(b.num),undefined,{numeric:true}));
   }
   window.renderMasterRegisterPage=function(){
@@ -32179,11 +32179,7 @@ window.brandFromLogo = function(){
     root.innerHTML=`<div class="detail-card">
       <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;"><h3>Master Documents Register</h3>${isAdmin?'<button class="btn-small primary" onclick="goToMasterDocRegisterAdmin()">Work on the register in the Admin console</button>':''}</div>
       <p style="font-size:12.5px;color:var(--text-faint);">Every document number in the system, from Document Management and All Documents combined. This page is for viewing and searching. ${isAdmin?'Gaps, duplicates and clean-up are worked on in the Admin console.':'Changes to the register are made by your administrator.'}</p>
-      <div class="mr2-tiles"><div class="mr2-tile"><b>${rows.length}</b><span>Document numbers</span></div>
-        <div class="mr2-tile g"><b>${rows.filter(r=>r.kind==='c').length}</b><span>Document Management</span></div>
-        <div class="mr2-tile"><b>${rows.filter(r=>r.kind==='b').length}</b><span>All Documents</span></div>
-        <div class="mr2-tile ${gaps?'o':'g'}"><b>${gaps}</b><span>Gaps in sequence</span></div>
-        <div class="mr2-tile ${dups?'r':'g'}"><b>${dups}</b><span>Duplicate numbers</span></div></div></div>
+</div>
     <div class="toolbar"><div class="filters"><input id="mr2-q" placeholder="Search number or title…" oninput="mr2Render()" style="min-width:260px;">
       <select id="mr2-dept" onchange="mr2Render()"><option value="">All departments</option>${depts.map(d=>`<option>${escapeHtml(d)}</option>`).join('')}</select>
       <select id="mr2-src" onchange="mr2Render()"><option value="">All sources</option><option>Document Management</option><option>All Documents</option></select></div>
@@ -51025,6 +51021,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
 
   /* ---- old entry points land inside the hub ---- */
   { const _s = showModule; showModule = window.showModule = function(mod){
+      if(mod === 'documents' && has().mst && !window.__r43Keep) STATE._docSubtab = 'master';
       if(mod === 'master_register'){ STATE._docSubtab = 'master'; mod = 'documents'; }
       else if(mod === 'all_documents'){ STATE._docSubtab = has().all ? 'alldocs' : 'master'; mod = 'documents'; }
       const a = Array.prototype.slice.call(arguments); a[0] = mod; return _s.apply(this, a); }; }
@@ -51069,16 +51066,19 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     const d = arr(STATE.documents).filter(x => !['withdrawn', 'superseded'].includes(x.status)); const t = today();
     const inRev = ['submitted_for_review', 'reviewers_satisfied', 'submitted_for_approval', 'approver_requested_changes', 'reviewers_finalized'];
     return { total:d.length, approved:d.filter(x => (x.workflow_status || '') === 'approved' || x.approval_status === 'approved').length, review:d.filter(x => inRev.includes(x.workflow_status)).length, draft:d.filter(x => !x.workflow_status || x.workflow_status === 'draft').length,
-      od:d.filter(x => x.next_review_date && x.next_review_date < t).length, req:arr(STATE.docReviewRequests).filter(r => ['pending', 'in_progress'].includes(r.status)).length, reg:arr(STATE.documents).filter(x => x.doc_number).length + arr(STATE.bulkDocuments).filter(x => x.doc_number && !x.archived).length };
+      od:d.filter(x => x.next_review_date && x.next_review_date < t).length, req:arr(STATE.docReviewRequests).filter(r => ['pending', 'in_progress'].includes(r.status)).length, reg:arr(STATE.documents).filter(x => x.doc_number).length + arr(STATE.bulkDocuments).filter(x => !x.archived).length };
   }
   const SVG = { search:'<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>', plus:'<svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>' };
+  const docAdmin = () => ['admin', 'manager'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
   function header(){
-    const f = figs(), h = has(), nm = (STATE.org && STATE.org.name) || '';
-    const tabs = [h.mst ? ['master', 'Master Documents Register'] : null, h.ctl ? ['register', 'Document Workflow'] : null, h.ctl ? ['requests', 'Review Requests' + (f.req ? ' (' + f.req + ')' : '')] : null, h.ctl ? ['setup', 'Naming Convention Setup'] : null, h.all ? ['alldocs', 'All Documents'] : null].filter(Boolean);
-    return CSS + `<div class="dh"><div class="dh-banner"><h2>Document Management</h2><p>${E(nm)}: every controlled document, numbered, reviewed, approved and revisioned in one place.</p>
-      <div class="dh-stats"><div class="dh-stat" onclick="switchDocSubtab('master')"><b>${f.reg}</b><span>numbers on the Master Register</span></div><div class="dh-stat" onclick="switchDocSubtab('register')"><b>${f.approved}</b><span>approved and in force</span></div><div class="dh-stat ${f.review ? 'warn' : ''}" onclick="switchDocSubtab('register')"><b>${f.review}</b><span>in review or approval</span></div><div class="dh-stat ${f.draft ? 'warn' : ''}" onclick="switchDocSubtab('register')"><b>${f.draft}</b><span>drafts</span></div><div class="dh-stat ${f.od ? 'bad' : ''}" onclick="switchDocSubtab('register')"><b>${f.od}</b><span>past their review date</span></div><div class="dh-stat ${f.req ? 'warn' : ''}" onclick="switchDocSubtab('requests')"><b>${f.req}</b><span>update requests open</span></div></div></div>
-      ${h.mst || h.ctl ? `<div class="dh-actions"><div class="dh-card"><div class="dh-ic">${SVG.search}</div><div style="flex:1;min-width:0;"><h4>Search for a document</h4><p>Type a number, title, department or type. Results filter the Master Documents Register instantly.</p><input id="dh-q" placeholder="e.g. corrective action, QMS-PRO, welding…" oninput="dhSearch(this.value)"></div></div>
-        ${h.ctl ? `<div class="dh-card go" onclick="dhNewDoc()"><div class="dh-ic n">${SVG.plus}</div><div><h4>Develop a new document</h4><p>Name it, start from your own document or a template, let the assistant draft it, then review, approve and issue.</p><button class="btn-primary" style="pointer-events:none;">Start a new document</button></div></div>` : ''}</div>` : ''}
+    const f = figs(), h = has(), adm = docAdmin();
+    /* R43: Review Requests and Naming Convention Setup are administrator tools, not shown to everyone */
+    const tabs = [h.mst ? ['master', 'Master Documents Register'] : null, h.ctl ? ['register', 'Document Workflow'] : null, h.ctl && adm ? ['requests', 'Review Requests' + (f.req ? ' (' + f.req + ')' : '')] : null, h.ctl && adm ? ['setup', 'Naming Convention Setup'] : null, h.all ? ['alldocs', 'All Documents'] : null].filter(Boolean);
+    const stat = (cls, go, n, label) => `<div class="dh-stat ${cls}" onclick="switchDocSubtab('${go}')"><b>${n}</b><span>${label}</span></div>`;
+    return CSS + `<div class="dh">
+      ${h.mst || h.ctl ? `<div class="dh-actions"><div class="dh-card"><div class="dh-ic">${SVG.search}</div><div style="flex:1;min-width:0;"><h4>Search for a Document</h4><p>Type a number, title, department or type. Results filter the Master Documents Register instantly.</p><input id="dh-q" placeholder="e.g. corrective action, QMS-PRO, welding…" oninput="dhSearch(this.value)"></div></div>
+        ${h.ctl ? `<div class="dh-card go" onclick="dhNewDoc()"><div class="dh-ic n">${SVG.plus}</div><div><h4>Develop a New Document</h4><p>Name it, start from your own document or a template, let the assistant draft it, then review, approve and issue.</p><button class="btn-primary" style="pointer-events:none;">Start a New Document</button></div></div>` : ''}</div>` : ''}
+      <div class="dh-stats" style="margin-top:14px;">${stat('', 'master', f.reg, 'Numbers on the Master Register')}${stat('', 'register', f.approved, 'Approved and in force')}${stat(f.review ? 'warn' : '', 'register', f.review, 'In review or approval')}${stat(f.draft ? 'warn' : '', 'register', f.draft, 'Drafts')}${stat(f.od ? 'bad' : '', 'register', f.od, 'Past their review date')}${adm ? stat(f.req ? 'warn' : '', 'requests', f.req, 'Update requests open') : ''}</div>
       <div class="dh-tabs" id="dh-tabs">${tabs.map(([k, l]) => `<button class="dh-tab" data-t="${k}" onclick="switchDocSubtab('${k}')">${E(l)}</button>`).join('')}</div></div>`;
   }
   { const _r = RENDERERS.documents; RENDERERS.documents = function(){ return '<div class="doc-hub">' + header() + _r.apply(this, arguments) + '</div>'; }; }
@@ -51090,6 +51090,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
       if(tab === 'alldocs' && !h.all) tab = 'master';
       if(tab === 'master' && !h.mst) tab = h.ctl ? 'register' : (h.all ? 'alldocs' : 'master');
       if(['register', 'requests', 'setup'].includes(tab) && !h.ctl) tab = h.mst ? 'master' : 'alldocs';
+      if(['requests', 'setup'].includes(tab) && !docAdmin()) tab = 'register';
       if(tab === 'master' || tab === 'alldocs'){
         _sw.call(this, 'register');  /* sets up the toolbar, then replaced below */
         STATE._docSubtab = tab;
