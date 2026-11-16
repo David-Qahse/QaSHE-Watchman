@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
+<meta name="wm-release" content="R45 2026-11-16"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -7501,7 +7501,7 @@ window.dwNext = function(){
   const n = (STATE._dw && STATE._dw.step) || 1;
   if(n===1){
     if(!document.getElementById('df-title').value.trim()){ alert('Please name the document first.'); return; }
-    if(!document.getElementById('df-department').value || !document.getElementById('df-type').value){ alert('Add at least one department and one document type first (Naming Convention Setup).'); return; }
+    if(!document.getElementById('df-department').value || !document.getElementById('df-type').value){ alert('Add at least one department and one document type first (Administration, Document Naming Convention).'); return; }
   }
   dwShowStep(n+1);
 };
@@ -20892,7 +20892,7 @@ function renderAdminSubtabContent(tab){
 // state.
 const ADMIN_CONSOLE_TOGGLES = [
   { field:'document_control_enabled', label:'Document Management', note:'Where documents are created, numbered and revisioned.' },
-  { field:'all_documents_enabled', label:'All Documents (optional tab)', note:'Optional extra tab inside Document Management for legacy uploads by department and type. Leave off unless the client asks for it.' },
+  { field:'all_documents_enabled', label:'All Documents (external uploads)', note:'Adds an Upload External Documents button to the Master Documents Register for legacy uploads by department and type. Uploaded documents always appear in the register. Leave off unless the client asks for it.' },
   { field:'hr_enabled', label:'HR: Attendance & Leave', note:'GPS clock-in/out, attendance register, employee mobile link.' },
   { field:'asset_watchman_enabled', label:'Asset Watchman', note:'Asset condition & performance monitoring: bespoke per client.' },
   { field:'site_files_enabled', label:'Site SHERQ Files', note:'Contractor site safety files per client site: legal docs, team competency, appointments, HIRA, registers, incidents. Run the site-files migration first.' },
@@ -27555,7 +27555,7 @@ window.submitProblemReport = async function(){
 };
 
 // ---- Rendering: turns the assistant's reply into clean, infographic-style cards (no stars, hashes or hyphen bullets) ----
-const WC_SUGGESTIONS = ['How do I raise a nonconformance?', 'How do I appoint a first aider or health and safety representative?', 'How do I find a template and adapt it for my company?', 'Which appointments does the Construction Regulations 2014 require?', 'How do I add a supplier and assess it?', 'What does ISO 9001 clause 8.4 require?', 'How does Business Health Validation work?', 'How do I bulk upload documents?'];
+const WC_SUGGESTIONS = ['How do I raise a nonconformance?', 'How do I appoint a first aider or health and safety representative?', 'How do I find a template and adapt it for my company?', 'Which appointments does the Construction Regulations 2014 require?', 'How do I add a supplier and assess it?', 'What does ISO 9001 clause 8.4 require?', 'How does Business Health Validation work?', 'How do I bulk upload documents?', 'How do I start an appraisal?', 'What is the Company Performance Report?', 'How do I request an update to an approved document?'];
 function wcInline(t){
   let x = escapeHtml(t);
   x = x.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/__([^_]+)__/g, '<b>$1</b>');
@@ -32186,7 +32186,7 @@ window.brandFromLogo = function(){
       <select id="mr2-dept" onchange="mr2Render()"><option value="">All departments</option>${depts.map(d=>`<option>${escapeHtml(d)}</option>`).join('')}</select>
       <select id="mr2-src" onchange="mr2Render()"><option value="">All sources</option><option>Document Management</option><option>All Documents</option></select>
       <select id="mr2-st" onchange="mr2Render()"><option value="">All statuses</option>${[...new Set(rows.map(r=>r.status))].sort().map(x=>`<option>${escapeHtml(x)}</option>`).join('')}</select></div>
-      <button class="btn-small" onclick="exportMasterRegister()">Export Excel</button></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">${(window.dhHas&&window.dhHas().all)?'<button class="btn-small" onclick="switchDocSubtab(\'alldocs\')" title="Upload external or historical documents; they appear in this register">Upload External Documents</button>':''}<button class="btn-small" onclick="exportMasterRegister()">Export Excel</button></div></div>
     <div class="panel" style="padding:0;overflow:hidden;"><div id="mr2-table"></div></div>
     <div class="detail-card" style="margin-top:18px;"><div class="panel-head"><h3>Next available numbers</h3></div>
       ${seqs.length?`<table><tr><th>Department</th><th>Type</th><th>Count</th><th>Gaps</th><th>Next available number</th></tr>${seqs.map(g=>`<tr><td>${escapeHtml(g.dept.name)}</td><td>${escapeHtml(g.type.name)}</td><td>${g.entries.length}</td><td>${g.gaps.length?'<span style="color:var(--red)">'+g.gaps.join(', ')+'</span>':'<span style="color:var(--green)">None</span>'}</td><td class="mono-cell strong">${escapeHtml(g.nextNumber)}</td></tr>`).join('')}</table>`:'<p style="font-size:12.5px;color:var(--text-faint);">No correctly numbered documents yet.</p>'}</div>`;
@@ -36359,6 +36359,9 @@ window.WM_IT_TPL = {
     'BUSINESS HEALTH VALIDATION: a live health score across governance, quality, health and safety, environment, information security, POPIA, welding and people, with a saved validation record. ' +
     'INFORMATION SECURITY is a per client discipline; when off, the Statement of Applicability, Information Asset Register, Threat Intelligence and the ISMO appointment are hidden. ' +
     'TEMPLATE LIBRARY: search the library first for a generic policy, procedure, form, register, checklist, flowchart or letter, adapt it to the organisation, and only if none fits generate a new document. Checklists and Policies and Procedures are no longer separate modules. ' +
+    'DOCUMENT MANAGEMENT: always opens on the Master Documents Register with two tabs only, Master Documents Register and Document Workflow. Approved documents show a blue Approved badge and offer View Document and Request update only. A document that is not approved shows a clickable status that opens it in Document Workflow, where every row has an Open button for review, amendment and approval. Develop a New Document and any review open on their own page with Back to the register. External uploads (All Documents, where switched on) appear in the register, with an Upload External Documents button for administrators. Review Requests and the Naming Convention are in Administration, not in Document Management. ' +
+    'APPRAISALS: start from the person page, develop the job description and KPIs, then start the appraisal; the employee and manager get emailed links. Ratings run 0 (Not done) to 5; the manager rating counts and the average of the two is for reference only. Bands: 97% and above Significant, 90% Standard, 81% Moderate, 60% Partial, 50% Not acceptable, below 50% Not done. The appraisal report is emailed automatically once only. COMPANY PERFORMANCE REPORT (administrators and HR with all-people access): monthly report for the Managing Director with a 100% target, opportunities for improvement per person and organisation, annual result per person, and an annual bonus schedule where a pool is shared equally and adjusted by performance, 50% paid out and 50% retained for five years. The bonus rules need written terms reviewed by a labour lawyer and payroll. ' +
+    'PERSONAL RECORDS are visible only to the person, their line managers and HR. PERSONNEL SATISFACTION SURVEY: confidential, by emailed link or printed paper recorded by the line manager, results hidden for small groups, with themes, eNPS, strengths, opportunities for improvement and tasks. ' +
     'ADMIN CONSOLE (Group QaSHE CG staff only) switches modules and disciplines per client; clients manage departments, people and access in Administration. ' +
     moduleState() + ' Do not suggest features the client has switched off; say who can switch them on.)';
   };
@@ -40921,20 +40924,20 @@ const MODS = [
  iso:['ISO 9001 cl 9.3','ISO 14001 cl 9.3','ISO 45001 cl 9.3','OHS Act s19'],link:['tasks','compliance','audits'],
  steps:['Open the review and pull in the data','Walk through the agenda','Record decisions','Actions become tracked tasks'],
  d:{a:'chk',title:'Management review agenda',items:['Previous actions','Audit results','Incident and nonconformance trends','Customer satisfaction','Objectives and risks','Resources and decisions'],fail:[]}},
-{id:'documents',ch:'doc',n:'Document Management',ic:'doc',tag:'Create, number, approve and revise documents in one place.',
- feat:['Numbered by department and document type','Create from a template or upload your own','Revision control and approval workflow','Approved documents appear automatically in All Documents','Electronic signature where required'],
- iso:['ISO 9001 cl 7.5','ISO 14001 cl 7.5','ISO 45001 cl 7.5','ISO 27001 cl 7.5'],link:['all_documents','policies','master_register'],
- steps:['Name the document and pick department and type','Choose a template or start blank','Write, review and approve','Revise with full history'],
+{id:'documents',ch:'doc',n:'Document Management',ic:'doc',tag:'Create, number, review and approve documents on their own page, starting from the master register.',
+ feat:['Opens on the Master Documents Register with two tabs: Register and Document Workflow','Numbered by department and document type','New documents and reviews open on their own page','Revision control and approval workflow with Open on every workflow row','Approved documents offer View Document and Request update only','Administrators manage review requests and the naming convention in Administration'],
+ iso:['ISO 9001 cl 7.5','ISO 14001 cl 7.5','ISO 45001 cl 7.5','ISO 27001 cl 7.5'],link:['all_documents','policies','master_register','administration'],
+ steps:['Open the register','Develop a new document on its own page','Review and approve in Document Workflow','Request updates to approved documents'],
  d:{a:'docs',docs:[['QHSE-POL-001','Occupational Health and Safety Policy','Rev 2'],['QHSE-PRO-014','Incident Reporting Procedure','Rev 1'],['QHSE-FRM-022','Toolbox Talk Record','Rev 3']]}},
-{id:'all_documents',ch:'doc',n:'All Documents',ic:'search',tag:'Find any document in seconds, controlled or legacy.',
- feat:['Filed by department and type','Search across every document at once','Controlled and legacy documents together','Open or download with one click'],
+{id:'all_documents',ch:'doc',n:'All Documents',ic:'search',tag:'External and historical uploads sit beside controlled documents in one register.',
+ feat:['External uploads appear in the Master Documents Register','Upload External Documents button for administrators','Uploads without a number show as Not numbered','Filed by department and type from the document number'],
  iso:['ISO 9001 cl 7.5.3'],link:['documents','master_register'],
- steps:['Open All Documents','Search or browse by department','Open the document','Check its revision status'],
+ steps:['Open the register','Upload External Documents','Find and open','Request an update'],
  d:{a:'docs',docs:[['HR-POL-004','Leave Policy','Rev 1'],['OPS-PRO-007','Equipment Pre-Use Procedure','Rev 4'],['SHE-FRM-009','Visitor Declaration','Rev 2']]}},
 {id:'master_register',ch:'doc',n:'Master Documents Register',ic:'list',tag:'Every controlled document number in one auditable list.',
- feat:['All numbers, titles, revisions and owners','Review dates highlight what is due','Maintained centrally by administrators','Printable for auditors'],
+ feat:['Every number, title, revision, status and owner','Status badges with white text, Approved in blue','View Document and Request update on approved rows','Unapproved status opens the document in Document Workflow','All statuses filter and export for the auditor'],
  iso:['ISO 9001 cl 7.5'],link:['documents','all_documents'],
- steps:['Open the register','Filter by department','Check revision and review date','Export for the auditor'],
+ steps:['Open the register','Filter by status','Open or request an update','Export for the auditor'],
  d:{a:'reg',cols:['Number','Title','Rev','Owner','Review'],rows:[['QHSE-POL-001','OHS Policy','2','MD','Mar 2027'],['QHSE-PRO-014','Incident Procedure','1','SHE','Jun 2027']],gate:null,f:['Title','Owner'],nr:['QHSE-FRM-023','Hot Work Permit','1','SHE','Oct 2027']}},
 {id:'policies',ch:'doc',n:'Template Library',ic:'doc',tag:'More than 500 audit-ready templates, ready to adapt.',
  feat:['Policies, procedures, forms, registers, checklists and flowcharts','Letters of appointment for statutory roles','Linked to the modules that use them: a Templates button in each module','Every template carries a reference number for traceability','Yours to adapt, then controlled in Document Management'],
@@ -40956,13 +40959,13 @@ const MODS = [
  iso:['ISO 45001 cl 8.1','ISO 9001 cl 7.1.4'],link:['tasks','checklists'],
  steps:['Select the area','Score the five S','Add photos and notes','Raise actions and publish the scores'],
  d:{a:'chk',title:'5S inspection: Workshop',items:['Sort: unneeded items removed','Set in order: places labelled','Shine: area clean','Standardise: standards visible','Sustain: audited weekly'],fail:[2]}},
-{id:'appraisals',ch:'perf',n:'KPIs and Appraisals',ic:'star',tag:'Position KPIs, self-assessment and manager review.',
- feat:['KPIs for every position','Employee self-assessment','Manager review and rating','Development needs feed Training','Position KPIs form the measurable part of each job description'],
- iso:['ISO 9001 cl 7.2','ISO 45001 cl 7.2'],link:['personnel','training'],
- steps:['Set position KPIs','Employee completes self-assessment','Manager reviews and rates','Agree development actions'],
+{id:'appraisals',ch:'perf',n:'KPIs and Appraisals',ic:'star',tag:'Position KPIs, self-assessment, manager review and a monthly company performance report.',
+ feat:['Start from the person: job description and KPIs, then the appraisal','Emailed self-assessment and manager links, no sign-in needed','Rating 0 (Not done) to 5, the manager\'s rating counts, the average is for reference','Appraisal report emailed automatically','Company Performance Report for the Managing Director with a 100% target','Opportunities for improvement per person and for the organisation','Annual result per person and the annual bonus schedule','Excel upload of results'],
+ iso:['ISO 9001 cl 7.2','ISO 45001 cl 7.2'],link:['personnel','training','staff_survey'],
+ steps:['Develop the job description and KPIs','Start the appraisal','Employee and manager rate','Publish the company report'],
  d:{a:'flow',st:[['Set KPIs','start of year'],['Self-assess','employee'],['Review','manager'],['Agree','development'],['Train','needs fed on']]}},
 {id:'personnel',ch:'ppl',n:'Personnel and Competence',ic:'users',tag:'Know who is competent to do what.',
- feat:['Personnel register with positions and line managers','Competence matrix by position','Qualifications, certificates and expiry','Medical fitness and validity dates','Gaps feed Training','Onboarding status ring with QR code and a full checklist','Job descriptions on every position, key roles and succession','People overview of onboarding, appraisals, training and discipline'],
+ feat:['Personnel register with positions and line managers','Competence matrix by position','Qualifications, certificates and expiry','Medical fitness and validity dates','Gaps feed Training','Onboarding status ring with QR code and a full checklist','Job descriptions and KPIs developed from the person page','Personal records visible only to the person, line managers and HR','Statistical analysis and people overview of onboarding, appraisals, training and discipline'],
  iso:['ISO 9001 cl 7.2','ISO 45001 cl 7.2','ISO 14001 cl 7.2'],link:['training','orgchart','appraisals'],
  steps:['Add the person and position','Record qualifications and certificates','See the competence matrix','Raise training for gaps'],
  d:{a:'mx',cols:['Welding','First aid','Working at height','Fire marshal'],rows:[['T. Mokoena','g,g,a,g'],['P. Naidoo','g,r,g,a'],['S. Dlamini','a,g,g,g']]}},
@@ -43387,43 +43390,44 @@ ask:'Show me the minutes of your last management review and the actions that cam
 
 (function(W){
 W.documents = {
-why:'Out-of-date documents cause errors and failed audits. Document Management makes sure everyone uses the current approved version, and that changes are reviewed and approved.',
-who:'Document owners, reviewers, approvers and every user who needs the latest version.',
-tour:[['The register','Every document with its number, revision, status and owner.',['table','Documents',['Number','Title','Rev','Status'],[['QMS-PRO-004','Control of Records','2','Approved'],['HSE-FRM-011','Incident Report','1','Review'],['QMS-POL-001','Quality Policy','3','Approved']]]],
- ['Numbering','Numbers are built from department and document type, so the library stays tidy.',['chain','Number',['QMS','PRO','004'],'Department, type, sequence']],
- ['The workflow','Draft, review, approval, approved. A document cannot skip a stage.',['flow','Workflow',['Draft','Review','Approval','Approved'],1]]],
-steps:[['Create the document','Click New Document, name it, and pick the department and type.',['form','New document',[['Name','Control of Records'],['*Department','Quality'],['Type','Procedure']],'Continue']],
- ['Start from a template or upload','Pick a template, upload an historical document for reference, or ask the AI to draft it.',['cards','Starting point',[['Template: Procedure','Library','New'],['Upload old version','Reference','Draft']]]],
+why:'Out-of-date documents cause errors and failed audits. Document Management makes sure everyone uses the current approved version, and that every change is reviewed and approved. It always opens on the Master Documents Register, with Document Workflow one tab away.',
+who:'Document owners, reviewers, approvers and every user who needs the latest version. Administrators also maintain the settings behind it.',
+tour:[['Opens on the register','Every document number in one list. Approved documents show a blue Approved badge and offer only View Document and Request update.',['table','Master Documents Register',['Number','Title','Rev','Status'],[['QMS-PRO-004','Control of Records','2','Approved'],['HSE-FRM-011','Incident Report','1','Review'],['QMS-POL-001','Quality Policy','3','Approved']]]],
+ ['Two tabs only','Master Documents Register to find and read. Document Workflow to create, review, amend and approve.',['flow','Document Management',['Master Documents Register','Document Workflow'],0]],
+ ['Numbering','Numbers are built from department and document type, so the library stays tidy.',['chain','Number',['QMS','PRO','004'],'Department, type, sequence']]],
+steps:[['Start on the register','Click Document Management. You land on the Master Documents Register. Use Search for a Document, or the status filter, to find what you need.',['stats','Master Documents Register',[['Documents','135'],['Approved','118'],['In review','9']]]],
+ ['Develop a new document','Click Develop a New Document. It opens on its own page so you can follow the process without the register below it. Back to the register returns you.',['form','New document',[['Name','Control of Records'],['*Department','Quality'],['Type','Procedure']],'Continue']],
  ['Write and review','Add reviewers. Each gets an email and their own comment colour. Everyone must tick Satisfied.',['check','Reviewers',['Anna Botha: satisfied','P. Naidoo: satisfied','-S. Dlamini: comments open']]],
- ['Approve','Choose the approver. They receive a link and approve, or send it back for changes.',['mail','For your approval: QMS-PRO-004',['m.goedvolk@company.co.za','The document is ready for approval.','Open the document']]],
- ['Revise with history','To change an approved document, request an amendment. The current version stays in use meanwhile.',['table','History',['Rev','Date','Status'],[['*3','12 Nov','Approved'],['2','5 Mar','Superseded']]]]],
-tips:['Use the numbering scheme from day one.','Give reviewers a deadline.','Never email a document to staff. Point them to All Documents.'],
+ ['Approve','Choose the approver. They receive a link and approve, or send it back for changes. Approval updates the register automatically.',['mail','For your approval: QMS-PRO-004',['m.goedvolk@company.co.za','The document is ready for approval.','Open the document']]],
+ ['Open a document in Document Workflow','On the Document Workflow tab, every row has an Open button for review, amendment and approval. A document not yet approved shows a clickable status on the register that takes you straight there.',['table','Document Workflow',['Number','Status','Action'],[['QMS-PRO-004','Review','*Open'],['HSE-FRM-011','Draft','*Open']]]],
+ ['Request an update','On an approved document choose Request update and give the reason. The Document Controller receives it. The current version stays in use until the new revision is approved.',['table','History',['Rev','Date','Status'],[['*3','12 Nov','Approved'],['2','5 Mar','Superseded']]]],
+ ['Administrator tools','Review Requests and the Naming Convention are no longer here. Administrators open them from Administration, under Document Review Requests and Document Naming Convention.',['cards','Administration',[['Document Review Requests','Administration','Pending'],['Document Naming Convention','Administration','Locked']]]]],
+tips:['Use the numbering scheme from day one.','Give reviewers a deadline.','Never email a document to staff. Point them to the Master Documents Register.','Approved documents cannot be opened for editing. Request an update instead.'],
 ask:'How do you make sure that only current approved documents are in use?'};
 W.all_documents = {
-why:'People waste time hunting for documents. All Documents puts every controlled and legacy file in one searchable place.',
-who:'Everyone. Administrators maintain what is filed.',
-tour:[['Browse by department','Documents are filed by department and type.',['table','Filing',['Department','Documents'],[['Quality','48'],['Health and safety','62'],['Human resources','25']]]],
- ['Search','Search across all documents at once, by name, number or type.',['form','Search',[['*Search','calibration'],['Results','6 documents']]]],
- ['Status at a glance','See the revision and status before you open.',['table','Results',['Number','Title','Rev','Status'],[['QMS-PRO-012','Calibration','2','Approved'],['QMS-FRM-020','Calibration Log','1','Approved']]]]],
-steps:[['Open All Documents','Choose All Documents from the Documents menu.',['stats','All documents',[['Documents','135'],['Departments','9']]]],
- ['Search or browse','Type a word or open a department to see its documents.',['form','Search',[['*Search','incident'],['Department','Health and safety']]]],
- ['Open the document','Click the title to open or download it.',['cards','Result',[['HSE-PRO-007 Incident Reporting','Rev 2 · Approved','Approved']]]],
- ['Check its status','Make sure it is the approved revision before you use it.',['table','Document',['Number','Rev','Status'],[['*HSE-PRO-007','2','Approved']]]],
- ['Ask for an amendment','Spotted an error? Request an amendment. It flags the document while the current version stays usable.',['flow','Amendment',['Approved','Amendment requested','Review','Approved'],1]]],
-tips:['Search first. Do not keep personal copies.','Check the revision before every use.','Approved documents arrive here automatically.'],
-ask:'Where do your staff find the documents they must work to?'};
+why:'External and historical files need a home too. Where your organisation has All Documents (external uploads) switched on, uploaded files appear in the Master Documents Register beside your controlled documents, so there is one place to look.',
+who:'Everyone reads. Administrators and document controllers upload.',
+tour:[['One list','Controlled documents and uploaded external documents sit in the same register. Uploads without a document number show as Not numbered.',['table','Master Documents Register',['Number','Title','Status'],[['QMS-PRO-012','Calibration','Approved'],['Not numbered','Supplier ISO certificate','Uploaded']]]],
+ ['Upload External Documents','Administrators and controllers see an Upload External Documents button on the register. It opens the upload page.',['cards','Register toolbar',[['Upload External Documents','Master Documents Register','New']]]],
+ ['Smart filing','Files are sorted by their document number into the right department and type.',['chain','Filing',['TVC','GOV','POL','001']]]],
+steps:[['Open the register','Choose Document Management. External uploads appear in the Master Documents Register.',['stats','Register',[['Documents','135'],['External uploads','17']]]],
+ ['Upload','Click Upload External Documents, choose the files and confirm. Keep the document number in the file name so it files itself.',['form','Upload',[['*Files','Supplier ISO certificate.pdf'],['Department','Quality']],'Upload']],
+ ['Find and open','Search, filter by status, then choose View Document.',['cards','Result',[['Supplier ISO certificate','Not numbered','Uploaded']]]],
+ ['Ask for an amendment','Spotted an error? Choose Request update. The Document Controller promotes the file to a controlled document when it is revised.',['flow','Amendment',['Uploaded','Update requested','Review','Approved'],1]]],
+tips:['Keep the document number in the file name.','Number important external documents when you can.','The upload button only shows if All Documents (external uploads) is switched on for your organisation.'],
+ask:'Where do your staff find external documents such as certificates and client standards?'};
 W.master_register = {
-why:'The master register is the auditor\'s first request. It lists every controlled document number, revision, owner and review date.',
-who:'Administrators and document controllers. Auditors read it.',
-tour:[['The master list','Every number, title, revision and owner.',['table','Master register',['Number','Title','Rev','Review due'],[['QMS-POL-001','Quality Policy','3','Mar 27'],['HSE-PRO-007','Incident Reporting','2','*Overdue']]]],
- ['Checks','Automatic checks flag gaps, duplicate numbers and numbers that do not match the scheme.',['check','Checks',['Numbers unique','-Gap in QMS-PRO series','Scheme followed']]],
- ['AI review','An AI second pass suggests possible duplicates and misfiled documents. It only suggests.',['cards','AI suggestions',[['Two procedures cover the same process','QMS-PRO-004 and 011','Review']]]]],
-steps:[['Open the register','Choose Master Documents Register. It appears even if Document Control is off.',['stats','Master register',[['Documents','135'],['Review due','4','red']]]],
- ['Filter','Filter by department, type or status.',['form','Filter',[['*Department','Quality'],['Status','Approved']]]],
- ['Check revision and review','Overdue reviews show in red. Open the document to start the review.',['table','Due',['Number','Review'],[['*HSE-PRO-007','Overdue'],['QMS-POL-001','Mar 27']]]],
- ['Run the AI review','Click Run AI Review for a second opinion. Each finding is a suggestion you accept or dismiss.',['cards','Findings',[['Probable duplicate','QMS-PRO-004 / 011','Review']]]],
- ['Print for the auditor','Print or export the register as evidence of document control.',['chain','Evidence',['Register','Print','Auditor']]]],
-tips:['Fix duplicates and gaps before the auditor finds them.','Review overdue documents monthly.','The AI only suggests. You decide.'],
+why:'The master register is the auditor\'s first request. It lists every controlled document number, revision, owner and status, and every external upload.',
+who:'Everyone reads. Administrators and document controllers maintain.',
+tour:[['The master list','Every number, title, revision and status. Statuses are coloured badges with white text. Approved is blue.',['table','Master register',['Number','Title','Rev','Status'],[['QMS-POL-001','Quality Policy','3','Approved'],['HSE-PRO-007','Incident Reporting','2','*Review']]]],
+ ['Two actions on an approved row','View Document and Request update. There is no Open button once a document is approved.',['cards','Row actions',[['View Document','Approved','Read'],['Request update','Approved','Ask']]]],
+ ['Checks','Automatic checks flag gaps, duplicate numbers and numbers that do not match the scheme.',['check','Checks',['Numbers unique','-Gap in QMS-PRO series','Scheme followed']]]],
+steps:[['Open the register','Click Document Management. The register is always the first thing you see.',['stats','Master register',[['Documents','135'],['In review','9']]]],
+ ['Filter and search','Use Search for a Document and the All statuses filter.',['form','Filter',[['*Search','incident'],['Status','All statuses']]]],
+ ['Open an unapproved document','Click the status badge of a document that is not yet approved. It opens in Document Workflow.',['table','Status',['Number','Status'],[['*HSE-PRO-007','Review'],['QMS-POL-001','Approved']]]],
+ ['Request an update','On an approved document, choose Request update and state the reason.',['form','Request update',[['*Reason','Legislation changed'],['Document','HSE-PRO-007']],'Send']],
+ ['Export for the auditor','Export the register as evidence of document control.',['chain','Evidence',['Register','Export','Auditor']]]],
+tips:['Fix duplicates and gaps before the auditor finds them.','Approved documents are changed only through Request update.','The Administration area holds the naming convention and review requests.'],
 ask:'May I see your register of controlled documents?'};
 W.policies = {
 why:'Starting from a blank page is slow and risky. The library has over five hundred audit-ready templates with reference numbers.',
@@ -43478,24 +43482,29 @@ steps:[['Select the area','Pick the area and the inspector.',['form','Inspection
 tips:['Inspect the same areas on a fixed day.','Photograph the good as well as the bad.','Share scores openly.'],
 ask:'How do you maintain order and cleanliness in the workplace?'};
 W.appraisals = {
-why:'Performance reviews should be fair and focused. KPIs for each position, a self-assessment and a manager review make them so.',
-who:'Employees, line managers and human resources.',
-tour:[['Position KPIs','Each position has its own KPIs.',['table','Position KPIs',['KPI','Weight'],[['Quality of work','30'],['Safety compliance','30'],['Deadlines','40']]]],
- ['Self-assessment','The employee rates themselves first.',['form','Self-assessment',[['Deadlines','4'],['*Comment','Delivered all projects']]]],
- ['Manager review','The manager rates and agrees development.',['stats','Review',[['Self','4.1'],['Manager','3.8']]]]],
-steps:[['Set position KPIs','Define what good looks like for the position.',['table','KPIs',['KPI','Weight'],[['Quality','30'],['Safety','30']]]],
- ['Employee self-assessment','The employee completes it online.',['form','Self-assessment',[['*Rating','4'],['Comment','Met all targets']]]],
- ['Manager reviews','The manager gives the rating and comments.',['form','Manager review',[['*Rating','3.8'],['Comment','Strong on safety']]]],
- ['Agree development','Development needs flow into Training.',['cards','Needs',[['First aid refresher','Training','Planned']]]],
- ['Sign and file','Both sign. The record is kept.',['check','Sign-off',['Employee signed','Manager signed']]]],
-tips:['Review KPIs yearly with the employee.','Be specific in comments.','Turn needs into training the same day.'],
-ask:'How do you evaluate the performance and competence of your people?'};
+why:'Performance reviews should be fair, measurable and lead somewhere. Position KPIs, a self-assessment and a manager review give each person a result. The manager\'s rating is the one that counts, and the monthly Company Performance Report rolls everybody up for the Managing Director.',
+who:'Employees, line managers, human resources and the Managing Director.',
+tour:[['Start from the person','Open the person, develop the job description and KPIs there, then start the appraisal. Watchman emails the employee and the manager their own links.',['flow','Appraisal',['Person','KPIs','Self-assessment','Manager review','Report'],1]],
+ ['Rating 0 to 5','Each KPI is rated 0 (Not done) to 5. The manager\'s rating counts. The average of the two ratings is kept for reference only.',['stats','Review',[['Self','4.1'],['Manager (counts)','3.8'],['Average (reference)','3.95']]]],
+ ['Company Performance Report','A monthly report for the Managing Director with a 100% target, opportunities for improvement per person and for the organisation, and monthly results rolled into an annual result per person.',['table','Company performance',['Person','Month','Annual'],[['T. Mokoena','92%','90%'],['P. Naidoo','84%','86%']]]]],
+steps:[['Develop the job description and KPIs','From the person page, develop the job description and KPIs. Position KPIs form the measurable part of the job description.',['table','KPIs',['KPI','Weight'],[['Quality','30'],['Safety','30'],['Deadlines','40']]]],
+ ['Start the appraisal','Choose the person and start the appraisal. The employee receives a self-assessment link and the manager receives a review link by email. You can also upload results from Excel.',['mail','Your self-assessment',['p.naidoo@company.co.za','Please complete your self-assessment.','Open my assessment']]],
+ ['Employee self-assessment','The employee rates each KPI from 0 to 5 and comments. No sign-in is needed.',['form','Self-assessment',[['*Deadlines','4'],['Comment','Delivered all projects']]]],
+ ['Manager reviews and rates','The manager rates each KPI. Their rating counts as the result. A 0 means Not done.',['form','Manager review',[['*Deadlines','3'],['Comment','Two late deliveries']]]],
+ ['Read the result','Results use bands: 97% and above Significant, 90% Standard, 81% Moderate, 60% Partial, 50% Not acceptable, below 50% Not done. The report page shows the result and the average for reference.',['check','Bands',['Significant 97%+','Standard 90%+','Moderate 81%+','-Partial 60%+']]],
+ ['Agree development','Development needs flow into Training and appear as opportunities for improvement.',['cards','Needs',[['First aid refresher','Training','Planned']]]],
+ ['Receive the report automatically','When the manager submits, the appraisal report is emailed automatically, once only.',['mail','Appraisal report',['p.naidoo@company.co.za','Your appraisal report is ready.','Open the report']]],
+ ['Open the Company Performance Report','Click Company Performance Report on the appraisals page (administrators and HR). Choose the month, review each person and the opportunities for improvement, then publish, print or export to Excel.',['stats','Company performance',[['Company result','88%'],['Target','100%']]]],
+ ['Annual result and bonus schedule','Each person\'s annual result is the average of their appraisals in the financial year. Enter the bonus pool to see each person\'s equal share adjusted by performance, with 50% paid out and 50% retained for 5 years.',['table','Bonus schedule',['Person','Annual','Payout now','Retained'],[['T. Mokoena','90%','R 2,450','R 2,450'],['P. Naidoo','86%','R 2,300','R 2,300']]]]],
+tips:['Review KPIs yearly with the employee.','Be specific in comments.','Turn needs into training the same day.','The bonus rules should be written down and reviewed by a labour lawyer and payroll before use.'],
+ask:'How do you evaluate the performance and competence of your people, and how is it reported to top management?'};
 W.personnel = {
 why:'You cannot prove competence without a record. Personnel and Competence shows who is qualified, medically fit and certified, and when it expires.',
 who:'Human resources, line managers and the SHE officer.',
 tour:[['People register','Every person with position, department and line manager.',['table','Personnel',['Name','Position','Status'],[['P. Naidoo','Forklift operator','Active'],['S. Dlamini','Welder','Active']]]],
  ['Competence matrix','Position against skills, with gaps coloured.',['table','Matrix',['Skill','Competent','Gap'],[['First aid','12','2'],['Forklift','8','1']]]],
- ['Expiry','Certificates and medicals show when they expire.',['cards','Expiring',[['Medical certificate','P. Naidoo · 14 days','Expiring']]]]],
+ ['Expiry','Certificates and medicals show when they expire.',['cards','Expiring',[['Medical certificate','P. Naidoo · 14 days','Expiring']]],
+ ['See the whole picture','Open a person for their profile: onboarding, job description and KPIs, appraisals, training and personal documents. Personal records are visible only to the person, their line managers and human resources.',['cards','Person page',[['Job description','Develop','Ready'],['Appraisals','Start','New']]]]]],
 steps:[['Add the person','Enter name, position, department and line manager.',['form','New person',[['Name','P. Naidoo'],['*Position','Forklift operator']],'Save']],
  ['Record qualifications','Add certificates with expiry dates.',['form','Certificate',[['Certificate','Forklift licence'],['*Expiry','30 June 2027']]]],
  ['See the matrix','Green is competent, amber expiring, red a gap.',['table','Matrix',['Skill','Status'],[['Forklift','Competent'],['*First aid','Gap']]]],
@@ -43503,6 +43512,19 @@ steps:[['Add the person','Enter name, position, department and line manager.',['
  ['Watch expiries','Reminders tell you before anything lapses.',['mail','Certificate expiring',['hr@company.co.za','Medical certificate for P. Naidoo expires in 14 days.']]]],
 tips:['Keep certificates attached to the record.','Review the matrix quarterly.','Do not assign work without competence.'],
 ask:'How do you determine the necessary competence of people, and keep evidence?'};
+W.staff_survey = {
+why:'People tell you what is wrong if you ask them safely. The Personnel Satisfaction Survey is confidential, reaches everybody including people without internet, and turns answers into tasks.',
+who:'Administrators and permitted human resources leads run it. Line managers record paper responses for their own people. Everyone is invited to respond.',
+tour:[['Standard questions','A standard question set you can adjust before sending.',['table','Survey',['Theme','Questions'],[['Management','6'],['Safety','6'],['Pay and growth','5']]]],
+ ['Confidential by default','Results show only for groups large enough to protect people.',['check','Privacy',['Personal link by email','Paper copy for people without internet','-Small groups hidden']]],
+ ['Results','Averages, favourable ratings by theme, strengths, opportunities for improvement and employee net promoter score.',['stats','Results',[['Favourable','78%'],['eNPS','+24']]]]],
+steps:[['Create the survey','Choose Personnel Satisfaction Survey, name it, and adjust the questions.',['form','New survey',[['*Name','Annual survey 2026'],['Closes','30 Nov']],'Create']],
+ ['Send the personal links','Each person receives their own link by email.',['mail','Satisfaction survey',['p.naidoo@company.co.za','Your honest, confidential views please.','Start the survey']]],
+ ['Collect paper responses','For people without internet, print the questionnaire. The line manager records the answers.',['check','Paper',['Printed','Completed with the employee','-Captured']]],
+ ['Review the statistics','See themes, strengths and opportunities for improvement, and the trend across surveys.',['table','Themes',['Theme','Favourable'],[['Management','82%'],['*Pay and growth','61%']]]],
+ ['Act on the answers','Raise tasks from the results and track them to closure.',['cards','Tasks',[['Review pay bands','HR','Open']]]]],
+tips:['Tell people the survey is confidential.','Close the loop: report back what you will change.','Repeat yearly to see the trend.'],
+ask:'How do you monitor the satisfaction and wellbeing of your people?'};
 W.orgchart = {
 why:'Responsibility must be clear, written and signed. Organisation charts and appointment letters give you that, with renewal notices.',
 who:'Management, human resources and appointees.',
@@ -51012,6 +51034,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     if(mod === 'all_documents') return orgOnAll() && (origCan('all_documents') || origCan('documents'));
     return origCan.apply(this, arguments);
   };
+  window.dhHas = () => has();
   const has = () => ({ ctl:origCan('documents'), mst:origCan('master_register') || origCan('documents'), all:orgOnAll() && (origCan('all_documents') || origCan('documents')) });
 
   /* ---- the sidebar shows Document Management only ---- */
@@ -51090,7 +51113,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   { const _sw = window.switchDocSubtab;
     window.switchDocSubtab = function(tab){
       const h = has();
-      if(tab === 'alldocs') tab = 'master';
+      if(tab === 'alldocs' && !h.all) tab = 'master';
       if(tab === 'master' && !h.mst) tab = h.ctl ? 'register' : (h.all ? 'alldocs' : 'master');
       if(['register', 'requests', 'setup'].includes(tab) && !h.ctl) tab = h.mst ? 'master' : 'alldocs';
       if(['requests', 'setup'].includes(tab) && !docAdmin()) tab = 'register';
@@ -51099,7 +51122,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
         STATE._docSubtab = tab;
         const tb = document.getElementById('doc-register-toolbar-extra'); if(tb) tb.style.display = 'none';
         const w = document.getElementById('doc-subtab-content'); const tw = document.getElementById('doc-table-wrap'); if(tw) tw.innerHTML = '';
-        if(w){ if(tab === 'master'){ w.innerHTML = '<div id="mr2-root"></div>'; try{ renderMasterRegisterPage(); }catch(e){ console.error(e); } } else { w.innerHTML = '<div id="alldocs-root"></div>'; try{ renderBulkDocumentsRegister(); }catch(e){ console.error(e); } } }
+        if(w){ if(tab === 'master'){ w.innerHTML = '<div id="mr2-root"></div>'; try{ renderMasterRegisterPage(); }catch(e){ console.error(e); } } else { w.innerHTML = '<div style="margin:0 0 12px;"><button class="btn-small" onclick="switchDocSubtab(\'master\')">← Back to the Master Documents Register</button></div><div id="alldocs-root"></div>'; try{ renderBulkDocumentsRegister(); }catch(e){ console.error(e); } } }
       } else { _sw.call(this, tab); }
       document.querySelectorAll('#dh-tabs .dh-tab').forEach(b => b.classList.toggle('on', b.dataset.t === STATE._docSubtab));
       { const st = document.querySelector('.doc-hub .dh-stats'); if(st) st.style.display = STATE._docSubtab === 'master' ? '' : 'none'; }
