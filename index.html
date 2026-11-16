@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R45 2026-11-16"><meta charset="UTF-8">
+<meta name="wm-release" content="R45b 2026-11-16"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -8305,6 +8305,7 @@ function renderDocSetupTab(){
 // document — not a separate, manually-set field that could drift out
 // of sync with what's actually been signed.
 function documentSignoffStatus(d){
+  if(d.approver_signed_off_at || d.approval_status === 'approved' || d.workflow_status === 'approved') return { label: 'Approved', color: '#2E5AA8' };
   if(d.approver_signed_off_at) return { label: 'Approved', color: '#2E5AA8' };
   if(d.developer_signed_off_at) return { label: 'Under Review', color: '#2E7D4F' };
   return { label: 'Draft', color: '#B26A16' };
@@ -9778,7 +9779,8 @@ window.downloadDocumentPdf = async function(id, mode){
 
   const pageCount = doc.internal.getNumberOfPages();
   const reviewLine = d.reviewer_id ? `Reviewer: ${memberName(d.reviewer_id)}: ${d.reviewer_signed_off_at ? 'Reviewed '+fmtDate(d.reviewer_signed_off_at) : 'Pending'}` : 'Reviewer: —';
-  const approveLine = d.approver_id ? `Approver: ${memberName(d.approver_id)}: ${d.approver_signed_off_at ? 'Approved '+fmtDate(d.approver_signed_off_at) : 'Pending'}` : 'Approver: —';
+  const _apprAt = d.approver_signed_off_at || ((d.approval_status === 'approved' || d.workflow_status === 'approved') ? d.approved_date : null), _apprBy = d.approver_id || d.approved_by;
+  const approveLine = _apprBy ? `Approver: ${memberName(_apprBy)}: ${_apprAt ? 'Approved '+fmtDate(_apprAt) : 'Pending'}` : 'Approver: —';
 
   for(let i = 1; i <= pageCount; i++){
     doc.setPage(i);
@@ -9793,8 +9795,17 @@ window.downloadDocumentPdf = async function(id, mode){
     doc.text(STATE.org.name, marginL + (logoImage ? 115 : 0), hy);
     doc.setFont('helvetica','normal'); doc.setFontSize(9);
     if(STATE.org.address) doc.text(STATE.org.address, marginL + (logoImage ? 115 : 0), hy + 14);
-    doc.setFont('helvetica','bold'); doc.setFontSize(13);
-    doc.text(d.title, pageW - marginR, hy, { align: 'right' });
+    { const _nx = marginL + (logoImage ? 115 : 0);
+      doc.setFont('helvetica','bold'); doc.setFontSize(13);
+      const _nameW = doc.getTextWidth(STATE.org.name || '');
+      const _addrW = STATE.org.address ? (doc.setFont('helvetica','normal'), doc.setFontSize(9), doc.getTextWidth(STATE.org.address)) : 0;
+      const _left = _nx + Math.max(_nameW, _addrW) + 16;
+      const _maxW = Math.max(110, pageW - marginR - _left);
+      doc.setFont('helvetica','bold'); doc.setFontSize(13);
+      let _ls = doc.splitTextToSize(String(d.title||''), _maxW);
+      if(_ls.length > 2){ doc.setFontSize(10); _ls = doc.splitTextToSize(String(d.title||''), _maxW); }
+      else if(_ls.length > 1){ doc.setFontSize(11); _ls = doc.splitTextToSize(String(d.title||''), _maxW); }
+      doc.text(_ls.slice(0,3), pageW - marginR, hy, { align: 'right' }); }
     doc.setLineWidth(1.2); doc.line(marginL, headerH - 15, pageW - marginR, headerH - 15);
 
     // Footer, repeated identically on every page — the real "Page X of Y"
@@ -9806,7 +9817,7 @@ window.downloadDocumentPdf = async function(id, mode){
     const col1 = marginL, col2 = marginL + 130, col3 = marginL + 330, col4 = marginL + 415;
     const sigStatus = documentSignoffStatus(d);
     doc.text(`Doc No: ${d.doc_number}`, col1, fy);
-    doc.text(`Rev ${d.current_revision}: ${fmtDate(d.current_revision_date)}`, col1, fy + 10);
+    doc.text(`Rev ${fmtRev(d.current_revision)}: ${fmtDate(d.current_revision_date || d.approved_date)}`, col1, fy + 10);
     doc.text(`Status: ${sigStatus.label}`, col1, fy + 20);
     const disclaimerLines = doc.splitTextToSize('This document is controlled within QaSHE Watchman. A printed or saved copy is valid only at the time of printing and may not reflect the current revision. Personnel must always refer to QaSHE Watchman for the latest approved version.', 190);
     doc.text(disclaimerLines, col2, fy);
@@ -20126,7 +20137,7 @@ function renderProcessesTable(){
     return;
   }
   wrap.innerHTML = `<table>
-    <tr><th>Ref</th><th>Process</th><th>Owner</th><th>Flowchart</th><th>KPIs</th><th>Documents</th><th>Review</th><th>Status</th></tr>
+    <tr><th>Document Number</th><th>Process</th><th>Owner</th><th>Flowchart</th><th>KPIs</th><th>Documents</th><th>Review</th><th>Status</th><th></th></tr>
     ${rows.map(p=>`<tr class="clickable" onclick="openProcessDetail('${p.id}')">
       <td class="mono-cell">${p.ref_code}</td>
       <td class="strong">${p.name}${p.ai_assisted ? ' <span style="font-size:10px; color:var(--text-faint); font-weight:500;">· AI-assisted</span>' : ''}</td>
@@ -20136,6 +20147,7 @@ function renderProcessesTable(){
       <td>${pcDocLinksOf(p).length || '<span style="color:var(--text-faint);">—</span>'}</td>
       <td style="text-transform:capitalize">${p.review_frequency||'—'}</td>
       <td>${pill(p.status)}</td>
+      <td style="text-align:right;white-space:nowrap;"><button class="btn-small" onclick="event.stopPropagation(); processDocumentPdf('${p.id}')">View Document</button> <button class="btn-small" onclick="event.stopPropagation(); processRequestUpdate('${p.id}')">Request update</button></td>
     </tr>`).join('')}
   </table>`;
 }
@@ -32168,9 +32180,10 @@ window.brandFromLogo = function(){
   const dn=id=>{ const d=(STATE.docDepartments||[]).find(x=>x.id===id); return d?d.name:'Unfiled'; };
   const tn=id=>{ const t=(STATE.docTypes||[]).find(x=>x.id===id); return t?t.name:''; };
   function mrRows(){
-    const ctl=(STATE.documents||[]).filter(d=>d.doc_number).map(d=>({src:'Document Management',num:d.doc_number,title:d.title||'',dept:dn(d.department_id),deptId:d.department_id||'',type:tn(d.type_id),rev:d.current_revision||'',status:documentWorkflowBadge(d).label,color:documentWorkflowBadge(d).color,wf:documentWorkflowBadge(d).key,id:d.id,kind:'c'}));
+    const ctl=(STATE.documents||[]).filter(d=>d.doc_number).map(d=>({src:'Document Management',num:d.doc_number,title:d.title||'',dept:dn(d.department_id),deptId:d.department_id||'',type:tn(d.type_id),rev:(d.current_revision==null||d.current_revision==='')?'':fmtRev(d.current_revision),status:documentWorkflowBadge(d).label,color:documentWorkflowBadge(d).color,wf:documentWorkflowBadge(d).key,id:d.id,kind:'c'}));
     const bulk=(STATE.bulkDocuments||[]).filter(d=>!d.archived).map(d=>({src:'All Documents',num:d.doc_number||'Not numbered',title:d.file_name||'',dept:dn(d.department_id),deptId:d.department_id||'',type:tn(d.document_type_id),rev:'',status:d.approved_status?'Approved':(d.current_status===false?'Superseded':'Filed'),color:d.approved_status?'#2E5AA8':(d.current_status===false?'#6B6B6B':'#5A6B7B'),wf:d.approved_status?'approved':'filed',id:d.id,path:d.storage_path,kind:'b'}));
-    return [...ctl,...bulk].sort((a,b)=>String(a.num).localeCompare(String(b.num),undefined,{numeric:true}));
+    let ext=[]; try{ (window.WM_PDF_SOURCES||[]).forEach(x=>{ ext=ext.concat(x.rows()); }); }catch(e){}
+    return [...ctl,...bulk,...ext].sort((a,b)=>String(a.num).localeCompare(String(b.num),undefined,{numeric:true}));
   }
   window.renderMasterRegisterPage=function(){
     const root=document.getElementById('mr2-root'); if(!root) return;
@@ -32184,7 +32197,7 @@ window.brandFromLogo = function(){
 </div>
     <div class="toolbar"><div class="filters"><input id="mr2-q" placeholder="Search number or title…" oninput="mr2Render()" style="min-width:260px;">
       <select id="mr2-dept" onchange="mr2Render()"><option value="">All departments</option>${depts.map(d=>`<option>${escapeHtml(d)}</option>`).join('')}</select>
-      <select id="mr2-src" onchange="mr2Render()"><option value="">All sources</option><option>Document Management</option><option>All Documents</option></select>
+      <select id="mr2-src" onchange="mr2Render()"><option value="">All sources</option><option>Document Management</option><option>All Documents</option><option>Processes &amp; KPIs</option></select>
       <select id="mr2-st" onchange="mr2Render()"><option value="">All statuses</option>${[...new Set(rows.map(r=>r.status))].sort().map(x=>`<option>${escapeHtml(x)}</option>`).join('')}</select></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">${(window.dhHas&&window.dhHas().all)?'<button class="btn-small" onclick="switchDocSubtab(\'alldocs\')" title="Upload external or historical documents; they appear in this register">Upload External Documents</button>':''}<button class="btn-small" onclick="exportMasterRegister()">Export Excel</button></div></div>
     <div class="panel" style="padding:0;overflow:hidden;"><div id="mr2-table"></div></div>
@@ -32196,8 +32209,9 @@ window.brandFromLogo = function(){
     const w=document.getElementById('mr2-table'); if(!w) return;
     const q=(document.getElementById('mr2-q').value||'').toLowerCase().trim(), d=document.getElementById('mr2-dept').value, s=document.getElementById('mr2-src').value, st=(document.getElementById('mr2-st')||{}).value||'';
     const rows=mrRows().filter(r=>(!d||r.dept===d)&&(!s||r.src===s)&&(!st||r.status===st)&&(!q||(r.num+' '+r.title).toLowerCase().includes(q)));
-    w.innerHTML=rows.length?`<table><tr><th>Document Number</th><th>Title</th><th>Department</th><th>Type</th><th>Rev</th><th>Status</th><th>Source</th><th></th></tr>${rows.slice(0,500).map(r=>`<tr><td class="mono-cell">${escapeHtml(r.num)}</td><td class="strong">${escapeHtml(r.title)}</td><td>${escapeHtml(r.dept)}</td><td>${escapeHtml(r.type)}</td><td style="text-align:center;">${escapeHtml(String(r.rev))}</td><td>${r.kind==='c'&&r.wf!=='approved'&&r.wf!=='withdrawn'&&r.wf!=='superseded'?`<span class="sev-badge" style="background:${r.color};color:#fff;cursor:pointer;" title="Open in Document Workflow" onclick="hubOpenDoc('${r.id}')">${escapeHtml(r.status)} ›</span>`:`<span class="sev-badge" style="background:${r.color||'#5A6B7B'};color:#fff;">${escapeHtml(r.status)}</span>`}</td><td>${r.src}</td><td style="text-align:right;">${r.kind==='c'?`<button class="btn-small" onclick="downloadDocumentPdf('${r.id}')">View Document</button>`:(r.path?`<button class="btn-small" onclick="downloadFromBucket('documents','${r.path}')">View Document</button>`:'')} <button class="btn-small" onclick="mrRequestUpdate('${r.kind}','${r.id}')">Request update</button></td></tr>`).join('')}</table>${rows.length>500?'<p style="padding:10px;font-size:12px;color:var(--text-faint);">Showing the first 500: refine your search to narrow the list.</p>':''}`:'<div class="empty-state"><p>No documents match.</p></div>';
+    w.innerHTML=rows.length?`<table><tr><th>Document Number</th><th>Title</th><th>Department</th><th>Type</th><th>Rev</th><th>Status</th><th>Source</th><th></th></tr>${rows.slice(0,500).map(r=>`<tr class="clickable" onclick="mr2Open('${r.kind}','${r.id}')" title="Click to view the document as PDF"><td class="mono-cell">${escapeHtml(r.num)}</td><td class="strong">${escapeHtml(r.title)}</td><td>${escapeHtml(r.dept)}</td><td>${escapeHtml(r.type)}</td><td style="text-align:center;">${escapeHtml(String(r.rev))}</td><td>${r.kind==='c'&&r.wf!=='approved'&&r.wf!=='withdrawn'&&r.wf!=='superseded'?`<span class="sev-badge" style="background:${r.color};color:#fff;cursor:pointer;" title="Open in Document Workflow" onclick="event.stopPropagation(); hubOpenDoc('${r.id}')">${escapeHtml(r.status)} ›</span>`:`<span class="sev-badge" style="background:${r.color||'#5A6B7B'};color:#fff;">${escapeHtml(r.status)}</span>`}</td><td>${r.src}</td><td style="text-align:right;">${r.kind==='c'?`<button class="btn-small" onclick="event.stopPropagation(); downloadDocumentPdf('${r.id}')">View Document</button>`:r.kind==='p'?`<button class="btn-small" onclick="event.stopPropagation(); processDocumentPdf('${r.id}')">View Document</button>`:(r.path?`<button class="btn-small" onclick="event.stopPropagation(); downloadFromBucket('documents','${r.path}')">View Document</button>`:'')} <button class="btn-small" onclick="event.stopPropagation(); ${r.kind==='p'?'processRequestUpdate':'mrRequestUpdate'}('${r.kind==='p'?'':r.kind+"','"}${r.id}')">Request update</button></td></tr>`).join('')}</table>${rows.length>500?'<p style="padding:10px;font-size:12px;color:var(--text-faint);">Showing the first 500: refine your search to narrow the list.</p>':''}`:'<div class="empty-state"><p>No documents match.</p></div>';
   };
+  window.mr2Open=function(kind,id){ if(kind==='p') return processDocumentPdf(id); const r=mrRows().find(x=>x.kind===kind&&String(x.id)===String(id)); if(!r) return; if(r.kind==='c') return downloadDocumentPdf(r.id); if(r.path) return downloadFromBucket('documents',r.path); toast('This entry has no file to view.','info'); };
   window.exportMasterRegister=async function(){
     try{ const XLSX=await ensureXLSX(); const rows=mrRows(); const ws=XLSX.utils.json_to_sheet(rows.map(r=>({'Document Number':r.num,'Title':r.title,'Department':r.dept,'Type':r.type,'Revision':r.rev,'Status':r.status,'Source':r.src}))); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Master Register'); XLSX.writeFile(wb,'master-documents-register.xlsx'); }catch(e){ toast('Export is not available right now.','error'); }
   };
@@ -38707,7 +38721,7 @@ async function renderNcResponsePage(token){
         <span><b>${rows.length}</b> process${rows.length===1?'':'es'}</span>
         <span>Overall KPI compliance: ${overall==null ? '<span style="color:var(--text-faint)">no readings yet</span>' : `<b style="color:${col(overall)};font-size:16px;">${overall}%</b> <span style="color:var(--text-faint)">(${on} of ${meas} measured KPIs on target)</span>`}</span>
         <span style="color:var(--text-faint);">Click a process to open it as a page.</span></div>
-      <table><tr><th>Ref</th><th>Process</th><th>Owner</th><th>KPI compliance</th><th>KPI status</th><th>Flowchart</th><th>Review</th><th>Status</th></tr>
+      <table><tr><th>Document Number</th><th>Process</th><th>Owner</th><th>KPI compliance</th><th>KPI status</th><th>Flowchart</th><th>Review</th><th>Status</th><th></th></tr>
       ${rows.map(p => `<tr class="clickable" onclick="pcMag('${p.id}')">
         <td class="mono-cell">${E(p.ref_code)}</td>
         <td class="strong">${E(p.name)}${p.ai_assisted ? ' <span style="font-size:10px;color:var(--text-faint);font-weight:500;">· AI-assisted</span>' : ''}</td>
@@ -38716,7 +38730,8 @@ async function renderNcResponsePage(token){
         <td>${pcKpiSummary(p)}</td>
         <td>${p.flowchart_id ? '<span style="color:var(--green);font-size:12.5px;">✓ ' + STATE.orgFlowchartSteps.filter(s=>s.flowchart_id===p.flowchart_id).length + ' steps</span>' : '<span style="color:var(--text-faint);font-size:12px;">—</span>'}</td>
         <td style="text-transform:capitalize">${E(p.review_frequency || '—')}</td>
-        <td>${pill(p.status)}</td></tr>`).join('')}</table>`;
+        <td>${pill(p.status)}</td>
+        <td style="text-align:right;white-space:nowrap;"><button class="btn-small" onclick="event.stopPropagation(); processDocumentPdf('${p.id}')">View Document</button> <button class="btn-small" onclick="event.stopPropagation(); processRequestUpdate('${p.id}')">Request update</button></td></tr>`).join('')}</table>`;
   };
 
   /* ---- flowchart drawing ---- */
@@ -38774,6 +38789,7 @@ async function renderNcResponsePage(token){
   }
 
   /* ---- the page view ---- */
+  window.pcFlowSvg = flowSvg;
   function magHtml(p){
     const fc = p.flowchart_id ? flowchartById(p.flowchart_id) : null;
     const steps = fc ? STATE.orgFlowchartSteps.filter(s => s.flowchart_id === fc.id).sort((a,b) => a.sort_order - b.sort_order) : [];
@@ -53175,6 +53191,129 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     return r; }; }catch(e){ console.warn('r42 openDocumentDetail', e); }
   try{ const _c = closeDocumentDetail; closeDocumentDetail = window.closeDocumentDetail = function(){ const r = _c.apply(this, arguments); if(DOCP()) leaveDoc(); return r; }; }catch(e){}
   { const _s = showModule; showModule = window.showModule = function(mod){ if(DOCP() && !(mod === 'documents' && document.querySelector('#doc-detail-slot') && document.querySelector('#doc-detail-slot').innerHTML.trim())) leaveDoc(); return _s.apply(this, arguments); }; }
+})();
+
+
+/* ============================================================================
+   R45b: CONTROLLED PDF COPIES FROM MODULES INTO THE MASTER DOCUMENTS REGISTER
+   Live records stay in their own module. Each module can publish a controlled PDF copy
+   that the Master Documents Register lists, with View Document (always the up to date PDF)
+   and Request update. First module: Processes & KPIs (flowchart and KPIs now in the PDF).
+   ============================================================================ */
+(function(){
+  const sb = () => STATE.supabase;
+  window.WM_PDF_SOURCES = window.WM_PDF_SOURCES || [];
+
+  async function svgToPng(svgStr, scale){
+    return new Promise((resolve, reject) => {
+      const vb = (svgStr.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/) || []); const w = parseFloat(vb[1]) || 540, h = parseFloat(vb[2]) || 400;
+      const svg = svgStr.replace('<svg ', `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" `);
+      const img = new Image();
+      img.onload = () => { const c = document.createElement('canvas'); c.width = w * scale; c.height = h * scale; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0,0,c.width,c.height); x.drawImage(img, 0, 0, c.width, c.height); resolve({ canvas:c, w, h }); };
+      img.onerror = reject; img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    });
+  }
+
+  window.processDocumentPdf = async function(id, mode){
+    mode = mode || 'view';
+    const p = (STATE.processes || []).find(x => x.id === id); if(!p) return;
+    if(mode === 'download' && !canDownload()){ toast("You don't have permission to download files: you can still view and print.", 'error'); return; }
+    if(mode !== 'blob') showLoader('Generating PDF…');
+    try{
+      const { jsPDF } = await import('https://cdn.jsdelivr.net/npm/jspdf@4.2.1/+esm');
+      const pageW = 595, pageH = 842, mL = 38, mR = 38, cW = pageW - mL - mR, headerH = 90, footerH = 70;
+      const doc = new jsPDF({ unit:'pt', format:'a4' }); let y = headerH + 20;
+      const ensure = n => { if(y + n > pageH - footerH){ doc.addPage(); y = headerH + 20; } };
+      const heading = (t, s) => { ensure(s + 18); doc.setFont('helvetica','bold'); doc.setFontSize(s); doc.setTextColor(0,0,0); doc.text(t, mL, y); y += s + 8; };
+      const para = t => { doc.setFont('helvetica','normal'); doc.setFontSize(11); doc.setTextColor(0,0,0); const ls = doc.splitTextToSize(String(t), cW); ensure(ls.length * 14); doc.text(ls, mL, y); y += ls.length * 14 + 6; };
+      const table = (head, rows, widths) => {
+        const tot = widths.reduce((a,b)=>a+b,0), W = widths.map(w => w / tot * cW);
+        const draw = (cells, bold) => { doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(9);
+          const ls = cells.map((c,i) => doc.splitTextToSize(String(c == null ? '' : c), W[i] - 10)); const h = Math.max(...ls.map(l => l.length * 11)) + 8; ensure(h);
+          let x = mL; cells.forEach((c,i) => { if(bold){ doc.setFillColor(235,235,235); doc.rect(x, y, W[i], h, 'FD'); } else { doc.setDrawColor(190,190,190); doc.rect(x, y, W[i], h); } doc.setTextColor(0,0,0); doc.text(ls[i], x + 5, y + 12); x += W[i]; }); y += h; };
+        doc.setDrawColor(190,190,190); draw(head, true); rows.forEach(r => draw(r, false)); y += 12; };
+
+      let logoImage = null; if(STATE.org.logo_url){ try{ logoImage = await fetchImageForDocx(STATE.org.logo_url); }catch(e){} }
+      const fc = p.flowchart_id ? flowchartById(p.flowchart_id) : null;
+      const steps = fc ? (STATE.orgFlowchartSteps || []).filter(s => s.flowchart_id === fc.id).sort((a,b) => a.sort_order - b.sort_order) : [];
+      const kpis = pcKpisOf(p).filter(k => k.is_active);
+      const links = pcDocLinksOf(p);
+      const { data: reviews } = await sb().from('process_reviews').select('*').eq('process_id', id).order('review_date', {ascending:false});
+
+      heading('Process Document', 16);
+      table(['Field','Detail'], [
+        ['Document number', p.ref_code || ''], ['Process', p.name || ''], ['Owner', memberName(p.owner_id)],
+        ['Review frequency', p.review_frequency ? String(p.review_frequency).replace(/_/g,' ') : '—'], ['Departments involved', p.departments_involved || '—'],
+        ['Status', p.status ? String(p.status).replace(/_/g,' ') : '—'], ['Standards', (fc && fc.standard_refs && fc.standard_refs.length) ? fc.standard_refs.join(', ') : '—'] ], [1, 3]);
+      if(p.purpose){ heading('Purpose', 13); para(p.purpose); }
+      if(p.inputs){ heading('Inputs', 13); para(p.inputs); }
+      if(p.outputs){ heading('Outputs', 13); para(p.outputs); }
+
+      heading('Process Flow', 13);
+      if(steps.length && window.pcFlowSvg){
+        const { canvas, w, h } = await svgToPng(window.pcFlowSvg(steps), 2);
+        const sc = Math.min(1, cW / w) * 0.9, dw = w * sc, avail = pageH - footerH - (headerH + 20);
+        // slice the picture across pages so nothing is squashed
+        const slicePx = Math.floor(avail / sc * 2); let off = 0;
+        while(off < canvas.height){
+          const sh = Math.min(slicePx, canvas.height - off), part = document.createElement('canvas'); part.width = canvas.width; part.height = sh;
+          part.getContext('2d').drawImage(canvas, 0, off, canvas.width, sh, 0, 0, canvas.width, sh);
+          const dh = sh / 2 * sc; if(y + dh > pageH - footerH){ doc.addPage(); y = headerH + 20; }
+          doc.addImage(part.toDataURL('image/png'), 'PNG', mL + (cW - dw) / 2, y, dw, dh); y += dh + 4; off += sh;
+          if(off < canvas.height){ doc.addPage(); y = headerH + 20; }
+        }
+        y += 8;
+      } else para('No flowchart has been built for this process yet.');
+
+      heading('Key Performance Indicators', 13);
+      if(kpis.length){
+        const c = window.pcCompliance ? window.pcCompliance(p) : null;
+        if(c && c.pct != null) para(`KPI compliance: ${c.pct}% (${c.on} of ${c.measured} measured KPIs on target).`);
+        table(['KPI','Target','Latest','Status','Frequency','Owner'], kpis.map(k => { const i = kpiInfo(k), l = i.latest;
+          return [k.name, `${k.direction === 'lower' ? '<=' : '>='} ${k.target_value != null ? k.target_value : '—'} ${k.unit || ''}`, l ? `${l.value} ${k.unit || ''} (${fmtDate(l.period_date)})` : 'No reading',
+            i.status === 'green' ? 'On target' : i.status === 'amber' ? 'Near target' : i.status === 'red' ? 'Off target' : 'Not measured', KPI_FREQ[k.frequency] ? KPI_FREQ[k.frequency].label : '', k.owner_id ? memberName(k.owner_id) : '—']; }), [3,2,3,2,2,2]);
+      } else para('No active KPIs have been set for this process.');
+
+      const dl = links.map(l => { const d = l.document_id ? documentById(l.document_id) : null; return d ? [d.doc_number || '', d.title || ''] : null; }).filter(Boolean);
+      if(dl.length){ heading('Linked Documents', 13); table(['Document number','Title'], dl, [2,5]); }
+      if((reviews || []).length){ heading('Review History', 13); table(['Date','Reviewed by','Result','Status'], reviews.map(r => [fmtDate(r.review_date), memberName(r.reviewed_by), r.overall_achievement_pct != null ? Number(r.overall_achievement_pct).toFixed(1) + '%' : '—', String(r.status || '').replace(/_/g,' ')]), [2,3,2,2]); }
+
+      const n = doc.internal.getNumberOfPages(), issued = fmtDate((p.updated_at || new Date().toISOString()).slice(0,10));
+      for(let i = 1; i <= n; i++){
+        doc.setPage(i); const hy = 30, nx = mL + (logoImage ? 115 : 0);
+        if(logoImage){ const ld = fitImageDimensions(logoImage.naturalWidth, logoImage.naturalHeight, 100, 40); doc.addImage(arrayBufferToDataUrl(logoImage.data, logoImage.type === 'png' ? 'image/png' : 'image/jpeg'), logoImage.type.toUpperCase(), mL, hy - 10, ld.width, ld.height); }
+        doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(0,0,0); doc.text(STATE.org.name || '', nx, hy); const nameW = doc.getTextWidth(STATE.org.name || '');
+        doc.setFont('helvetica','normal'); doc.setFontSize(9); let addrW = 0; if(STATE.org.address){ doc.text(STATE.org.address, nx, hy + 14); addrW = doc.getTextWidth(STATE.org.address); }
+        const maxW = Math.max(110, pageW - mR - (nx + Math.max(nameW, addrW) + 16)); doc.setFont('helvetica','bold'); doc.setFontSize(13);
+        let ls = doc.splitTextToSize(String(p.name || ''), maxW); if(ls.length > 2){ doc.setFontSize(10); ls = doc.splitTextToSize(String(p.name || ''), maxW); } else if(ls.length > 1){ doc.setFontSize(11); ls = doc.splitTextToSize(String(p.name || ''), maxW); }
+        doc.text(ls.slice(0,3), pageW - mR, hy, { align:'right' }); doc.setLineWidth(1.2); doc.line(mL, headerH - 15, pageW - mR, headerH - 15);
+        const fy = pageH - footerH + 14; doc.setDrawColor(208,208,208); doc.setLineWidth(0.6); doc.line(mL, fy - 10, pageW - mR, fy - 10);
+        doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.text(`Doc No: ${p.ref_code || ''}`, mL, fy); doc.text(`Issued: ${issued}`, mL, fy + 10); doc.text(`Status: ${p.status ? String(p.status).replace(/_/g,' ') : '—'}`, mL, fy + 20);
+        doc.text(doc.splitTextToSize('This document is generated from the live process record in QaSHE Watchman and is current at the time of printing. Personnel must always refer to QaSHE Watchman for the latest version.', 190), mL + 130, fy);
+        doc.text(`Page ${i} of ${n}`, pageW - mR, fy + 20, { align:'right' });
+      }
+      hideLoader();
+      if(mode === 'blob') return doc.output('blob');
+      if(mode === 'download'){ doc.save(`${p.ref_code} - ${p.name}.pdf`); toast('PDF downloaded.', 'success'); }
+      else { window.open(doc.output('bloburl'), '_blank'); toast("PDF opened for viewing: use your browser's print option to print it.", 'success'); }
+    }catch(e){ hideLoader(); console.error(e); toast('Could not generate the PDF: ' + (e.message || e), 'error'); }
+  };
+
+  /* Request update for a process: logged to the controller, then the process opens for edit */
+  window.processRequestUpdate = async function(id){
+    const p = (STATE.processes || []).find(x => x.id === id); if(!p) return;
+    const reason = prompt('What needs to change in ' + (p.ref_code || 'this process') + '? The process page then opens for editing.');
+    if(!reason || !reason.trim()) return;
+    try{ if(typeof notifyDocumentUsers === 'function'){ const to = [p.owner_id].filter(Boolean); if(to.length) await notifyDocumentUsers(to, `Update requested: ${p.ref_code || ''}`, `${memberName(STATE.user.id)} has asked for an update to ${p.ref_code || 'a process'}: ${reason.trim()}`); } }catch(e){}
+    try{ await sb().from('audit_log').insert({ organisation_id:STATE.org.id, user_id:STATE.user.id, action:'process_update_requested', details:{ process_id:id, ref:p.ref_code, reason:reason.trim() } }); }catch(e){}
+    toast('Update requested. The process page is open for editing.', 'success');
+    showModule('process_flowcharts'); setTimeout(() => { try{ STATE._pfTab = 'register'; openProcessDetail(id); }catch(e){} }, 200);
+  };
+
+  /* publish processes to the Master Documents Register */
+  WM_PDF_SOURCES.push({ key:'process', src:'Processes & KPIs', rows(){
+    return (STATE.processes || []).map(p => ({ src:'Processes & KPIs', num:p.ref_code || '', title:p.name || '', dept:'Processes & KPIs', deptId:'', type:'Process', rev:'', status:p.status === 'inactive' ? 'Inactive' : 'Active', color:p.status === 'inactive' ? '#6B6B6B' : '#2E5AA8', wf:'approved', id:p.id, kind:'p' }));
+  }});
 })();
 
 </script>
