@@ -4564,6 +4564,8 @@ const RENDERERS = {
         <button class="btn-small ${STATE._adminSubtab==='communications'?'primary':''}" onclick="switchAdminSubtab('communications')">Communications</button>
         <button class="btn-small ${STATE._adminSubtab==='moduleinfo'?'primary':''}" onclick="switchAdminSubtab('moduleinfo')">Module Info</button>
         <button class="btn-small ${STATE._adminSubtab==='masterregister'?'primary':''}" onclick="switchAdminSubtab('masterregister')">Master Documents Register</button>
+        <button class="btn-small" onclick="goToDocAdminTool('requests')">Document Review Requests${(STATE.docReviewRequests||[]).filter(r=>r.status==='pending').length ? ` (${(STATE.docReviewRequests||[]).filter(r=>r.status==='pending').length})` : ''}</button>
+        <button class="btn-small" onclick="goToDocAdminTool('setup')">Document Naming Convention</button>
         <button class="btn-small ${STATE._adminSubtab==='orgprofile'?'primary':''}" onclick="switchAdminSubtab('orgprofile')">Organisation Profile</button>
         ${STATE.profile.is_platform_staff ? `<button class="btn-small ${STATE._adminSubtab==='templatelibrary'?'primary':''}" onclick="switchAdminSubtab('templatelibrary')">Template Library</button>` : ''}
       </div>
@@ -8400,7 +8402,7 @@ function renderDocumentsTable(){
       <td>${d.created_by ? memberName(d.created_by) : (d.developer_id ? memberName(d.developer_id) : '—')}</td>
       <td>${(d.approved_by||d.workflow_approver_id||d.approver_id) ? memberName(d.approved_by||d.workflow_approver_id||d.approver_id) : '—'}${d.approval_status==='approved' ? ' <span class="mono" style="color:var(--green); font-size:10px;">✓ approved</span>' : ''}</td>
       <td>${docStatusBadgeHtml(d, st)}</td>
-      <td><button class="btn-small" onclick="event.stopPropagation(); downloadDocumentPdf('${d.id}')">View / Print PDF</button>${canDownload() ? ` <button class="btn-small" onclick="event.stopPropagation(); downloadDocumentPdf('${d.id}','download')" title="Download a copy">⬇</button>` : ''}</td>
+      <td><button class="btn-small primary" onclick="event.stopPropagation(); openDocumentDetail('${d.id}')" title="Open for review, amendment and approval">Open</button> <button class="btn-small" onclick="event.stopPropagation(); downloadDocumentPdf('${d.id}')">View / Print PDF</button>${canDownload() ? ` <button class="btn-small" onclick="event.stopPropagation(); downloadDocumentPdf('${d.id}','download')" title="Download a copy">⬇</button>` : ''}</td>
     </tr>`;}).join('')}
   </table>`;
 }
@@ -32166,8 +32168,8 @@ window.brandFromLogo = function(){
   const dn=id=>{ const d=(STATE.docDepartments||[]).find(x=>x.id===id); return d?d.name:'Unfiled'; };
   const tn=id=>{ const t=(STATE.docTypes||[]).find(x=>x.id===id); return t?t.name:''; };
   function mrRows(){
-    const ctl=(STATE.documents||[]).filter(d=>d.doc_number).map(d=>({src:'Document Management',num:d.doc_number,title:d.title||'',dept:dn(d.department_id),deptId:d.department_id||'',type:tn(d.type_id),rev:d.current_revision||'',status:documentWorkflowBadge(d).label,id:d.id,kind:'c'}));
-    const bulk=(STATE.bulkDocuments||[]).filter(d=>!d.archived).map(d=>({src:'All Documents',num:d.doc_number||'Not numbered',title:d.file_name||'',dept:dn(d.department_id),deptId:d.department_id||'',type:tn(d.document_type_id),rev:'',status:d.approved_status?'Approved':(d.current_status===false?'Superseded':'Filed'),id:d.id,path:d.storage_path,kind:'b'}));
+    const ctl=(STATE.documents||[]).filter(d=>d.doc_number).map(d=>({src:'Document Management',num:d.doc_number,title:d.title||'',dept:dn(d.department_id),deptId:d.department_id||'',type:tn(d.type_id),rev:d.current_revision||'',status:documentWorkflowBadge(d).label,color:documentWorkflowBadge(d).color,wf:documentWorkflowBadge(d).key,id:d.id,kind:'c'}));
+    const bulk=(STATE.bulkDocuments||[]).filter(d=>!d.archived).map(d=>({src:'All Documents',num:d.doc_number||'Not numbered',title:d.file_name||'',dept:dn(d.department_id),deptId:d.department_id||'',type:tn(d.document_type_id),rev:'',status:d.approved_status?'Approved':(d.current_status===false?'Superseded':'Filed'),color:d.approved_status?'#2E5AA8':(d.current_status===false?'#6B6B6B':'#5A6B7B'),wf:d.approved_status?'approved':'filed',id:d.id,path:d.storage_path,kind:'b'}));
     return [...ctl,...bulk].sort((a,b)=>String(a.num).localeCompare(String(b.num),undefined,{numeric:true}));
   }
   window.renderMasterRegisterPage=function(){
@@ -32182,7 +32184,8 @@ window.brandFromLogo = function(){
 </div>
     <div class="toolbar"><div class="filters"><input id="mr2-q" placeholder="Search number or title…" oninput="mr2Render()" style="min-width:260px;">
       <select id="mr2-dept" onchange="mr2Render()"><option value="">All departments</option>${depts.map(d=>`<option>${escapeHtml(d)}</option>`).join('')}</select>
-      <select id="mr2-src" onchange="mr2Render()"><option value="">All sources</option><option>Document Management</option><option>All Documents</option></select></div>
+      <select id="mr2-src" onchange="mr2Render()"><option value="">All sources</option><option>Document Management</option><option>All Documents</option></select>
+      <select id="mr2-st" onchange="mr2Render()"><option value="">All statuses</option>${[...new Set(rows.map(r=>r.status))].sort().map(x=>`<option>${escapeHtml(x)}</option>`).join('')}</select></div>
       <button class="btn-small" onclick="exportMasterRegister()">Export Excel</button></div>
     <div class="panel" style="padding:0;overflow:hidden;"><div id="mr2-table"></div></div>
     <div class="detail-card" style="margin-top:18px;"><div class="panel-head"><h3>Next available numbers</h3></div>
@@ -32191,9 +32194,9 @@ window.brandFromLogo = function(){
   };
   window.mr2Render=function(){
     const w=document.getElementById('mr2-table'); if(!w) return;
-    const q=(document.getElementById('mr2-q').value||'').toLowerCase().trim(), d=document.getElementById('mr2-dept').value, s=document.getElementById('mr2-src').value;
-    const rows=mrRows().filter(r=>(!d||r.dept===d)&&(!s||r.src===s)&&(!q||(r.num+' '+r.title).toLowerCase().includes(q)));
-    w.innerHTML=rows.length?`<table><tr><th>Document Number</th><th>Title</th><th>Department</th><th>Type</th><th>Rev</th><th>Status</th><th>Source</th><th></th></tr>${rows.slice(0,500).map(r=>`<tr><td class="mono-cell">${escapeHtml(r.num)}</td><td class="strong">${escapeHtml(r.title)}</td><td>${escapeHtml(r.dept)}</td><td>${escapeHtml(r.type)}</td><td style="text-align:center;">${escapeHtml(String(r.rev))}</td><td>${escapeHtml(r.status)}</td><td>${r.src}</td><td style="text-align:right;">${r.kind==='c'?`<button class="btn-small" onclick="downloadDocumentPdf('${r.id}')">View Document</button>`:(r.path?`<button class="btn-small" onclick="downloadFromBucket('documents','${r.path}')">View Document</button>`:'')} <button class="btn-small" onclick="mrRequestUpdate('${r.kind}','${r.id}')">Request update</button></td></tr>`).join('')}</table>${rows.length>500?'<p style="padding:10px;font-size:12px;color:var(--text-faint);">Showing the first 500: refine your search to narrow the list.</p>':''}`:'<div class="empty-state"><p>No documents match.</p></div>';
+    const q=(document.getElementById('mr2-q').value||'').toLowerCase().trim(), d=document.getElementById('mr2-dept').value, s=document.getElementById('mr2-src').value, st=(document.getElementById('mr2-st')||{}).value||'';
+    const rows=mrRows().filter(r=>(!d||r.dept===d)&&(!s||r.src===s)&&(!st||r.status===st)&&(!q||(r.num+' '+r.title).toLowerCase().includes(q)));
+    w.innerHTML=rows.length?`<table><tr><th>Document Number</th><th>Title</th><th>Department</th><th>Type</th><th>Rev</th><th>Status</th><th>Source</th><th></th></tr>${rows.slice(0,500).map(r=>`<tr><td class="mono-cell">${escapeHtml(r.num)}</td><td class="strong">${escapeHtml(r.title)}</td><td>${escapeHtml(r.dept)}</td><td>${escapeHtml(r.type)}</td><td style="text-align:center;">${escapeHtml(String(r.rev))}</td><td>${r.kind==='c'&&r.wf!=='approved'&&r.wf!=='withdrawn'&&r.wf!=='superseded'?`<span class="sev-badge" style="background:${r.color};color:#fff;cursor:pointer;" title="Open in Document Workflow" onclick="hubOpenDoc('${r.id}')">${escapeHtml(r.status)} ›</span>`:`<span class="sev-badge" style="background:${r.color||'#5A6B7B'};color:#fff;">${escapeHtml(r.status)}</span>`}</td><td>${r.src}</td><td style="text-align:right;">${r.kind==='c'?`<button class="btn-small" onclick="downloadDocumentPdf('${r.id}')">View Document</button>`:(r.path?`<button class="btn-small" onclick="downloadFromBucket('documents','${r.path}')">View Document</button>`:'')} <button class="btn-small" onclick="mrRequestUpdate('${r.kind}','${r.id}')">Request update</button></td></tr>`).join('')}</table>${rows.length>500?'<p style="padding:10px;font-size:12px;color:var(--text-faint);">Showing the first 500: refine your search to narrow the list.</p>':''}`:'<div class="empty-state"><p>No documents match.</p></div>';
   };
   window.exportMasterRegister=async function(){
     try{ const XLSX=await ensureXLSX(); const rows=mrRows(); const ws=XLSX.utils.json_to_sheet(rows.map(r=>({'Document Number':r.num,'Title':r.title,'Department':r.dept,'Type':r.type,'Revision':r.rev,'Status':r.status,'Source':r.src}))); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Master Register'); XLSX.writeFile(wb,'master-documents-register.xlsx'); }catch(e){ toast('Export is not available right now.','error'); }
@@ -51073,7 +51076,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   function header(){
     const f = figs(), h = has(), adm = docAdmin();
     /* R43: Review Requests and Naming Convention Setup are administrator tools, not shown to everyone */
-    const tabs = [h.mst ? ['master', 'Master Documents Register'] : null, h.ctl ? ['register', 'Document Workflow'] : null, h.ctl && adm ? ['requests', 'Review Requests' + (f.req ? ' (' + f.req + ')' : '')] : null, h.ctl && adm ? ['setup', 'Naming Convention Setup'] : null, h.all ? ['alldocs', 'All Documents'] : null].filter(Boolean);
+    const tabs = [h.mst ? ['master', 'Master Documents Register'] : null, h.ctl ? ['register', 'Document Workflow'] : null].filter(Boolean);
     const stat = (cls, go, n, label) => `<div class="dh-stat ${cls}" onclick="switchDocSubtab('${go}')"><b>${n}</b><span>${label}</span></div>`;
     return CSS + `<div class="dh">
       ${h.mst || h.ctl ? `<div class="dh-actions"><div class="dh-card"><div class="dh-ic">${SVG.search}</div><div style="flex:1;min-width:0;"><h4>Search for a Document</h4><p>Type a number, title, department or type. Results filter the Master Documents Register instantly.</p><input id="dh-q" placeholder="e.g. corrective action, QMS-PRO, welding…" oninput="dhSearch(this.value)"></div></div>
@@ -51087,7 +51090,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   { const _sw = window.switchDocSubtab;
     window.switchDocSubtab = function(tab){
       const h = has();
-      if(tab === 'alldocs' && !h.all) tab = 'master';
+      if(tab === 'alldocs') tab = 'master';
       if(tab === 'master' && !h.mst) tab = h.ctl ? 'register' : (h.all ? 'alldocs' : 'master');
       if(['register', 'requests', 'setup'].includes(tab) && !h.ctl) tab = h.mst ? 'master' : 'alldocs';
       if(['requests', 'setup'].includes(tab) && !docAdmin()) tab = 'register';
@@ -51099,12 +51102,17 @@ Likelihood and impact are whole numbers from 1 to 5.`;
         if(w){ if(tab === 'master'){ w.innerHTML = '<div id="mr2-root"></div>'; try{ renderMasterRegisterPage(); }catch(e){ console.error(e); } } else { w.innerHTML = '<div id="alldocs-root"></div>'; try{ renderBulkDocumentsRegister(); }catch(e){ console.error(e); } } }
       } else { _sw.call(this, tab); }
       document.querySelectorAll('#dh-tabs .dh-tab').forEach(b => b.classList.toggle('on', b.dataset.t === STATE._docSubtab));
+      { const st = document.querySelector('.doc-hub .dh-stats'); if(st) st.style.display = STATE._docSubtab === 'master' ? '' : 'none'; }
     }; }
 
   /* ---- actions ---- */
   window.dhSearch = function(v){
     if(STATE._docSubtab !== 'master') window.switchDocSubtab('master');
     const q = document.getElementById('mr2-q'); if(q){ q.value = v; try{ mr2Render(); }catch(e){} }
+  };
+  window.goToDocAdminTool = function(tab){
+    window.__r43Keep = true; STATE._docSubtab = tab; showModule('documents');
+    setTimeout(() => { try{ window.switchDocSubtab(tab); }catch(e){} window.__r43Keep = false; }, 500);
   };
   window.dhNewDoc = function(){
     const f = document.getElementById('doc-form'); if(f && !f.classList.contains('open')) toggleDocForm();
@@ -51114,10 +51122,6 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     if(STATE._docSubtab !== 'register') window.switchDocSubtab('register');
     Promise.resolve(openDocumentDetail(id)).then(() => { const s = document.getElementById('doc-detail-slot'); if(s) s.scrollIntoView({ behavior:'smooth', block:'start' }); });
   };
-  /* Open button beside View Document and Request update on the Master Register rows */
-  { const _m = window.mr2Render; window.mr2Render = function(){ const r = _m.apply(this, arguments);
-      try{ const w = document.getElementById('mr2-table'); if(w && has().ctl) w.querySelectorAll('button[onclick^="downloadDocumentPdf("]').forEach(b => { const id = (b.getAttribute('onclick').match(/'([^']+)'/) || [])[1]; if(id && !b.previousElementSibling) b.insertAdjacentHTML('beforebegin', `<button class="btn-small primary" onclick="hubOpenDoc('${id}')">Open</button> `); }); }catch(e){}
-      return r; }; }
 })();
 
 
