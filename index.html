@@ -1618,13 +1618,14 @@ const APPRAISAL_STATUS_LABELS = {
   finalized: 'Finalized',
 };
 const KPI_RATING_LEGEND = [
+  { value: 0, label: 'Not done (disciplinary action may follow)' },
   { value: 1, label: 'No capability' },
   { value: 2, label: 'Developing competence, requires supervision and training' },
   { value: 3, label: 'Generally compliant with requirements' },
   { value: 4, label: 'Fully compliant with requirements' },
   { value: 5, label: 'Exceeds requirements and able to train others' },
 ];
-function kpiRatingToPct(rating){ return rating ? Number(rating) * 20 : null; }
+function kpiRatingToPct(rating){ return (rating === 0 || rating === '0' || rating) ? Number(rating) * 20 : null; }
 const ASSET_STATUSES = ["compliant","quarantine"];
 const INSPECTION_RESULTS = ["1","2","3","4","5"];
 const ASSET_CONDITION_LABELS = {
@@ -3725,7 +3726,7 @@ const RENDERERS = {
       <div id="dw-pane-2" style="display:none;">
         <p style="font-size:12.5px; color:var(--text-dim); margin-bottom:10px;"><b>Choose your starting point before drafting.</b> Upload your existing document, pick a template, or both, then choose how to create it on the next step. Pick a generic policy, procedure, form or register and it is adapted to your company's scope and needs. If nothing fits, continue without one and the AI assistant will generate a new document for you. You can also upload an existing document so it matches your current wording and structure. All of this is optional.</p>
         <div style="border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px;background:var(--grey-tint)">
-          <div class="field" style="margin:0"><label>1. Do you already have this document? Upload your existing (historical) document: .docx or .pdf (optional)</label><input type="file" id="dw-ref-file" accept=".docx,.pdf" onchange="dwRefChosen()"></div>
+          <div class="field" style="margin:0"><label>1. Do you already have this document? Upload your existing (historical) document: Word, PDF or Excel (optional)</label><input type="file" id="dw-ref-file" accept=".docx,.pdf,.xlsx,.xls,.csv" onchange="dwRefChosen()"></div>
           <p id="dw-ref-status" style="font-size:12px; color:var(--text-faint); margin:6px 0 0;">The AI assistant reads it so the new draft matches your own wording, structure and requirements. It is kept with the record as reference.</p>
         </div>
         <div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">2. Search the Template Library (optional)</div>
@@ -4269,7 +4270,7 @@ const RENDERERS = {
           <div class="field"><label>Show</label><select id="nw-scope" onchange="nwRenderTemplates()"><option value="assets">Asset checklists</option><option value="all">All checklists</option></select></div>
         </div>
         <div id="nw-template-list" style="max-height:280px; overflow-y:auto; margin-bottom:14px;"></div>
-        <div class="field"><label>Upload an existing inspection form for context (.docx or .pdf)</label><input type="file" id="nw-ref-file" accept=".docx,.pdf" onchange="nwRefChosen()"></div>
+        <div class="field"><label>Upload an existing inspection form for context (Word, PDF or Excel)</label><input type="file" id="nw-ref-file" accept=".docx,.pdf,.xlsx,.xls,.csv" onchange="nwRefChosen()"></div>
         <p id="nw-ref-status" style="font-size:12px; color:var(--text-faint); margin:4px 0 10px;"></p>
         <div class="form-actions"><button class="btn-cancel" onclick="nwShowStep(1)">Back</button><button class="btn-primary" onclick="nwNext()">Next</button></div>
       </div>
@@ -8865,6 +8866,17 @@ async function extractReferenceText(file){
         fullText += content.items.map(item => item.str).join(' ') + '\n';
       }
       return fullText || null;
+    }
+    if(/\.(xlsx|xls|csv)$/i.test(file.name)){
+      const X = await ensureXLSX();
+      const wb = X.read(await file.arrayBuffer(), { type:'array' });
+      const out = [];
+      wb.SheetNames.forEach(nm => {
+        const rows = X.utils.sheet_to_json(wb.Sheets[nm], { header:1, raw:false, defval:'' });
+        const lines = rows.map(r => r.map(c => String(c == null ? '' : c).replace(/\s+/g, ' ').trim()).filter(Boolean).join(' | ')).filter(Boolean);
+        if(lines.length) out.push('## Sheet: ' + nm + '\n' + lines.join('\n'));
+      });
+      return out.join('\n\n') || null;
     }
     return null;
   } catch(e) {
@@ -14250,7 +14262,7 @@ function renderAppraisalKpisSection(a, kpis){
       <div style="display:flex; gap:24px; margin-top:10px; flex-wrap:wrap;">
         <div>
           <div style="font-family:Arial,Helvetica,sans-serif; font-size:10px; color:var(--text-faint); text-transform:uppercase;">Self</div>
-          <div style="font-size:14px; font-weight:600;">${selfRating ? selfRating+' / 5: '+k.self_achievement_pct+'%' : '—'}</div>
+          <div style="font-size:14px; font-weight:600;">${selfRating !== null ? selfRating+' / 5: '+k.self_achievement_pct+'%' : '—'}</div>
           ${k.self_actual_notes ? `<p style="font-size:12px; color:var(--text-dim); max-width:260px;">${k.self_actual_notes}</p>` : ''}
         </div>
         <div>
@@ -14305,7 +14317,7 @@ window.finalizeAppraisal = async function(appraisalId){
     const finalPct = (k.self_achievement_pct !== null && k.self_achievement_pct !== undefined)
       ? (managerPct + Number(k.self_achievement_pct)) / 2 : managerPct;
     const { error } = await STATE.supabase.from('appraisal_kpis').update({
-      manager_achievement_pct: managerPct, manager_actual_notes: commentEl ? commentEl.value.trim() : '', final_achievement_pct: finalPct
+      manager_achievement_pct: managerPct, manager_actual_notes: commentEl ? commentEl.value.trim() : '', final_achievement_pct: managerPct, avg_reference_pct: finalPct
     }).eq('id', k.id);
     if(error){ toast('Could not save a KPI result: ' + error.message, 'error'); return; }
   }
@@ -14319,11 +14331,13 @@ window.finalizeAppraisal = async function(appraisalId){
   const totalWeight = updatedKpis.reduce((s,k)=>s+(Number(k.weight)||0),0);
   const weightedSum = updatedKpis.reduce((s,k)=>s+((Number(k.final_achievement_pct)||0)*(Number(k.weight)||0)),0);
   const overallPct = totalWeight > 0 ? weightedSum / totalWeight : (updatedKpis.reduce((s,k)=>s+(Number(k.final_achievement_pct)||0),0) / updatedKpis.length);
+  const refSum = updatedKpis.reduce((s,k)=>s+((Number(k.avg_reference_pct)||0)*(Number(k.weight)||0)),0);
+  const overallRef = totalWeight > 0 ? refSum / totalWeight : overallPct;
 
   const { error: aErr } = await STATE.supabase.from('appraisals').update({
     manager_comment: document.getElementById('mgr-overall-comment').value.trim(),
     agreed_objectives: document.getElementById('mgr-agreed-objectives').value.trim(),
-    overall_achievement_pct: overallPct,
+    overall_achievement_pct: overallPct, overall_avg_reference_pct: overallRef,
     status: 'finalized', completed_at: new Date().toISOString(),
   }).eq('id', appraisalId);
   if(aErr){ toast('Could not finalize: ' + aErr.message, 'error'); return; }
@@ -17392,8 +17406,8 @@ function pcRenderStep1(ex){
       </div>
       <div>
         <div class="mono" style="font-size:10px; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Or upload a historical document</div>
-        <input type="file" id="pc-ref-file" accept=".docx,.pdf" onchange="pcRefChosen()" style="width:100%;">
-        <p id="pc-ref-status" style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">An existing procedure, flowchart or process description (.docx or .pdf). The AI assistant uses it for context.</p>
+        <input type="file" id="pc-ref-file" accept=".docx,.pdf,.xlsx,.xls,.csv" onchange="pcRefChosen()" style="width:100%;">
+        <p id="pc-ref-status" style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">An existing procedure, flowchart or process description (Word, PDF or Excel). The AI assistant uses it for context.</p>
       </div>
     </div>
     <div class="form-actions" style="margin-top:16px; flex-wrap:wrap;">
@@ -51568,7 +51582,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   window.r37ParseKpis = async function(docId){
     const { data } = await sb().from('document_content_sections').select('section_title, content, sort_order').eq('document_id', docId).order('sort_order', { ascending:true });
     const secs = arr(data);
-    const sec = secs.find(s => /key performance|kpi/i.test(s.section_title || '')) || null;
+    const sec = secs.find(s => /^\s*key performance indicators/i.test(s.section_title || '')) || secs.find(s => /key performance|kpi/i.test(s.section_title || '')) || null;
     if(!sec) return [];
     const rows = [];
     plain(sec.content).split(/\n+/).map(l => l.trim()).filter(Boolean).forEach(l => {
@@ -52055,7 +52069,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     if(m.length){ err.style.display = 'block'; err.textContent = `Please answer every required question (${m.length} left).`; const el = document.getElementById('psq-' + m[0].id); if(el) el.scrollIntoView({ behavior:'smooth', block:'center' }); return; }
     btn.disabled = true; btn.textContent = 'Sending…';
     const { data, error } = await STATE.supabase.rpc('ps_submit', { p_token: token, p_answers: answersOut() });
-    if(error || !data || !data.ok){ btn.disabled = false; btn.textContent = 'Submit my answers'; err.style.display = 'block'; err.textContent = (data && data.error) || (error && error.message) || 'Something went wrong. Please try again.'; return; }
+    if(error || !data || !data.ok){ btn.disabled = false; btn.textContent = 'Submit my answers'; err.style.display = 'block'; err.textContent = (data && data.error) || (error && error.message) || 'Something went wrong. Please try again.'; return false; }
     const w = document.querySelector('#ps-public .w'); const hero = w.querySelector('.hero');
     w.innerHTML = (hero ? hero.outerHTML : '') + '<div class="card" style="text-align:center;"><div style="font-size:64px;">✅</div><h2 style="margin:6px 0;">Thank you</h2><p style="color:#555;">Your answers have been received. You can close this page.</p></div>';
   };
@@ -52440,6 +52454,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     const { error: kErr } = await sb().from('appraisal_kpis').insert(kpis.map((k, i) => ({ organisation_id: STATE.org.id, appraisal_id: na.id, kpi_title: k.title, kpi_description: k.description, sort_order: (i + 1) * 10, target: k.target, source_of_measure: k.source_of_measure, weight: k.weight || 0 })));
     if(kErr) toast('Appraisal created, but the KPIs could not be copied in: ' + kErr.message, 'error');
     const mail = await emailPerson(na);
+    try{ if(window.r41EmailManager) window.r41EmailManager(na); }catch(e){}
     toggleAppraisalForm(); await loadAppraisals(); renderAppraisalsTable(); updateNavBadges();
     await openAppraisalDetail(na.id);
     const slot = document.getElementById('apr-link-result-' + na.id) || document.getElementById('r40-await-' + na.id);
@@ -52466,7 +52481,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
       if(error){ toast('Could not update the appraisal: ' + error.message, 'error'); return; }
       await loadAppraisals(); a = appraisalById(id);
     }
-    const mail = await emailPerson(a); renderAppraisalsTable(); updateNavBadges(); await openAppraisalDetail(id);
+    const mail = await emailPerson(a); try{ if(window.r41EmailManager) window.r41EmailManager(a); }catch(e){} renderAppraisalsTable(); updateNavBadges(); await openAppraisalDetail(id);
     const slot = document.getElementById('r40-await-' + id); if(slot) slot.innerHTML = resultCard(a, mail);
     toast(mail.sent ? 'Link emailed.' : 'Link ready to copy.', mail.sent ? 'success' : 'info');
   };
@@ -52481,18 +52496,18 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   try{ const _f = finalizeAppraisal; finalizeAppraisal = window.finalizeAppraisal = async function(id){
     const r = await _f.apply(this, arguments);
     try{ await loadAppraisals(); const a = appraisalById(id), p = a && personById(a.personnel_id);
-      if(a && a.status === 'finalized' && p && p.email && !a._r40Told){ a._r40Told = true;
+      if(false){ a._r40Told = true;
         sendEmailToAddress(p.email, `Your appraisal is finalised: ${STATE.org.name}`, `Hello ${p.full_name.split(' ')[0]},\n\nYour performance appraisal ${a.ref_code} (${day(a.period_start)} to ${day(a.period_end)}) has been finalised by your line manager. Your manager will share the outcome and the agreed objectives for the next period with you.\n\nThank you,\n${STATE.org.name}`); } }catch(e){}
     return r; }; }catch(e){}
 
   /* ---------------- the public self-assessment page (?ap=) ---------------- */
-  const RATE = { 1:'#D7242B', 2:'#F07C1A', 3:'#E0B122', 4:'#7CB342', 5:'#2E9E5B' };
+  const RATE = { 0:'#7a1f1f', 1:'#D7242B', 2:'#F07C1A', 3:'#E0B122', 4:'#7CB342', 5:'#2E9E5B' };
   let APK = [];
   window.__apAns = {};
   const secHtml = (t, secs) => secs.length ? `<details style="margin-top:10px;"><summary style="cursor:pointer;font-weight:800;font-size:14px;">${E(t)}</summary>${secs.map(s => `<div style="margin-top:10px;"><b>${E(s.title || '')}</b><div style="white-space:pre-wrap;font-size:13.5px;color:#444;">${E(plain(s.body))}</div></div>`).join('')}</details>` : '';
   window.apPick = function(id, v){ window.__apAns[id] = window.__apAns[id] || {}; window.__apAns[id].rating = v; const b = document.getElementById('apk-' + id); if(b) b.querySelectorAll('.rate button').forEach(x => x.classList.toggle('on', Number(x.dataset.v) === v)); apProg(); };
   window.apNote = function(id, t){ window.__apAns[id] = window.__apAns[id] || {}; window.__apAns[id].notes = t; };
-  window.apProg = function(){ const got = APK.filter(k => window.__apAns[k.id] && window.__apAns[k.id].rating).length; const f = document.getElementById('ap-fill'), l = document.getElementById('ap-prog'); if(f) f.style.width = Math.round(got / (APK.length || 1) * 100) + '%'; if(l) l.textContent = `${got} of ${APK.length} KPIs rated`; };
+  window.apProg = function(){ const got = APK.filter(k => window.__apAns[k.id] && window.__apAns[k.id].rating != null).length; const f = document.getElementById('ap-fill'), l = document.getElementById('ap-prog'); if(f) f.style.width = Math.round(got / (APK.length || 1) * 100) + '%'; if(l) l.textContent = `${got} of ${APK.length} KPIs rated`; };
   window.renderApPage = async function(token){
     const ov = pubMount('ap-public'); await pubInit();
     const { data: info } = await sb().rpc('ap_info', { p_token: token });
@@ -52506,7 +52521,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
       <div class="bar"><div class="track"><div class="fill" id="ap-fill" style="width:0"></div></div><div id="ap-prog" style="font-size:12px;color:#666;margin-top:4px;"></div></div>
       ${APK.map((k, i) => `<div class="card" id="apk-${E(k.id)}"><h3>KPI ${i + 1} · weight ${E(k.weight || 0)}%</h3><div style="font-weight:800;font-size:16px;">${E(k.title)}</div>
         ${k.target ? `<div style="font-size:13px;color:#555;margin-top:4px;"><b>Target:</b> ${E(k.target)}</div>` : ''}${k.source ? `<div style="font-size:12.5px;color:#777;"><b>Measured by:</b> ${E(k.source)}</div>` : ''}${k.description ? `<div style="font-size:12.5px;color:#777;">${E(k.description)}</div>` : ''}
-        <div class="rate sm">${[1, 2, 3, 4, 5].map(v => `<button type="button" style="background:${RATE[v]}" data-v="${v}" onclick="apPick('${E(k.id)}',${v})" title="${E((KPI_RATING_LEGEND.find(r => r.value === v) || {}).label || '')}">${v}</button>`).join('')}</div>
+        <div class="rate sm">${[0, 1, 2, 3, 4, 5].map(v => `<button type="button" style="background:${RATE[v]}" data-v="${v}" onclick="apPick('${E(k.id)}',${v})" title="${E((KPI_RATING_LEGEND.find(r => r.value === v) || {}).label || '')}">${v}</button>`).join('')}</div>
         <textarea rows="2" maxlength="2000" placeholder="What supports this rating? (optional)" oninput="apNote('${E(k.id)}',this.value)"></textarea></div>`).join('')}
       <div class="card"><h3>Your overall comment</h3><textarea id="ap-comment" rows="4" maxlength="4000" placeholder="Anything you would like your line manager to know, and what support or development you need (optional)"></textarea></div>
       <div id="ap-err" class="msg bad" style="display:none;"></div>
@@ -52515,8 +52530,8 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   };
   window.apSubmit = async function(token){
     const err = document.getElementById('ap-err'), btn = document.getElementById('ap-send');
-    const miss = APK.filter(k => !(window.__apAns[k.id] && window.__apAns[k.id].rating));
-    if(miss.length){ err.style.display = 'block'; err.textContent = `Please rate every KPI (${miss.length} left).`; const el = document.getElementById('apk-' + miss[0].id); if(el) el.scrollIntoView({ behavior:'smooth', block:'center' }); return; }
+    const miss = APK.filter(k => !(window.__apAns[k.id] && window.__apAns[k.id].rating != null));
+    if(miss.length){ err.style.display = 'block'; err.textContent = `Please rate every KPI from 0 to 5 (${miss.length} left).`; const el = document.getElementById('apk-' + miss[0].id); if(el) el.scrollIntoView({ behavior:'smooth', block:'center' }); return; }
     if(!confirm('Submit your self-assessment? You will not be able to change it afterwards.')) return;
     btn.disabled = true; btn.textContent = 'Sending…';
     const out = {}; APK.forEach(k => { out[k.id] = { rating: window.__apAns[k.id].rating, notes: window.__apAns[k.id].notes || '' }; });
@@ -52526,6 +52541,612 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     w.innerHTML = (hero ? hero.outerHTML : '') + '<div class="card" style="text-align:center;"><div style="font-size:64px;">✅</div><h2 style="margin:6px 0;">Thank you</h2><p style="color:#555;">Your self-assessment has been received. Your line manager will now complete their assessment, preferably together with you, and finalise the result.</p></div>';
   };
   (function(){ const ap = new URLSearchParams(location.search).get('ap'); if(ap) document.addEventListener('DOMContentLoaded', () => renderApPage(ap)); })();
+})();
+
+
+/* ============================================================================
+   R41: personal documents on their own clean page; role-specific drafting; KPI sheet built from the job description;
+        manager completes through an emailed link; completion report
+   ============================================================================ */
+(function(){
+  'use strict';
+  const arr = x => Array.isArray(x) ? x : [];
+  const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const sb = () => STATE.supabase;
+  const plain = s => String(s == null ? '' : s).replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li|h\d)>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
+  const day = d => { try{ return fmtDate(String(d).slice(0, 10)); }catch(e){ return d || ''; } };
+  const base = () => location.origin + location.pathname;
+  const CAT = { 5:'Significant', 4:'Standard', 3:'Moderate', 2:'Partial', 1:'Not acceptable', 0:'Not done' };
+  const RCOL = { 0:'#7a1f1f', 1:'#D7242B', 2:'#F07C1A', 3:'#E0B122', 4:'#7CB342', 5:'#2E9E5B' };
+  const bandOf = pct => { const v = Number(pct); return v >= 97 ? 5 : v >= 90 ? 4 : v >= 81 ? 3 : v >= 60 ? 2 : v >= 50 ? 1 : 0; };
+  const catOf = pct => { const r = bandOf(pct); return { rating: Number(pct) / 20, name: CAT[r], col: RCOL[r] }; };
+
+  /* ============ 1. the person's document on its own clean page ============ */
+  const CSS = `<style id="r41-css">
+    body.r41-focus #content-root > *:not(#doc-form):not(#doc-detail-slot):not(#r41-focus-head):not(.doc-hub){display:none !important}
+    body.r41-focus .doc-hub > *:not(#doc-form):not(#doc-detail-slot){display:none !important}
+    body.r41-focus #doc-form .field.r41-hide, body.r41-focus #dw-pane-2 .r41-hide{display:none !important}
+    #r41-focus-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+    #r41-focus-head h2{margin:0;font-size:20px} #r41-focus-head .sub{font-size:12.5px;color:var(--text-faint);margin-top:2px}
+  </style>`;
+  if(!document.getElementById('r41-css')) document.head.insertAdjacentHTML('beforeend', CSS);
+  let FOCUS = null;
+  function exitFocus(){
+    document.body.classList.remove('r41-focus'); FOCUS = null;
+    const h = document.getElementById('r41-focus-head'); if(h) h.remove();
+    document.querySelectorAll('.r41-hide').forEach(e => e.classList.remove('r41-hide'));
+    const c = document.querySelector('#dw-pane-1 .btn-cancel'); if(c) c.setAttribute('onclick', 'toggleDocForm()');
+    const t = document.querySelector('#dw-pane-3 button[data-r41="tpl"]'); if(t) t.style.display = '';
+  }
+  function enterFocus(pid, kind, viewing){
+    const p = arr(STATE.personnel).find(x => x.id === pid); const root = document.getElementById('content-root'); if(!root || !p) return;
+    FOCUS = { pid, kind };
+    document.body.classList.add('r41-focus');
+    const label = kind === 'job_description' ? 'Job description' : 'KPI and Appraisal document';
+    let h = document.getElementById('r41-focus-head'); if(h) h.remove();
+    root.insertAdjacentHTML('afterbegin', `<div id="r41-focus-head"><div><h2>${viewing ? E(label) : 'Develop the ' + E(label.toLowerCase())}: ${E(p.full_name)}</h2><div class="sub">${viewing ? 'Controlled document' : 'Follow the steps below. You then edit the draft, choose the reviewers and approver, and submit it. Nothing is published until it is approved.'}</div></div><button class="btn-small" onclick="r41Back()">← Back to ${E(p.full_name.split(' ')[0])}'s profile</button></div>`);
+    if(!viewing){
+      ['df-department', 'df-type'].forEach(id => { const el = document.getElementById(id); if(el && el.closest('.field')) el.closest('.field').classList.add('r41-hide'); });
+      const p2 = document.getElementById('dw-pane-2');
+      if(p2){ p2.querySelectorAll('.mono, .form-grid, #dw-template-list').forEach(e => e.classList.add('r41-hide'));
+        const intro = p2.querySelector('p'); if(intro) intro.innerHTML = '<b>Do you already have this document?</b> Upload your existing one (Word, PDF or Excel) so the draft follows your own wording, duties and measures. This is optional; you can also go straight to the next step.'; }
+      const st2 = document.getElementById('dw-step-2'); if(st2) st2.textContent = '2 · Your existing document';
+      const st3 = document.getElementById('dw-step-3'); if(st3) st3.textContent = '3 · Create the draft';
+      const tb = [...document.querySelectorAll('#dw-pane-3 .dw-choice button')].find(b => /template as it is/i.test(b.textContent)); if(tb){ tb.style.display = 'none'; tb.setAttribute('data-r41', 'tpl'); }
+      const ai = document.querySelector('#dw-pane-3 .dw-choice .btn-primary'); if(ai) ai.textContent = kind === 'kpi_appraisal' ? 'Create the KPI and Appraisal document from the job description' : 'Create the job description';
+      const bt = [...document.querySelectorAll('#dw-pane-3 .dw-choice button')].find(b => /start blank/i.test(b.textContent)); if(bt) bt.textContent = 'Start with an empty starter';
+      const c = document.querySelector('#dw-pane-1 .btn-cancel'); if(c) c.setAttribute('onclick', 'r41Back()');
+      const nx = document.querySelector('#dw-pane-1 .btn-primary'); if(nx) nx.textContent = 'Next: your existing document';
+      const np = document.getElementById('r37-pd-note'); if(np) np.remove();
+    }
+    window.scrollTo(0, 0);
+  }
+  window.r41Back = function(){
+    const pid = FOCUS && FOCUS.pid; try{ STATE._personalDoc = null; const f = document.getElementById('doc-form'); if(f && f.classList.contains('open')) toggleDocForm(); }catch(e){}
+    exitFocus(); showModule('personnel');
+    if(pid) setTimeout(() => { try{ openPersonDetail(pid); }catch(e){ console.warn(e); } }, 700);
+  };
+  { const _s = showModule; showModule = window.showModule = function(mod){ if(FOCUS && !window.__r41Keep) exitFocus(); return _s.apply(this, arguments); }; }
+
+  try{ const _hu = headsUpEnabled; headsUpEnabled = window.headsUpEnabled = function(){ return window.__r41Keep ? false : _hu.apply(this, arguments); }; }catch(e){}
+  const jdOf = pid => window.r37DocOf(pid, 'job_description');
+  try{ const _d = window.r37Develop; window.r37Develop = async function(pid, kind){
+    if(kind === 'kpi_appraisal' && !jdOf(pid)){ alert('Develop the job description first.\n\nThe KPI and Appraisal document is built from the job description, so the job description always comes first.'); return; }
+    window.__r41Keep = true;
+    try{ await _d.apply(this, arguments); } finally { setTimeout(() => { window.__r41Keep = false; }, 2500); }
+    if(STATE._personalDoc){
+      // friendly wording: the technical drafting instructions are built in and not shown to the client
+      const p = arr(STATE.personnel).find(x => x.id === pid), comp = primaryCompetenceFor(pid), pos = comp ? positionById(comp.position_id) : null;
+      const pu = document.getElementById('df-purpose');
+      if(pu) pu.value = kind === 'job_description' ? `Job description for ${p ? p.full_name : 'the employee'}${pos ? ', ' + pos.title : ''}: the purpose and scope of the role, key responsibilities, accountabilities and authorities, legal appointments, SHERQ responsibilities, qualifications and competence.`
+        : `KPI and Appraisal assessment sheet for ${p ? p.full_name : 'the employee'}${pos ? ', ' + pos.title : ''}, calibrated to the job description: KPIs, requirements, data sources, measures and weights.`;
+      enterFocus(pid, kind, false);
+    }
+  }; }catch(e){ console.warn('r41 develop', e); }
+  try{ const _o = window.r37OpenDoc; window.r37OpenDoc = function(id){
+    window.__r41Keep = true; try{ _o.apply(this, arguments); } finally { setTimeout(() => { window.__r41Keep = false; }, 2500); }
+    const d = arr(STATE.documents).find(x => x.id === id);
+    if(d && d.personnel_id) setTimeout(() => { try{ enterFocus(d.personnel_id, d.personal_kind, true); }catch(e){} }, 200);
+  }; }catch(e){}
+
+  /* ============ 2. drafting that is about the person and the role ============ */
+  const PERSONA = 'IMPORTANT: You are not acting as a product help assistant. Never mention Watchman, an assistant, AI, software, or how to create or use documents. You are an experienced HR and management-systems consultant writing a formal business document for one specific position. Write only about the role, the person\'s responsibilities, accountabilities, authorities and performance.';
+  const BAD = /watchman|document assistant|ai assistant|artificial intelligence|language model|chatbot|how to use|this tool|create a document/i;
+  async function aiText(prompt, max){
+    const { data } = await sb().auth.getSession(); const tok = data && data.session && data.session.access_token;
+    return window.__aiCall(tok, prompt, max);
+  }
+  const tidy = t => String(t || '').replace(/\*\*/g, '').replace(/^#+\s*/gm, '').replace(/^["']|["']$/g, '').trim();
+  function ctxOf(pd, opt){
+    const p = arr(STATE.personnel).find(x => x.id === pd.personnel_id) || {}, comp = primaryCompetenceFor(pd.personnel_id), pos = comp ? positionById(comp.position_id) : null;
+    const mg = p.line_manager_id ? arr(STATE.personnel).find(x => x.id === p.line_manager_id) : null;
+    const reports = arr(STATE.personnel).filter(x => x.line_manager_id === p.id && x.status !== 'inactive');
+    const legal = window.__oaLive ? arr(STATE.orgAppts).filter(a => a.personnel_id === p.id && window.__oaLive(a)).map(a => window.__oaLabel(a)) : [];
+    const kp = pos ? arr(STATE.positionKpis).filter(k => k.position_id === pos.id && k.is_active).map(k => k.title) : [];
+    return { p, pos, mg, reports, legal, kp, org: (STATE.org && STATE.org.name) || 'the organisation',
+      text: `Organisation: ${(STATE.org && STATE.org.name) || ''}\nPosition: ${pos ? pos.title : 'not set'}\nEmployee: ${p.full_name || ''}\nReports to: ${mg ? mg.full_name : 'not recorded'}\nPeople managed: ${reports.length ? reports.map(r => r.full_name).join(', ') : 'none recorded'}\nLegal appointments held: ${legal.length ? legal.join('; ') : 'none'}` };
+  }
+  const JD_SECTIONS = [
+    ['Purpose of the role', 'In 3 to 5 sentences, why this position exists and what it contributes to the organisation.'],
+    ['Scope of the role', 'The scope of THIS position: the department or function it sits in, its level, who it reports to, who reports to it, the activities, sites or areas it covers, and the limits of its authority. It is about the role, not about any system or document.'],
+    ['Key responsibilities', 'A numbered list of 8 to 12 specific, checkable duties for this position, written as actions.'],
+    ['Accountabilities and authorities', 'What the position is accountable for (results, standards, deadlines) and what it is authorised to decide, approve, sign or stop. Numbered points.'],
+    ['Legal appointments and statutory responsibilities', 'For each legal appointment held, the statutory duties, authority and competence it requires. Numbered points. If there are none, write exactly: No legal appointments are held in this position.'],
+    ['SHERQ responsibilities', 'Safety, health, environment, risk and quality responsibilities of this position, including reporting incidents and opportunities for improvement and complying with the management system.'],
+    ['Qualifications, experience and competence', 'Minimum qualifications, experience, licences, certifications and key competencies, split into essential and desirable.'],
+    ['Working relationships', 'The main internal and external relationships of the position and what each requires.'],
+    ['Performance and development', 'State that performance is assessed each period through the KPI and Appraisal document linked to this job description, and list the development expectations for the position.'],
+  ];
+  async function draftJd(pd, opt, c){
+    const refTxt = opt.refText ? `\n\nThe organisation's existing job description or related document is below. Treat it as the primary source: keep its duties, terminology and structure where sound, correct gaps, and do not copy it blindly:\n"""${String(opt.refText).substring(0, 9000)}"""` : '';
+    const out = new Array(JD_SECTIONS.length); let failed = 0, done = 0, first = null;
+    const starters = (() => { try{ return window.r37Starter('job_description', c.p, c.pos, [], c.mg && c.mg.full_name) || []; }catch(e){ return []; } })();
+    async function one(i){
+      const [t, g] = JD_SECTIONS[i];
+      const prompt = `${PERSONA}\n\nWrite ONLY the content of the section "${t}" of the job description below. ${g}\nPlain text, no heading, no markdown symbols, no preamble. Use "you" never; write in the third person about the position.\n\n${c.text}${refTxt}`;
+      let ok = null, err = null;
+      for(let a = 0; a < 2 && !ok; a++){
+        try{ const r = tidy(await aiText(prompt, 1100)); if(r.length > 20 && !BAD.test(r)) ok = r; else err = new Error(BAD.test(r) ? 'The reply was not about the role' : 'Reply too short'); }catch(e){ err = e; }
+      }
+      if(!ok){ failed++; first = first || (err && err.message); const st = starters.find(s => s.title === t) || starters[i]; ok = (st && st.content) || `[Complete "${t}" for ${c.pos ? c.pos.title : 'this position'}.]`; }
+      out[i] = { title: t, content: ok }; done++; if(opt.onProgress) opt.onProgress(done, JD_SECTIONS.length);
+    }
+    const q = JD_SECTIONS.map((_, i) => i); await Promise.all(Array.from({ length: 3 }, async () => { while(q.length) await one(q.shift()); }));
+    return { sections: out, failed, firstError: first };
+  }
+  const SCALE_TXT = '5: Exceeds requirements and able to train others (Significant)\n4: Fully compliant with requirements (Standard)\n3: Generally compliant with requirements (Moderate)\n2: Developing competence, requires supervision and training (Partial)\n1: No capability (Not acceptable)\n0: Not done; disciplinary action may follow (Not done)';
+  function kpiFallback(jdSecs, c){
+    const resp = (jdSecs.find(s => /responsibilit/i.test(s.section_title || '')) || { content:'' }).content;
+    const lines = plain(resp).split(/\n+/).map(l => l.replace(/^[-*•\d.)\s]+/, '').trim()).filter(l => l.length > 12).slice(0, 7);
+    const M = '5 = fully achieved on time with no deviation; 4 = achieved with minor deviation; 3 = generally achieved; 2 = partly achieved and requires supervision; 1 = not achieved';
+    const core = [
+      ['Compliance with the conditions of employment and job description', 'Zero deviation: no related nonconformances (RAGAs) or disciplinary action', 15, 'RAGA Register; disciplinary records', '5 = no RAGA or a Green RAGA; 4 = no RAGA; 3 = one Orange RAGA; 2 = more than one Orange RAGA; 1 = one Red RAGA; disciplinary action = rated 1'],
+      ['Completion of tasks', 'Tasks completed on time and accurately', 15, 'RAGA Register; task records', M],
+      ['Reporting and communication', 'Reports complete, accurate and handed in on time; communication effective', 10, 'Reports and registers', M],
+      ['Training and skills development', 'Planned training attended and completed; skills applied', 5, 'Training plan; training register', '5 = more than four courses; 4 = three courses; 3 = two courses; 2 = one course; 1 = none completed'],
+    ];
+    const rest = lines.map(l => [l.length > 90 ? l.substring(0, 87) + '...' : l, 'Responsibility achieved to the standard required', 0, 'Records and reports for this activity', M]);
+    const left = 100 - core.reduce((s, k) => s + k[2], 0); const each = rest.length ? Math.floor(left / rest.length) : 0;
+    rest.forEach((k, i) => { k[2] = each + (i === 0 ? left - each * rest.length : 0); });
+    if(!rest.length) core[1][2] += left;
+    return core.concat(rest).map(k => k.join(' | '));
+  }
+  function normaliseKpiLines(txt){
+    const lines = String(txt || '').split(/\n+/).map(l => l.replace(/^[-*•\d.)\s]+/, '').replace(/\*\*/g, '').trim()).filter(l => (l.match(/\|/g) || []).length >= 4 && !/^kpi\s*\|/i.test(l));
+    if(lines.length < 4) return null;
+    const rows = lines.map(l => { const c = l.split('|').map(x => x.trim()); return [c[0], c[1], parseFloat(String(c[2]).replace('%', '')) || 0, c[3], c.slice(4).join('; ')]; });
+    const tw = rows.reduce((s, r) => s + r[2], 0);
+    if(tw > 0 && Math.round(tw) !== 100){ rows.forEach(r => { r[2] = Math.round(r[2] / tw * 100); }); const d = 100 - rows.reduce((s, r) => s + r[2], 0); rows[0][2] += d; }
+    if(tw <= 0){ const e = Math.floor(100 / rows.length); rows.forEach(r => { r[2] = e; }); rows[0][2] += 100 - e * rows.length; }
+    return rows.map(r => r.join(' | '));
+  }
+  async function draftKpi(pd, opt, c){
+    const jd = jdOf(pd.personnel_id); let jdSecs = [];
+    if(jd){ const { data } = await sb().from('document_content_sections').select('section_title, content, sort_order').eq('document_id', jd.id).order('sort_order', { ascending:true }); jdSecs = arr(data); }
+    const jdText = jdSecs.map(s => `## ${s.section_title}\n${plain(s.content)}`).join('\n\n').substring(0, 9000);
+    const refTxt = opt.refText ? `\n\nThe organisation's existing KPI or appraisal sheet is below. Reuse its KPIs, requirements, data sources and measure schemes where they still fit the job description; add KPIs needed so that every key responsibility is covered:\n"""${String(opt.refText).substring(0, 9000)}"""` : '';
+    const prompt = `${PERSONA}\n\nBuild the Key Performance Indicators for this position from its JOB DESCRIPTION. The job description is the source of truth: every key responsibility and every legal appointment must be measured by at least one KPI.\n\n${c.text}\n\nJOB DESCRIPTION:\n"""${jdText}"""${refTxt}\n\nOutput ONLY KPI lines, one per line, each with exactly five fields separated by " | " in this order:\nKPI title | Requirement (what must be achieved, quantified where possible) | Weight (whole number, percent) | Data source (the register, report or record that proves it) | Measure (how each rating is awarded, written as "5 = ...; 4 = ...; 3 = ...; 2 = ...; 1 = ...")\nRules: 8 to 12 KPIs. Weights are whole numbers adding up to exactly 100. Include "Compliance with the conditions of employment and job description" (zero deviation, RAGA register, disciplinary action), "Completion of tasks (on time and accurate)", "Reporting and communication" and "Training and skills development". ${c.reports.length ? 'Include "Effectiveness of managing staff" (data source: KPI Appraisals Register). ' : ''}Measures must be objective and checkable from the data source. Do not use the pipe character inside a field. No markdown, numbering, headings or commentary.`;
+    let lines = null, err = null;
+    for(let a = 0; a < 2 && !lines; a++){ try{ const r = await aiText(prompt, 3000); if(!BAD.test(r)) lines = normaliseKpiLines(r); }catch(e){ err = e; } }
+    const failed = lines ? 0 : 1; if(!lines) lines = kpiFallback(jdSecs, c);
+    const jdRef = jd ? `${jd.doc_number} Revision ${jd.current_revision}` : 'the job description';
+    const sections = [
+      { title:'Purpose and basis', content:`This document is the assessment sheet for the position of ${c.pos ? c.pos.title : 'the employee'}, held by ${c.p.full_name || 'the employee'}. It is calibrated to the job description ${jdRef}: every key responsibility and legal appointment in the job description is measured by one or more of the indicators below. When the job description changes, this sheet is reviewed and re-issued.` },
+      { title:'Review process', content:`1. The line manager initiates the appraisal for the review period.\n2. The employee receives a private link, reads the job description and the indicators, rates their own performance against each one and submits.\n3. The line manager then completes their own assessment through their link, preferably together with the employee, and submits.\n4. The result is finalised, the report is produced and shared with the employee and the line manager, and the result is recorded for statistical analysis.` },
+      { title:'Rating scale', content:SCALE_TXT },
+      { title:'Key Performance Indicators', content:lines.join('\n') },
+      { title:'How the result is calculated', content:'For each indicator the final result is the average of the employee\'s rating and the line manager\'s rating, expressed as a percentage of the maximum rating of 5. The overall result is the weighted average of all indicators, using the weights above, and is described by the rating scale: Significant, Standard, Moderate, Partial or Not acceptable. Supporting evidence for a rating is recorded with the appraisal.' },
+    ];
+    return { sections, failed, firstError: err && err.message };
+  }
+  try{ const _ai = window.aiDraftSections; window.aiDraftSections = async function(opt){
+    const pd = STATE._personalDoc; if(!pd) return _ai.apply(this, arguments);
+    const c = ctxOf(pd, opt);
+    return pd.kind === 'kpi_appraisal' ? draftKpi(pd, opt, c) : draftJd(pd, opt, c);
+  }; }catch(e){ console.warn('r41 ai', e); }
+  /* in the 'empty starter' case for the KPI document, still build from the job description */
+
+  /* ============ 3. the emailed pages: self-assessment, manager assessment, report ============ */
+  const secHtml = (t, secs) => secs && secs.length ? `<details style="margin-top:10px;"><summary style="cursor:pointer;font-weight:800;font-size:14px;">${E(t)}</summary>${secs.map(s => `<div style="margin-top:10px;"><b>${E(s.title || '')}</b><div style="white-space:pre-wrap;font-size:13.5px;color:#444;">${E(plain(s.body))}</div></div>`).join('')}</details>` : '';
+  const kpiMeta = k => `${k.target ? `<div style="font-size:13px;color:#555;margin-top:4px;"><b>Requirement:</b> ${E(k.target)}</div>` : ''}${k.source ? `<div style="font-size:12.5px;color:#777;"><b>Data source:</b> ${E(k.source)}</div>` : ''}${k.description ? `<div style="font-size:12.5px;color:#777;"><b>How it is rated:</b> ${E(k.description)}</div>` : ''}`;
+  const rateRow = (id, fn) => `<div class="rate sm">${[0, 1, 2, 3, 4, 5].map(v => `<button type="button" style="background:${RCOL[v]}" data-v="${v}" onclick="${fn}('${E(id)}',${v})" title="${E(CAT[v])}">${v}</button>`).join('')}</div><div style="text-align:center;font-size:11px;color:#777;">0 Not done · 1 Not acceptable · 2 Partial · 3 Moderate · 4 Standard · 5 Significant</div>`;
+  let PG = { kpis: [], ans: {} };
+  window.r41Pick = function(id, v){ PG.ans[id] = PG.ans[id] || {}; PG.ans[id].rating = v; const b = document.getElementById('apk-' + id); if(b) b.querySelectorAll('.rate button').forEach(x => x.classList.toggle('on', Number(x.dataset.v) === v)); r41Prog(); };
+  window.r41Note = function(id, t){ PG.ans[id] = PG.ans[id] || {}; PG.ans[id].notes = t; };
+  function r41Prog(){ const got = PG.kpis.filter(k => PG.ans[k.id] && PG.ans[k.id].rating != null).length; const f = document.getElementById('ap-fill'), l = document.getElementById('ap-prog'); if(f) f.style.width = Math.round(got / (PG.kpis.length || 1) * 100) + '%'; if(l) l.textContent = `${got} of ${PG.kpis.length} KPIs rated`; }
+  const shell = (info, eyebrow, sub, inner) => PUB_CSS + `<div class="pb"><div class="w">${pubHero(info, eyebrow, info.person, sub)}${inner}</div></div>`;
+  const periodOf = i => `${i.position ? i.position + ' · ' : ''}${day(i.period_start)} to ${day(i.period_end)}`;
+
+  function reportHtml(info){
+    const o = Number(info.overall || 0), c = catOf(o);
+    const rows = arr(info.kpis).map(k => { const f = k.final_pct == null ? null : Number(k.final_pct);
+      return `<tr><td><b>${E(k.title)}</b><div style="font-size:11px;color:#777;">${E(k.description || '')}</div></td><td style="text-align:center;">${E(k.weight || 0)}%</td>
+      <td style="text-align:center;"><span class="chip" style="background:${RCOL[k.self_rating] || '#999'}">${k.self_rating == null ? '–' : k.self_rating}</span>${k.self_notes ? `<div style="font-size:11px;color:#555;text-align:left;margin-top:4px;white-space:pre-wrap;">${E(k.self_notes)}</div>` : ''}</td>
+      <td style="text-align:center;"><span class="chip" style="background:${RCOL[k.mgr_rating] || '#999'}">${k.mgr_rating == null ? '–' : k.mgr_rating}</span>${k.mgr_notes ? `<div style="font-size:11px;color:#555;text-align:left;margin-top:4px;white-space:pre-wrap;">${E(k.mgr_notes)}</div>` : ''}</td>
+      <td style="text-align:center;font-weight:800;">${f == null ? '–' : f.toFixed(0) + '%'}</td></tr>`; }).join('');
+    return `<div class="card" style="text-align:center;"><div style="font-size:12px;font-weight:800;letter-spacing:.08em;color:#777;text-transform:uppercase;">Overall weighted result</div><div style="font-size:48px;font-weight:900;color:${c.col};line-height:1.1;">${o.toFixed(1)}%</div><div style="font-weight:800;font-size:18px;color:${c.col};">${E(c.name)}</div><div style="font-size:13px;color:#666;margin-top:2px;">Average rating ${c.rating.toFixed(1)} out of 5 · finalised ${day(info.completed_at)}</div></div>
+      <div class="card"><h3>Results by KPI</h3><div style="overflow:auto;"><table><thead><tr><th>KPI</th><th style="text-align:center;">Weight</th><th style="text-align:center;">Self</th><th style="text-align:center;">Manager</th><th style="text-align:center;">Final</th></tr></thead><tbody>${rows}</tbody></table></div><div style="font-size:11.5px;color:#777;margin-top:8px;">Ratings: 1 Not acceptable · 2 Partial · 3 Moderate · 4 Standard · 5 Significant. The final result for each KPI is the average of the two ratings.</div></div>
+      ${info.self_comment ? `<div class="card"><h3>Employee's comment</h3><div style="white-space:pre-wrap;">${E(info.self_comment)}</div></div>` : ''}
+      ${info.manager_comment ? `<div class="card"><h3>Line manager's comment</h3><div style="white-space:pre-wrap;">${E(info.manager_comment)}</div></div>` : ''}
+      ${info.agreed_objectives ? `<div class="card"><h3>Agreed objectives for the next period</h3><div style="white-space:pre-wrap;">${E(info.agreed_objectives)}</div></div>` : ''}
+      <div style="text-align:center;margin-top:16px;"><button class="btn ghost" onclick="window.print()">Print or save as PDF</button></div>`;
+  }
+
+  window.renderApPage = async function(token){
+    const ov = pubMount('ap-public'); await pubInit();
+    const { data: info } = await sb().rpc('ap_info', { p_token: token });
+    if(!info || !info.ok){ pubBad(ov, info && info.notopen ? 'This appraisal is not open' : 'This link is not active'); return; }
+    PG = { kpis: arr(info.kpis), ans: {} };
+    const sub = periodOf(info);
+    if(info.stage === 'report'){ ov.innerHTML = shell(info, 'Appraisal report', sub, reportHtml(info) + (info.overall_avg != null ? `<div class="card" style="font-size:12.5px;color:#555;">The line manager's rating is the rating that counts for performance reporting. For reference only, the average of the self-assessment and the manager's assessment is ${Number(info.overall_avg).toFixed(1)}%.</div>` : '')); return; }
+    if(info.stage === 'self_done'){ ov.innerHTML = shell(info, 'Performance appraisal', sub, `<div class="card" style="text-align:center;"><div style="font-size:56px;">✅</div><h2 style="margin:6px 0;">Your self-assessment has been submitted</h2><p style="color:#555;">Your line manager will now complete their assessment, preferably together with you. You will receive the report when it is finalised, and this same link will then show it.</p></div>`); return; }
+    if(info.stage === 'manager_wait'){ ov.innerHTML = shell(info, 'Appraisal: line manager', sub, `<div class="card" style="text-align:center;"><div style="font-size:56px;">⏳</div><h2 style="margin:6px 0;">Waiting for ${E(info.person)}'s self-assessment</h2><p style="color:#555;">This link stays valid. Once ${E(info.person)} has submitted, open it again to complete your assessment, preferably together with them.</p></div>`); return; }
+    if(info.stage === 'self'){
+      ov.innerHTML = shell(info, 'Performance appraisal', sub, `<div class="card"><p style="margin:0;font-size:14.5px;line-height:1.55;">Please read your job description and your KPIs, then rate how you performed against each KPI during the period. Rate honestly: a fair rating is more useful than a comfortable one. Add a short note on what supports your rating. Your line manager will complete their assessment afterwards, preferably together with you.</p>${secHtml('Your job description', arr(info.jd))}${secHtml('Your KPI and Appraisal document', arr(info.kpi_doc))}</div>
+        <div class="bar"><div class="track"><div class="fill" id="ap-fill" style="width:0"></div></div><div id="ap-prog" style="font-size:12px;color:#666;margin-top:4px;"></div></div>
+        ${PG.kpis.map((k, i) => `<div class="card" id="apk-${E(k.id)}"><h3>KPI ${i + 1} · weight ${E(k.weight || 0)}%</h3><div style="font-weight:800;font-size:16px;">${E(k.title)}</div>${kpiMeta(k)}${rateRow(k.id, 'r41Pick')}<textarea rows="2" maxlength="2000" placeholder="What supports this rating? (optional)" oninput="r41Note('${E(k.id)}',this.value)"></textarea></div>`).join('')}
+        <div class="card"><h3>Your overall comment</h3><textarea id="ap-comment" rows="4" maxlength="4000" placeholder="Anything you would like your line manager to know, and what support or development you need (optional)"></textarea></div>
+        <div id="ap-err" class="msg bad" style="display:none;"></div><div style="text-align:center;margin-top:18px;"><button class="btn" id="ap-send" onclick="r41SubmitSelf('${E(token)}')">Submit my self-assessment</button></div>`); r41Prog(); return; }
+    if(info.stage === 'manager'){
+      ov.innerHTML = shell(info, 'Appraisal: line manager', sub, `<div class="card"><p style="margin:0;font-size:14.5px;line-height:1.55;">${E(info.person)} has completed their self-assessment. Complete your own assessment against each KPI, preferably together with ${E(info.person)}. Their rating and notes are shown for each KPI. When you submit, the appraisal is finalised and the report is produced.</p>${info.self_comment ? `<div style="margin-top:10px;font-size:13.5px;"><b>${E(info.person)}'s overall comment:</b><div style="white-space:pre-wrap;color:#444;">${E(info.self_comment)}</div></div>` : ''}</div>
+        <div class="bar"><div class="track"><div class="fill" id="ap-fill" style="width:0"></div></div><div id="ap-prog" style="font-size:12px;color:#666;margin-top:4px;"></div></div>
+        ${PG.kpis.map((k, i) => `<div class="card" id="apk-${E(k.id)}"><h3>KPI ${i + 1} · weight ${E(k.weight || 0)}%</h3><div style="font-weight:800;font-size:16px;">${E(k.title)}</div>${kpiMeta(k)}
+          <div style="background:#f6f6f6;border-radius:10px;padding:10px 12px;margin-top:10px;font-size:13px;"><b>${E(info.person.split(' ')[0])}'s self-assessment:</b> <span class="chip" style="background:${RCOL[k.self_rating] || '#999'}">${k.self_rating == null ? '–' : k.self_rating}</span> ${k.self_rating ? E(CAT[k.self_rating]) : ''}${k.self_notes ? `<div style="white-space:pre-wrap;color:#444;margin-top:4px;">${E(k.self_notes)}</div>` : ''}</div>
+          ${rateRow(k.id, 'r41Pick')}<textarea rows="2" maxlength="2000" placeholder="Your notes on this KPI: what the data shows (optional)" oninput="r41Note('${E(k.id)}',this.value)"></textarea></div>`).join('')}
+        <div class="card"><h3>Your overall comment for ${E(info.person.split(' ')[0])}</h3><textarea id="ap-comment" rows="4" maxlength="4000"></textarea></div>
+        <div class="card"><h3>Agreed objectives for the next period</h3><textarea id="ap-objectives" rows="4" maxlength="4000" placeholder="Objectives agreed with ${E(info.person.split(' ')[0])}"></textarea></div>
+        <div id="ap-err" class="msg bad" style="display:none;"></div><div style="text-align:center;margin-top:18px;"><button class="btn" id="ap-send" onclick="r41SubmitMgr('${E(token)}')">Submit and finalise the appraisal</button></div>`); r41Prog(); return; }
+    pubBad(ov, 'This link is not active');
+  };
+  function packRatings(){ const out = {}; PG.kpis.forEach(k => { out[k.id] = { rating: PG.ans[k.id].rating, notes: PG.ans[k.id].notes || '' }; }); return out; }
+  function missing(){
+    const err = document.getElementById('ap-err'); const miss = PG.kpis.filter(k => !(PG.ans[k.id] && PG.ans[k.id].rating != null));
+    if(miss.length){ err.style.display = 'block'; err.textContent = `Please rate every KPI (${miss.length} left).`; const el = document.getElementById('apk-' + miss[0].id); if(el) el.scrollIntoView({ behavior:'smooth', block:'center' }); return true; }
+    return false;
+  }
+  async function finish(fn, args, msg){
+    const err = document.getElementById('ap-err'), btn = document.getElementById('ap-send'); const label = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Sending…';
+    const { data, error } = await sb().rpc(fn, args);
+    if(error || !data || !data.ok){ btn.disabled = false; btn.textContent = label; err.style.display = 'block'; err.textContent = (data && data.error) || (error && error.message) || 'Something went wrong. Please try again.'; return; }
+    const w = document.querySelector('#ap-public .w'), hero = w.querySelector('.hero');
+    w.innerHTML = (hero ? hero.outerHTML : '') + `<div class="card" style="text-align:center;"><div style="font-size:64px;">✅</div><h2 style="margin:6px 0;">Thank you</h2><p style="color:#555;">${msg}</p></div>`;
+    return true;
+  }
+  window.r41SubmitSelf = async function(token){
+    if(missing()) return; if(!confirm('Submit your self-assessment? You will not be able to change it afterwards.')) return;
+    await finish('ap_submit', { p_token: token, p_ratings: packRatings(), p_comment: (document.getElementById('ap-comment') || {}).value || '' }, 'Your self-assessment has been received. Your line manager will now complete their assessment, preferably together with you, and finalise the result. You will receive the report, and this link will then show it.');
+  };
+  window.r41SubmitMgr = async function(token){
+    /* R42: once the manager has submitted, the report is emailed automatically (once only, to the addresses on record) */
+    if(missing()) return; if(!confirm('Submit and finalise this appraisal? The report is produced and cannot be changed afterwards.')) return;
+    const okM = await finish('ap_manager_submit', { p_token: token, p_ratings: packRatings(), p_comment: (document.getElementById('ap-comment') || {}).value || '', p_objectives: (document.getElementById('ap-objectives') || {}).value || '' }, 'The appraisal is finalised and the report has been produced. Open this same link at any time to view or print it.');
+    if(okM){ try{ fetch(SUPABASE_URL + '/functions/v1/appraisal-report-notify', { method:'POST', headers:{ 'Content-Type':'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY }, body: JSON.stringify({ token }), keepalive: true }).catch(function(){}); }catch(e){} }
+  };
+
+  /* ============ 4. inside the app: manager email, links, sharing the report ============ */
+  async function mgrEmail(a){ try{ await ensureMemberEmails(); const m = STATE._emailMap && STATE._emailMap[a.line_manager_id]; return m ? { email: m.email, name: m.name } : null; }catch(e){ return null; } }
+  const pLink = a => `${base()}?ap=${a.token}`, mLink = a => a.manager_token ? `${base()}?ap=${a.manager_token}` : '';
+  window.r41EmailManager = async function(a){
+    try{
+      if(!a || !a.manager_token) return { sent:false };
+      const m = await mgrEmail(a); const p = personById(a.personnel_id); if(!m || !m.email || !p) return { sent:false };
+      const ok = await sendEmailToAddress(m.email, `Appraisal for ${p.full_name}: ${STATE.org.name}`, `Hello ${(m.name || '').split(' ')[0] || ''},\n\nThe appraisal for ${p.full_name} (${a.ref_code}, ${day(a.period_start)} to ${day(a.period_end)}) has been started and ${p.full_name.split(' ')[0]} has been sent a private link to complete the self-assessment.\n\nWhen ${p.full_name.split(' ')[0]} has submitted, open your own private link to complete your assessment, preferably together with ${p.full_name.split(' ')[0]}. If they have not submitted yet, the page will tell you and you can open it again later. You do not need to sign in. Please keep the link to yourself:\n\n${mLink(a)}\n\nThank you,\n${STATE.org.name}`);
+      return { sent: ok, to: m.email };
+    }catch(e){ return { sent:false }; }
+  };
+  window.r41ShareReport = async function(id){
+    const a = appraisalById(id); if(!a || a.status !== 'finalized') return;
+    const p = personById(a.personnel_id), m = await mgrEmail(a), c = catOf(a.overall_achievement_pct || 0);
+    const sum = `Overall result: ${Number(a.overall_achievement_pct || 0).toFixed(1)}% (${c.name}, average rating ${c.rating.toFixed(1)} out of 5).`;
+    const sent = [];
+    if(p && p.email && await sendEmailToAddress(p.email, `Your appraisal report: ${STATE.org.name}`, `Hello ${p.full_name.split(' ')[0]},\n\nYour appraisal ${a.ref_code} (${day(a.period_start)} to ${day(a.period_end)}) is complete.\n\n${sum}\n\nOpen your private link to see the full report, including your manager's comments and the agreed objectives. You can print it or save it as a PDF there:\n${pLink(a)}\n\nThank you,\n${STATE.org.name}`)) sent.push(p.email);
+    if(m && m.email && a.manager_token && await sendEmailToAddress(m.email, `Appraisal report for ${p ? p.full_name : ''}: ${STATE.org.name}`, `Hello ${(m.name || '').split(' ')[0] || ''},\n\nThe appraisal ${a.ref_code} for ${p ? p.full_name : 'the employee'} is complete.\n\n${sum}\n\nOpen your private link for the full report:\n${mLink(a)}\n\nThank you,\n${STATE.org.name}`)) sent.push(m.email);
+    if(sent.length){ try{ await sb().from('appraisals').update({ report_sent_at: new Date().toISOString() }).eq('id', id); }catch(e){} toast('Report emailed to ' + sent.join(' and ') + '.', 'success'); }
+    else toast('No email address was found. Copy the links from the appraisal instead.', 'info');
+    try{ await loadAppraisals(); openAppraisalDetail(id); }catch(e){}
+  };
+  const copyBox = (label, url, id) => url ? `<div style="margin-top:8px;"><div style="font-size:11.5px;font-weight:700;margin-bottom:3px;">${E(label)}</div><div class="link-box-row"><input type="text" readonly id="${id}" value="${E(url)}"><button class="btn-small primary" onclick="copyApprLink('${id}')">Copy</button></div></div>` : '';
+  try{ const _o = window.openAppraisalDetail; openAppraisalDetail = window.openAppraisalDetail = async function(id){
+    const r = await _o.apply(this, arguments);
+    try{
+      const a = appraisalById(id), slot = document.getElementById('appraisal-detail-slot'); if(!a || !slot || document.getElementById('r41-links')) return r;
+      const first = slot.querySelector('.detail-meta'); if(!first) return r;
+      let html = '';
+      if(a.status === 'finalized') html = `<div style="margin:10px 0;"><button class="btn-small primary" onclick="r41ShareReport('${a.id}')">Email the report to the employee and the manager</button> <span style="font-size:12px;color:var(--text-faint);">${a.report_sent_at ? 'Last emailed ' + day(a.report_sent_at) + '. ' : ''}Each opens their own private link, which shows the full report and can be printed or saved as a PDF.</span>${copyBox('Employee report link', pLink(a), 'r41-lp')}${copyBox('Line manager report link', mLink(a), 'r41-lm')}</div>`;
+      else if(a.status === 'awaiting_self_assessment' || a.status === 'self_assessment_done') html = `<div style="margin:10px 0;font-size:12.5px;"><b>Private links.</b> The employee and the line manager each complete their part from their own emailed link.${copyBox('Employee link', pLink(a), 'r41-lp')}${copyBox('Line manager link', mLink(a), 'r41-lm')}${a.manager_token ? `<button class="btn-small" style="margin-top:8px;" onclick="r41EmailManager(appraisalById('${a.id}')).then(function(x){toast(x&&x.sent?'Emailed to the line manager.':'No manager email address found: copy the link.', x&&x.sent?'success':'info')})">Email the link to the line manager</button>` : ''}</div>`;
+      if(html) first.insertAdjacentHTML('afterend', `<div id="r41-links">${html}</div>`);
+    }catch(e){ console.warn('r41 links', e); }
+    return r; }; }catch(e){}
+  try{ const _f = finalizeAppraisal; finalizeAppraisal = window.finalizeAppraisal = async function(id){
+    const r = await _f.apply(this, arguments);
+    try{ await loadAppraisals(); const a = appraisalById(id); if(a && a.status === 'finalized' && confirm('The appraisal is finalised. Email the report to the employee and the line manager now?')) window.r41ShareReport(id); }catch(e){}
+    return r; }; }catch(e){}
+})();
+
+
+/* ============================================================================
+   R42: Company Performance Report (monthly, for the Managing Director), annual result per person, annual bonus;
+        document creation / review on their own page
+   ============================================================================ */
+(function(){
+  'use strict';
+  const arr = x => Array.isArray(x) ? x : [];
+  const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const sb = () => STATE.supabase;
+  const CAT = { 5:'Significant', 4:'Standard', 3:'Moderate', 2:'Partial', 1:'Not acceptable', 0:'Not done' };
+  const RCOL = { 0:'#7a1f1f', 1:'#D7242B', 2:'#F07C1A', 3:'#E0B122', 4:'#7CB342', 5:'#2E9E5B' };
+  const bandOf = pct => { const v = Number(pct); return v >= 97 ? 5 : v >= 90 ? 4 : v >= 81 ? 3 : v >= 60 ? 2 : v >= 50 ? 1 : 0; };
+  const catOf = pct => { const r = bandOf(pct); return { r, name: CAT[r], col: RCOL[r] }; };
+  const MN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const R = n => 'R ' + Number(n || 0).toLocaleString('en-ZA', { minimumFractionDigits:2, maximumFractionDigits:2 });
+  const pc = n => n == null || isNaN(n) ? '–' : Number(n).toFixed(1) + '%';
+  const avg = a => { const v = a.filter(x => x != null && !isNaN(x)).map(Number); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; };
+  const iso = d => d.toISOString().slice(0, 10);
+  const endOf = (y, m) => new Date(Date.UTC(y, m + 1, 0));
+  const chip = pct => { if(pct == null) return '<span class="r42c" style="background:#999">–</span>'; const c = catOf(pct); return `<span class="r42c" style="background:${c.col}">${E(c.name)}</span>`; };
+
+  /* ---------------- the page ---------------- */
+  const CSS = `<style id="r42-css">
+    #r42-page{max-width:1180px}
+    #r42-page h2{margin:0;font-size:22px} #r42-page h3{margin:0 0 8px;font-size:15.5px}
+    #r42-page .r42-bar{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+    #r42-page .r42-ctl{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin:10px 0 14px}
+    #r42-page .r42-ctl label{display:block;font-size:11px;font-weight:700;color:var(--text-faint);margin-bottom:2px;text-transform:uppercase;letter-spacing:.04em}
+    #r42-page .r42-ctl select,#r42-page .r42-ctl input{border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;background:#fff}
+    #r42-page .r42-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+    #r42-page .r42-tabs button{border:1px solid var(--border);background:#fff;border-radius:999px;padding:7px 16px;font-size:13px;font-weight:700;cursor:pointer}
+    #r42-page .r42-tabs button.on{background:#0b1f3a;color:#fff;border-color:#0b1f3a}
+    #r42-page .r42-card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px}
+    #r42-page .r42-hero{display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+    #r42-page .r42-big{font-size:54px;font-weight:900;line-height:1}
+    #r42-page table{width:100%;border-collapse:collapse;font-size:13px} #r42-page th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-faint);padding:6px 8px;border-bottom:2px solid var(--border)}
+    #r42-page td{padding:7px 8px;border-bottom:1px solid var(--border-soft,#eee);vertical-align:top} #r42-page td.n,#r42-page th.n{text-align:right;white-space:nowrap}
+    #r42-page .r42c{display:inline-block;color:#fff;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:800;white-space:nowrap}
+    #r42-page .r42-mut{font-size:12px;color:var(--text-faint)}
+    #r42-page .r42-bars{display:flex;align-items:flex-end;gap:8px;height:120px;margin-top:6px}
+    #r42-page .r42-bars div.b{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;font-size:10.5px;color:#555}
+    #r42-page .r42-bars span.f{display:block;width:100%;border-radius:4px 4px 0 0;background:#0b1f3a;min-height:2px}
+    #r42-page .r42-ofi{border-left:3px solid #E0B122;padding:6px 10px;margin:6px 0;background:#fffbea;border-radius:0 8px 8px 0;font-size:13px}
+    #r42-page .r42-bonus input[type=number]{width:120px}
+    @media print{#r42-page .r42-noprint{display:none !important}}
+  </style>`;
+  if(!document.getElementById('r42-css')) document.head.insertAdjacentHTML('beforeend', CSS);
+
+  const NOW = new Date();
+  const ST = { fyMonth: 3, fy: null, mi: null, tab: 'month', pool: 100000, ret: 50, years: 5, w: 100, minr: 0, excl: new Set(), apps: [], kpis: [], published: [], snap: null, sqlNeeded: false, tblNeeded: false };
+  const defFy = () => (NOW.getUTCMonth() + 1 < ST.fyMonth) ? NOW.getUTCFullYear() - 1 : NOW.getUTCFullYear();
+  ST.fy = defFy();
+
+  function months(){
+    const out = [];
+    for(let i = 0; i < 12; i++){ const mm = ST.fyMonth - 1 + i, y = ST.fy + Math.floor(mm / 12), m = mm % 12;
+      out.push({ y, m, key: `${y}-${String(m + 1).padStart(2, '0')}-01`, label: `${MN[m].slice(0, 3)} ${String(y).slice(2)}`, long: `${MN[m]} ${y}`, end: iso(endOf(y, m)) }); }
+    return out;
+  }
+  function defMi(){ const ms = months(), t = iso(NOW); let k = 0; ms.forEach((m, i) => { if(m.key <= t) k = i; }); return k; }
+
+  async function load(){
+    try{ await loadAppraisals(); }catch(e){}
+    ST.apps = arr(STATE.appraisals).filter(a => a.status === 'finalized' && a.overall_achievement_pct != null);
+    let r = await sb().from('appraisal_kpis').select('appraisal_id,kpi_title,weight,manager_achievement_pct,manager_actual_notes,final_achievement_pct,avg_reference_pct').eq('organisation_id', STATE.org.id);
+    if(r.error){ ST.sqlNeeded = true; r = await sb().from('appraisal_kpis').select('appraisal_id,kpi_title,weight,manager_achievement_pct,manager_actual_notes,final_achievement_pct').eq('organisation_id', STATE.org.id); }
+    ST.kpis = arr(r.data);
+    const pr = await sb().from('performance_reports').select('id,report_month,company_result,participants,published_at,payload').eq('organisation_id', STATE.org.id).order('report_month', { ascending:false });
+    if(pr.error){ ST.tblNeeded = true; ST.published = []; } else { ST.tblNeeded = false; ST.published = arr(pr.data); }
+  }
+  const pName = id => { const p = arr(STATE.personnel).find(x => x.id === id); return p ? p.full_name : ''; };
+  const activePeople = () => arr(STATE.personnel).filter(p => p.status !== 'inactive' && p.status !== 'terminated' && p.status !== 'archived');
+  function posOf(pid){ try{ const c = primaryCompetenceFor(pid), po = c ? positionById(c.position_id) : null; return po ? po.title : ''; }catch(e){ return ''; } }
+  function asAt(pid, end){
+    const lo = new Date(Date.parse(end) - 366 * 86400000).toISOString().slice(0, 10);
+    return ST.apps.filter(a => a.personnel_id === pid && String(a.period_end).slice(0, 10) <= end && String(a.period_end).slice(0, 10) > lo)
+      .sort((a, b) => String(b.period_end).localeCompare(String(a.period_end)))[0] || null;
+  }
+
+  /* ---------------- compute ---------------- */
+  function build(){
+    const ms = months(), mi = ST.mi, m = ms[mi], fyS = ms[0].key, fyE = ms[11].end;
+    const people = activePeople().map(p => {
+      const vals = ms.map(x => { const a = asAt(p.id, x.end); return a ? Number(a.overall_achievement_pct) : null; });
+      const cur = asAt(p.id, m.end);
+      const inFy = ST.apps.filter(a => a.personnel_id === p.id && String(a.period_end).slice(0, 10) >= fyS && String(a.period_end).slice(0, 10) <= fyE);
+      const toDate = inFy.filter(a => String(a.period_end).slice(0, 10) <= m.end);
+      return { id: p.id, name: p.full_name, position: posOf(p.id), manager: p.line_manager_id ? pName(p.line_manager_id) : '', vals, cur, result: cur ? Number(cur.overall_achievement_pct) : null,
+        ref: cur && cur.overall_avg_reference_pct != null ? Number(cur.overall_avg_reference_pct) : null, annual: avg(inFy.map(a => Number(a.overall_achievement_pct))), annualToDate: avg(toDate.map(a => Number(a.overall_achievement_pct))), n: inFy.length };
+    }).sort((a, b) => (b.result == null) - (a.result == null) || (b.result || 0) - (a.result || 0) || a.name.localeCompare(b.name));
+    const res = people.filter(x => x.result != null);
+    const company = avg(res.map(x => x.result));
+    const trend = ms.map((x, i) => avg(people.map(p => p.vals[i])));
+    const prev = mi > 0 ? trend[mi - 1] : null;
+    // Opportunities for Improvement: individual (every KPI the manager rated below Standard) and organisation (recurring)
+    const kpisOf = id => ST.kpis.filter(k => k.appraisal_id === id);
+    const ofiPeople = [], agg = {};
+    res.forEach(x => {
+      const low = kpisOf(x.cur.id).filter(k => k.final_achievement_pct != null && Number(k.final_achievement_pct) < 90).sort((a, b) => Number(a.final_achievement_pct) - Number(b.final_achievement_pct));
+      if(low.length) ofiPeople.push({ id: x.id, name: x.name, position: x.position, items: low.map(k => ({ title: k.kpi_title, rating: Math.round(Number(k.final_achievement_pct) / 20), pct: Number(k.final_achievement_pct), notes: k.manager_actual_notes || '' })) });
+      low.forEach(k => { const key = String(k.kpi_title || '').toLowerCase().replace(/\s+/g, ' ').trim(); const g = agg[key] = agg[key] || { title: k.kpi_title, people: [], pcts: [], zero: 0 }; g.people.push(x.name); g.pcts.push(Number(k.final_achievement_pct)); if(Number(k.final_achievement_pct) < 10) g.zero++; });
+    });
+    const ofiOrg = Object.values(agg).map(g => ({ title: g.title, count: g.people.length, avg: avg(g.pcts), zero: g.zero, of: res.length })).sort((a, b) => b.count - a.count || a.avg - b.avg).slice(0, 10);
+    const org = [];
+    if(company != null && company < 100) org.push(`The company result of ${pc(company)} is ${(100 - company).toFixed(1)} points below the 100% target.`);
+    const zeros = res.filter(x => kpisOf(x.cur.id).some(k => Number(k.final_achievement_pct) < 10)).length;
+    if(zeros) org.push(`${zeros} ${zeros === 1 ? 'person has' : 'people have'} at least one KPI rated 0 (Not done). Under the performance standard this calls for management action.`);
+    const miss = people.filter(x => x.result == null).length;
+    if(miss) org.push(`${miss} of ${people.length} active ${people.length === 1 ? 'person has' : 'people have'} no completed appraisal in the last 12 months, so ${miss === 1 ? 'is' : 'are'} not in the company result. Complete these appraisals.`);
+    const below = res.filter(x => x.result < 90).length;
+    if(below) org.push(`${below} of ${res.length} appraised ${res.length === 1 ? 'person is' : 'people are'} below the Standard band (90%).`);
+    return { label: m.long, month: m.key, fyLabel: `${ms[0].long} to ${ms[11].long}`, target: 100, company, prev, appraised: res.length, total: people.length, people, trend, months: ms, mi, ofiPeople, ofiOrg, org, fyEnd: fyE };
+  }
+
+  /* ---------------- renderers ---------------- */
+  function monthHtml(vm, live){
+    const gap = vm.company == null ? null : vm.company - vm.target, c = vm.company == null ? { col: '#999', name: 'No results yet' } : catOf(vm.company);
+    const dlt = vm.prev != null && vm.company != null ? vm.company - vm.prev : null;
+    const maxv = 100;
+    const bars = vm.months.map((x, i) => { const v = vm.trend[i]; return `<div class="b" title="${E(x.long)}: ${pc(v)}"><span>${v == null ? '' : Math.round(v)}</span><span class="f" style="height:${v == null ? 0 : Math.max(2, v / maxv * 90)}px;${i === vm.mi ? 'background:#E0B122' : ''}"></span><span>${E(x.label)}</span></div>`; }).join('');
+    const rows = vm.people.map((x, i) => `<tr><td>${i + 1}</td><td><b>${E(x.name)}</b><div class="r42-mut">${E(x.position)}${x.manager ? ' · reports to ' + E(x.manager) : ''}</div></td>
+      <td class="n"><b>${pc(x.result)}</b></td><td>${chip(x.result)}</td><td class="n">${x.result == null ? '–' : (x.result - vm.target).toFixed(1)}</td><td class="n" title="Reference only">${x.ref == null ? '–' : '<span class="r42-mut">' + pc(x.ref) + '</span>'}</td><td class="n">${pc(x.annualToDate != null ? x.annualToDate : x.annual)}</td></tr>`).join('');
+    const orgOfi = vm.ofiOrg.length ? `<table><thead><tr><th>KPI</th><th class="n">People below Standard</th><th class="n">Average result</th><th class="n">Rated 0</th></tr></thead><tbody>${vm.ofiOrg.map(g => `<tr><td>${E(g.title)}</td><td class="n">${g.count} of ${g.of}</td><td class="n">${pc(g.avg)}</td><td class="n">${g.zero || '–'}</td></tr>`).join('')}</tbody></table>` : '<div class="r42-mut">No KPI was rated below Standard.</div>';
+    const ind = vm.ofiPeople.length ? vm.ofiPeople.map(p => `<div style="margin:10px 0;"><b>${E(p.name)}</b> <span class="r42-mut">${E(p.position)}</span>${p.items.map(it => `<div class="r42-ofi"><b>${E(it.title)}</b>: rated ${it.rating} <span class="r42c" style="background:${RCOL[it.rating]}">${E(CAT[it.rating])}</span>${it.notes ? `<div class="r42-mut" style="margin-top:3px;">${E(it.notes)}</div>` : ''}</div>`).join('')}</div>`).join('') : '<div class="r42-mut">Nobody has a KPI below Standard.</div>';
+    return `<div class="r42-card"><div class="r42-hero"><div><div class="r42-mut">COMPANY PERFORMANCE: ${E(vm.label.toUpperCase())}</div><div class="r42-big" style="color:${c.col}">${pc(vm.company)}</div><div>${chip(vm.company)}</div></div>
+        <div style="flex:1;min-width:220px;font-size:13.5px;line-height:1.6;"><div><b>Target:</b> ${vm.target}%${gap == null ? '' : ` &nbsp; <b>Gap:</b> ${gap >= 0 ? '+' : ''}${gap.toFixed(1)} points`}</div>
+        <div><b>Appraised:</b> ${vm.appraised} of ${vm.total} active people</div>${dlt == null ? '' : `<div><b>Change on the previous month:</b> ${dlt >= 0 ? '+' : ''}${dlt.toFixed(1)} points</div>`}
+        <div class="r42-mut" style="margin-top:6px;">The line manager's rating is the rating that counts. The average of the self-assessment and the manager's assessment is shown for reference only.</div></div></div>
+        <div style="margin-top:10px;"><div class="r42-mut">Company result by month, ${E(vm.fyLabel)}</div><div class="r42-bars">${bars}</div></div></div>
+      <div class="r42-card"><h3>Performance by person</h3><div style="overflow:auto;"><table><thead><tr><th>#</th><th>Person</th><th class="n">Result</th><th>Rating</th><th class="n">vs target</th><th class="n">Ref. average</th><th class="n">Year to date</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="r42-mut">No completed appraisals yet.</td></tr>'}</tbody></table></div></div>
+      <div class="r42-card"><h3>Opportunities for Improvement: the organisation</h3>${vm.org.map(t => `<div class="r42-ofi">${E(t)}</div>`).join('')}<div style="margin-top:10px;">${orgOfi}</div></div>
+      <div class="r42-card"><h3>Opportunities for Improvement: individuals</h3><div class="r42-mut">Every KPI the line manager rated below Standard (below 90%), with the manager's notes.</div>${ind}</div>`;
+  }
+  function annualHtml(vm){
+    const rows = vm.people.map(x => `<tr><td><b>${E(x.name)}</b><div class="r42-mut">${E(x.position)}</div></td>${x.vals.map(v => `<td class="n" style="${v == null ? 'color:#bbb' : ''}">${v == null ? '–' : Math.round(v)}</td>`).join('')}<td class="n"><b>${pc(x.annual)}</b></td><td>${chip(x.annual)}</td><td class="n">${x.n}</td></tr>`).join('');
+    const co = avg(vm.people.map(x => x.annual));
+    return `<div class="r42-card"><h3>Annual result per person: ${E(vm.fyLabel)}</h3><div class="r42-mut" style="margin-bottom:8px;">Each month shows the person's latest completed appraisal as at the end of that month. The annual result is the average of the appraisals completed in the financial year, using the line manager's rating. Company annual result: <b>${pc(co)}</b> against 100%.</div>
+      <div style="overflow:auto;"><table><thead><tr><th>Person</th>${vm.months.map(m => `<th class="n">${E(m.label.slice(0, 3))}</th>`).join('')}<th class="n">Annual</th><th>Rating</th><th class="n">Appraisals</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  }
+  function bonusCalc(vm){
+    const part = vm.people.filter(x => x.annual != null && !ST.excl.has(x.id));
+    const n = part.length, budget = n ? ST.pool / n : 0, q = part.filter(x => x.annual >= ST.minr), sumA = q.reduce((s, x) => s + x.annual, 0), w = ST.w / 100;
+    let rows = part.map(x => { const isQ = q.includes(x); const raw = isQ && q.length ? ST.pool * ((1 - w) / q.length + (sumA > 0 ? w * x.annual / sumA : w / q.length)) : 0; return { x, actual: Math.round(raw * 100) / 100, budget: Math.round(budget * 100) / 100, q: isQ }; });
+    const diff = Math.round((ST.pool - rows.reduce((s, r) => s + r.actual, 0)) * 100) / 100;
+    if(rows.length && Math.abs(diff) > 0 && q.length){ const big = rows.reduce((a, b) => b.actual > a.actual ? b : a); big.actual = Math.round((big.actual + diff) * 100) / 100; }
+    if(rows.length){ const bd = Math.round((ST.pool - rows.reduce((s, r) => s + r.budget, 0)) * 100) / 100; if(bd) rows[0].budget = Math.round((rows[0].budget + bd) * 100) / 100; }
+    rows.forEach(r => { r.var = Math.round((r.actual - r.budget) * 100) / 100; r.keep = Math.round(r.actual * ST.ret) / 100; r.pay = Math.round((r.actual - r.keep) * 100) / 100; });
+    const rel = new Date(Date.parse(vm.fyEnd)); rel.setUTCFullYear(rel.getUTCFullYear() + Number(ST.years));
+    return { rows, n, budget, release: iso(rel), tot: { actual: rows.reduce((s, r) => s + r.actual, 0), budget: rows.reduce((s, r) => s + r.budget, 0), keep: rows.reduce((s, r) => s + r.keep, 0), pay: rows.reduce((s, r) => s + r.pay, 0) } };
+  }
+  function bonusHtml(vm){
+    const b = bonusCalc(vm), skipped = vm.people.filter(x => x.annual == null);
+    const all = vm.people.filter(x => x.annual != null);
+    const body = b.rows.map(r => `<tr><td><label style="display:flex;gap:6px;align-items:flex-start;"><input type="checkbox" checked onchange="r42Incl('${E(r.x.id)}',this.checked)" class="r42-noprint"><span><b>${E(r.x.name)}</b><div class="r42-mut">${E(r.x.position)}</div></span></label></td><td class="n">${pc(r.x.annual)}</td><td>${chip(r.x.annual)}</td><td class="n">${R(r.budget)}</td><td class="n"><b>${R(r.actual)}</b>${r.q ? '' : '<div class="r42-mut">below minimum</div>'}</td><td class="n" style="color:${r.var >= 0 ? '#2E7D4F' : '#B3261E'}">${r.var >= 0 ? '+' : ''}${R(r.var).replace('R ', 'R ')}</td><td class="n">${R(r.keep)}</td><td class="n">${R(r.pay)}</td></tr>`).join('');
+    const excluded = all.filter(x => ST.excl.has(x.id));
+    return `<div class="r42-card r42-bonus"><h3>Annual additional bonus: ${E(vm.fyLabel)}</h3>
+      <div class="r42-ctl r42-noprint"><div><label>Bonus pool (R)</label><input type="number" min="0" step="1000" value="${ST.pool}" onchange="r42Set('pool',this.value)"></div>
+        <div><label>Retained for staff retention (%)</label><input type="number" min="0" max="100" value="${ST.ret}" onchange="r42Set('ret',this.value)"></div>
+        <div><label>Retained until (years)</label><input type="number" min="0" max="20" value="${ST.years}" onchange="r42Set('years',this.value)"></div>
+        <div><label>Weight of performance (%)</label><input type="number" min="0" max="100" value="${ST.w}" onchange="r42Set('w',this.value)" title="0 = everyone receives the same amount; 100 = shares follow the annual result"></div>
+        <div><label>Minimum annual result (%)</label><input type="number" min="0" max="100" value="${ST.minr}" onchange="r42Set('minr',this.value)" title="People below this result receive nothing; their share is spread to the others"></div></div>
+      <div style="font-size:13.5px;line-height:1.6;margin-bottom:8px;">The pool of <b>${R(ST.pool)}</b> is shared between <b>${b.n}</b> ${b.n === 1 ? 'person' : 'people'}: an equal budget share of <b>${R(b.budget)}</b> each, adjusted for each person's annual result so that some receive a little more and others a little less. The total always equals the pool. <b>${ST.ret}%</b> of each person's share is retained and paid at ${ST.years} years (${E(b.release)}); <b>${100 - ST.ret}%</b> is paid out this year.</div>
+      <div style="overflow:auto;"><table><thead><tr><th>Person</th><th class="n">Annual result</th><th>Rating</th><th class="n">Budget share</th><th class="n">Actual share</th><th class="n">Variance</th><th class="n">${ST.ret}% retained</th><th class="n">${100 - ST.ret}% paid out</th></tr></thead><tbody>${body}
+      <tr style="font-weight:800;background:#f6f6f6;"><td>Total</td><td></td><td></td><td class="n">${R(b.tot.budget)}</td><td class="n">${R(b.tot.actual)}</td><td class="n">${R(b.tot.actual - b.tot.budget)}</td><td class="n">${R(b.tot.keep)}</td><td class="n">${R(b.tot.pay)}</td></tr></tbody></table></div>
+      ${skipped.length ? `<div class="r42-ofi">${skipped.length} ${skipped.length === 1 ? 'person has' : 'people have'} no completed appraisal in this financial year and ${skipped.length === 1 ? 'is' : 'are'} not in the schedule: ${E(skipped.map(x => x.name).join(', '))}.</div>` : ''}
+      ${excluded.length ? `<div class="r42-ofi r42-noprint">Excluded by you: ${E(excluded.map(x => x.name).join(', '))} <button class="btn-small" onclick="r42InclAll()">Include everyone</button></div>` : ''}
+      <div class="r42-mut" style="margin-top:8px;">The retained amounts are held for staff retention and paid out after ${ST.years} years. The Managing Director approves the final amounts and the retention conditions.</div>
+      <div class="r42-noprint" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;"><button class="btn-primary" onclick="r42SaveBonus()">Save this schedule</button><button class="btn-small" onclick="r42Excel('bonus')">Download Excel</button><button class="btn-small" onclick="r42Print()">Print</button></div></div>`;
+  }
+
+  /* ---------------- page ---------------- */
+  let VM = null;
+  function paint(){
+    const root = document.getElementById('r42-page'); if(!root) return;
+    VM = build();
+    const ms = VM.months;
+    const yrs = []; for(let y = NOW.getUTCFullYear() - 6; y <= NOW.getUTCFullYear() + 1; y++) yrs.push(y);
+    const live = !ST.snap;
+    const body = ST.snap ? `<div class="r42-card r42-noprint" style="background:#eef4ff;">Viewing the published report for ${E(ST.snap.label)} (published ${E(String(ST.snapAt || '').slice(0, 10))}). <button class="btn-small" onclick="r42Live()">Back to live results</button></div>` + monthHtml(ST.snap, false)
+      : ST.tab === 'month' ? monthHtml(VM, true) : ST.tab === 'annual' ? annualHtml(VM) : bonusHtml(VM);
+    root.querySelector('#r42-body').innerHTML = (ST.sqlNeeded ? '<div class="r42-ofi">Run the Release 42 SQL script so the reference average and monthly publishing are available.</div>' : '') + body;
+    const pubs = root.querySelector('#r42-pubs'); if(pubs) pubs.innerHTML = ST.tblNeeded ? '' : (ST.published.length ? `<div class="r42-mut" style="margin-top:6px;">Published: ${ST.published.map(p => `<a href="javascript:void(0)" onclick="r42View('${E(p.id)}')">${E(MN[Number(String(p.report_month).slice(5, 7)) - 1])} ${E(String(p.report_month).slice(0, 4))} (${pc(p.company_result)})</a>`).join(' · ')}</div>` : '');
+    root.querySelectorAll('.r42-tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === ST.tab && live));
+    const mSel = root.querySelector('#r42-m'); if(mSel) mSel.innerHTML = ms.map((m, i) => `<option value="${i}" ${i === ST.mi ? 'selected' : ''}>${E(m.long)}</option>`).join('');
+    const ySel = root.querySelector('#r42-fy'); if(ySel) ySel.innerHTML = yrs.map(y => `<option value="${y}" ${y === ST.fy ? 'selected' : ''}>${y}${ST.fyMonth !== 1 ? '/' + (y + 1) : ''}</option>`).join('');
+  }
+  window.r42Open = async function(){
+    const sc = window.wmPeopleScope ? window.wmPeopleScope() : { all: false };
+    if(!sc.all){ toast('The Company Performance Report is for the Managing Director and HR.', 'info'); return; }
+    const root = document.getElementById('content-root'); if(!root) return;
+    root.innerHTML = `<div id="r42-page"><p class="r42-mut">Preparing the company performance report…</p></div>`;
+    await load(); ST.snap = null; if(ST.mi == null) ST.mi = defMi();
+    root.innerHTML = `<div id="r42-page"><div class="r42-bar r42-noprint"><div><h2>Company Performance Report</h2><div class="r42-mut">Everybody's performance, concluding in the company performance against a 100% target. For the Managing Director.</div><div id="r42-pubs"></div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn-small" onclick="showModule('appraisals')">← Back to KPIs &amp; Appraisals</button></div></div>
+      <div class="r42-ctl r42-noprint"><div><label>Financial year</label><select id="r42-fy" onchange="r42Set('fy',this.value)"></select></div><div><label>Year starts in</label><select onchange="r42Set('fyMonth',this.value)">${MN.map((m, i) => `<option value="${i + 1}" ${i + 1 === ST.fyMonth ? 'selected' : ''}>${m}</option>`).join('')}</select></div><div><label>Report month</label><select id="r42-m" onchange="r42Set('mi',this.value)"></select></div></div>
+      <div class="r42-tabs r42-noprint"><button data-t="month" onclick="r42Tab('month')">Monthly report</button><button data-t="annual" onclick="r42Tab('annual')">Annual result per person</button><button data-t="bonus" onclick="r42Tab('bonus')">Annual bonus</button></div>
+      <div id="r42-actions" class="r42-noprint" style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;"><button class="btn-primary" onclick="r42Publish()">Publish and email this month's report</button><button class="btn-small" onclick="r42Print()">Print or save as PDF</button><button class="btn-small" onclick="r42Excel('month')">Download Excel</button></div>
+      <div id="r42-print"><div id="r42-body"></div></div></div>`;
+    window.scrollTo(0, 0); paint();
+  };
+  window.r42Tab = t => { ST.snap = null; ST.tab = t; paint(); };
+  window.r42Live = () => { ST.snap = null; paint(); };
+  window.r42Set = (k, v) => { if(k === 'fy'){ ST.fy = Number(v); ST.mi = ST.fy === defFy() ? defMi() : 11; } else if(k === 'fyMonth'){ ST.fyMonth = Number(v); ST.fy = defFy(); ST.mi = defMi(); } else if(k === 'mi') ST.mi = Number(v); else ST[k] = Math.max(0, Number(v) || 0); ST.snap = null; paint(); };
+  window.r42Incl = (id, on) => { if(on) ST.excl.delete(id); else ST.excl.add(id); paint(); };
+  window.r42InclAll = () => { ST.excl.clear(); paint(); };
+  window.r42View = id => { const p = ST.published.find(x => x.id === id); if(!p) return; ST.snap = p.payload; ST.snapAt = p.published_at; paint(); window.scrollTo(0, 0); };
+
+  window.r42Print = function(){
+    const el = document.getElementById('r42-print'); if(!el) return; const w = window.open('', '_blank'); if(!w){ toast('Allow pop-ups to print.', 'error'); return; }
+    const css = (document.getElementById('r42-css') || {}).outerHTML || '';
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Company Performance Report: ${E((STATE.org && STATE.org.name) || '')}</title>${css}<style>body{font-family:Arial,Helvetica,sans-serif;margin:12mm;color:#111;--text-faint:#666;--border:#ccc}.r42-noprint{display:none}@page{margin:10mm}</style></head><body><div id="r42-page"><h2>${E((STATE.org && STATE.org.name) || '')}: Company Performance Report</h2>${el.innerHTML}</div><script>setTimeout(function(){window.print()},400)<\/script></body></html>`); w.document.close();
+  };
+  window.r42Excel = async function(kind){
+    try{
+      const X = await ensureXLSX(), vm = ST.snap || VM, wb = X.utils.book_new();
+      if(kind === 'bonus'){
+        const b = bonusCalc(VM);
+        const rows = b.rows.map(r => ({ Name: r.x.name, Position: r.x.position, 'Annual result %': Number(r.x.annual.toFixed(1)), 'Budget Share': r.budget, 'Actual Share': r.actual, Variance: r.var, [`${ST.ret}% Retention`]: r.keep, [`${100 - ST.ret}% Payout`]: r.pay, 'Retention paid out': b.release }));
+        rows.push({ Name: 'TOTAL', 'Budget Share': b.tot.budget, 'Actual Share': b.tot.actual, Variance: Math.round((b.tot.actual - b.tot.budget) * 100) / 100, [`${ST.ret}% Retention`]: b.tot.keep, [`${100 - ST.ret}% Payout`]: b.tot.pay });
+        X.utils.book_append_sheet(wb, X.utils.json_to_sheet(rows), 'SCHEDULE');
+        X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['Bonus pool', ST.pool], ['Participants', b.n], ['Retained %', ST.ret], ['Retained years', ST.years], ['Weight of performance %', ST.w], ['Minimum annual result %', ST.minr], ['Financial year', VM.fyLabel]]), 'Basis');
+      } else {
+        X.utils.book_append_sheet(wb, X.utils.json_to_sheet(vm.people.map(x => ({ Person: x.name, Position: x.position, 'Line manager': x.manager, 'Result % (manager rating counts)': x.result == null ? '' : Number(x.result.toFixed(1)), Rating: x.result == null ? '' : catOf(x.result).name, 'Reference average %': x.ref == null ? '' : Number(x.ref.toFixed(1)), 'Year to date %': (x.annualToDate != null ? x.annualToDate : x.annual) == null ? '' : Number((x.annualToDate != null ? x.annualToDate : x.annual).toFixed(1)) })).concat([{ Person: 'COMPANY RESULT', 'Result % (manager rating counts)': vm.company == null ? '' : Number(vm.company.toFixed(1)), Rating: 'Target 100%' }])), 'Monthly');
+        if(vm.months) X.utils.book_append_sheet(wb, X.utils.json_to_sheet(vm.people.map(x => { const o = { Person: x.name }; vm.months.forEach((m, i) => { o[m.label] = x.vals && x.vals[i] != null ? Math.round(x.vals[i]) : ''; }); o['Annual %'] = x.annual == null ? '' : Number(x.annual.toFixed(1)); return o; })), 'Annual per person');
+        X.utils.book_append_sheet(wb, X.utils.json_to_sheet(arr(vm.ofiOrg).map(g => ({ KPI: g.title, 'People below Standard': g.count, 'Of appraised': g.of, 'Average %': g.avg == null ? '' : Number(g.avg.toFixed(1)), 'Rated 0': g.zero }))), 'OFI organisation');
+        const ofi = []; arr(vm.ofiPeople).forEach(p => p.items.forEach(it => ofi.push({ Person: p.name, KPI: it.title, Rating: it.rating, Category: CAT[it.rating], "Manager's notes": it.notes }))); X.utils.book_append_sheet(wb, X.utils.json_to_sheet(ofi), 'OFI individuals');
+      }
+      X.writeFile(wb, kind === 'bonus' ? `Annual-bonus-schedule-${VM.fyLabel.replace(/\s+/g, '-')}.xlsx` : `Company-Performance-Report-${vm.label.replace(/\s+/g, '-')}.xlsx`);
+    }catch(e){ toast('Could not export: ' + (e.message || e), 'error'); }
+  };
+
+  window.r42Publish = async function(){
+    if(ST.snap){ toast('Go back to live results to publish.', 'info'); return; }
+    const vm = VM; if(!vm || vm.company == null){ toast('There are no completed appraisals to report yet.', 'info'); return; }
+    const me = (STATE.user && STATE.user.email) || '';
+    const to = prompt(`Publish the ${vm.label} Company Performance Report?\n\nEmail it to (separate addresses with commas). Leave empty to publish without emailing.`, me); if(to === null) return;
+    const payload = { label: vm.label, month: vm.month, fyLabel: vm.fyLabel, target: vm.target, company: vm.company, prev: vm.prev, appraised: vm.appraised, total: vm.total, trend: vm.trend, months: vm.months, mi: vm.mi, org: vm.org, ofiOrg: vm.ofiOrg, ofiPeople: vm.ofiPeople, fyEnd: vm.fyEnd,
+      people: vm.people.map(x => ({ id: x.id, name: x.name, position: x.position, manager: x.manager, result: x.result, ref: x.ref, annual: x.annual, annualToDate: x.annualToDate, vals: x.vals, n: x.n })) };
+    const { error } = await sb().from('performance_reports').upsert({ organisation_id: STATE.org.id, report_month: vm.month, company_result: vm.company, target: 100, participants: vm.appraised, payload, published_by: STATE.user.id, published_at: new Date().toISOString(), emailed_to: to.trim() || null }, { onConflict: 'organisation_id,report_month' });
+    if(error){ toast('Could not publish: ' + error.message + (/performance_reports/.test(error.message) ? ' (run the Release 42 SQL script first)' : ''), 'error'); return; }
+    let sent = 0;
+    const list = to.split(/[,;\s]+/).filter(x => /@/.test(x));
+    const top = vm.people.filter(x => x.result != null).slice(0, 5).map(x => `  ${x.name}: ${pc(x.result)}`).join('\n');
+    const orgLines = vm.org.map(t => '  - ' + t).join('\n');
+    const ofiLines = vm.ofiOrg.slice(0, 5).map(g => `  - ${g.title}: ${g.count} of ${g.of} below Standard (average ${pc(g.avg)})`).join('\n');
+    const msg = `Company Performance Report: ${vm.label}\n${STATE.org.name}\n\nCompany result: ${pc(vm.company)} against a target of ${vm.target}% (${catOf(vm.company).name}).\nAppraised: ${vm.appraised} of ${vm.total} active people.\n\nHighest results:\n${top}\n\nOpportunities for Improvement: the organisation\n${orgLines || '  None.'}\n${ofiLines}\n\nThe full report, with the Opportunities for Improvement for each person, the monthly trend and the annual result per person, is under KPIs & Appraisals, Company Performance Report. The line manager's rating is the rating that counts.`;
+    for(const a of list){ try{ if(await sendEmailToAddress(a, `Company Performance Report ${vm.label}: ${STATE.org.name}`, msg)) sent++; }catch(e){} }
+    await load(); paint();
+    toast(`Published.${list.length ? ` Emailed to ${sent} of ${list.length}.` : ''}`, 'success');
+  };
+  window.r42SaveBonus = async function(){
+    const b = bonusCalc(VM); if(!b.n){ toast('Nobody has an annual result yet.', 'info'); return; }
+    if(!confirm(`Save this bonus schedule for ${VM.fyLabel}? A saved schedule for the same year is replaced.`)) return;
+    const payload = { pool: ST.pool, ret: ST.ret, years: ST.years, w: ST.w, minr: ST.minr, release: b.release, tot: b.tot, rows: b.rows.map(r => ({ id: r.x.id, name: r.x.name, annual: r.x.annual, budget: r.budget, actual: r.actual, var: r.var, keep: r.keep, pay: r.pay })) };
+    const { error } = await sb().from('bonus_runs').upsert({ organisation_id: STATE.org.id, financial_year_start: VM.months[0].key, pool: ST.pool, retained_pct: ST.ret, retention_years: ST.years, min_result: ST.minr, payload, created_by: STATE.user.id, created_at: new Date().toISOString() }, { onConflict: 'organisation_id,financial_year_start' });
+    if(error) toast('Could not save: ' + error.message + (/bonus_runs/.test(error.message) ? ' (run the Release 42 SQL script first)' : ''), 'error'); else toast('Bonus schedule saved.', 'success');
+  };
+
+  /* ---------------- entry button on KPIs & Appraisals ---------------- */
+  function addBtn(){
+    const root = document.getElementById('content-root'); if(!root || !document.getElementById('appraisal-table-wrap') || root.querySelector('#r42-cpr-btn')) return;
+    const sc = window.wmPeopleScope ? window.wmPeopleScope() : { all: false }; if(!sc.all) return;
+    const tb = root.querySelector('.toolbar'); if(!tb) return;
+    const b = document.createElement('button'); b.id = 'r42-cpr-btn'; b.className = 'btn-small'; b.style.cssText = 'background:#E0B122;color:#111;border-color:#E0B122;font-weight:700;'; b.textContent = 'Company Performance Report'; b.onclick = () => window.r42Open();
+    const first = tb.querySelector('#ap-stats-btn, .btn-small, .btn-primary'); if(first) first.parentNode.insertBefore(b, first); else tb.appendChild(b);
+  }
+  { const _s = showModule; showModule = window.showModule = function(mod){ const r = _s.apply(this, arguments); if(mod === 'appraisals') [60, 500, 1400].forEach(t => setTimeout(() => { try{ addBtn(); }catch(e){} }, t)); return r; }; }
+  try{ const _r = renderAppraisalsTable; renderAppraisalsTable = window.renderAppraisalsTable = function(){ const r = _r.apply(this, arguments); try{ addBtn(); }catch(e){} return r; }; }catch(e){}
+
+  /* ============ document creation and review on their own page ============ */
+  const DCSS = `<style id="r42-doc-css">
+    body.r42-doc #content-root > *:not(.doc-hub):not(#r42-doc-head){display:none !important}
+    body.r42-doc .doc-hub > *:not(#doc-form):not(#doc-detail-slot){display:none !important}
+    #r42-doc-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+    #r42-doc-head h2{margin:0;font-size:20px} #r42-doc-head .sub{font-size:12.5px;color:var(--text-faint);margin-top:2px}
+  </style>`;
+  if(!document.getElementById('r42-doc-css')) document.head.insertAdjacentHTML('beforeend', DCSS);
+  const DOCP = () => !!document.body.classList.contains('r42-doc');
+  function enterDoc(title, sub){
+    if(document.body.classList.contains('r41-focus') || window.__r41Keep) return;
+    const root = document.getElementById('content-root'); if(!root || !root.querySelector('.doc-hub')) return;
+    document.body.classList.add('r42-doc');
+    let h = document.getElementById('r42-doc-head'); if(h) h.remove();
+    root.insertAdjacentHTML('afterbegin', `<div id="r42-doc-head"><div><h2>${E(title)}</h2><div class="sub">${E(sub || '')}</div></div><button class="btn-small" onclick="r42DocBack()">← Back to the register</button></div>`);
+    window.scrollTo(0, 0);
+  }
+  function leaveDoc(){ document.body.classList.remove('r42-doc'); const h = document.getElementById('r42-doc-head'); if(h) h.remove(); }
+  window.r42DocBack = function(){
+    try{ const f = document.getElementById('doc-form'); if(f && f.classList.contains('open')){ f.classList.remove('open'); } }catch(e){}
+    try{ const s = document.getElementById('doc-detail-slot'); if(s) s.innerHTML = ''; }catch(e){}
+    leaveDoc(); window.scrollTo(0, 0);
+  };
+  try{ const _t = toggleDocForm; toggleDocForm = window.toggleDocForm = function(){
+    const r = _t.apply(this, arguments); const f = document.getElementById('doc-form');
+    if(f && f.classList.contains('open')) enterDoc('New document', 'Follow the steps to create the document. When it is created it opens here for review and approval.'); else if(DOCP()) leaveDoc();
+    return r; }; }catch(e){ console.warn('r42 toggleDocForm', e); }
+  try{ const _o = openDocumentDetail; openDocumentDetail = window.openDocumentDetail = async function(id){
+    const r = await _o.apply(this, arguments);
+    try{ const slot = document.getElementById('doc-detail-slot'); if(slot && slot.innerHTML.trim()){ const d = arr(STATE.documents).find(x => x.id === id); enterDoc(d ? `${d.doc_number || ''} ${d.title || ''}`.trim() : 'Document', 'Review, edit and approve this controlled document.'); } }catch(e){}
+    return r; }; }catch(e){ console.warn('r42 openDocumentDetail', e); }
+  try{ const _c = closeDocumentDetail; closeDocumentDetail = window.closeDocumentDetail = function(){ const r = _c.apply(this, arguments); if(DOCP()) leaveDoc(); return r; }; }catch(e){}
+  { const _s = showModule; showModule = window.showModule = function(mod){ if(DOCP() && !(mod === 'documents' && document.querySelector('#doc-detail-slot') && document.querySelector('#doc-detail-slot').innerHTML.trim())) leaveDoc(); return _s.apply(this, arguments); }; }
 })();
 
 </script>
