@@ -24,7 +24,7 @@
 (function(){ try{
   window.__wmSb = import('https://esm.sh/@supabase/supabase-js@2').catch(function(){ return null; });
   var q = new URLSearchParams(location.search);
-  if(q.get('sp')||q.get('sv')||q.get('sq')||q.get('g')||q.get('nr')||q.get('ss')||q.get('ps')||q.get('ap')||q.has('tutorial')) return;
+  if(q.get('sp')||q.get('sv')||q.get('sq')||q.get('g')||q.get('nr')||q.get('ss')||q.get('ps')||q.get('ap')||q.get('da')||q.has('tutorial')) return;
   for(var i=0;i<localStorage.length;i++){
     var k = localStorage.key(i);
     if(/^sb-.+-auth-token$/.test(k)){
@@ -1801,7 +1801,7 @@ async function enterApp(){
 // already signed in on this device.
 document.addEventListener('DOMContentLoaded', async () => {
   try {
-    { const _q = new URLSearchParams(location.search); if(_q.get('sp') || _q.get('sv') || _q.get('sq') || _q.get('g') || _q.get('nr') || _q.get('ss') || _q.get('ps') || _q.get('ap') || _q.has('tutorial')) return; } // public page modes
+    { const _q = new URLSearchParams(location.search); if(_q.get('sp') || _q.get('sv') || _q.get('sq') || _q.get('g') || _q.get('nr') || _q.get('ss') || _q.get('ps') || _q.get('ap') || _q.get('da') || _q.has('tutorial')) return; } // public page modes
     await ensureSupabaseLib();
     if(!STATE.supabase) initSupabase(SUPABASE_URL, SUPABASE_ANON_KEY);
     const { data:{ session } } = await STATE.supabase.auth.getSession();
@@ -9770,6 +9770,7 @@ window.downloadDocumentPdf = async function(id, mode){
     doc.text('No content sections have been authored yet.', marginL, y);
   }
 
+  try{ await wmIssueBlockPdf(doc, d, { x: marginL, w: contentW, getY: () => y, setY: v => { y = v; }, ensure: n => ensureSpace(n) }); }catch(e){ console.warn('issue block', e); }
   wmPdfFrame(doc, { title: d.title, logo: logoImage, info: await wmDocControl(d) });
 
   hideLoader();
@@ -9947,6 +9948,8 @@ window.printDocumentContent = async function(id){
   if(!bodyChildren.length){
     bodyChildren.push(new Paragraph({ children: [new TextRun({ text: "No content sections have been authored yet.", italics: true, size: 22, font: "Arial", color: "666666" })] }));
   }
+
+  try{ (await wmIssueBlockDocx(docxLib, d)).forEach(x => bodyChildren.push(x)); }catch(e){ console.warn('issue block', e); }
 
   const doc = new Document({
     sections: [{
@@ -46950,7 +46953,7 @@ add('personnel', 'tips', ['Aim for 100% onboarding before a new person works uns
   /* signed-out visitors open straight to sign-in */
   document.addEventListener('DOMContentLoaded', async () => {
     try{
-      const q = new URLSearchParams(location.search); if(q.get('sp') || q.get('sv') || q.get('sq') || q.get('g') || q.get('nr') || q.get('ss') || q.get('ps') || q.get('ap') || q.has('tutorial')) return;
+      const q = new URLSearchParams(location.search); if(q.get('sp') || q.get('sv') || q.get('sq') || q.get('g') || q.get('nr') || q.get('ss') || q.get('ps') || q.get('ap') || q.get('da') || q.has('tutorial')) return;
       await ensureSupabaseLib(); if(!STATE.supabase) initSupabase(SUPABASE_URL, SUPABASE_ANON_KEY);
       const { data:{ session } } = await STATE.supabase.auth.getSession();
       if(!session || !session.user){ if(!document.getElementById('view-dashboard').classList.contains('active')) showGate('gate-auth'); }
@@ -53273,9 +53276,12 @@ Likelihood and impact are whole numbers from 1 to 5.`;
         const n = Math.max((head || []).length, ...rows.map(r => r.length));
         const pad = r => { const c = r.slice(); while(c.length < n) c.push(''); return c; };
         const wc = head ? head.findIndex(h => /weight/i.test(h)) : -1;
-        out.push({ t:'table', head: head ? pad(head) : null, rows: rows.map(pad), weightCol: wc });
+        const keyLines = c => String(c).replace(/\s*;\s*(?=[0-5]\s*=)/g, '\n');
+        out.push({ t:'table', head: head ? pad(head) : null, rows: rows.map(pad).map(r => r.map(keyLines)), weightCol: wc });
         continue;
       }
+      { const RK = /^\s*([0-5])\s*[:=]\s+(.+?)\s*$/; if(RK.test(l) && !isPipe(l)){ let j = i; const rr = []; while(j < lines.length && RK.test(lines[j]) && !isPipe(lines[j])){ const m = lines[j].match(RK); let d = clean(m[2]), cat = ''; const cm = d.match(/^(.*?)\s*\(([^()]{2,24})\)\s*\.?$/); if(cm){ d = cm[1]; cat = cm[2]; } rr.push([m[1], cat, d]); j++; }
+        if(rr.length >= 3){ out.push({ t:'table', head:['Rating', 'Category', 'Meaning'], rows: rr, weightCol: -1, widths:[7, 14, 60], ratingKey:true }); i = j; continue; } } }
       if(bulletRe.test(l)){ const items = []; while(i < lines.length && bulletRe.test(lines[i])){ items.push(clean(lines[i].match(bulletRe)[1])); i++; } out.push({ t:'ul', items }); continue; }
       if(numRe.test(l)){ const items = []; while(i < lines.length && numRe.test(lines[i])){ items.push(clean(lines[i].match(numRe)[2])); i++; } out.push({ t:'ol', items }); continue; }
       const kvAt = j => { const m = lines[j] && lines[j].match(kvRe); return m && m[1].trim().split(/\s+/).length <= 5 && !/[.!?]$/.test(m[1]) && !isPipe(lines[j]) ? [clean(m[1]), clean(m[2])] : null; };
@@ -53361,7 +53367,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
         else if(b.t === 'kv') kv(b.rows);
         else if(b.t === 'table'){
           if(b.weightCol >= 0 && b.rows.length){ const tw = b.rows.reduce((s, r) => s + (parseFloat(String(r[b.weightCol]).replace('%', '')) || 0), 0); chips([[b.rows.length + ' measures', col.blue], ['Total weight ' + Math.round(tw) + '%', Math.round(tw) === 100 ? col.green : col.amber]]); }
-          table(b.head, b.rows, { weightCol: b.weightCol });
+          table(b.head, b.rows, { weightCol: b.weightCol, widths: b.widths });
         }
       });
     }
@@ -53391,7 +53397,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     const b = { style: BorderStyle.SINGLE, size: 4, color: 'D4D4D8' }, borders = { top:b, bottom:b, left:b, right:b };
     const wmax = o.weightCol >= 0 ? Math.max(1, ...rows.map(r => parseFloat(String(r[o.weightCol]).replace('%', '')) || 0)) : 1;
     const cell = (txt, i, hd, zebra) => {
-      const kids = [new Paragraph({ spacing:{ before:40, after:40 }, children:[ new TextRun({ text:String(txt == null ? '' : txt), size:19, font:'Arial', bold: hd || (i === 0 && !o.noBoldFirst), color: hd ? 'FFFFFF' : '111111' }) ] })];
+      const kids = String(txt == null ? '' : txt).split('\n').map(t => new Paragraph({ spacing:{ before:40, after:40 }, children:[ new TextRun({ text:t, size:19, font:'Arial', bold: hd || (i === 0 && !o.noBoldFirst), color: hd ? 'FFFFFF' : '111111' }) ] }));
       if(!hd && o.weightCol === i){ const v = parseFloat(String(txt).replace('%', '')) || 0, nb = Math.max(1, Math.round(v / wmax * 10)); kids.push(new Paragraph({ children:[ new TextRun({ text:'█'.repeat(nb), size:14, font:'Arial', color:'B21616' }), new TextRun({ text:'█'.repeat(10 - nb), size:14, font:'Arial', color:'E4E4E8' }) ] })); }
       return new TableCell({ width:{ size:widths[i], type:WidthType.DXA }, borders, margins:{ top:50, bottom:50, left:100, right:100 }, shading: hd ? { type:ShadingType.CLEAR, fill:'26282E', color:'auto' } : (zebra ? { type:ShadingType.CLEAR, fill:'F6F6F8', color:'auto' } : undefined), children:kids });
     };
@@ -53409,7 +53415,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
       else if(b.t === 'kv'){ out.push(wmDocxTable(lib, null, b.rows, { widths:[10, 30] })); out.push(new Paragraph({ spacing:{ after:140 }, children:[] })); }
       else if(b.t === 'table'){
         if(b.weightCol >= 0 && b.rows.length){ const tw = b.rows.reduce((s, r) => s + (parseFloat(String(r[b.weightCol]).replace('%', '')) || 0), 0); out.push(new Paragraph({ keepNext:true, spacing:{ after:80 }, children:[ new TextRun({ text:`${b.rows.length} measures  |  Total weight ${Math.round(tw)}%`, bold:true, size:20, font:'Arial', color: Math.round(tw) === 100 ? '2E7D4F' : 'C48014' }) ] })); }
-        out.push(wmDocxTable(lib, b.head, b.rows, { weightCol:b.weightCol })); out.push(new Paragraph({ spacing:{ after:160 }, children:[] }));
+        out.push(wmDocxTable(lib, b.head, b.rows, { weightCol:b.weightCol, widths:b.widths })); out.push(new Paragraph({ spacing:{ after:160 }, children:[] }));
       }
     });
     return out;
@@ -53520,7 +53526,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   async function svgToCanvas(svgStr, scale){
     return new Promise((resolve, reject) => {
       const vb = (svgStr.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/) || []); const w = parseFloat(vb[1]) || 540, h = parseFloat(vb[2]) || 400;
-      const svg = svgStr.replace('<svg ', `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" `);
+      const svg = /xmlns=/.test(svgStr.slice(0, 300)) ? svgStr : svgStr.replace('<svg ', `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" `);
       const img = new Image();
       img.onload = () => { const c = document.createElement('canvas'); c.width = Math.round(w * scale); c.height = Math.round(h * scale); const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height); resolve({ canvas:c, w, h }); };
       img.onerror = reject; img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
@@ -53576,36 +53582,18 @@ Likelihood and impact are whole numbers from 1 to 5.`;
             i.status === 'green' ? 'On target' : i.status === 'amber' ? 'Near target' : i.status === 'red' ? 'Off target' : 'Not measured', KPI_FREQ[k.frequency] ? KPI_FREQ[k.frequency].label : '', k.owner_id ? memberName(k.owner_id) : '—']; }), { statusCol:3, widths:[16, 11, 14, 9, 8, 10] });
       } else K.para('No active KPIs have been set for this process.', 10.5, 14);
 
-      /* ---- flowchart: whole chart on its own page, never cut through a step ---- */
-      L.newPage(); K.heading('Process Flow', 14);
-      let plan = { landscape:false };
-      if(steps.length && window.pcFlowSvg){
-        const whole = await svgToCanvas(window.pcFlowSvg(steps), 2), availH = L.bottom - L.y - 10;
-        const s1 = Math.min(1, L.cW / whole.w, availH / whole.h);
-        plan = { k:1, s:s1, parts:[{ canvas:whole.canvas, w:whole.w, h:whole.h }] };
-        if(s1 < 0.62 && steps.length >= 8){
-          for(const k of [2, 3]){
-            const size = Math.ceil(steps.length / k), parts = []; let a = 0;
-            while(a < steps.length){ let b = Math.min(steps.length, a + size); while(b < steps.length && b - a > 3 && /decision/.test(String(steps[b - 1].step_kind || steps[b - 1].kind || ''))) b--; parts.push(steps.slice(a, b)); a = b; }
-            const cs = []; for(const ps of parts) cs.push(await svgToCanvas(window.pcFlowSvg(ps), 2));
-            const LW = 842 - 2 * mL, colW = (LW - (k - 1) * 14) / k, availL = 595 - 80 - 136 - 22;
-            const s = Math.min(1, ...cs.map(x => Math.min(colW / x.w, availL / x.h)));
-            if(s > plan.s * 1.3 && (!plan.landscape || s > plan.s)) plan = { k, s, landscape:true, parts:cs, colW, LW };
-          }
-        }
-        if(plan.landscape){
-          doc.deletePage(doc.internal.getNumberOfPages()); doc.addPage('a4', 'l'); dims.pop(); dims.push([842, 595]); L.cW = 842 - 2 * mL; L.bottom = 595 - 80; L.y = 100; K.heading('Process Flow', 14);
-          plan.parts.forEach((x, i) => { const dw = x.w * plan.s, dh = x.h * plan.s, cx = mL + i * (plan.colW + 14) + (plan.colW - dw) / 2; doc.addImage(x.canvas.toDataURL('image/png'), 'PNG', cx, L.y, dw, dh);
-            doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(K.FAINT[0], K.FAINT[1], K.FAINT[2]);
-            if(i < plan.parts.length - 1) doc.text('continued in the next column', mL + i * (plan.colW + 14) + plan.colW / 2, L.y + dh + 12, { align:'center' }); });
-          L.y = L.bottom;
-        } else {
-          const x = plan.parts[0], dw = x.w * plan.s, dh = x.h * plan.s; doc.addImage(x.canvas.toDataURL('image/png'), 'PNG', L.mL + (L.cW - dw) / 2, L.y, dw, dh); L.y += dh + 8;
-        }
-      } else K.para('No flowchart has been built for this process yet.', 10.5, 14);
+      /* ---- flowchart: swim-lane chart on its own landscape page ---- */
+      if(steps.length && window.swimlaneSvg){
+        doc.addPage('a4', 'l'); dims.push([842, 595]); L.cW = 842 - 2 * mL; L.bottom = 595 - 70; L.y = 100;
+        K.heading('Process Flow: swim lanes', 14);
+        const whole = await svgToCanvas(window.swimlaneSvg(steps), 3), availH = L.bottom - L.y - 24, s1 = Math.min(L.cW / whole.w, availH / whole.h);
+        const dw = whole.w * s1, dh = whole.h * s1; doc.addImage(whole.canvas.toDataURL('image/jpeg', 0.92), 'JPEG', mL + (L.cW - dw) / 2, L.y, dw, dh); L.y += dh + 6;
+        doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(K.FAINT[0], K.FAINT[1], K.FAINT[2]);
+        doc.text('Lanes are the roles responsible for each step. Dashed lines are return loops.', mL, L.y + 8);
+      } else { L.newPage(); K.heading('Process Flow', 14); K.para('No flowchart has been built for this process yet.', 10.5, 14); }
 
       /* ---- closing content: linked documents, reviews, document control ---- */
-      if(!plan.landscape && steps.length && window.pcFlowSvg) L.y += 6; else L.newPage();
+      if(steps.length && window.swimlaneSvg) L.newPage(); else L.y += 6;
       const dl = links.map(l => { const d = l.document_id ? documentById(l.document_id) : null; return d ? [d.doc_number || '', d.title || ''] : null; }).filter(Boolean);
       if(dl.length){ K.heading('Linked Documents', 13); K.table(['Document number', 'Title'], dl, { widths:[2, 6] }); }
       if(reviews.length){ K.heading('Review History', 13); K.table(['Date', 'Reviewed by', 'Result', 'Status'], reviews.map(r => [fmtDate(r.review_date), memberName(r.reviewed_by), r.overall_achievement_pct != null ? Number(r.overall_achievement_pct).toFixed(1) + '%' : '—', String(r.status || '').replace(/_/g, ' ')]), { widths:[3, 4, 2, 3] }); }
@@ -53913,6 +53901,213 @@ Likelihood and impact are whole numbers from 1 to 5.`;
       if(id){ STATE._pfMag = id; STATE._pfTab = 'register'; if(document.getElementById('pf-root')) renderProcessFlowchartsList(); }
     }; }
 
+})();
+
+
+/* ===== R48: issue and acceptance of controlled documents (digital acceptance, email link, printed signature block) ===== */
+(function(){
+  const E = s => escapeHtml(String(s == null ? '' : s));
+  const sb = () => STATE.supabase;
+  const d10 = v => v ? String(v).slice(0, 10) : '';
+  const ACCEPT_RE = /job description|appraisal|kpi|appointment|acknowledg|induction|policy acceptance/i;
+  const typeName = d => { const t = (STATE.docTypes || []).find(x => x.id === d.type_id); return t ? `${t.name} ${t.code || ''}` : ''; };
+  const needsAcceptance = d => !!(d && (d.personal_kind || ACCEPT_RE.test(typeName(d)) || ACCEPT_RE.test(d.title || '')));
+  const fmtDT = v => { if(!v) return ''; const t = new Date(v); return isNaN(t) ? '' : t.toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }); };
+  const LBL = { issued:'Issued, awaiting acceptance', accepted:'Accepted digitally', declined:'Declined', signed_paper:'Signed on paper', withdrawn:'Withdrawn' };
+  const COL = { issued:'#B8791C', accepted:'#2E7D4F', declined:'#B3261E', signed_paper:'#2E5AA8', withdrawn:'#6B6B6B' };
+  STATE._issCache = STATE._issCache || {};
+
+  window.wmIssuesOf = async function(docId, force){
+    if(STATE._issTbl === false) return [];
+    if(!force && STATE._issCache[docId]) return STATE._issCache[docId];
+    try{
+      const r = await sb().from('document_issues').select('*').eq('document_id', docId).order('issued_at', { ascending:false });
+      if(r.error){ if(/relation|schema cache|does not exist/i.test(r.error.message || '')) STATE._issTbl = false; return []; }
+      STATE._issCache[docId] = r.data || []; return STATE._issCache[docId];
+    }catch(e){ return []; }
+  };
+  const personOf = d => d && d.personnel_id ? personById(d.personnel_id) : null;
+  const managerOf = p => p && p.line_manager_id ? personById(p.line_manager_id) : null;
+
+  /* everything the printed block needs */
+  window.wmIssueInfo = async function(d){
+    const issues = (await wmIssuesOf(d.id)).filter(i => i.status !== 'withdrawn');
+    const per = personOf(d), mgr = managerOf(per);
+    const live = issues.find(i => ['accepted', 'signed_paper'].includes(i.status)) || issues[0] || null;
+    return { needs: needsAcceptance(d) || issues.length > 0, issues, live, issuer: (live && live.issuer_name) || (mgr && mgr.full_name) || '', recipient: (live && live.recipient_name) || (per && per.full_name) || '' };
+  };
+
+  /* ---- PDF block ---- */
+  window.wmIssueBlockPdf = async function(doc, d, c){
+    const info = await wmIssueInfo(d); if(!info.needs) return;
+    const W = c.w, X = c.x, i = info.live;
+    c.ensure(215);
+    let y = c.getY() + 6;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(20, 20, 22); doc.text('Issue and Acceptance', X, y + 10); y += 24;
+    let line, tone = [246, 246, 248], ink = [60, 60, 66];
+    const rev = i && i.revision && String(i.revision) !== String(d.current_revision);
+    if(i && i.status === 'accepted'){ tone = [232, 244, 236]; ink = [28, 96, 58];
+      line = `Issued by ${i.issuer_name || '—'}${i.issuer_role ? ' (' + i.issuer_role + ')' : ''} on ${fmtDate(d10(i.issued_at))}. Accepted digitally by ${i.accepted_name || i.recipient_name} on ${fmtDT(i.accepted_at)} through QaSHE Watchman. Revision ${fmtRev(i.revision)}. Verification reference ${String(i.accepted_hash || i.id).slice(0, 12).toUpperCase()}.`;
+    } else if(i && i.status === 'signed_paper'){ tone = [232, 238, 248]; ink = [38, 72, 140];
+      line = `Issued by ${i.issuer_name || '—'} on ${fmtDate(d10(i.issued_at))}. A signed paper copy was recorded on ${i.paper_signed_date ? fmtDate(d10(i.paper_signed_date)) : '—'}${i.paper_note ? ' (' + i.paper_note + ')' : ''}.`;
+    } else if(i && i.status === 'issued'){ tone = [251, 242, 222]; ink = [150, 96, 14];
+      line = `Issued by ${i.issuer_name || '—'} to ${i.recipient_name} on ${fmtDate(d10(i.issued_at))}. Digital acceptance is still outstanding.`;
+    } else if(i && i.status === 'declined'){ tone = [250, 232, 230]; ink = [150, 30, 24];
+      line = `Issued by ${i.issuer_name || '—'} on ${fmtDate(d10(i.issued_at))}. The recipient declined to accept: ${i.declined_reason || 'no reason given'}.`;
+    } else line = 'This document has not yet been issued to the person for acceptance.';
+    if(rev) line += ` Note: this acceptance is for revision ${fmtRev(i.revision)}; the current revision is ${fmtRev(d.current_revision)} and it must be issued again.`;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); const ls = doc.splitTextToSize(line, W - 20), h = ls.length * 12.5 + 16;
+    doc.setFillColor(tone[0], tone[1], tone[2]); doc.setDrawColor(212, 212, 216); doc.roundedRect(X, y, W, h, 5, 5, 'FD'); doc.setTextColor(ink[0], ink[1], ink[2]); doc.text(ls, X + 10, y + 16); y += h + 12;
+    /* printed copy: both parties sign for the personnel file or site safety file */
+    const cw = (W - 14) / 2; doc.setTextColor(20, 20, 22);
+    [[X, 'ISSUED BY (LINE MANAGER)', info.issuer], [X + cw + 14, 'ACCEPTED BY (EMPLOYEE)', info.recipient]].forEach(([x, t, nm]) => {
+      doc.setDrawColor(212, 212, 216); doc.setFillColor(255, 255, 255); doc.roundedRect(x, y, cw, 112, 5, 5, 'FD');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(178, 22, 22); doc.text(t, x + 10, y + 15);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(20, 20, 22);
+      doc.text('Name:', x + 10, y + 40); doc.text(nm || '', x + 50, y + 40); doc.setDrawColor(150, 150, 156); doc.setLineWidth(0.5); doc.line(x + 48, y + 43, x + cw - 10, y + 43);
+      doc.text('Signature:', x + 10, y + 70); doc.line(x + 60, y + 73, x + cw - 10, y + 73);
+      doc.text('Date:', x + 10, y + 98); doc.line(x + 38, y + 101, x + cw - 10, y + 101);
+    });
+    y += 122;
+    doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5); doc.setTextColor(110, 110, 118);
+    doc.text(doc.splitTextToSize('Sign the printed copy where a paper record is required, for example the private personnel file or the site safety file. Digital acceptance, where recorded above, is held in QaSHE Watchman.', W), X, y + 6);
+    c.setY(y + 24);
+  };
+
+  /* ---- Word block ---- */
+  window.wmIssueBlockDocx = async function(lib, d){
+    const info = await wmIssueInfo(d); if(!info.needs) return [];
+    const { Paragraph, TextRun, Table, TableRow, TableCell, WidthType, BorderStyle } = lib, i = info.live;
+    let line = 'This document has not yet been issued to the person for acceptance.';
+    if(i && i.status === 'accepted') line = `Issued by ${i.issuer_name || '—'}${i.issuer_role ? ' (' + i.issuer_role + ')' : ''} on ${fmtDate(d10(i.issued_at))}. Accepted digitally by ${i.accepted_name || i.recipient_name} on ${fmtDT(i.accepted_at)} through QaSHE Watchman. Revision ${fmtRev(i.revision)}. Verification reference ${String(i.accepted_hash || i.id).slice(0, 12).toUpperCase()}.`;
+    else if(i && i.status === 'signed_paper') line = `Issued by ${i.issuer_name || '—'} on ${fmtDate(d10(i.issued_at))}. A signed paper copy was recorded on ${i.paper_signed_date ? fmtDate(d10(i.paper_signed_date)) : '—'}.`;
+    else if(i && i.status === 'issued') line = `Issued by ${i.issuer_name || '—'} to ${i.recipient_name} on ${fmtDate(d10(i.issued_at))}. Digital acceptance is still outstanding.`;
+    const b = { style:BorderStyle.SINGLE, size:4, color:'BBBBBB' }, borders = { top:b, bottom:b, left:b, right:b };
+    const cell = (t, nm) => new TableCell({ width:{ size:50, type:WidthType.PERCENTAGE }, borders, margins:{ top:80, bottom:80, left:120, right:120 }, children:[
+      new Paragraph({ children:[ new TextRun({ text:t, bold:true, size:16, font:'Arial', color:'B21616' }) ], spacing:{ after:120 } }),
+      new Paragraph({ children:[ new TextRun({ text:'Name: ' + (nm || '____________________________'), size:19, font:'Arial' }) ], spacing:{ after:260 } }),
+      new Paragraph({ children:[ new TextRun({ text:'Signature: ____________________________', size:19, font:'Arial' }) ], spacing:{ after:260 } }),
+      new Paragraph({ children:[ new TextRun({ text:'Date: ____________________________', size:19, font:'Arial' }) ] }) ] });
+    return [ new Paragraph({ keepNext:true, spacing:{ before:360, after:120 }, children:[ new TextRun({ text:'Issue and Acceptance', bold:true, size:28, font:'Arial' }) ] }),
+      new Paragraph({ keepNext:true, alignment:lib.AlignmentType.JUSTIFIED, spacing:{ after:160 }, children:[ new TextRun({ text:line, size:20, font:'Arial' }) ] }),
+      new Table({ width:{ size:100, type:WidthType.PERCENTAGE }, rows:[ new TableRow({ cantSplit:true, children:[ cell('ISSUED BY (LINE MANAGER)', info.issuer), cell('ACCEPTED BY (EMPLOYEE)', info.recipient) ] }) ] }),
+      new Paragraph({ spacing:{ before:100 }, children:[ new TextRun({ text:'Sign the printed copy where a paper record is required, for example the private personnel file or the site safety file.', italics:true, size:16, font:'Arial', color:'666666' }) ] }) ];
+  };
+
+  /* ---- the issue card on the document ---- */
+  const link = t => `${location.origin}${location.pathname.replace(/index\.html$/, '')}?da=${t}`;
+  function emailBody(i, d, others){
+    const first = String(i.recipient_name || '').split(' ')[0] || 'Hello';
+    const list = [{ i, d }].concat(others || []).map(x => `${x.d.doc_number}: ${x.d.title} (revision ${fmtRev(x.i.revision)})\n${link(x.i.token)}`).join('\n\n');
+    return `Hello ${first},\n\n${i.issuer_name || 'Your line manager'} has issued ${others && others.length ? 'the following documents' : 'the following document'} to you at ${STATE.org.name}. Please read ${others && others.length ? 'each one' : 'it'} and confirm that you have read, understood and accept it. No sign-in is needed.\n\n${list}\n\nYour acceptance is recorded with the date and time. If you cannot accept, you can say why on the same page.\n\nQaSHE Watchman`;
+  }
+  async function sendIssue(i, d, others){
+    if(!i.recipient_email) return false;
+    return await sendEmailToAddress(i.recipient_email, `Please read and accept: ${d.doc_number} ${d.title}`, emailBody(i, d, others));
+  }
+  async function cardHtml(d){
+    const published = d.status !== 'withdrawn' && d.status !== 'superseded' && (d.approval_status === 'approved' || d.workflow_status === 'approved');
+    if(STATE._issTbl === false) return '';
+    const issues = await wmIssuesOf(d.id, true);
+    if(!needsAcceptance(d) && !issues.length && !published) return '';
+    const per = personOf(d), mgr = managerOf(per), canIssue = docCanManage() || (per && mgr && STATE.user && false) || (typeof wmPeopleScope === 'function' && wmPeopleScope().all);
+    const members = (STATE.members || []).map(m => ({ id: m.user_id, name: (m.profiles && m.profiles.name) || memberName(m.user_id) })).filter(m => m.id);
+    const meNm = memberName(STATE.user.id);
+    const rows = issues.map(i => `<tr><td>${E(i.recipient_name)}<div style="font-size:11px;color:var(--text-faint);">${E(i.recipient_email || 'no email')}</div></td><td>${fmtDate(d10(i.issued_at))}<div style="font-size:11px;color:var(--text-faint);">by ${E(i.issuer_name || '—')} · rev ${E(fmtRev(i.revision))}</div></td>
+      <td><span class="sev-badge" style="background:${COL[i.status] || '#666'};color:#fff;">${E(LBL[i.status] || i.status)}</span>${i.accepted_at ? `<div style="font-size:11px;margin-top:2px;">${E(fmtDT(i.accepted_at))} by ${E(i.accepted_name || '')}</div>` : ''}${i.declined_reason ? `<div style="font-size:11px;color:#B3261E;">${E(i.declined_reason)}</div>` : ''}${i.paper_signed_date ? `<div style="font-size:11px;">Paper signed ${fmtDate(d10(i.paper_signed_date))}</div>` : ''}</td>
+      <td style="white-space:nowrap;">${i.status === 'issued' || i.status === 'declined' ? `<button class="btn-small" onclick="wmIssueResend('${i.id}','${d.id}')">Resend</button> <button class="btn-small" onclick="wmIssueCopy('${i.id}','${d.id}')">Copy link</button> ` : ''}${['issued', 'declined', 'accepted'].includes(i.status) && canIssue ? `<button class="btn-small" onclick="wmIssuePaper('${i.id}','${d.id}')">Record paper signature</button> <button class="btn-small" onclick="wmIssueWithdraw('${i.id}','${d.id}')">Withdraw</button>` : ''}</td></tr>`).join('');
+    const others = per ? (STATE.documents || []).filter(x => x.id !== d.id && x.personnel_id === per.id && x.personal_kind && x.status !== 'withdrawn' && x.status !== 'superseded' && (x.approval_status === 'approved' || x.workflow_status === 'approved')) : [];
+    return `<div class="detail-card" id="wm-issue-card" style="padding:16px;margin-bottom:16px;">
+      <div class="panel-head"><h3 style="font-family:Arial,sans-serif;font-size:15.5px;font-weight:600;">Issue and acceptance</h3><span style="font-size:11.5px;color:var(--text-faint);">Printed on the final PDF and Word copy</span></div>
+      <p style="font-size:12.5px;color:var(--text-dim);margin-bottom:10px;">Once approved, the line manager issues the document to the person. They receive a private link, read it, and accept it digitally. Acceptance is recorded with date and time, and the PDF carries the Issue and Acceptance block with signature lines for a printed copy for the personnel file or site safety file.</p>
+      ${rows ? `<div class="table-wrap" style="margin-bottom:12px;"><table><tr><th>Recipient</th><th>Issued</th><th>Status</th><th></th></tr>${rows}</table></div>` : '<p style="font-size:12.5px;color:var(--text-faint);margin-bottom:10px;">Not issued yet.</p>'}
+      ${published && canIssue ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;align-items:end;">
+        <div class="field"><label>Issued to</label><select id="wmi-person" onchange="wmIssuePick()"><option value="">Type a name below…</option>${(STATE.personnel || []).filter(p => p.is_active !== false).map(p => `<option value="${p.id}" ${per && per.id === p.id ? 'selected' : ''}>${E(p.full_name)}</option>`).join('')}</select></div>
+        <div class="field"><label>Name</label><input id="wmi-name" value="${E(per ? per.full_name : '')}"></div>
+        <div class="field"><label>Email</label><input id="wmi-email" type="email" value="${E(per && per.email ? per.email : '')}"></div>
+        <div class="field"><label>Issued by (line manager)</label><select id="wmi-by">${members.map(m => `<option value="${m.id}" ${(mgr && mgr.full_name && m.name === mgr.full_name) || (!mgr && m.id === STATE.user.id) ? 'selected' : ''}>${E(m.name)}</option>`).join('')}</select></div></div>
+        ${others.length ? `<label style="display:flex;gap:8px;align-items:center;font-size:12.5px;margin:8px 0;"><input type="checkbox" id="wmi-all"> Also issue ${E(per.full_name)}'s other approved documents in one email: ${others.map(o => E(o.doc_number)).join(', ')}</label>` : ''}
+        <button class="btn-small primary" style="margin-top:8px;" onclick="wmIssueSend('${d.id}')">Issue and email the link</button>`
+        : (!published ? '<p style="font-size:12.5px;color:var(--text-faint);">Available once the document is approved.</p>' : '')}
+    </div>`;
+  }
+  { const o = window.openDocumentDetail; window.openDocumentDetail = openDocumentDetail = async function(id){
+      const r = await o.apply(this, arguments);
+      try{ const d = documentById(id), panel = document.querySelector('#doc-detail-slot .detail-panel'); if(d && panel && !document.getElementById('wm-issue-card')){ const h = await cardHtml(d); if(h){ const meta = panel.querySelector('.dm-item'); const host = meta ? meta.parentElement : panel.querySelector('.detail-head'); host.insertAdjacentHTML('afterend', h); } } }catch(e){ console.warn('R48 card', e); }
+      return r; }; }
+  const refresh = id => { const d = documentById(id); if(d) openDocumentDetail(id); };
+  window.wmIssuePick = function(){ const p = personById((document.getElementById('wmi-person') || {}).value); if(p){ document.getElementById('wmi-name').value = p.full_name || ''; document.getElementById('wmi-email').value = p.email || ''; } };
+  async function createIssue(d, name, email, byId, pid){
+    const byName = (STATE.members || []).map(m => ({ id: m.user_id, name: (m.profiles && m.profiles.name) || memberName(m.user_id) })).find(m => m.id === byId);
+    const row = { organisation_id: STATE.org.id, document_id: d.id, doc_number: d.doc_number, doc_title: d.title, revision: String(d.current_revision == null ? '' : d.current_revision), personnel_id: pid || null, recipient_name: name, recipient_email: email || null, issued_by: byId || STATE.user.id, issuer_name: byName ? byName.name : memberName(STATE.user.id), issuer_role: 'Line manager' };
+    const r = await sb().from('document_issues').insert(row).select().single();
+    if(r.error){ if(/relation|schema cache|does not exist/i.test(r.error.message || '')) toast('Run qashe-watchman-schema-r48-document-issue-acceptance.sql first.', 'error'); else toast('Could not issue: ' + r.error.message, 'error'); return null; }
+    return r.data;
+  }
+  window.wmIssueSend = async function(docId){
+    const d = documentById(docId); if(!d) return;
+    const name = document.getElementById('wmi-name').value.trim(), email = document.getElementById('wmi-email').value.trim(), by = document.getElementById('wmi-by').value, pid = document.getElementById('wmi-person').value || null;
+    if(!name){ toast('Enter who the document is issued to.', 'error'); return; }
+    if(!email){ toast('Enter an email address so the link can be sent. You can also copy the link afterwards.', 'info'); }
+    showLoader('Issuing…');
+    try{
+      const first = await createIssue(d, name, email, by, pid); if(!first) return;
+      const extra = [];
+      if(document.getElementById('wmi-all') && document.getElementById('wmi-all').checked){
+        const per = personById(pid); const others = (STATE.documents || []).filter(x => x.id !== d.id && per && x.personnel_id === per.id && x.personal_kind && x.status !== 'withdrawn' && x.status !== 'superseded' && (x.approval_status === 'approved' || x.workflow_status === 'approved'));
+        for(const o of others){ const i2 = await createIssue(o, name, email, by, pid); if(i2) extra.push({ i: i2, d: o }); }
+      }
+      const ok = await sendIssue(first, d, extra);
+      toast(ok ? `Issued and emailed to ${email}.` : `Issued. The email could not be sent, so copy the link and send it: ${link(first.token)}`, ok ? 'success' : 'info');
+    } finally { hideLoader(); delete STATE._issCache[docId]; refresh(docId); }
+  };
+  const find = async (iid, docId) => (await wmIssuesOf(docId, true)).find(x => x.id === iid);
+  window.wmIssueResend = async function(iid, docId){ const i = await find(iid, docId), d = documentById(docId); if(!i) return; const ok = await sendIssue(i, d); toast(ok ? 'Link emailed again.' : 'The email could not be sent. Use Copy link.', ok ? 'success' : 'error'); };
+  window.wmIssueCopy = async function(iid, docId){ const i = await find(iid, docId); if(!i) return; try{ await navigator.clipboard.writeText(link(i.token)); toast('Link copied.', 'success'); }catch(e){ prompt('Copy this link:', link(i.token)); } };
+  window.wmIssuePaper = async function(iid, docId){
+    const dt = prompt('Date the printed copy was signed (YYYY-MM-DD):', todayISO()); if(!dt) return; const note = prompt('Where is the signed copy kept? (for example personnel file, site safety file)', 'Personnel file') || '';
+    const r = await sb().from('document_issues').update({ status:'signed_paper', paper_signed_date: dt, paper_note: note }).eq('id', iid);
+    if(r.error){ toast('Could not record: ' + r.error.message, 'error'); return; } delete STATE._issCache[docId]; refresh(docId);
+  };
+  window.wmIssueWithdraw = async function(iid, docId){ if(!confirm('Withdraw this issue? The link stops working.')) return; const r = await sb().from('document_issues').update({ status:'withdrawn' }).eq('id', iid); if(r.error){ toast(r.error.message, 'error'); return; } delete STATE._issCache[docId]; refresh(docId); };
+
+  /* ---- the emailed page (?da=token) ---- */
+  const sha = async s => { try{ const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }catch(e){ return ''; } };
+  window.renderDaPage = async function(token){
+    const ov = pubMount('da-public'); await pubInit();
+    const { data: info } = await sb().rpc('doc_issue_info', { p_token: token });
+    if(!info || !info.ok){ pubBad(ov, 'This link is not active'); return; }
+    const secs = (info.sections || []).map(s => `<div style="margin-top:14px;"><b>${PE(s.title || '')}</b><div style="white-space:pre-wrap;font-size:13.5px;color:#333;text-align:justify;margin-top:4px;">${PE(String(s.body || '').replace(/\*\*/g, ''))}</div></div>`).join('');
+    const hero = pubHero(info, 'Document issued to you', info.doc_title, `${info.doc_number} · revision ${fmtRev(info.revision)} · issued by ${info.issuer_name || ''}`);
+    const done = ['accepted', 'signed_paper'].includes(info.status);
+    ov.innerHTML = PUB_CSS + `<div class="pb"><div class="w">${hero}
+      ${done ? `<div class="card" style="text-align:center;"><div style="font-size:52px;">✅</div><h2 style="margin:6px 0;">Accepted</h2><p>Thank you ${PE(info.accepted_name || info.recipient_name)}. Your acceptance was recorded${info.accepted_at ? ' on ' + PE(fmtDT(info.accepted_at)) : ''}.</p></div>` : info.status === 'declined' ? `<div class="card"><h2>Declined</h2><p>Your response has been recorded and your line manager has been informed.</p></div>` : ''}
+      <div class="card"><p style="margin:0 0 4px;font-size:14px;">Please read the document below.${done ? '' : ' When you have finished, accept it at the bottom of the page.'}</p>${secs || '<p>No content.</p>'}</div>
+      ${done ? '' : `<div class="card"><h3 style="margin:0 0 8px;">Your acceptance</h3>
+        <div style="display:flex;gap:10px;align-items:flex-start;text-align:left;"><input type="checkbox" id="da-ok" style="width:20px;height:20px;flex:none;margin:2px 0 0;"><span style="font-size:14.5px;">I have read and understood this document and I accept it.</span></div>
+        <div style="margin-top:12px;"><label style="font-size:12.5px;font-weight:700;">Type your full name</label><input id="da-name" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:15px;margin-top:4px;" value=""></div>
+        <p style="font-size:11.5px;color:#777;">Your typed name, the date and time and a verification code are stored as your electronic acceptance.</p>
+        <button id="da-go" style="display:block;width:100%;margin-top:6px;padding:14px;border:0;border-radius:10px;background:#D50000;color:#fff !important;font-weight:800;font-size:15px;cursor:pointer;" onclick="daAccept('${PE(token)}')">Accept this document</button>
+        <details style="margin-top:14px;"><summary style="cursor:pointer;font-size:13px;color:#555;">I cannot accept this document</summary><textarea id="da-why" style="width:100%;min-height:70px;margin-top:8px;padding:8px;border:1px solid #ccc;border-radius:8px;" placeholder="Tell your line manager why"></textarea><button style="margin-top:8px;padding:10px 14px;border:1px solid #bbb;border-radius:8px;background:#fff;cursor:pointer;" onclick="daDecline('${PE(token)}')">Send my response</button></details></div>`}
+    </div></div>`;
+    window.__daInfo = info;
+  };
+  window.daAccept = async function(token){
+    const info = window.__daInfo || {}, name = (document.getElementById('da-name').value || '').trim();
+    if(!document.getElementById('da-ok').checked){ alert('Tick the box to confirm you have read and understood the document.'); return; }
+    if(name.length < 3){ alert('Type your full name.'); return; }
+    const btn = document.getElementById('da-go'); btn.disabled = true; btn.textContent = 'Saving…';
+    const stamp = new Date().toISOString(), hash = await sha([token, name, info.doc_number, info.revision, stamp].join('|'));
+    const { data, error } = await sb().rpc('doc_issue_accept', { p_token: token, p_name: name, p_statement: 'I have read and understood this document and I accept it.', p_hash: hash });
+    if(error || !data || !data.ok){ btn.disabled = false; btn.textContent = 'Accept this document'; alert((data && data.error) || (error && error.message) || 'Could not save. Please try again.'); return; }
+    renderDaPage(token);
+  };
+  window.daDecline = async function(token){
+    const why = (document.getElementById('da-why').value || '').trim(); if(!why){ alert('Please say why you cannot accept.'); return; }
+    const { data } = await sb().rpc('doc_issue_accept', { p_token: token, p_name: '', p_statement: '', p_hash: '', p_decline: why });
+    if(data && data.ok) renderDaPage(token); else alert('Could not save. Please try again.');
+  };
+  (function(){ const da = new URLSearchParams(location.search).get('da'); if(da) document.addEventListener('DOMContentLoaded', () => renderDaPage(da)); })();
 })();
 
 </script>
