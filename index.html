@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R49 2026-11-17"><meta charset="UTF-8">
+<meta name="wm-release" content="R50 2026-11-17"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -20074,7 +20074,7 @@ function renderProcessesTable(){
   wrap.innerHTML = `<table>
     <tr><th>Document Number</th><th>Process</th><th>Owner</th><th>Flowchart</th><th>KPIs</th><th>Documents</th><th>Review</th><th>Status</th><th></th></tr>
     ${rows.map(p=>`<tr class="clickable" onclick="openProcessDetail('${p.id}')">
-      <td class="mono-cell">${p.ref_code}</td>
+      <td class="mono-cell">${wmProcNo(p)}</td>
       <td class="strong">${p.name}${p.ai_assisted ? ' <span style="font-size:10px; color:var(--text-faint); font-weight:500;">· AI-assisted</span>' : ''}</td>
       <td>${memberName(p.owner_id)}</td>
       <td>${p.flowchart_id ? '<span style="color:var(--green); font-size:12.5px;">✓ ' + STATE.orgFlowchartSteps.filter(s=>s.flowchart_id===p.flowchart_id).length + ' steps</span>' : '<span style="color:var(--text-faint); font-size:12px;">—</span>'}</td>
@@ -20431,7 +20431,7 @@ window.printProcessFlowchart = async function(processId){
     ['Owner', memberName(p.owner_id)],
   ];
   const bodyHtml = processFlowchartHTML(steps || []);
-  await printRecord(`${p.name}: Process Flowchart`, p.doc_number || p.ref_code, meta, bodyHtml, null, null);
+  await printRecord(`${p.name}: Process Flowchart`, wmProcNo(p), meta, bodyHtml, null, null);
 };
 
 window.toggleProcessReviewForm = function(processId){
@@ -32144,7 +32144,7 @@ window.brandFromLogo = function(){
     const w=document.getElementById('mr2-table'); if(!w) return;
     const q=(document.getElementById('mr2-q').value||'').toLowerCase().trim(), d=document.getElementById('mr2-dept').value, s=document.getElementById('mr2-src').value, st=(document.getElementById('mr2-st')||{}).value||'';
     const rows=mrRows().filter(r=>(!d||r.dept===d)&&(!s||r.src===s)&&(!st||r.status===st)&&(!q||(r.num+' '+r.title).toLowerCase().includes(q)));
-    w.innerHTML=rows.length?`<table><tr><th>Document Number</th><th>Title</th><th>Department</th><th>Type</th><th>Rev</th><th>Status</th><th>Source</th><th></th></tr>${rows.slice(0,500).map(r=>`<tr class="clickable" onclick="mr2Open('${r.kind}','${r.id}')" title="Click to view the document as PDF"><td class="mono-cell">${escapeHtml(r.num)}</td><td class="strong">${escapeHtml(r.title)}</td><td>${escapeHtml(r.dept)}</td><td>${escapeHtml(r.type)}</td><td style="text-align:center;">${escapeHtml(String(r.rev))}</td><td>${r.kind==='c'&&r.wf!=='approved'&&r.wf!=='withdrawn'&&r.wf!=='superseded'?`<span class="sev-badge" style="background:${r.color};color:#fff;cursor:pointer;" title="Open in Document Workflow" onclick="event.stopPropagation(); hubOpenDoc('${r.id}')">${escapeHtml(r.status)} ›</span>`:`<span class="sev-badge" style="background:${r.color||'#5A6B7B'};color:#fff;">${escapeHtml(r.status)}</span>`}</td><td>${r.src}</td><td style="text-align:right;">${r.kind==='c'?`<button class="btn-small" onclick="event.stopPropagation(); downloadDocumentPdf('${r.id}')">View Document</button>`:r.kind==='p'?`<button class="btn-small" onclick="event.stopPropagation(); processDocumentPdf('${r.id}')">View Document</button>`:r.kind==='r'?`<button class="btn-small" onclick="event.stopPropagation(); perfReportPdf('${r.id}')">View Document</button>`:(r.path?`<button class="btn-small" onclick="event.stopPropagation(); downloadFromBucket('documents','${r.path}')">View Document</button>`:'')} ${r.kind==='r'?'':`<button class="btn-small" onclick="event.stopPropagation(); ${r.kind==='p'?'processRequestUpdate':'mrRequestUpdate'}('${r.kind==='p'?'':r.kind+"','"}${r.id}')">Request update</button>`}</td></tr>`).join('')}</table>${rows.length>500?'<p style="padding:10px;font-size:12px;color:var(--text-faint);">Showing the first 500: refine your search to narrow the list.</p>':''}`:'<div class="empty-state"><p>No documents match.</p></div>';
+    w.innerHTML=rows.length?`<table><tr><th>Document Number</th><th>Title</th><th>Department</th><th>Type</th><th>Rev</th><th>Status</th><th>Source</th><th></th></tr>${rows.slice(0,500).map(r=>`<tr class="clickable" onclick="mr2Open('${r.kind}','${r.id}')" title="Click to view the document as PDF"><td class="mono-cell">${escapeHtml(r.num)}</td><td class="strong">${escapeHtml(r.title)}</td><td>${escapeHtml(r.dept)}</td><td>${escapeHtml(r.type)}</td><td style="text-align:center;">${escapeHtml(String(r.rev))}</td><td>${r.kind==='c'&&r.wf!=='approved'&&r.wf!=='withdrawn'&&r.wf!=='superseded'?`<span class="sev-badge" style="background:${r.color};color:#fff;cursor:pointer;" title="Open in Documents Work in Progress" onclick="event.stopPropagation(); hubOpenDoc('${r.id}')">${escapeHtml(r.status)} ›</span>`:`<span class="sev-badge" style="background:${r.color||'#5A6B7B'};color:#fff;">${escapeHtml(r.status)}</span>`}</td><td>${r.src}</td><td style="text-align:right;">${r.kind==='c'?`<button class="btn-small" onclick="event.stopPropagation(); downloadDocumentPdf('${r.id}')">View Document</button>`:r.kind==='p'?`<button class="btn-small" onclick="event.stopPropagation(); processDocumentPdf('${r.id}')">View Document</button>`:r.kind==='r'?`<button class="btn-small" onclick="event.stopPropagation(); perfReportPdf('${r.id}')">View Document</button>`:(r.path?`<button class="btn-small" onclick="event.stopPropagation(); downloadFromBucket('documents','${r.path}')">View Document</button>`:'')} ${r.kind==='r'?'':`<button class="btn-small" onclick="event.stopPropagation(); ${r.kind==='p'?'processRequestUpdate':'mrRequestUpdate'}('${r.kind==='p'?'':r.kind+"','"}${r.id}')">Request update</button>`}</td></tr>`).join('')}</table>${rows.length>500?'<p style="padding:10px;font-size:12px;color:var(--text-faint);">Showing the first 500: refine your search to narrow the list.</p>':''}`:'<div class="empty-state"><p>No documents match.</p></div>';
   };
   window.mr2Open=function(kind,id){ if(kind==='p') return processDocumentPdf(id); if(kind==='r') return perfReportPdf(id); const r=mrRows().find(x=>x.kind===kind&&String(x.id)===String(id)); if(!r) return; if(r.kind==='c') return downloadDocumentPdf(r.id); if(r.path) return downloadFromBucket('documents',r.path); toast('This entry has no file to view.','info'); };
   window.exportMasterRegister=async function(){
@@ -36317,7 +36317,7 @@ window.WM_IT_TPL = {
     'BUSINESS HEALTH VALIDATION: a live health score across governance, quality, health and safety, environment, information security, POPIA, welding and people, with a saved validation record. ' +
     'INFORMATION SECURITY is a per client discipline; when off, the Statement of Applicability, Information Asset Register, Threat Intelligence and the ISMO appointment are hidden. ' +
     'TEMPLATE LIBRARY: search the library first for a generic policy, procedure, form, register, checklist, flowchart or letter, adapt it to the organisation, and only if none fits generate a new document. Checklists and Policies and Procedures are no longer separate modules. ' +
-    'DOCUMENT MANAGEMENT: always opens on the Master Documents Register with two tabs only, Master Documents Register and Document Workflow. Approved documents show a blue Approved badge and offer View Document and Request update only. A document that is not approved shows a clickable status that opens it in Document Workflow, where every row has an Open button for review, amendment and approval. Develop a New Document and any review open on their own page with Back to the register. External uploads (All Documents, where switched on) appear in the register, with an Upload External Documents button for administrators. Review Requests and the Naming Convention are in Administration, not in Document Management. ' +
+    'DOCUMENT MANAGEMENT: always opens on the Master Documents Register with two tabs only, Master Documents Register and Documents Work in Progress. Approved documents show a blue Approved badge and offer View Document and Request update only. A document that is not approved shows a clickable status that opens it in Documents Work in Progress, where every row has an Open button for review, amendment and approval. Develop a New Document and any review open on their own page with Back to the register. External uploads (All Documents, where switched on) appear in the register, with an Upload External Documents button for administrators. Review Requests and the Naming Convention are in Administration, not in Document Management. ' +
     'APPRAISALS: start from the person page, develop the job description and KPIs, then start the appraisal; the employee and manager get emailed links. Ratings run 0 (Not done) to 5; the manager rating counts and the average of the two is for reference only. Bands: 97% and above Significant, 90% Standard, 81% Moderate, 60% Partial, 50% Not acceptable, below 50% Not done. The appraisal report is emailed automatically once only. COMPANY PERFORMANCE REPORT (administrators and HR with all-people access): monthly report for the Managing Director with a 100% target, opportunities for improvement per person and organisation, annual result per person, and an annual bonus schedule where a pool is shared equally and adjusted by performance, 50% paid out and 50% retained for five years. The bonus rules need written terms reviewed by a labour lawyer and payroll. ' +
     'PERSONAL RECORDS are visible only to the person, their line managers and HR. PERSONNEL SATISFACTION SURVEY: confidential, by emailed link or printed paper recorded by the line manager, results hidden for small groups, with themes, eNPS, strengths, opportunities for improvement and tasks. ' +
     'ADMIN CONSOLE (Group QaSHE CG staff only) switches modules and disciplines per client; clients manage departments, people and access in Administration. ' +
@@ -38667,7 +38667,7 @@ async function renderNcResponsePage(token){
         <span style="color:var(--text-faint);">Click a process to open it as a page.</span></div>
       <table><tr><th>Document Number</th><th>Process</th><th>Owner</th><th>KPI compliance</th><th>KPI status</th><th>Flowchart</th><th>Review</th><th>Status</th><th></th></tr>
       ${rows.map(p => `<tr class="clickable" onclick="pcMag('${p.id}')">
-        <td class="mono-cell">${E(p.ref_code)}</td>
+        <td class="mono-cell">${E(wmProcNo(p))}</td>
         <td class="strong">${E(p.name)}${p.ai_assisted ? ' <span style="font-size:10px;color:var(--text-faint);font-weight:500;">· AI-assisted</span>' : ''}</td>
         <td>${E(memberName(p.owner_id))}</td>
         <td style="white-space:nowrap;">${pctCell(pcCompliance(p))}</td>
@@ -40885,9 +40885,9 @@ const MODS = [
  steps:['Open the review and pull in the data','Walk through the agenda','Record decisions','Actions become tracked tasks'],
  d:{a:'chk',title:'Management review agenda',items:['Previous actions','Audit results','Incident and nonconformance trends','Customer satisfaction','Objectives and risks','Resources and decisions'],fail:[]}},
 {id:'documents',ch:'doc',n:'Document Management',ic:'doc',tag:'Create, number, review and approve documents on their own page, starting from the master register.',
- feat:['Opens on the Master Documents Register with two tabs: Register and Document Workflow','Numbered by department and document type','New documents and reviews open on their own page','Revision control and approval workflow with Open on every workflow row','Approved documents offer View Document and Request update only','Administrators manage review requests and the naming convention in Administration'],
+ feat:['Opens on the Master Documents Register with two tabs: Register and Documents Work in Progress','Numbered by department and document type','New documents and reviews open on their own page','Revision control and approval workflow with Open on every workflow row','Approved documents offer View Document and Request update only','Administrators manage review requests and the naming convention in Administration'],
  iso:['ISO 9001 cl 7.5','ISO 14001 cl 7.5','ISO 45001 cl 7.5','ISO 27001 cl 7.5'],link:['all_documents','policies','master_register','administration'],
- steps:['Open the register','Develop a new document on its own page','Review and approve in Document Workflow','Request updates to approved documents'],
+ steps:['Open the register','Develop a new document on its own page','Review and approve in Documents Work in Progress','Request updates to approved documents'],
  d:{a:'docs',docs:[['QHSE-POL-001','Occupational Health and Safety Policy','Rev 2'],['QHSE-PRO-014','Incident Reporting Procedure','Rev 1'],['QHSE-FRM-022','Toolbox Talk Record','Rev 3']]}},
 {id:'all_documents',ch:'doc',n:'All Documents',ic:'search',tag:'External and historical uploads sit beside controlled documents in one register.',
  feat:['External uploads appear in the Master Documents Register','Upload External Documents button for administrators','Uploads without a number show as Not numbered','Filed by department and type from the document number'],
@@ -40895,7 +40895,7 @@ const MODS = [
  steps:['Open the register','Upload External Documents','Find and open','Request an update'],
  d:{a:'docs',docs:[['HR-POL-004','Leave Policy','Rev 1'],['OPS-PRO-007','Equipment Pre-Use Procedure','Rev 4'],['SHE-FRM-009','Visitor Declaration','Rev 2']]}},
 {id:'master_register',ch:'doc',n:'Master Documents Register',ic:'list',tag:'Every controlled document number in one auditable list.',
- feat:['Every number, title, revision, status and owner','Status badges with white text, Approved in blue','View Document and Request update on approved rows','Unapproved status opens the document in Document Workflow','All statuses filter and export for the auditor'],
+ feat:['Every number, title, revision, status and owner','Status badges with white text, Approved in blue','View Document and Request update on approved rows','Unapproved status opens the document in Documents Work in Progress','All statuses filter and export for the auditor'],
  iso:['ISO 9001 cl 7.5'],link:['documents','all_documents'],
  steps:['Open the register','Filter by status','Open or request an update','Export for the auditor'],
  d:{a:'reg',cols:['Number','Title','Rev','Owner','Review'],rows:[['QHSE-POL-001','OHS Policy','2','MD','Mar 2027'],['QHSE-PRO-014','Incident Procedure','1','SHE','Jun 2027']],gate:null,f:['Title','Owner'],nr:['QHSE-FRM-023','Hot Work Permit','1','SHE','Oct 2027']}},
@@ -43350,16 +43350,16 @@ ask:'Show me the minutes of your last management review and the actions that cam
 
 (function(W){
 W.documents = {
-why:'Out-of-date documents cause errors and failed audits. Document Management makes sure everyone uses the current approved version, and that every change is reviewed and approved. It always opens on the Master Documents Register, with Document Workflow one tab away.',
+why:'Out-of-date documents cause errors and failed audits. Document Management makes sure everyone uses the current approved version, and that every change is reviewed and approved. It always opens on the Master Documents Register, with Documents Work in Progress one tab away.',
 who:'Document owners, reviewers, approvers and every user who needs the latest version. Administrators also maintain the settings behind it.',
 tour:[['Opens on the register','Every document number in one list. Approved documents show a blue Approved badge and offer only View Document and Request update.',['table','Master Documents Register',['Number','Title','Rev','Status'],[['QMS-PRO-004','Control of Records','2','Approved'],['HSE-FRM-011','Incident Report','1','Review'],['QMS-POL-001','Quality Policy','3','Approved']]]],
- ['Two tabs only','Master Documents Register to find and read. Document Workflow to create, review, amend and approve.',['flow','Document Management',['Master Documents Register','Document Workflow'],0]],
+ ['Two tabs only','Master Documents Register to find and read. Documents Work in Progress to create, review, amend and approve.',['flow','Document Management',['Master Documents Register','Documents Work in Progress'],0]],
  ['Numbering','Numbers are built from department and document type, so the library stays tidy.',['chain','Number',['QMS','PRO','004'],'Department, type, sequence']]],
 steps:[['Start on the register','Click Document Management. You land on the Master Documents Register. Use Search for a Document, or the status filter, to find what you need.',['stats','Master Documents Register',[['Documents','135'],['Approved','118'],['In review','9']]]],
  ['Develop a new document','Click Develop a New Document. It opens on its own page so you can follow the process without the register below it. Back to the register returns you.',['form','New document',[['Name','Control of Records'],['*Department','Quality'],['Type','Procedure']],'Continue']],
  ['Write and review','Add reviewers. Each gets an email and their own comment colour. Everyone must tick Satisfied.',['check','Reviewers',['Anna Botha: satisfied','P. Naidoo: satisfied','-S. Dlamini: comments open']]],
  ['Approve','Choose the approver. They receive a link and approve, or send it back for changes. Approval updates the register automatically.',['mail','For your approval: QMS-PRO-004',['m.goedvolk@company.co.za','The document is ready for approval.','Open the document']]],
- ['Open a document in Document Workflow','On the Document Workflow tab, every row has an Open button for review, amendment and approval. A document not yet approved shows a clickable status on the register that takes you straight there.',['table','Document Workflow',['Number','Status','Action'],[['QMS-PRO-004','Review','*Open'],['HSE-FRM-011','Draft','*Open']]]],
+ ['Open a document in Documents Work in Progress','On the Documents Work in Progress tab, every row has an Open button for review, amendment and approval. A document not yet approved shows a clickable status on the register that takes you straight there.',['table','Documents Work in Progress',['Number','Status','Action'],[['QMS-PRO-004','Review','*Open'],['HSE-FRM-011','Draft','*Open']]]],
  ['Request an update','On an approved document choose Request update and give the reason. The Document Controller receives it. The current version stays in use until the new revision is approved.',['table','History',['Rev','Date','Status'],[['*3','12 Nov','Approved'],['2','5 Mar','Superseded']]]],
  ['Administrator tools','Review Requests and the Naming Convention are no longer here. Administrators open them from Administration, under Document Review Requests and Document Naming Convention.',['cards','Administration',[['Document Review Requests','Administration','Pending'],['Document Naming Convention','Administration','Locked']]]]],
 tips:['Use the numbering scheme from day one.','Give reviewers a deadline.','Never email a document to staff. Point them to the Master Documents Register.','Approved documents cannot be opened for editing. Request an update instead.'],
@@ -43384,7 +43384,7 @@ tour:[['The master list','Every number, title, revision and status. Statuses are
  ['Checks','Automatic checks flag gaps, duplicate numbers and numbers that do not match the scheme.',['check','Checks',['Numbers unique','-Gap in QMS-PRO series','Scheme followed']]]],
 steps:[['Open the register','Click Document Management. The register is always the first thing you see.',['stats','Master register',[['Documents','135'],['In review','9']]]],
  ['Filter and search','Use Search for a Document and the All statuses filter.',['form','Filter',[['*Search','incident'],['Status','All statuses']]]],
- ['Open an unapproved document','Click the status badge of a document that is not yet approved. It opens in Document Workflow.',['table','Status',['Number','Status'],[['*HSE-PRO-007','Review'],['QMS-POL-001','Approved']]]],
+ ['Open an unapproved document','Click the status badge of a document that is not yet approved. It opens in Documents Work in Progress.',['table','Status',['Number','Status'],[['*HSE-PRO-007','Review'],['QMS-POL-001','Approved']]]],
  ['Request an update','On an approved document, choose Request update and state the reason.',['form','Request update',[['*Reason','Legislation changed'],['Document','HSE-PRO-007']],'Send']],
  ['Export for the auditor','Export the register as evidence of document control.',['chain','Evidence',['Register','Export','Auditor']]]],
 tips:['Fix duplicates and gaps before the auditor finds them.','Approved documents are changed only through Request update.','The Administration area holds the naming convention and review requests.'],
@@ -51059,7 +51059,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   function header(){
     const f = figs(), h = has(), adm = docAdmin();
     /* R43: Review Requests and Naming Convention Setup are administrator tools, not shown to everyone */
-    const tabs = [h.mst ? ['master', 'Master Documents Register'] : null, h.ctl ? ['register', 'Document Workflow'] : null].filter(Boolean);
+    const tabs = [h.mst ? ['master', 'Master Documents Register'] : null, h.ctl ? ['register', 'Documents Work in Progress'] : null].filter(Boolean);
     const stat = (cls, go, n, label) => `<div class="dh-stat ${cls}" onclick="switchDocSubtab('${go}')"><b>${n}</b><span>${label}</span></div>`;
     return CSS + `<div class="dh">
       ${h.mst || h.ctl ? `<div class="dh-actions"><div class="dh-card"><div class="dh-ic">${SVG.search}</div><div style="flex:1;min-width:0;"><h4>Search for a Document</h4><p>Type a number, title, department or type. Results filter the Master Documents Register instantly.</p><input id="dh-q" placeholder="e.g. corrective action, QMS-PRO, welding…" oninput="dhSearch(this.value)"></div></div>
@@ -53525,7 +53525,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     const rev = fmtRev(p.revision == null || p.revision === '' ? 0 : p.revision), rd = p.revision_date || (p.updated_at || new Date().toISOString()).slice(0, 10);
     const reviewers = p.reviewed_by ? [{ name: memberName(p.reviewed_by), date: p.reviewed_date || rd }] : (p.owner_id ? [{ name: memberName(p.owner_id) + ' (process owner)', date: rd }] : []);
     const by = p.approved_by || null;
-    return { docNo: p.doc_number || p.ref_code || '', rev, revDate: fmtDate(String(rd).slice(0, 10)), status: p.status ? String(p.status).replace(/_/g, ' ') : '—', reviewers, approver: by ? { name: memberName(by), date: p.approved_date || rd } : null, approverText: '—' };
+    return { docNo: wmProcNo(p), rev, revDate: fmtDate(String(rd).slice(0, 10)), status: p.status ? String(p.status).replace(/_/g, ' ') : '—', reviewers, approver: by ? { name: memberName(by), date: p.approved_date || rd } : null, approverText: '—' };
   };
 })();
 
@@ -53542,7 +53542,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     });
   }
   const revOf = p => fmtRev(p.revision == null || p.revision === '' ? 0 : p.revision);
-  const numOf = p => p.doc_number || p.ref_code || '';
+  const numOf = p => wmProcNo(p);
 
   window.processDocumentPdf = async function(id, mode){
     mode = mode || 'view';
@@ -53850,7 +53850,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
       <div class="mag-top"><button class="btn-small" onclick="pcMagClose()">&larr; All processes</button>
         <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn-small" onclick="printProcess('${p.id}')">Print / PDF</button>${window.pcEditBtn ? window.pcEditBtn(p) : ''}</div></div>
       <div class="detail-card" style="margin:12px 0 16px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-faint);letter-spacing:.06em;">PROCESS ${E(p.doc_number || p.ref_code || '')}</div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-faint);letter-spacing:.06em;">PROCESS ${E(wmProcNo(p))}</div>
         <h2 style="font-family:Arial,sans-serif;font-size:22px;margin:2px 0 6px;">${E(p.name)}</h2>
         <div style="font-size:12.5px;color:var(--text-dim);">Owner: <b>${E(memberName(p.owner_id))}</b> · Review: ${E(String(p.review_frequency || '—').replace(/_/g, ' '))} · Revision ${E(fmtRev(p.revision == null ? 0 : p.revision))}${p.revision_date ? ' (' + fmtDate(d10(p.revision_date)) + ')' : ''} · ${pill(p.status || 'active')}</div>
         ${fc && (fc.standard_refs || []).length ? `<div style="font-size:11.5px;color:var(--text-faint);margin-top:4px;">${E(fc.standard_refs.join(' · '))}</div>` : ''}
@@ -54202,7 +54202,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
 })();
 
 
-/* ===== R49: Master Documents Register shows every document (created and bulk uploaded); Document Workflow shows work in progress ===== */
+/* ===== R49: Master Documents Register shows every document (created and bulk uploaded); Documents Work in Progress shows work in progress ===== */
 (function(){
   const E = s => escapeHtml(String(s == null ? '' : s));
   const d10 = v => v ? String(v).slice(0, 10) : '';
@@ -54262,7 +54262,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
       }catch(e){ console.warn('R49 revdate', e); }
       return r; }; }
 
-  /* 3. Document Workflow = work in progress: new documents, documents in review, amendments and update requests */
+  /* 3. Documents Work in Progress = work in progress: new documents, documents in review, amendments and update requests */
   const openReq = id => (STATE.docReviewRequests || []).some(q => q.document_id === id && ['pending', 'in_progress'].includes(q.status));
   const inProgress = d => !['approved', 'withdrawn', 'superseded'].includes(documentWorkflowBadge(d).key) || openReq(d.id);
   { const o = renderDocumentsTable; renderDocumentsTable = window.renderDocumentsTable = function(){
@@ -54278,6 +54278,196 @@ Likelihood and impact are whole numbers from 1 to 5.`;
         ${sel.value ? '' : `<button class="btn-small" onclick="STATE._wfAll=${limit ? 'true' : 'false'}; renderDocumentsTable();">${limit ? 'Show approved documents too' : 'Show work in progress only'}</button>`}
         <button class="btn-small" onclick="switchDocSubtab('master')">Open the Master Documents Register</button></div>`);
     }; }
+})();
+
+
+/* ===== R50: sidebar and overview headings, Master Documents Register Sections A and B, print/Excel everywhere, uploaded file preload on update, AI wording rule, process document numbers ===== */
+(function(){
+  const E = s => escapeHtml(String(s == null ? '' : s));
+  const d10 = v => v ? String(v).slice(0, 10) : '';
+
+  /* 1. headings */
+  const css = document.createElement('style');
+  css.textContent = `
+  .wm-nh,.nav-group-label{color:#3A3836 !important;font-weight:800 !important;font-size:12px !important;letter-spacing:.07em}
+  .wm-nh:hover{color:#000 !important}
+  .wm-nh .ch{font-size:22px !important;line-height:1;font-weight:700;color:#3A3836;width:26px;height:22px;text-align:center;display:inline-flex;align-items:center;justify-content:center;margin-left:auto}
+  .wm-nh .ch:hover{color:var(--red)}
+  #content-root .wd-section-title,#content-root .wd-h h3,#content-root .wd-card-head h4,#content-root .panel-head h3,#content-root .section-label,#content-root .wd-panel h3{color:#3A3836 !important;font-weight:800 !important}
+  .wm-regbar{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin:0 0 10px}
+  .mr-sec{margin:18px 0 6px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .mr-sec h3{margin:0;font-size:15.5px;font-weight:800;color:#3A3836}
+  .mr-sec span{font-size:12px;color:var(--text-faint)}
+  `;
+  document.head.appendChild(css);
+
+  /* 5. one document number architecture: base number plus revision tier */
+  window.wmProcNo = function(p){
+    const base = String((p && (p.doc_number || p.ref_code)) || '').trim(); if(!base) return '';
+    if(/-(?:R|REV)\d+$/i.test(base) || /-\d{3}-\d{2}$/.test(base)) return base;
+    const n = p.revision == null || p.revision === '' ? 0 : p.revision;
+    return base + '-' + fmtRev(n);
+  };
+  try{
+    const src = (window.WM_PDF_SOURCES || []).find(x => x.key === 'process');
+    if(src){ const o = src.rows; src.rows = function(){ return o.call(this).map(r => { const p = (STATE.processes || []).find(x => x.id === r.id); return p ? Object.assign({}, r, { num: wmProcNo(p) }) : r; }); }; }
+  }catch(e){ console.warn('R50 proc rows', e); }
+
+  /* 4. data */
+  async function loadBulk(force){ try{ await window.wmLoadBulkDocuments(force); }catch(e){ console.warn('bulk', e); } }
+  const dn = id => { const d = (STATE.docDepartments || []).find(x => x.id === id); return d ? d.name : 'Unfiled'; };
+  const tn = id => { const t = (STATE.docTypes || []).find(x => x.id === id); return t ? t.name : ''; };
+  const openReq = id => (STATE.docReviewRequests || []).some(q => (q.bulk_document_id === id || q.document_id === id) && ['pending', 'in_progress'].includes(q.status));
+  function rows50(){
+    const a = [], b = [];
+    (STATE.documents || []).filter(d => d.doc_number).forEach(d => { const w = documentWorkflowBadge(d);
+      a.push({ sec:'A', src:'Document Management', num:d.doc_number, title:d.title || '', dept:dn(d.department_id), type:tn(d.type_id), rev:(d.current_revision == null || d.current_revision === '') ? '' : fmtRev(d.current_revision), revDate:d10(d.current_revision_date), status:w.label, color:w.color, wf:w.key, id:d.id, kind:'c' }); });
+    try{ (window.WM_PDF_SOURCES || []).forEach(x => x.rows().forEach(r => a.push(Object.assign({ sec:'A', revDate:'' }, r)))); }catch(e){}
+    (STATE.bulkDocuments || []).filter(d => !d.archived).forEach(d => { const up = openReq(d.id);
+      b.push({ sec:'B', src:'Uploaded historical documents', num:d.doc_number || 'Not numbered', title:d.file_name || '', dept:dn(d.department_id), type:tn(d.document_type_id), rev:'', revDate:'', uploaded:d10(d.created_at),
+        status: up ? 'Update in progress' : d.approved_status ? 'Approved' : (d.current_status === false ? 'Superseded' : 'Filed'), color: up ? '#B26A16' : d.approved_status ? '#2E5AA8' : (d.current_status === false ? '#6B6B6B' : '#5A6B7B'), wf: d.approved_status ? 'approved' : 'filed', id:d.id, path:d.storage_path, kind:'b' }); });
+    const cmp = (x, y) => String(x.num).localeCompare(String(y.num), undefined, { numeric:true });
+    return { a:a.sort(cmp), b:b.sort(cmp) };
+  }
+  function filtered(){
+    const q = ((document.getElementById('mr2-q') || {}).value || '').toLowerCase().trim(), d = (document.getElementById('mr2-dept') || {}).value || '', s = (document.getElementById('mr2-src') || {}).value || '', st = (document.getElementById('mr2-st') || {}).value || '';
+    const f = r => (!d || r.dept === d) && (!s || r.src === s) && (!st || r.status === st) && (!q || (r.num + ' ' + r.title).toLowerCase().includes(q));
+    const all = rows50(); return { a:all.a.filter(f), b:all.b.filter(f), all };
+  }
+  const badge = r => r.kind === 'c' && !['approved', 'withdrawn', 'superseded'].includes(r.wf)
+    ? `<span class="sev-badge" style="background:${r.color};color:#fff;cursor:pointer;" title="Open in Documents Work in Progress" onclick="event.stopPropagation(); hubOpenDoc('${r.id}')">${E(r.status)} ›</span>`
+    : `<span class="sev-badge" style="background:${r.color || '#5A6B7B'};color:#fff;">${E(r.status)}</span>`;
+  const viewBtn = r => r.kind === 'c' ? `<button class="btn-small" onclick="event.stopPropagation(); downloadDocumentPdf('${r.id}')">View Document</button>`
+    : r.kind === 'p' ? `<button class="btn-small" onclick="event.stopPropagation(); processDocumentPdf('${r.id}')">View Document</button>`
+    : r.kind === 'r' ? `<button class="btn-small" onclick="event.stopPropagation(); perfReportPdf('${r.id}')">View Document</button>`
+    : (r.path ? `<button class="btn-small" onclick="event.stopPropagation(); downloadFromBucket('documents','${r.path}')">View Document</button>` : '');
+  const reqBtn = r => r.kind === 'r' ? '' : `<button class="btn-small" onclick="event.stopPropagation(); ${r.kind === 'p' ? "processRequestUpdate('" + r.id + "')" : "mrRequestUpdate('" + r.kind + "','" + r.id + "')"}">Request update</button>`;
+  const tableA = rows => rows.length ? `<table><tr><th>Document Number</th><th>Title</th><th>Department</th><th>Type</th><th>Rev / date</th><th>Status</th><th>Source</th><th></th></tr>${rows.map(r => `<tr class="clickable" onclick="mr2Open('${r.kind}','${r.id}')" title="Click to view the document as PDF"><td class="mono-cell">${E(r.num)}</td><td class="strong">${E(r.title)}</td><td>${E(r.dept)}</td><td>${E(r.type)}</td><td style="text-align:center;">${E(r.rev)}${r.revDate ? `<div style="font-size:10.5px;color:var(--text-faint);white-space:nowrap;">${E(fmtDate(r.revDate))}</div>` : ''}</td><td>${badge(r)}</td><td>${E(r.src)}</td><td style="text-align:right;white-space:nowrap;">${viewBtn(r)} ${reqBtn(r)}</td></tr>`).join('')}</table>` : '<div class="empty-state"><p>No documents match.</p></div>';
+  const tableB = rows => rows.length ? `<table><tr><th>Document Number</th><th>File / title</th><th>Department</th><th>Type</th><th>Uploaded</th><th>Status</th><th></th></tr>${rows.map(r => `<tr class="clickable" onclick="mr2Open('b','${r.id}')" title="Click to open the uploaded file"><td class="mono-cell">${E(r.num)}</td><td class="strong">${E(r.title)}</td><td>${E(r.dept)}</td><td>${E(r.type)}</td><td>${r.uploaded ? E(fmtDate(r.uploaded)) : ''}</td><td>${badge(r)}</td><td style="text-align:right;white-space:nowrap;">${viewBtn(r)} ${reqBtn(r)}</td></tr>`).join('')}</table>` : '<div class="empty-state"><p>No uploaded historical documents match. Use <b>Bulk upload historical documents</b> above to add them.</p></div>';
+
+  window.mr2Render = function(){
+    const wa = document.getElementById('mr2-table-a'), wb = document.getElementById('mr2-table-b'); if(!wa || !wb) return;
+    const f = filtered(), cap = 500;
+    wa.innerHTML = tableA(f.a.slice(0, cap)) + (f.a.length > cap ? '<p style="padding:10px;font-size:12px;color:var(--text-faint);">Showing the first 500: refine your search.</p>' : '');
+    wb.innerHTML = tableB(f.b.slice(0, cap)) + (f.b.length > cap ? '<p style="padding:10px;font-size:12px;color:var(--text-faint);">Showing the first 500: refine your search.</p>' : '');
+    const ca = document.getElementById('mr-ca'), cb = document.getElementById('mr-cb'); if(ca) ca.textContent = f.a.length + ' of ' + f.all.a.length; if(cb) cb.textContent = f.b.length + ' of ' + f.all.b.length;
+  };
+
+  function draw(keep){
+    const root = document.getElementById('mr2-root'); if(!root) return;
+    const all = rows50(); const everything = all.a.concat(all.b);
+    const isAdmin = ['admin', 'manager'].includes(STATE.myRole) || (STATE.profile && STATE.profile.is_platform_staff);
+    const H = (window.dhHas && window.dhHas()) || {}; const canUp = isAdmin || H.ctl || H.all;
+    let seqs = []; try{ seqs = masterDocRegistryData().sequences; }catch(e){}
+    const depts = [...new Set(everything.map(r => r.dept))].sort(), sts = [...new Set(everything.map(r => r.status))].sort();
+    root.innerHTML = `<div class="detail-card">
+      <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;"><h3>Master Documents Register</h3>${isAdmin ? '<button class="btn-small primary" onclick="goToMasterDocRegisterAdmin()">Work on the register in the Admin console</button>' : ''}</div>
+      <p style="font-size:12.5px;color:var(--text-faint);margin:0;">Every document in the system. <b>Section A</b> holds documents created and controlled in Watchman. <b>Section B</b> holds uploaded historical documents: ask for an update and the uploaded file is loaded automatically, the new document is drafted and moves to Section A once approved.</p></div>
+    <div class="toolbar"><div class="filters"><input id="mr2-q" placeholder="Search number or title…" oninput="mr2Render()" style="min-width:260px;" value="${E(keep.q || '')}">
+      <select id="mr2-dept" onchange="mr2Render()"><option value="">All departments</option>${depts.map(d => `<option ${keep.d === d ? 'selected' : ''}>${E(d)}</option>`).join('')}</select>
+      <select id="mr2-src" onchange="mr2Render()"><option value="">All sources</option>${['Document Management', 'Processes & KPIs', 'Company Performance Report', 'Uploaded historical documents'].map(s => `<option ${keep.s === s ? 'selected' : ''}>${E(s)}</option>`).join('')}</select>
+      <select id="mr2-st" onchange="mr2Render()"><option value="">All statuses</option>${sts.map(x => `<option ${keep.st === x ? 'selected' : ''}>${E(x)}</option>`).join('')}</select></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">${canUp ? '<button class="btn-small" onclick="document.getElementById(\'mr-bulk\').classList.toggle(\'open\')">Bulk upload historical documents</button>' : ''}${H.ctl ? '<button class="btn-small" onclick="dhNewDoc()">Create new document</button>' : ''}<button class="btn-small" onclick="exportMasterRegister()">Export Excel</button><button class="btn-small" onclick="printMasterRegister()">Print Register</button></div></div>
+    <div class="form-panel" id="mr-bulk">
+      <h3 style="font-family:Arial,Helvetica,sans-serif;font-size:15.5px;font-weight:600;margin-bottom:6px;">Bulk upload historical documents</h3>
+      <p style="font-size:11.5px;color:var(--text-faint);margin-bottom:10px;">Add as many files as you like. Each is sorted by its naming convention (department code, document type code, number) and listed below in Section B. Accepted: PDF, Word, Excel, JPG, PNG, maximum ${EVIDENCE_MAX_SIZE_MB}MB per file.</p>
+      <input type="file" id="alldocs-smart-files" multiple>
+      <div style="margin-top:10px;"><button class="btn-primary" onclick="uploadAllDocsSmart()" id="alldocs-smart-upload-btn">Upload &amp; Auto-sort</button></div>
+      <div id="alldocs-smart-progress" style="margin-top:12px;"></div><div id="alldocs-smart-result" style="margin-top:10px;"></div>
+    </div>
+    <div class="mr-sec"><h3>Section A: Documents created in Watchman</h3><span id="mr-ca"></span><span>Controlled documents, processes and reports, with revision and approval status.</span></div>
+    <div class="panel" style="padding:0;overflow:hidden;"><div id="mr2-table-a"></div></div>
+    <div class="mr-sec"><h3>Section B: Uploaded historical documents</h3><span id="mr-cb"></span><span>Filed as uploaded. Request an update to bring a document into Watchman.</span></div>
+    <div class="panel" style="padding:0;overflow:hidden;"><div id="mr2-table-b"></div></div>
+    <div class="detail-card" style="margin-top:18px;"><div class="panel-head"><h3>Next available numbers</h3></div>
+      ${seqs.length ? `<table><tr><th>Department</th><th>Type</th><th>Count</th><th>Gaps</th><th>Next available number</th></tr>${seqs.map(g => `<tr><td>${E(g.dept.name)}</td><td>${E(g.type.name)}</td><td>${g.entries.length}</td><td>${g.gaps.length ? '<span style="color:var(--red)">' + g.gaps.join(', ') + '</span>' : '<span style="color:var(--green)">None</span>'}</td><td class="mono-cell strong">${E(g.nextNumber)}</td></tr>`).join('')}</table>` : '<p style="font-size:12.5px;color:var(--text-faint);">No correctly numbered documents yet.</p>'}</div>`;
+    mr2Render();
+  }
+  const keepOf = () => ({ q:(document.getElementById('mr2-q') || {}).value, d:(document.getElementById('mr2-dept') || {}).value, s:(document.getElementById('mr2-src') || {}).value, st:(document.getElementById('mr2-st') || {}).value });
+  window.renderMasterRegisterPage = function(){
+    const had = (STATE.bulkDocuments || []).length;
+    draw(keepOf());
+    loadBulk().then(() => { if(document.getElementById('mr2-root') && (STATE.bulkDocuments || []).length !== had){ draw(keepOf()); } const b = document.querySelector('.doc-hub .dh-stat b'); if(b){ const a = rows50(); b.textContent = a.a.length + a.b.length; } }).catch(() => {});
+  };
+  window.mr2Open = function(kind, id){ if(kind === 'p') return processDocumentPdf(id); if(kind === 'r') return perfReportPdf(id); const r = rows50(); const x = r.a.concat(r.b).find(z => z.kind === kind && String(z.id) === String(id)); if(!x) return; if(x.kind === 'c') return downloadDocumentPdf(x.id); if(x.path) return downloadFromBucket('documents', x.path); toast('This entry has no file to view.', 'info'); };
+  window.exportMasterRegister = async function(){
+    try{ const XLSX = await ensureXLSX(); const f = filtered(); const m = r => ({ 'Section':r.sec === 'A' ? 'A: Created in Watchman' : 'B: Uploaded historical', 'Document Number':r.num, 'Title':r.title, 'Department':r.dept, 'Type':r.type, 'Revision':r.rev, 'Revision date':r.revDate || '', 'Status':r.status, 'Source':r.src });
+      const ws = XLSX.utils.json_to_sheet(f.a.concat(f.b).map(m)); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Master Register'); XLSX.writeFile(wb, 'master-documents-register.xlsx'); }catch(e){ toast('Export is not available right now.', 'error'); }
+  };
+  window.printMasterRegister = function(){
+    const f = filtered(); const t = (rows, b) => printTable(b ? ['Document Number', 'File / title', 'Department', 'Type', 'Status'] : ['Document Number', 'Title', 'Department', 'Type', 'Rev', 'Status', 'Source'],
+      rows.map(r => b ? [E(r.num), E(r.title), E(r.dept), E(r.type), E(r.status)] : [E(r.num), E(r.title), E(r.dept), E(r.type), E(r.rev + (r.revDate ? ' (' + fmtDate(r.revDate) + ')' : '')), E(r.status), E(r.src)]));
+    const body = `<h3 style="margin:10px 0 4px;">Section A: Documents created in Watchman (${f.a.length})</h3>${t(f.a, false)}<h3 style="margin:16px 0 4px;">Section B: Uploaded historical documents (${f.b.length})</h3>${t(f.b, true)}`;
+    printRecord('Master Documents Register', `${f.a.length + f.b.length} documents`, [], body, null, 'master_register');
+  };
+  /* after a bulk upload from the register: refresh the data and the lists, keep the result message */
+  { const o = window.uploadAllDocsSmart; if(o) window.uploadAllDocsSmart = async function(){
+      const inMr = !!document.getElementById('mr-bulk');
+      const r = await o.apply(this, arguments);
+      if(inMr && document.getElementById('mr-bulk')){ await loadBulk(true); window.mr2Render(); }
+      return r; }; }
+
+  /* 4. a request to update an uploaded document starts the drafting with that file already loaded */
+  const FIELD = () => { const i = document.getElementById('dw-ref-file'); return i ? i.closest('.field') : null; };
+  let origField = null;
+  function resetRef(){ const f = FIELD(); if(f && origField && f.dataset.pre){ f.innerHTML = origField; delete f.dataset.pre; } STATE._r50Pre = null; }
+  { const o = window.toggleDocForm; if(o) window.toggleDocForm = toggleDocForm = function(){ STATE._activePromotionRequestId = null; STATE._activePromotionBulkDocId = null; resetRef(); return o.apply(this, arguments); }; }
+  { const o = window.actionReviewRequestPromote; if(o) window.actionReviewRequestPromote = async function(id){
+      const r = (STATE.docReviewRequests || []).find(x => x.id === id); const b = r && (STATE.bulkDocuments || []).find(x => x.id === r.bulk_document_id);
+      const out = await o.apply(this, arguments);
+      if(!r || !b) return out;
+      await new Promise(res => setTimeout(res, 60));
+      try{
+        const f = FIELD(); if(f && !origField) origField = f.innerHTML;
+        STATE._dw = STATE._dw || { step:1, templateId:null, refFile:null, refText:null };
+        const pu = document.getElementById('df-purpose'); if(pu && !pu.value.trim() && r.reason) pu.value = 'Update required: ' + r.reason;
+        if(f){ f.dataset.pre = '1'; f.innerHTML = `<label>1. Your existing (historical) document</label><p id="dw-ref-status" style="font-size:12.5px;margin:6px 0 0;">Loading <b>${E(b.file_name || b.doc_number)}</b> from your uploaded documents…</p>`; }
+        const dl = await STATE.supabase.storage.from('documents').download(b.storage_path);
+        if(dl.error || !dl.data) throw new Error(dl.error ? dl.error.message : 'file not found');
+        const file = new File([dl.data], b.file_name || 'existing-document', { type: dl.data.type || '' });
+        STATE._dw.refFile = file; STATE._dw.refText = await extractReferenceText(file);
+        const st = document.getElementById('dw-ref-status');
+        if(st) st.innerHTML = `<b>${E(b.file_name || b.doc_number)}</b> is already uploaded and loaded as the starting document. ${STATE._dw.refText ? 'The AI assistant will read it and redraft it with your update.' : 'No text could be read from it (a scanned image?); it is kept with the new document as reference.'} Describe the update in the purpose box on step 1, then continue.`;
+      }catch(e){
+        console.warn('R50 preload', e); const f = FIELD(); if(f && origField){ f.innerHTML = origField; delete f.dataset.pre; } toast('The uploaded file could not be loaded automatically: please attach it in step 2.', 'info');
+      }
+      return out; }; }
+
+  /* the assistant writes about the subject only, never about how Watchman works */
+  const RULE = '\n\nWRITING RULES (follow strictly): write only about the subject matter of this document and its improvements. Do not describe how QaSHE Watchman works, its modules, screens, workflow, review or approval process, and do not mention the software or the AI assistant. The only reference to QaSHE Watchman allowed is that it is the organisation\'s integrated management system (IMS), and only where a reference is genuinely needed.';
+  { const o = window.aiDraftSections; if(o) window.aiDraftSections = async function(opt){
+      if(STATE._personalDoc || !opt) return o.apply(this, arguments);
+      const n = Object.assign({}, opt, { purpose: String(opt.purpose || opt.title || '') + RULE });
+      return o.call(this, n); }; }
+
+  /* 2. every register can be printed and exported: add what a module is missing */
+  const REG = ['appraisals', 'asset_watchman', 'site_files', 'info_assets', 'threat_intel', 'soa', 'management_review', 'process_flowcharts', 'hr', 'legal_certs', 'orgchart'];
+  function bestTable(){
+    const tbs = [...document.querySelectorAll('#content-root table')].filter(t => !t.closest('.print-body') && t.rows.length > 1);
+    return tbs.sort((x, y) => y.rows.length - x.rows.length)[0] || null;
+  }
+  function scrape(t){
+    const hr = t.rows[0]; const keep = [...hr.cells].map((c, i) => c.innerText.trim() ? i : -1).filter(i => i >= 0);
+    const head = keep.map(i => hr.cells[i].innerText.trim()); const body = [...t.rows].slice(1).filter(r => r.cells.length >= keep.length && r.offsetParent !== null || r.cells.length > 1 && r.style.display !== 'none').map(r => keep.map(i => (r.cells[i] ? r.cells[i].innerText.replace(/\s+/g, ' ').trim() : '')));
+    return { head, body };
+  }
+  function bar(){
+    const act = document.querySelector('.nav-item.active'); const mod = act && act.dataset.mod; if(!mod || !REG.includes(mod)) return;
+    const root = document.getElementById('content-root'); if(!root) return;
+    const txt = [...root.querySelectorAll('button')].map(b => b.textContent.trim());
+    const hasP = txt.some(x => /print register/i.test(x)), hasX = txt.some(x => /export excel/i.test(x));
+    const old = document.getElementById('wm-regbar'); if(old && old.dataset.mod === mod) return; if(old) old.remove();
+    if(hasP && hasX) return; const t = bestTable(); if(!t) return;
+    const holder = t.closest('.panel') || t; const el = document.createElement('div'); el.id = 'wm-regbar'; el.className = 'wm-regbar'; el.dataset.mod = mod;
+    el.innerHTML = (hasX ? '' : '<button class="btn-small" onclick="wmRegExcel()">Export Excel</button>') + (hasP ? '' : '<button class="btn-small" onclick="wmRegPrint()">Print Register</button>');
+    holder.parentNode.insertBefore(el, holder);
+  }
+  const title = () => { const a = document.querySelector('.nav-item.active'); const m = a && MODULE_META[a.dataset.mod]; return (m ? m.title : 'Register') + ' Register'; };
+  window.wmRegPrint = function(){ const t = bestTable(); if(!t) return toast('Nothing to print here.', 'info'); const s = scrape(t); printRegister(title(), s.head.map(E), s.body.map(r => r.map(E)), (document.querySelector('.nav-item.active') || {dataset:{}}).dataset.mod); };
+  window.wmRegExcel = async function(){ const t = bestTable(); if(!t) return toast('Nothing to export here.', 'info'); try{ const X = await ensureXLSX(); const s = scrape(t); const ws = X.utils.aoa_to_sheet([s.head].concat(s.body)); const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, ws, 'Register'); X.writeFile(wb, title().replace(/[^\w]+/g, '-').toLowerCase() + '.xlsx'); }catch(e){ toast('Export is not available right now.', 'error'); } };
+  let tm = null; const root0 = document.getElementById('content-root');
+  if(root0) new MutationObserver(() => { clearTimeout(tm); tm = setTimeout(() => { try{ const o = document.getElementById('wm-regbar'); if(o && !document.getElementById('content-root').contains(o)) o.remove(); bar(); }catch(e){} }, 500); }).observe(root0, { childList:true, subtree:true });
+  { const o = window.showModule; window.showModule = showModule = function(){ const x = document.getElementById('wm-regbar'); if(x) x.remove(); return o.apply(this, arguments); }; }
 })();
 
 </script>
