@@ -34463,7 +34463,16 @@ window.brandFromLogo = function(){
         <tr><td>Appointee</td><td>${esc(a.appointee_typed_name || p.full_name || '')}</td><td>${sigCell(a.appointee_signature, a.appointee_typed_name || p.full_name, a.appointee_signed_at)}</td></tr></tbody></table>
       ${a.letter_hash ? `<p style="font-size:10px;color:#666;margin-top:10px">Electronic signature record: document integrity hash (SHA-256) ${esc(a.letter_hash)}. Signed in QaSHE Watchman under the Electronic Communications and Transactions Act 25 of 2002. Any change to the letter after issue changes the hash.</p>` : ''}`;
   }
-  const letterHtml = a => (a.letter_body || letterText(a)) + sigBlock(a);
+  function issueAcceptBlock(a){
+    const p = personById(a.personnel_id) || {}, at = v => v ? new Date(v).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+    const st = a.appointee_signed_at ? `Issued by ${esc(a.appointed_by_name || '—')}${a.appointed_by_position ? ' (' + esc(a.appointed_by_position) + ')' : ''}${a.appointer_signed_at ? ' on ' + at(a.appointer_signed_at) : ''}. Accepted digitally by ${esc(a.appointee_typed_name || p.full_name || '')} on ${at(a.appointee_signed_at)} through QaSHE Watchman.${a.letter_hash ? ' Verification reference ' + esc(String(a.letter_hash).slice(0, 12).toUpperCase()) + '.' : ''}`
+      : a.appointer_signed_at ? `Issued by ${esc(a.appointed_by_name || '—')} on ${at(a.appointer_signed_at)}. Digital acceptance by the appointee is outstanding.` : 'This appointment has not yet been issued.';
+    const box = (t, nm) => `<td style="width:50%;vertical-align:top;border:1px solid #bbb;padding:8px 10px"><div style="font:700 9px Arial;color:#B21616;letter-spacing:.05em">${t}</div><div style="margin-top:10px">Name: ${esc(nm || '')}</div><div style="margin-top:18px">Signature: ______________________________</div><div style="margin-top:18px">Date: ______________________________</div></td>`;
+    return `${printSectionTitle('Issue and Acceptance')}<p style="background:#f3f3f3;border:1px solid #ddd;padding:8px 10px;font-size:12px">${st}</p>
+      <table style="width:100%;border-collapse:collapse"><tr>${box('ISSUED BY (APPOINTER)', a.appointed_by_name)}${box('ACCEPTED BY (APPOINTEE)', a.appointee_typed_name || p.full_name)}</tr></table>
+      <p style="font-size:10px;color:#666;margin-top:6px"><i>Sign the printed copy where a paper record is required, for example the private personnel file or the site safety file.</i></p>`;
+  }
+  const letterHtml = a => (a.letter_body || letterText(a)) + sigBlock(a) + issueAcceptBlock(a);
 
   window.oaView = async function(id){
     await loadOATemplates();
@@ -54015,7 +54024,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     const meNm = memberName(STATE.user.id);
     const rows = issues.map(i => `<tr><td>${E(i.recipient_name)}<div style="font-size:11px;color:var(--text-faint);">${E(i.recipient_email || 'no email')}</div></td><td>${fmtDate(d10(i.issued_at))}<div style="font-size:11px;color:var(--text-faint);">by ${E(i.issuer_name || '—')} · rev ${E(fmtRev(i.revision))}</div></td>
       <td><span class="sev-badge" style="background:${COL[i.status] || '#666'};color:#fff;">${E(LBL[i.status] || i.status)}</span>${i.accepted_at ? `<div style="font-size:11px;margin-top:2px;">${E(fmtDT(i.accepted_at))} by ${E(i.accepted_name || '')}</div>` : ''}${i.declined_reason ? `<div style="font-size:11px;color:#B3261E;">${E(i.declined_reason)}</div>` : ''}${i.paper_signed_date ? `<div style="font-size:11px;">Paper signed ${fmtDate(d10(i.paper_signed_date))}</div>` : ''}</td>
-      <td style="white-space:nowrap;">${i.status === 'issued' || i.status === 'declined' ? `<button class="btn-small" onclick="wmIssueResend('${i.id}','${d.id}')">Resend</button> <button class="btn-small" onclick="wmIssueCopy('${i.id}','${d.id}')">Copy link</button> ` : ''}${['issued', 'declined', 'accepted'].includes(i.status) && canIssue ? `<button class="btn-small" onclick="wmIssuePaper('${i.id}','${d.id}')">Record paper signature</button> <button class="btn-small" onclick="wmIssueWithdraw('${i.id}','${d.id}')">Withdraw</button>` : ''}</td></tr>`).join('');
+      <td style="white-space:nowrap;">${i.status === 'issued' || i.status === 'declined' ? `<button class="btn-small" onclick="wmIssueResend('${i.id}','${d.id}')">Resend</button> <button class="btn-small" onclick="wmIssueCopy('${i.id}','${d.id}')">Copy link</button> ` : ''}${['issued', 'declined', 'accepted'].includes(i.status) ? `<button class="btn-small" onclick="wmIssuePaper('${i.id}','${d.id}')">Record paper signature</button> ` : ''}${['issued', 'declined', 'accepted'].includes(i.status) && canIssue ? `<button class="btn-small" onclick="wmIssueWithdraw('${i.id}','${d.id}')">Withdraw</button>` : ''}</td></tr>`).join('');
     const others = per ? (STATE.documents || []).filter(x => x.id !== d.id && x.personnel_id === per.id && x.personal_kind && x.status !== 'withdrawn' && x.status !== 'superseded' && (x.approval_status === 'approved' || x.workflow_status === 'approved')) : [];
     return `<div class="detail-card" id="wm-issue-card" style="padding:16px;margin-bottom:16px;">
       <div class="panel-head"><h3 style="font-family:Arial,sans-serif;font-size:15.5px;font-weight:600;">Issue and acceptance</h3><span style="font-size:11.5px;color:var(--text-faint);">Printed on the final PDF and Word copy</span></div>
@@ -54108,6 +54117,88 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     if(data && data.ok) renderDaPage(token); else alert('Could not save. Please try again.');
   };
   (function(){ const da = new URLSearchParams(location.search).get('da'); if(da) document.addEventListener('DOMContentLoaded', () => renderDaPage(da)); })();
+})();
+
+
+/* ===== R48b: evidence files on appraisals (employee, line manager, and staff in the app) ===== */
+(function(){
+  const E = s => escapeHtml(String(s == null ? '' : s));
+  const sb = () => STATE.supabase;
+  const EXT = ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'eml', 'msg'], MAX = 10 * 1024 * 1024;
+  const size = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+  let TOKEN = '', STATE_EV = { rows: [], can: false, role: '' };
+  const call = async (action, body) => {
+    const r = await fetch(SUPABASE_URL + '/functions/v1/appraisal-evidence', { method:'POST', headers:{ 'Content-Type':'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY }, body: JSON.stringify(Object.assign({ action, token: TOKEN }, body || {})) });
+    let j = null; try{ j = await r.json(); }catch(e){} return j || { ok:false, error:'No answer from the server' };
+  };
+  const rowHtml = (r, mine) => `<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-top:1px solid #eee;font-size:12.5px;"><span style="flex:1;word-break:break-all;">📎 ${E(r.file_name)} <span style="color:#888;">${size(r.file_size || 0)} · ${r.uploaded_by_role === 'manager' ? 'line manager' : 'employee'}</span></span>
+    <button type="button" style="border:1px solid #bbb;background:#fff;border-radius:6px;padding:4px 9px;cursor:pointer;" onclick="evOpen('${E(r.id)}')">Open</button>${mine && STATE_EV.can ? `<button type="button" style="border:1px solid #e0b4b4;background:#fff;color:#a00;border-radius:6px;padding:4px 9px;cursor:pointer;" onclick="evDelete('${E(r.id)}')">Remove</button>` : ''}</div>`;
+  function paint(){
+    document.querySelectorAll('.ev-box').forEach(box => {
+      const k = box.dataset.k, rows = STATE_EV.rows.filter(r => String(r.kpi_id) === k);
+      box.querySelector('.ev-list').innerHTML = rows.map(r => rowHtml(r, r.uploaded_by_role === STATE_EV.role)).join('') || '<div style="font-size:12px;color:#999;">No files attached.</div>';
+    });
+  }
+  async function refresh(){ const j = await call('list'); if(j.ok){ STATE_EV = { rows: j.rows || [], can: !!j.can_upload, role: j.role }; paint(); } }
+  window.evOpen = async function(id){ const j = await call('download-url', { id }); if(j.ok) window.open(j.url, '_blank'); else alert(j.error || 'Could not open the file'); };
+  window.evDelete = async function(id){ if(!confirm('Remove this file?')) return; const j = await call('delete', { id }); if(!j.ok) alert(j.error || 'Could not remove'); refresh(); };
+  window.evPick = async function(kpi, input, title){
+    const files = [...input.files]; input.value = ''; const msg = document.querySelector(`.ev-box[data-k="${kpi}"] .ev-msg`);
+    for(const f of files){
+      const ext = (f.name.split('.').pop() || '').toLowerCase();
+      if(!EXT.includes(ext)){ msg.textContent = `${f.name}: use PDF, a photo, Word, Excel or an email file.`; continue; }
+      if(f.size > MAX){ msg.textContent = `${f.name} is over 10 MB.`; continue; }
+      msg.textContent = `Uploading ${f.name}…`;
+      const u = await call('upload-url', { kpi_id: kpi, kpi_title: title, name: f.name, size: f.size, mime: f.type });
+      if(!u.ok){ msg.textContent = u.error || 'Could not upload'; continue; }
+      const up = await sb().storage.from('appraisal-evidence').uploadToSignedUrl(u.path, u.upload_token, f);
+      if(up.error){ msg.textContent = 'Upload failed: ' + up.error.message; continue; }
+      const c = await call('confirm', { id: u.id }); msg.textContent = c.ok ? '' : (c.error || 'Could not confirm the file');
+    }
+    refresh();
+  };
+  const widget = (k, title, canAdd) => `<div class="ev-box" data-k="${E(k)}" style="margin-top:10px;border:1px dashed #c9c9c9;border-radius:10px;padding:8px 12px;background:#fafafa;">
+    <div style="font-size:12px;font-weight:700;color:#444;">Evidence for this KPI</div><div class="ev-list"></div>
+    ${canAdd ? `<label style="display:inline-block;margin-top:6px;border:1px solid #bbb;border-radius:8px;padding:7px 12px;background:#fff;cursor:pointer;font-size:12.5px;font-weight:700;">+ Add a photo or file<input type="file" multiple hidden accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.doc,.docx,.xls,.xlsx,.csv,.txt,.eml,.msg,image/*" onchange="evPick('${E(k)}',this,'${E(String(title).replace(/'/g, ''))}')"></label>` : ''}<div class="ev-msg" style="font-size:12px;color:#a00;margin-top:4px;"></div></div>`;
+
+  { const o = window.renderApPage; window.renderApPage = async function(token){
+      const r = await o.apply(this, arguments);
+      try{
+        const root = document.getElementById('ap-public'); if(!root) return r;
+        const cards = [...root.querySelectorAll('[id^="apk-"]')], isReport = !cards.length && /Overall weighted result/i.test(root.textContent);
+        if(!cards.length && !isReport) return r;
+        TOKEN = token;
+        if(cards.length){
+          const first = root.querySelector('.card');
+          if(first) first.insertAdjacentHTML('beforeend', `<div style="margin-top:12px;padding:10px 12px;background:#fff7e0;border-radius:10px;font-size:13px;line-height:1.5;"><b>Evidence.</b> Under each KPI you can attach a photo of a report, or a PDF, Word, Excel or email file (up to 10 MB each, five per KPI). Please attach only what supports your rating, and bring or share the actual documents when you meet your line manager.</div>`);
+          cards.forEach(c => { const t = (c.querySelector('div[style*="font-weight:800"]') || {}).textContent || 'KPI'; c.insertAdjacentHTML('beforeend', widget(c.id.slice(4), t, true)); });
+          await refresh();
+        } else {
+          const j = await call('list'); if(j.ok && (j.rows || []).length){
+            const by = {}; j.rows.forEach(x => { (by[x.kpi_id] = by[x.kpi_id] || { t: x.kpi_title, rows: [] }).rows.push(x); }); STATE_EV = { rows: j.rows, can: false, role: j.role };
+            const w = root.querySelector('.w'); w.insertAdjacentHTML('beforeend', `<div class="card"><h3>Evidence files</h3>${Object.keys(by).map(k => `<div style="margin-top:8px;"><b>${E(by[k].t || 'KPI')}</b>${by[k].rows.map(x => rowHtml(x, false)).join('')}</div>`).join('')}</div>`);
+          }
+        }
+      }catch(e){ console.warn('R48b evidence', e); }
+      return r; }; }
+
+  /* staff in the app: files on the appraisal, with the KPI they belong to */
+  { const o = window.openAppraisalDetail; openAppraisalDetail = window.openAppraisalDetail = async function(id){
+      const r = await o.apply(this, arguments);
+      try{
+        const slot = document.getElementById('appraisal-detail-slot'); if(!slot || document.getElementById('r48b-ev')) return r;
+        const q = await sb().from('appraisal_evidence').select('*').eq('appraisal_id', id).eq('confirmed', true).order('created_at');
+        if(q.error || !(q.data || []).length) return r;
+        const by = {}; q.data.forEach(x => { (by[x.kpi_id] = by[x.kpi_id] || { t: x.kpi_title, rows: [] }).rows.push(x); });
+        const html = `<div class="detail-card" id="r48b-ev" style="padding:14px;margin:12px 0;"><h4 style="margin:0 0 8px;">Evidence files</h4>${Object.keys(by).map(k => `<div style="margin-bottom:8px;"><b style="font-size:13px;">${E(by[k].t || 'KPI')}</b>${by[k].rows.map(x => `<div style="display:flex;gap:8px;align-items:center;font-size:12.5px;padding:3px 0;"><span style="flex:1;">📎 ${E(x.file_name)} <span style="color:var(--text-faint);">${size(x.file_size || 0)} · ${x.uploaded_by_role === 'manager' ? 'line manager' : 'employee'}</span></span><button class="btn-small" onclick="r48bOpen('${x.id}')">Open</button></div>`).join('')}</div>`).join('')}</div>`;
+        const meta = slot.querySelector('.detail-meta'); (meta || slot.firstElementChild).insertAdjacentHTML('afterend', html);
+      }catch(e){ console.warn('R48b staff', e); }
+      return r; }; }
+  window.r48bOpen = async function(id){
+    const q = await sb().from('appraisal_evidence').select('storage_path, file_name').eq('id', id).single(); if(q.error || !q.data){ toast('File not found.', 'error'); return; }
+    const s = await sb().storage.from('appraisal-evidence').createSignedUrl(q.data.storage_path, 60, { download: q.data.file_name });
+    if(s.error){ toast('Could not open: ' + s.error.message, 'error'); return; } window.open(s.data.signedUrl, '_blank');
+  };
 })();
 
 </script>
