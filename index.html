@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R46 2026-11-17"><meta charset="UTF-8">
+<meta name="wm-release" content="R47 2026-11-17"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -8700,6 +8700,7 @@ async function openDocumentDetail(id){
           ${docCanManage() ? `<button class="btn-small" onclick="openReviewDateModal('${d.id}')" title="Change the next review date">Review date: ${d.next_review_date ? fmtDate(d.next_review_date) : 'set'}</button>` : ''}
           <button class="btn-small" onclick="printDocumentContent('${d.id}')" title="Editable copy for review and drafting">Download Word (Review Copy)</button>
           <button class="btn-small primary" onclick="downloadDocumentPdf('${d.id}')" title="Final, non-editable copy for printing">View / Print PDF (Final)</button>
+          <button class="btn-small" onclick="wmReviewReport('${d.id}')" title="Who reviewed and approved this document, when, and what changed">Review &amp; Approval Report</button>
           ${canDownload() ? `<button class="btn-small" onclick="downloadDocumentPdf('${d.id}','download')" title="Download a copy of the final PDF">Download PDF</button>` : ''}
           <button class="btn-small" onclick="printDocument('${d.id}')">Print Register Summary</button>
           <button class="close-btn" onclick="closeDocumentDetail()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
@@ -9685,7 +9686,7 @@ window.downloadDocumentPdf = async function(id, mode){
   function addParagraph(text){ kit.para(text, 12, 16); }
 
   if((sections || []).length){
-    addHeading('Table of Contents', 16);
+    addHeading('Table of Contents', 16); y += 8;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(12); doc.setTextColor(0,0,0);
     sections.forEach((s, idx) => {
       ensureSpace(18);
@@ -9730,7 +9731,7 @@ window.downloadDocumentPdf = async function(id, mode){
 
   (sections || []).forEach((s, idx) => {
     addHeading(`${idx + 1}. ${s.section_title}`, 14);
-    kit.rich(s.content || '');
+    kit.beginSection(idx + 1); kit.rich(s.content || '');
     (sectionTables||[]).filter(t => t.section_id === s.id).forEach(t => {
       const _rows = t.table_data || []; if(_rows.length) kit.table(_rows[0], _rows.slice(1), { caption: t.caption, noBoldFirst: true });
     });
@@ -9756,7 +9757,7 @@ window.downloadDocumentPdf = async function(id, mode){
     addHeading('Addendums', 16);
     addendums.forEach((a, idx) => {
       addHeading(`${String.fromCharCode(65+idx)}. ${a.title}`, 13);
-      kit.rich(a.content || '');
+      kit.beginSection(String.fromCharCode(65+idx)); kit.rich(a.content || '');
       if(a.storage_path){
         doc.setFont('helvetica','italic'); doc.setFontSize(10);
         ensureSpace(14); doc.text(`(See attached file: ${a.title})`, marginL, y); y += 18;
@@ -9769,54 +9770,7 @@ window.downloadDocumentPdf = async function(id, mode){
     doc.text('No content sections have been authored yet.', marginL, y);
   }
 
-  const pageCount = doc.internal.getNumberOfPages();
-  const reviewLine = d.reviewer_id ? `Reviewer: ${memberName(d.reviewer_id)}: ${d.reviewer_signed_off_at ? 'Reviewed '+fmtDate(d.reviewer_signed_off_at) : 'Pending'}` : 'Reviewer: —';
-  const _apprAt = d.approver_signed_off_at || ((d.approval_status === 'approved' || d.workflow_status === 'approved') ? d.approved_date : null), _apprBy = d.approver_id || d.approved_by;
-  const approveLine = _apprBy ? `Approver: ${memberName(_apprBy)}: ${_apprAt ? 'Approved '+fmtDate(_apprAt) : 'Pending'}` : 'Approver: —';
-
-  for(let i = 1; i <= pageCount; i++){
-    doc.setPage(i);
-    // Header, repeated identically on every page
-    let hy = 30;
-    if(logoImage){
-      const logoDims = fitImageDimensions(logoImage.naturalWidth, logoImage.naturalHeight, 100, 40);
-      const dataUrl = arrayBufferToDataUrl(logoImage.data, logoImage.type === 'png' ? 'image/png' : 'image/jpeg');
-      doc.addImage(dataUrl, logoImage.type.toUpperCase(), marginL, hy - 10, logoDims.width, logoDims.height);
-    }
-    doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(0,0,0);
-    doc.text(STATE.org.name, marginL + (logoImage ? 115 : 0), hy);
-    doc.setFont('helvetica','normal'); doc.setFontSize(9);
-    if(STATE.org.address) doc.text(STATE.org.address, marginL + (logoImage ? 115 : 0), hy + 14);
-    { const _nx = marginL + (logoImage ? 115 : 0);
-      doc.setFont('helvetica','bold'); doc.setFontSize(13);
-      const _nameW = doc.getTextWidth(STATE.org.name || '');
-      const _addrW = STATE.org.address ? (doc.setFont('helvetica','normal'), doc.setFontSize(9), doc.getTextWidth(STATE.org.address)) : 0;
-      const _left = _nx + Math.max(_nameW, _addrW) + 16;
-      const _maxW = Math.max(110, pageW - marginR - _left);
-      doc.setFont('helvetica','bold'); doc.setFontSize(13);
-      let _ls = doc.splitTextToSize(String(d.title||''), _maxW);
-      if(_ls.length > 2){ doc.setFontSize(10); _ls = doc.splitTextToSize(String(d.title||''), _maxW); }
-      else if(_ls.length > 1){ doc.setFontSize(11); _ls = doc.splitTextToSize(String(d.title||''), _maxW); }
-      doc.text(_ls.slice(0,3), pageW - marginR, hy, { align: 'right' }); }
-    doc.setDrawColor(0,0,0); doc.setLineWidth(1.2); doc.line(marginL, headerH - 15, pageW - marginR, headerH - 15);
-
-    // Footer, repeated identically on every page — the real "Page X of Y"
-    // this format never allowed reliably before
-    const fy = pageH - footerH + 14;
-    doc.setDrawColor(208,208,208); doc.setLineWidth(0.6);
-    doc.line(marginL, fy - 10, pageW - marginR, fy - 10);
-    doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(0,0,0);
-    const col1 = marginL, col2 = marginL + 130, col3 = marginL + 330, col4 = marginL + 415;
-    const sigStatus = documentSignoffStatus(d);
-    doc.text(`Doc No: ${d.doc_number}`, col1, fy);
-    doc.text(`Rev ${fmtRev(d.current_revision)}: ${fmtDate(d.current_revision_date || d.approved_date)}`, col1, fy + 10);
-    doc.text(`Status: ${sigStatus.label}`, col1, fy + 20);
-    const disclaimerLines = doc.splitTextToSize('This document is controlled within QaSHE Watchman. A printed or saved copy is valid only at the time of printing and may not reflect the current revision. Personnel must always refer to QaSHE Watchman for the latest approved version.', 190);
-    doc.text(disclaimerLines, col2, fy);
-    doc.text(reviewLine, col3, fy);
-    doc.text(approveLine, col4, fy);
-    doc.text(`Page ${i} of ${pageCount}`, pageW - marginR, fy + 20, { align: 'right' });
-  }
+  wmPdfFrame(doc, { title: d.title, logo: logoImage, info: await wmDocControl(d) });
 
   hideLoader();
   if(mode === 'blob') return doc.output('blob');
@@ -9885,13 +9839,9 @@ window.printDocumentContent = async function(id){
   }
   headerChildren.push(new Paragraph({ children: [new TextRun({ text: d.title, bold: true, size: 32, font: "Arial" })], spacing: { before: 200 } }));
 
-  const reviewLine = d.reviewer_id
-    ? `Reviewer: ${memberName(d.reviewer_id)}\n${d.reviewer_signed_off_at ? 'Reviewed: '+fmtDate(d.reviewer_signed_off_at) : 'Review: Pending'}`
-    : 'Reviewer: —';
-  const _wAt = d.approver_signed_off_at || ((d.approval_status === 'approved' || d.workflow_status === 'approved') ? d.approved_date : null), _wBy = d.approver_id || d.approved_by;
-  const approveLine = _wBy
-    ? `Approver: ${memberName(_wBy)}\n${_wAt ? 'Approved: '+fmtDate(_wAt) : 'Approval: Pending'}`
-    : 'Approver: —';
+  const _ctl = await wmDocControl(d);
+  const reviewLine = (_ctl.reviewers.length ? _ctl.reviewers.map(r => 'Reviewed by: ' + r.name + (r.date ? '\n' + fmtDate(String(r.date).slice(0, 10)) : '\nreview pending')).join('\n') : 'Reviewed by: —');
+  const approveLine = _ctl.approver ? `Approved by: ${_ctl.approver.name}\n${_ctl.approver.date ? fmtDate(String(_ctl.approver.date).slice(0, 10)) : 'approval pending'}` : 'Approved by: —';
 
   function footerCell(text, widthPct){
     return new TableCell({
@@ -9905,7 +9855,7 @@ window.printDocumentContent = async function(id){
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder, insideHorizontal: thinBorder, insideVertical: thinBorder },
     rows: [ new TableRow({ children: [
-      footerCell(`Document Number: ${d.doc_number}\nRevision Status: ${fmtRev(d.current_revision)}\nRevision Date: ${fmtDate(d.current_revision_date || d.approved_date)}\nStatus: ${wordSigStatus.label}`, 26),
+      footerCell(`Document Number: ${_ctl.docNo}\nRevision Status: ${_ctl.rev}\nRevision Date: ${_ctl.revDate}\nStatus: ${_ctl.status}`, 26),
       footerCell(`This document is controlled within QaSHE Watchman. A printed or saved copy is valid only at the time of printing and may not reflect the current revision. Personnel must always refer to QaSHE Watchman for the latest approved version.`, 39),
       footerCell(reviewLine, 17.5),
       footerCell(approveLine, 17.5),
@@ -9933,7 +9883,7 @@ window.printDocumentContent = async function(id){
       children: [new TextRun({ text: `${idx + 1}. ${s.section_title}`, bold: true, size: 28, font: "Arial", color: "000000" })],
       spacing: { before: 240, after: 120 },
     }));
-    wmDocxRich(docxLib, s.content || '').forEach(el => bodyChildren.push(el));
+    wmDocxRich(docxLib, s.content || '', idx + 1).forEach(el => bodyChildren.push(el));
     (sectionTables || []).filter(t => t.section_id === s.id).forEach(t => {
       const rows = t.table_data || [];
       if(rows.length) bodyChildren.push(wmDocxTable(docxLib, rows[0], rows.slice(1), { noBoldFirst: true }));
@@ -53313,7 +53263,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     while(i < lines.length){
       const l = lines[i]; if(!/\S/.test(l)){ i++; continue; }
       let hdr = null;
-      if(/^\s*format\s*:/i.test(l) && i + 1 < lines.length && isPipe(lines[i + 1])){ const h = l.replace(/^\s*format\s*:[^|]*?:\s*/i, ''); hdr = isPipe(h) ? h.split('|').map(clean) : null; i++; }
+      if(/^\s*format\s*:/i.test(l) && i + 1 < lines.length && isPipe(lines[i + 1])){ let h = l.replace(/^\s*format\s*:[^|]*?:\s*/i, ''); if(!isPipe(h) || h === l) h = l.replace(/^\s*format\s*:\s*/i, ''); hdr = isPipe(h) ? h.split('|').map(clean) : null; i++; }
       if(isPipe(lines[i])){
         const rows = [];
         while(i < lines.length && isPipe(lines[i])){ rows.push(lines[i].replace(/^\s*[-*•]\s+(?=[^|]*\|)/, '').split('|').map(clean)); i++; }
@@ -53342,21 +53292,34 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     const col = { green:[46,125,79], amber:[196,128,20], red:[179,38,30], grey:[120,120,128], blue:[46,90,168] };
     const ens = n => { if(L.y + n > L.bottom){ L.newPage(); return true; } return false; };
     const tx = c => doc.setTextColor(c[0], c[1], c[2]);
+    const hardWrap = (t, w) => { const out = []; String(t == null ? '' : t).split(/\n/).forEach(par => { const words = par.split(/\s+/).filter(Boolean); const fixed = []; words.forEach(wd => { if(doc.getTextWidth(wd) <= w){ fixed.push(wd); return; } let cur = ''; for(const ch of wd){ if(doc.getTextWidth(cur + ch) > w - 1){ fixed.push(cur); cur = ch; } else cur += ch; } if(cur) fixed.push(cur); }); out.push(fixed.join(' ')); }); return doc.splitTextToSize(out.join('\n'), w); };
+    /* justified line: spreads the gaps so the line meets both margins (last line of a paragraph stays left) */
+    function drawJust(line, x, y, w, last){
+      const words = String(line).split(' ').filter(Boolean);
+      if(last || words.length < 2){ doc.text(String(line), x, y); return; }
+      const nat = doc.getTextWidth(words.join(' ')); if(nat < w * 0.72){ doc.text(String(line), x, y); return; }
+      const sum = words.reduce((a, wd) => a + doc.getTextWidth(wd), 0), gap = (w - sum) / (words.length - 1); let cx = x;
+      words.forEach(wd => { doc.text(wd, cx, y); cx += doc.getTextWidth(wd) + gap; });
+    }
+    let secNo = null, secCtr = 0;
+    function beginSection(no){ secNo = no; secCtr = 0; }
     function para(t, size, lh){
       size = size || 11; lh = lh || 15; doc.setFont('helvetica', 'normal'); doc.setFontSize(size); tx(INK);
-      const ls = doc.splitTextToSize(String(t), L.cW); ens(Math.min(ls.length, 3) * lh); 
-      ls.forEach(s => { ens(lh); doc.text(s, L.mL, L.y + size); L.y += lh; }); L.y += 5;
+      const ls = hardWrap(t, L.cW); ens(Math.min(ls.length, 3) * lh);
+      ls.forEach((s, k) => { ens(lh); drawJust(s, L.mL, L.y + size, L.cW, k === ls.length - 1); L.y += lh; }); L.y += 5;
     }
     function heading(t, size){
-      size = size || 13; L.y += 6; ens(size + 40); doc.setFont('helvetica', 'bold'); doc.setFontSize(size); tx(INK);
-      doc.text(String(t), L.mL, L.y + size); doc.setDrawColor(ACC[0], ACC[1], ACC[2]); doc.setLineWidth(1.4); doc.line(L.mL, L.y + size + 5, L.mL + 34, L.y + size + 5); L.y += size + 16;
+      size = size || 13; L.y += 6; ens(size + 64); doc.setFont('helvetica', 'bold'); doc.setFontSize(size); tx(INK);
+      doc.text(String(t), L.mL, L.y + size); L.y += size + 12;
     }
     function sub(t){ ens(40); doc.setFont('helvetica', 'bold'); doc.setFontSize(11.5); tx(INK); doc.text(String(t), L.mL, L.y + 11); L.y += 20; }
     function list(items, ordered){
       doc.setFont('helvetica', 'normal'); doc.setFontSize(11); tx(INK);
-      items.forEach((it, k) => { const ls = doc.splitTextToSize(String(it), L.cW - 22); ens(Math.min(ls.length, 2) * 14);
-        doc.setFont('helvetica', 'bold'); tx(ACC); doc.text(ordered ? (k + 1) + '.' : '•', L.mL + 4, L.y + 11); tx(INK); doc.setFont('helvetica', 'normal');
-        ls.forEach(s => { ens(14); doc.text(s, L.mL + 20, L.y + 11); L.y += 14; }); L.y += 3; });
+      items.forEach((it, k) => {
+        const label = ordered ? (secNo != null ? secNo + '.' + (++secCtr) : (k + 1) + '.') : '\u2022', ind = ordered && secNo != null ? 32 : 20;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(11); const ls = hardWrap(it, L.cW - ind - 2); ens(Math.min(ls.length, 2) * 14);
+        doc.setFont('helvetica', 'bold'); tx(INK); doc.text(label, L.mL + 2, L.y + 11); doc.setFont('helvetica', 'normal');
+        ls.forEach((s, j) => { ens(14); drawJust(s, L.mL + ind, L.y + 11, L.cW - ind - 2, j === ls.length - 1); L.y += 14; }); L.y += 3; });
       L.y += 4;
     }
     function table(head, rows, o){
@@ -53370,7 +53333,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
       if(fix > 0){ const free = W.reduce((a, w, c) => a + (w > minW(c) + 20 ? w : 0), 0); W = W.map((w, c) => w > minW(c) + 20 ? w - fix * (w / free) : w); }
       const sc = L.cW / W.reduce((a, b) => a + b, 0); W = W.map(w => w * sc);
       const px = 5, lh = 11, wmax = o.weightCol >= 0 ? Math.max(1, ...rows.map(r => parseFloat(String(r[o.weightCol]).replace('%', '')) || 0)) : 1;
-      const measure = (cells, bold) => { doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(9); const ls = cells.map((c, i) => doc.splitTextToSize(String(c == null ? '' : c), W[i] - 2 * px)); return { ls, h: Math.max(...ls.map(l => l.length)) * lh + 10 }; };
+      const measure = (cells, bold) => { doc.setFontSize(9); const ls = cells.map((c, i) => { doc.setFont('helvetica', (bold || (i === 0 && !o.noBoldFirst) || o.weightCol === i) ? 'bold' : 'normal'); return hardWrap(String(c == null ? '' : c), W[i] - 2 * px - (o.statusCol === i ? 8 : 0)); }); return { ls, h: Math.max(...ls.map(l => l.length)) * lh + 10 }; };
       const drawHead = () => { const m = measure(head, true); let x = L.mL; head.forEach((c, i) => { doc.setFillColor(HEAD[0], HEAD[1], HEAD[2]); doc.rect(x, L.y, W[i], m.h, 'F'); doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.text(m.ls[i], x + px, L.y + 14); x += W[i]; }); L.y += m.h; };
       const hm = head ? measure(head, true).h : 0, f0 = rows.length ? measure(rows[0], false).h : 0;
       ens(hm + f0 + 4); if(head) drawHead();
@@ -53381,7 +53344,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
           if(ri % 2) { doc.setFillColor(ZEB[0], ZEB[1], ZEB[2]); doc.rect(x, L.y, W[i], m.h, 'F'); }
           doc.rect(x, L.y, W[i], m.h); doc.setFont('helvetica', i === 0 && !o.noBoldFirst ? 'bold' : 'normal'); doc.setFontSize(9); tx(INK);
           const txt = String(c == null ? '' : c);
-          if(o.statusCol === i){ const k = /^on target|^complete|^approved|^active|^yes/i.test(txt) ? 'green' : /^near|^pending|^review|^due/i.test(txt) ? 'amber' : /^off|^overdue|^no\b|^inactive/i.test(txt) ? 'red' : 'grey';
+          if(o.statusCol === i){ const k = /^on target|^complete|^approved|^active|^yes|^satisfied|^confirmed|^reviewed|^published/i.test(txt) ? 'green' : /^near|^pending|^review|^due/i.test(txt) ? 'amber' : /^off|^overdue|^no\b|^inactive/i.test(txt) ? 'red' : 'grey';
             doc.setFillColor(col[k][0], col[k][1], col[k][2]); doc.circle(x + px + 3, L.y + 13, 3, 'F'); doc.setFont('helvetica', 'bold'); tx(col[k]); doc.text(m.ls[i], x + px + 11, L.y + 14); }
           else if(o.weightCol === i){ const v = parseFloat(txt.replace('%', '')) || 0; doc.setFont('helvetica', 'bold'); doc.text(txt, x + px, L.y + 14); const bx = x + px + 26, bw = W[i] - 2 * px - 26; if(bw > 8){ doc.setFillColor(232, 232, 236); doc.roundedRect(bx, L.y + 7, bw, 7, 3.5, 3.5, 'F'); doc.setFillColor(ACC[0], ACC[1], ACC[2]); doc.roundedRect(bx, L.y + 7, Math.max(3, bw * v / wmax), 7, 3.5, 3.5, 'F'); } }
           else doc.text(m.ls[i], x + px, L.y + 14);
@@ -53415,7 +53378,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
       doc.setLineCap('butt'); doc.setLineWidth(0.6); doc.setFont('helvetica', 'bold'); doc.setFontSize(20); tx(pct == null ? FAINT : color); doc.text(pct == null ? '—' : pct + '%', cx, cy + 5, { align:'center' });
       doc.setFontSize(6.5); tx(FAINT); doc.text(String(label || '').toUpperCase(), cx, cy + 15, { align:'center' });
     }
-    return { para, heading, sub, list, table, kv, rich, chips, card, ring, col, ens, INK, FAINT, LINE, ACC, HEAD };
+    return { para, heading, sub, list, table, kv, rich, chips, card, ring, col, ens, beginSection, hardWrap, INK, FAINT, LINE, ACC, HEAD };
   };
 
   /* ---------------- Word builders ---------------- */
@@ -53435,14 +53398,14 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     const trs = [];
     if(head) trs.push(new TableRow({ tableHeader:true, cantSplit:true, children: head.map((h, i) => cell(h, i, true)) }));
     rows.forEach((r, ri) => trs.push(new TableRow({ cantSplit:true, children: r.map((c, i) => cell(c, i, false, ri % 2 === 1)) })));
-    return new Table({ width:{ size:total, type:WidthType.DXA }, columnWidths:widths, rows:trs });
+    return new Table({ width:{ size:total, type:WidthType.DXA }, columnWidths:widths, layout: lib.TableLayoutType ? lib.TableLayoutType.FIXED : undefined, rows:trs });
   };
-  window.wmDocxRich = function(lib, text){
-    const { Paragraph, TextRun, AlignmentType } = lib; const out = [];
+  window.wmDocxRich = function(lib, text, secNo){
+    const { Paragraph, TextRun, AlignmentType } = lib; const out = []; let ctr = 0;
     wmParseRich(text).forEach(b => {
       if(b.t === 'p') out.push(new Paragraph({ alignment:AlignmentType.JUSTIFIED, spacing:{ after:160, line:276 }, children:[ new TextRun({ text:b.text, size:24, font:'Arial', color:'000000' }) ] }));
       else if(b.t === 'sub') out.push(new Paragraph({ keepNext:true, spacing:{ before:160, after:80 }, children:[ new TextRun({ text:b.text, bold:true, size:24, font:'Arial' }) ] }));
-      else if(b.t === 'ul' || b.t === 'ol') b.items.forEach((it, k) => out.push(new Paragraph({ spacing:{ after:80 }, indent:{ left:420, hanging:300 }, children:[ new TextRun({ text:(b.t === 'ol' ? (k + 1) + '.' : '•') + '\t', bold:true, color:'B21616', size:24, font:'Arial' }), new TextRun({ text:it, size:24, font:'Arial' }) ] })));
+      else if(b.t === 'ul' || b.t === 'ol') b.items.forEach((it, k) => { const lab = b.t === 'ol' ? (secNo != null ? secNo + '.' + (++ctr) : (k + 1) + '.') : '\u2022', ind = b.t === 'ol' && secNo != null ? 620 : 420; out.push(new Paragraph({ alignment:AlignmentType.JUSTIFIED, spacing:{ after:80 }, indent:{ left:ind, hanging:ind - 120 }, children:[ new TextRun({ text:lab + '\t', bold:true, color:'000000', size:24, font:'Arial' }), new TextRun({ text:it, size:24, font:'Arial' }) ] })); });
       else if(b.t === 'kv'){ out.push(wmDocxTable(lib, null, b.rows, { widths:[10, 30] })); out.push(new Paragraph({ spacing:{ after:140 }, children:[] })); }
       else if(b.t === 'table'){
         if(b.weightCol >= 0 && b.rows.length){ const tw = b.rows.reduce((s, r) => s + (parseFloat(String(r[b.weightCol]).replace('%', '')) || 0), 0); out.push(new Paragraph({ keepNext:true, spacing:{ after:80 }, children:[ new TextRun({ text:`${b.rows.length} measures  |  Total weight ${Math.round(tw)}%`, bold:true, size:20, font:'Arial', color: Math.round(tw) === 100 ? '2E7D4F' : 'C48014' }) ] })); }
@@ -53450,6 +53413,104 @@ Likelihood and impact are whole numbers from 1 to 5.`;
       }
     });
     return out;
+  };
+})();
+
+/* ===== R47: one common standard for every printed document: control information and shared header/footer ===== */
+(function(){
+  const dash = v => (v == null || v === '' ? '—' : v), fd = v => v ? fmtDate(String(v).slice(0, 10)) : '—';
+  /* who reviewed, who approved, which revision, from the live record */
+  window.wmDocControl = async function(d){
+    let rows = [];
+    try{ const r = await STATE.supabase.from('document_reviewers').select('*').eq('document_id', d.id).order('created_at', { ascending:true }); rows = r.data || []; }catch(e){}
+    const reviewers = rows.map(r => ({ name: memberName(r.reviewer_id), date: r.finalized_at || r.satisfied_at || null }));
+    if(!reviewers.length && d.reviewer_id) reviewers.push({ name: memberName(d.reviewer_id), date: d.reviewer_signed_off_at || null });
+    const apprBy = d.approver_id || d.workflow_approver_id || d.approved_by, approved = d.approval_status === 'approved' || d.workflow_status === 'approved';
+    const apprAt = d.approver_signed_off_at || (approved ? d.approved_date : null);
+    const revDate = d.current_revision_date || d.approved_date;
+    return { docNo: d.doc_number, rev: fmtRev(d.current_revision), revDate: fd(revDate), status: (typeof documentSignoffStatus === 'function' ? documentSignoffStatus(d).label : (d.status || '—')), reviewers, approver: apprBy ? { name: memberName(apprBy), date: apprAt } : null, preparedBy: d.developer_id || d.created_by ? memberName(d.developer_id || d.created_by) : null };
+  };
+  window.wmControlLines = function(info){
+    const dt = x => x ? fd(x) : 'pending';
+    const rv = (info.reviewers || []).length ? 'Reviewed by: ' + info.reviewers.map(r => r.name + (r.date ? ' (' + fd(r.date) + ')' : ' (pending)')).join(', ') : 'Reviewed by: ' + dash(info.reviewerText);
+    const ap = info.approver ? 'Approved by: ' + info.approver.name + ' (' + dt(info.approver.date) + ')' : 'Approved by: ' + dash(info.approverText);
+    return [rv, ap];
+  };
+  /* header and footer for every page of a controlled PDF. info: { docNo, rev, revDate, status, reviewers, approver } */
+  window.wmPdfFrame = function(doc, o){
+    const n = doc.internal.getNumberOfPages(), mL = o.mL || 38, mR = o.mR || 38, info = o.info || {}, logo = o.logo;
+    const ctl = wmControlLines(info);
+    for(let i = 1; i <= n; i++){
+      doc.setPage(i); const [pw, ph] = (o.dims && o.dims[i - 1]) || [595, 842], hy = 30, nx = mL + (logo ? 115 : 0);
+      if(logo){ const ld = fitImageDimensions(logo.naturalWidth, logo.naturalHeight, 100, 40); doc.addImage(arrayBufferToDataUrl(logo.data, logo.type === 'png' ? 'image/png' : 'image/jpeg'), logo.type.toUpperCase(), mL, hy - 10, ld.width, ld.height); }
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(0, 0, 0); doc.text(STATE.org.name || '', nx, hy); const nameW = doc.getTextWidth(STATE.org.name || '');
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); let addrW = 0; if(STATE.org.address){ doc.text(STATE.org.address, nx, hy + 14); addrW = doc.getTextWidth(STATE.org.address); }
+      const maxW = Math.max(110, pw - mR - (nx + Math.max(nameW, addrW) + 16)); doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
+      let ls = doc.splitTextToSize(String(o.title || ''), maxW); if(ls.length > 2){ doc.setFontSize(10); ls = doc.splitTextToSize(String(o.title || ''), maxW); } else if(ls.length > 1){ doc.setFontSize(11); ls = doc.splitTextToSize(String(o.title || ''), maxW); }
+      doc.text(ls.slice(0, 3), pw - mR, hy, { align:'right' }); doc.setDrawColor(0, 0, 0); doc.setLineWidth(1.2); doc.line(mL, 80, pw - mR, 80);
+      const fy = ph - 70 + 14, cw = pw - mL - mR; doc.setDrawColor(208, 208, 208); doc.setLineWidth(0.6); doc.line(mL, fy - 10, pw - mR, fy - 10);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(0, 0, 0);
+      doc.text('Doc No: ' + dash(info.docNo), mL, fy); doc.text('Rev ' + dash(info.rev) + ': ' + dash(info.revDate), mL, fy + 10); doc.text('Status: ' + dash(info.status), mL, fy + 20);
+      const cx = mL + 150, mw = cw - 150 - 70;
+      let yy = fy; ctl.forEach(t => { const w = doc.splitTextToSize(t, mw).slice(0, 2); doc.text(w, cx, yy); yy += 9.5 * w.length; });
+      doc.text('Page ' + i + ' of ' + n, pw - mR, fy + 20, { align:'right' });
+      doc.setFontSize(6.5); doc.setTextColor(95, 95, 100);
+      doc.text(doc.splitTextToSize(o.disclaimer || 'This document is controlled within QaSHE Watchman. A printed or saved copy is valid only at the time of printing and may not reflect the current revision. Personnel must always refer to QaSHE Watchman for the latest approved version.', cw), mL, fy + 33);
+      doc.setTextColor(0, 0, 0);
+    }
+  };
+})();
+
+/* ===== R47: Review and Approval Report (replaces signatures: who reviewed, who approved, when, what changed) ===== */
+(function(){
+  const sb = () => STATE.supabase, dt = v => v ? fmtDate(String(v).slice(0, 10)) : '—';
+  const stageLabel = (st, role) => ({ review:'Review', approval:'Approval' }[st] || st || '') + (role ? ' (' + role + ')' : '');
+  window.wmReviewReport = async function(id, mode){
+    mode = mode || 'view'; const d = documentById(id); if(!d) return;
+    if(mode !== 'blob') showLoader('Generating the Review and Approval Report…');
+    try{
+      const { jsPDF } = await import('https://cdn.jsdelivr.net/npm/jspdf@4.2.1/+esm'); const doc = new jsPDF({ unit:'pt', format:'a4' });
+      const L = { mL:38, cW:519, y:110, bottom:842 - 70, newPage(){ doc.addPage('a4', 'p'); L.y = 110; } }; const K = wmPdfKit(doc, L);
+      let logoImage = null; if(STATE.org.logo_url){ try{ logoImage = await fetchImageForDocx(STATE.org.logo_url); }catch(e){} }
+      const q = async (t, f) => { try{ const r = await f(sb().from(t)); return r.data || []; }catch(e){ return []; } };
+      const [revs, reviewers, comments] = await Promise.all([
+        q('document_revisions', t => t.select('*').eq('document_id', id).order('revision_code', { ascending:true })),
+        q('document_reviewers', t => t.select('*').eq('document_id', id).order('created_at', { ascending:true })),
+        q('document_workflow_comments', t => t.select('*').eq('document_id', id).order('created_at', { ascending:true }))]);
+      const info = await wmDocControl(d), dept = (STATE.docDepartments || []).find(x => x.id === d.department_id), type = (STATE.docTypes || []).find(x => x.id === d.type_id || x.id === d.document_type_id);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.setTextColor(20, 20, 22); doc.text('Review and Approval Report', L.mL, L.y + 18); L.y += 32;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(110, 110, 118); doc.text(doc.splitTextToSize(d.title || '', L.cW).slice(0, 2), L.mL, L.y + 8); L.y += 26; doc.setTextColor(0, 0, 0);
+      const ok = info.approver && info.approver.date;
+      K.chips([[ok ? 'Approved' : 'Not yet approved', ok ? K.col.green : K.col.amber], ['Revision ' + info.rev, K.col.blue], [(info.reviewers || []).length + ' reviewer' + ((info.reviewers || []).length === 1 ? '' : 's'), K.col.grey]]);
+      K.heading('Document', 13);
+      K.table(null, [['Document number', info.docNo || '—'], ['Title', d.title || '—'], ['Department / type', [dept && dept.name, type && type.name].filter(Boolean).join(' / ') || '—'], ['Current revision', info.rev], ['Revision date', info.revDate], ['Owner', d.owner_id ? memberName(d.owner_id) : '—'], ['Next review due', d.next_review_date ? fmtDate(d.next_review_date) : '—'], ['Status', info.status]], { widths:[10, 30] });
+      K.heading('Review and approval trail', 13);
+      const trail = [];
+      const prep = d.developer_id || d.created_by; if(prep) trail.push(['Developed', memberName(prep), d.created_at ? dt(d.created_at) : '—', 'Draft prepared']);
+      reviewers.forEach(r => { trail.push(['Reviewer: draft accepted', memberName(r.reviewer_id), dt(r.satisfied_at), r.satisfied_at ? 'Satisfied with the draft' : 'Pending']); trail.push(['Reviewer: final confirmation', memberName(r.reviewer_id), dt(r.finalized_at), r.finalized_at ? 'Confirmed the approved wording' : 'Pending']); });
+      if(!reviewers.length && info.reviewers.length) info.reviewers.forEach(r => trail.push(['Reviewer', r.name, dt(r.date), r.date ? 'Reviewed' : 'Pending']));
+      trail.push(['Approver', info.approver ? info.approver.name : '—', info.approver ? dt(info.approver.date) : '—', ok ? 'Approved' : 'Pending']);
+      K.table(['Step', 'Person', 'Date', 'Outcome'], trail, { widths:[16, 16, 10, 18], statusCol:3 });
+      if(revs.length){ K.heading('Revision history', 13); K.table(['Revision', 'Date', 'Change', 'Recorded by'], revs.map(r => [fmtRev(r.revision_code), dt(r.issued_date), r.change_description || '—', r.uploaded_by ? memberName(r.uploaded_by) : '—']), { widths:[7, 10, 36, 14] }); }
+      const cm = comments.filter(c => c.comment_text); if(cm.length){ K.heading('Comments and decisions', 13); K.table(['Date', 'Person', 'Stage', 'Comment'], cm.map(c => [dt(c.created_at), memberName(c.author_id), stageLabel(c.stage, c.author_role), String(c.comment_text).replace(/^\[[^\]]+\]\s*/, '')]), { widths:[9, 13, 13, 40] }); }
+      K.heading('Report details', 13);
+      K.table(null, [['Generated', new Date().toLocaleString('en-GB')], ['Generated by', STATE.user ? memberName(STATE.user.id) : '—'], ['Source', 'Live record in QaSHE Watchman: reviewer, approver and date entries are taken from the workflow and cannot be edited here.']], { widths:[10, 30] });
+      wmPdfFrame(doc, { title: 'Review and Approval Report', logo: logoImage, info, disclaimer: 'This report is generated from the review and approval workflow of the document in QaSHE Watchman and is current at the time of printing.' });
+      hideLoader();
+      if(mode === 'blob') return doc.output('blob');
+      if(mode === 'download'){ doc.save(`${info.docNo} - Review and Approval Report.pdf`); toast('Report downloaded.', 'success'); }
+      else { window.open(doc.output('bloburl'), '_blank'); toast("Report opened: use your browser's print option to print it.", 'success'); }
+    }catch(e){ hideLoader(); console.error(e); toast('Could not generate the report: ' + (e.message || e), 'error'); }
+  };
+})();
+
+/* process control info (R47) */
+(function(){
+  window.wmProcControl = async function(p){
+    const rev = fmtRev(p.revision == null || p.revision === '' ? 0 : p.revision), rd = p.revision_date || (p.updated_at || new Date().toISOString()).slice(0, 10);
+    const reviewers = p.reviewed_by ? [{ name: memberName(p.reviewed_by), date: p.reviewed_date || rd }] : (p.owner_id ? [{ name: memberName(p.owner_id) + ' (process owner)', date: rd }] : []);
+    const by = p.approved_by || null;
+    return { docNo: p.doc_number || p.ref_code || '', rev, revDate: fmtDate(String(rd).slice(0, 10)), status: p.status ? String(p.status).replace(/_/g, ' ') : '—', reviewers, approver: by ? { name: memberName(by), date: p.approved_date || rd } : null, approverText: '—' };
   };
 })();
 
@@ -53503,7 +53564,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
       L.y = top + 118;
       /* purpose / inputs / outputs as boxes */
       const box = (x, y, w, label, text) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(10); const ls = doc.splitTextToSize(String(text || '—'), w - 20), h = 30 + ls.length * 13; return { x, y, w, label, ls, h }; };
-      const drawBox = (b, h) => { doc.setFillColor(255, 255, 255); doc.setDrawColor(212, 212, 216); doc.roundedRect(b.x, b.y, b.w, h, 5, 5, 'FD'); doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(K.ACC[0], K.ACC[1], K.ACC[2]); doc.text(b.label.toUpperCase(), b.x + 10, b.y + 15); doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(20, 20, 22); doc.text(b.ls, b.x + 10, b.y + 30); };
+      const drawBox = (b, h) => { doc.setFillColor(255, 255, 255); doc.setDrawColor(212, 212, 216); doc.roundedRect(b.x, b.y, b.w, h, 5, 5, 'FD'); doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(K.ACC[0], K.ACC[1], K.ACC[2]); doc.text(b.label.toUpperCase(), b.x + 10, b.y + 15); doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(20, 20, 22); b.ls.forEach((ln, i) => { const y = b.y + 30 + i * 13; if(i < b.ls.length - 1 && ln.indexOf(' ') > 0){ const wds = ln.split(' '), tw = wds.reduce((a, w) => a + doc.getTextWidth(w), 0), gap = (b.w - 20 - tw) / (wds.length - 1); let x = b.x + 10; wds.forEach(w => { doc.text(w, x, y); x += doc.getTextWidth(w) + gap; }); } else doc.text(ln, b.x + 10, y); }); };
       if(p.purpose){ const b = box(L.mL, L.y, L.cW, 'Purpose', p.purpose); K.ens(b.h + 8); b.y = L.y; drawBox(b, b.h); L.y += b.h + 10; }
       if(p.inputs || p.outputs){ const hw = (L.cW - 10) / 2, a = box(L.mL, L.y, hw, 'Inputs', p.inputs), b2 = box(L.mL + hw + 10, L.y, hw, 'Outputs', p.outputs), h = Math.max(a.h, b2.h); K.ens(h + 8); a.y = b2.y = L.y; drawBox(a, h); drawBox(b2, h); L.y += h + 12; }
       if(p.departments_involved){ K.para('Departments involved: ' + p.departments_involved, 10, 14); }
@@ -53552,21 +53613,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
       K.table(null, [['Document number', numOf(p)], ['Revision', revOf(p)], ['Revision date', p.revision_date ? fmtDate(p.revision_date) : fmtDate((p.updated_at || new Date().toISOString()).slice(0, 10))], ['Process owner', memberName(p.owner_id)], ['Printed', new Date().toLocaleString('en-GB')]], { widths:[10, 30] });
 
       /* ---- header and footer on every page, sized to the page ---- */
-      const n = doc.internal.getNumberOfPages(), issued = p.revision_date ? fmtDate(p.revision_date) : fmtDate((p.updated_at || new Date().toISOString()).slice(0, 10));
-      for(let i = 1; i <= n; i++){
-        doc.setPage(i); const [pw, ph] = dims[i - 1] || [595, 842], hy = 30, nx = mL + (logoImage ? 115 : 0);
-        if(logoImage){ const ld = fitImageDimensions(logoImage.naturalWidth, logoImage.naturalHeight, 100, 40); doc.addImage(arrayBufferToDataUrl(logoImage.data, logoImage.type === 'png' ? 'image/png' : 'image/jpeg'), logoImage.type.toUpperCase(), mL, hy - 10, ld.width, ld.height); }
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(0, 0, 0); doc.text(STATE.org.name || '', nx, hy); const nameW = doc.getTextWidth(STATE.org.name || '');
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); let addrW = 0; if(STATE.org.address){ doc.text(STATE.org.address, nx, hy + 14); addrW = doc.getTextWidth(STATE.org.address); }
-        const maxW = Math.max(110, pw - mR - (nx + Math.max(nameW, addrW) + 16)); doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
-        let ls = doc.splitTextToSize(String(p.name || ''), maxW); if(ls.length > 2){ doc.setFontSize(10); ls = doc.splitTextToSize(String(p.name || ''), maxW); } else if(ls.length > 1){ doc.setFontSize(11); ls = doc.splitTextToSize(String(p.name || ''), maxW); }
-        doc.text(ls.slice(0, 3), pw - mR, hy, { align:'right' }); doc.setDrawColor(0, 0, 0); doc.setLineWidth(1.2); doc.line(mL, 80, pw - mR, 80);
-        const fy = ph - 70 + 14; doc.setDrawColor(208, 208, 208); doc.setLineWidth(0.6); doc.line(mL, fy - 10, pw - mR, fy - 10);
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(0, 0, 0);
-        doc.text(`Doc No: ${numOf(p)}`, mL, fy); doc.text(`Rev ${revOf(p)}: ${issued}`, mL, fy + 10); doc.text(`Status: ${p.status ? String(p.status).replace(/_/g, ' ') : '—'}`, mL, fy + 20);
-        doc.text(doc.splitTextToSize('This document is generated from the live process record in QaSHE Watchman and is current at the time of printing. Personnel must always refer to QaSHE Watchman for the latest version.', pw > 700 ? 330 : 230), mL + 130, fy);
-        doc.text(`Page ${i} of ${n}`, pw - mR, fy + 20, { align:'right' });
-      }
+      wmPdfFrame(doc, { title: p.name, logo: logoImage, dims, info: await wmProcControl(p), disclaimer: 'This document is generated from the live process record in QaSHE Watchman and is current at the time of printing. Personnel must always refer to QaSHE Watchman for the latest version.' });
       hideLoader();
       if(mode === 'blob') return doc.output('blob');
       if(mode === 'download'){ doc.save(`${numOf(p)} - ${p.name}.pdf`); toast('PDF downloaded.', 'success'); }
@@ -53650,7 +53697,8 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     const sum = prompt('Summarise what changed. This becomes the revision note and the process revision moves on.'); if(sum === null) return;
     if(!sum.trim()){ toast('Add a short summary of the change.', 'info'); return; }
     const before = p.revision || '', after = bump(before), today = todayISO();
-    const u = await sb().from('processes').update({ revision:after, revision_date:today }).eq('id', id);
+    let u = await sb().from('processes').update({ revision:after, revision_date:today, reviewed_by:p.owner_id || STATE.user.id, reviewed_date:today, approved_by:STATE.user.id, approved_date:today }).eq('id', id);
+    if(u.error && /reviewed_|approved_/.test(u.error.message)) u = await sb().from('processes').update({ revision:after, revision_date:today }).eq('id', id);
     if(u.error){ toast('Could not update the revision: ' + u.error.message, 'error'); return; }
     const req = STATE._pcUpd.open[id];
     if(req){ try{ await sb().from('process_update_requests').update({ status:'completed', completed_at:new Date().toISOString(), completed_by:STATE.user.id, change_summary:sum.trim(), revision_before:before || null, revision_after:after }).eq('id', req.id); }catch(e){} }
@@ -53700,19 +53748,8 @@ Likelihood and impact are whole numbers from 1 to 5.`;
       K.table(['Person', 'Position', 'Line manager', 'Result', 'Rating', 'Year to date'], (vm.people || []).map(x => [x.name, x.position || '', x.manager || '', pc(x.result), x.result == null ? 'Not appraised' : bandOf(x.result)[0], pc(x.annualToDate)]), { widths:[14, 13, 12, 7, 10, 8] });
       if((vm.ofiOrg || []).length){ K.heading('Opportunities for Improvement: organisation', 13); K.table(['KPI', 'People below Standard', 'Average result', 'Rated 0'], vm.ofiOrg.map(g => [g.title, `${g.count} of ${g.of}`, pc(g.avg), String(g.zero || 0)]), { widths:[16, 7, 6, 4] }); }
       if((vm.ofiPeople || []).length){ K.heading('Opportunities for Improvement: individuals', 13); vm.ofiPeople.forEach(pp => { K.sub(`${pp.name}${pp.position ? '  |  ' + pp.position : ''}`); K.table(['KPI', 'Rating', 'Result', "Manager's notes"], pp.items.map(it => [it.title, bandOf(it.pct)[0] + ' (' + it.rating + ')', pc(it.pct), it.notes || '—']), { widths:[12, 7, 5, 16] }); }); }
-      const n = doc.internal.getNumberOfPages(), issued = vm.month ? fmtDate(String(vm.month).slice(0, 10)) : '';
-      for(let i = 1; i <= n; i++){
-        doc.setPage(i); const hy = 30, nx = mL + (logo ? 115 : 0);
-        if(logo){ const ld = fitImageDimensions(logo.naturalWidth, logo.naturalHeight, 100, 40); doc.addImage(arrayBufferToDataUrl(logo.data, logo.type === 'png' ? 'image/png' : 'image/jpeg'), logo.type.toUpperCase(), mL, hy - 10, ld.width, ld.height); }
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(0, 0, 0); doc.text(STATE.org.name || '', nx, hy); const nameW = doc.getTextWidth(STATE.org.name || '');
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); let aw = 0; if(STATE.org.address){ doc.text(STATE.org.address, nx, hy + 14); aw = doc.getTextWidth(STATE.org.address); }
-        const maxW = Math.max(110, 595 - mR - (nx + Math.max(nameW, aw) + 16)); doc.setFont('helvetica', 'bold'); doc.setFontSize(12); const ls = doc.splitTextToSize('Company Performance Report ' + (vm.label || ''), maxW); doc.text(ls.slice(0, 3), 595 - mR, hy, { align:'right' });
-        doc.setDrawColor(0, 0, 0); doc.setLineWidth(1.2); doc.line(mL, 80, 595 - mR, 80);
-        const fy = 842 - 70 + 14; doc.setDrawColor(208, 208, 208); doc.setLineWidth(0.6); doc.line(mL, fy - 10, 595 - mR, fy - 10); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(0, 0, 0);
-        doc.text(`Report: ${vm.label || ''}`, mL, fy); doc.text(`Published: ${r.data.published_at ? fmtDate(String(r.data.published_at).slice(0, 10)) : ''}`, mL, fy + 10); doc.text('Status: Published', mL, fy + 20);
-        doc.text(doc.splitTextToSize('Confidential. This report contains individual performance information and is restricted to the Managing Director, administrators and human resources. A printed copy is valid only at the time of printing.', 230), mL + 130, fy);
-        doc.text(`Page ${i} of ${n}`, 595 - mR, fy + 20, { align:'right' });
-      }
+      { const pubAt = r.data.published_at ? fmtDate(String(r.data.published_at).slice(0, 10)) : '—', pubBy = r.data.published_by || r.data.created_by;
+        wmPdfFrame(doc, { title: 'Company Performance Report ' + (vm.label || ''), logo, info: { docNo: 'CPR-' + String(r.data.report_month || '').slice(0, 7), rev: 'R0', revDate: pubAt, status: 'Published', reviewers: [], reviewerText: 'Managing Director review', approver: pubBy ? { name: memberName(pubBy), date: r.data.published_at ? String(r.data.published_at).slice(0, 10) : null } : null }, disclaimer: 'Confidential. This report contains individual performance information and is restricted to the Managing Director, administrators and human resources. A printed copy is valid only at the time of printing.' }); }
       hideLoader(); if(mode === 'blob') return doc.output('blob');
       if(mode === 'download'){ doc.save(`Company Performance Report ${vm.label || ''}.pdf`); toast('PDF downloaded.', 'success'); } else { window.open(doc.output('bloburl'), '_blank'); toast("PDF opened for viewing: use your browser's print option to print it.", 'success'); }
     }catch(e){ hideLoader(); console.error(e); toast('Could not generate the PDF: ' + (e.message || e), 'error'); }
@@ -53723,6 +53760,159 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   } });
   /* load published reports when the Master Documents Register opens, then repaint it */
   { const o = window.showModule; window.showModule = showModule = function(m){ const r = o.apply(this, arguments); if(m === 'documents') loadPublished().then(() => { try{ if(STATE.currentModule === 'documents' && typeof mr2Render === 'function') mr2Render(); }catch(e){} }); return r; }; }
+})();
+
+
+/* ===== R47: Processes & KPIs, one swim-lane page per process (flowcharts merged in) ===== */
+(function(){
+  const E = s => escapeHtml(String(s == null ? '' : s));
+  const sb = () => STATE.supabase;
+  const d10 = v => v ? String(v).slice(0, 10) : '';
+  const col = p => p == null ? '#A6A6A6' : p >= 90 ? '#2E7D4F' : p >= 70 ? '#B8791C' : '#B3261E';
+  const procOfFlow = fid => (STATE.processes || []).find(p => p.flowchart_id === fid);
+
+  /* one tab fewer: Processes and KPI monitoring */
+  pcTabsHtml = window.pcTabsHtml = function(active, dueKpis){
+    const b = (k, label) => `<button class="btn-small ${active === k ? 'primary' : ''}" onclick="pfSwitchTab('${k}')">${label}</button>`;
+    return `${b('register', 'Processes')}${b('kpis', 'KPI monitoring' + (dueKpis ? ` (${dueKpis} due)` : ''))}`;
+  };
+
+  /* flowcharts that were loaded from a template but have no process record become processes */
+  async function adoptOrphans(){
+    if(STATE._r47Adopting || !canEditFlowchart() || !STATE.org) return false;
+    const have = new Set((STATE.processes || []).map(p => p.flowchart_id).filter(Boolean));
+    const orphans = (STATE.orgFlowcharts || []).filter(f => !have.has(f.id));
+    if(!orphans.length) return false;
+    STATE._r47Adopting = true;
+    try{
+      for(const f of orphans){
+        const r = await sb().from('processes').insert({ organisation_id: STATE.org.id, name: f.title, owner_id: STATE.user.id, review_frequency: 'annually', created_by: STATE.user.id, purpose: f.description || null, flowchart_id: f.id }).select().single();
+        if(r.error){ console.warn('R47 adopt', r.error.message); break; }
+      }
+      await loadProcesses();
+      toast(`${orphans.length} flowchart${orphans.length === 1 ? '' : 's'} moved into Processes & KPIs.`, 'success');
+      return true;
+    }catch(e){ return false; }
+    finally{ STATE._r47Adopting = false; }
+  }
+
+  function docKind(d){
+    const t = (STATE.docTypes || []).find(x => x.id === d.type_id), s = ((t && (t.name + ' ' + t.code)) || '') + ' ' + (d.title || '');
+    return /polic/i.test(s) ? 'Policy' : /procedure|\bSOP\b/i.test(s) ? 'Procedure' : /register/i.test(s) ? 'Register' : /checklist|form|template/i.test(s) ? 'Checklist / form' : /work instruction|instruction/i.test(s) ? 'Work instruction' : 'Document';
+  }
+  function hubHtml(p, fc, editable){
+    const links = pcDocLinksOf(p);
+    const rows = links.map(l => {
+      const d = l.document_id ? documentById(l.document_id) : null, b = l.bulk_document_id ? (STATE.bulkDocuments || []).find(x => x.id === l.bulk_document_id) : null;
+      if(!d && !b) return '';
+      let badge = '', meta = '', warn = '';
+      if(d){
+        const st = documentWorkflowBadge(d); badge = `<span class="sev-badge" style="background:${st.color};color:#fff;">${E(st.label)}</span>`;
+        meta = `${E(docKind(d))} · Rev ${E(fmtRev(d.current_revision))}${d.current_revision_date ? ' (' + fmtDate(d10(d.current_revision_date)) + ')' : ''} · Review due ${d.next_review_date ? fmtDate(d10(d.next_review_date)) : 'not set'}`;
+        if(st.key !== 'approved') warn = 'Not yet approved: this process relies on a document still in draft or review.';
+        else if(d.next_review_date && d10(d.next_review_date) < todayISO()) warn = 'Document review is overdue.';
+      } else { badge = '<span class="sev-badge" style="background:#6B6B6B;color:#fff;">Uploaded</span>'; meta = 'Uploaded file in All Documents'; }
+      return `<div class="evidence-row" style="align-items:flex-start;"><div style="flex:1;font-size:13px;"><b>${d ? E(d.doc_number) + ': ' + E(d.title) : E(b.file_name || b.doc_number || 'Uploaded document')}</b> ${badge}
+        <div style="font-size:11.5px;color:var(--text-faint);margin-top:2px;">${meta}</div>${warn ? `<div style="font-size:11.5px;color:#B8791C;margin-top:2px;">⚠ ${E(warn)}</div>` : ''}</div>
+        <div class="ev-actions">${d ? `<button class="btn-small" onclick="showModule('documents'); setTimeout(()=>openDocumentDetail('${d.id}'),0)">Open</button><button class="btn-small" onclick="downloadDocumentPdf('${d.id}')">PDF</button>` : ''}${editable ? `<button class="btn-small" onclick="pcUnlinkDoc('${l.id}','${p.id}')">Remove</button>` : ''}</div></div>`;
+    }).join('');
+    const used = new Set(links.map(l => l.document_id || l.bulk_document_id));
+    const opts = [...(STATE.documents || []).filter(d => !used.has(d.id) && !['withdrawn', 'superseded'].includes(d.status)).map(d => `<option value="c:${d.id}">${E(d.doc_number)}: ${E(d.title)}${documentWorkflowBadge(d).key === 'approved' ? '' : ' (not yet approved)'}</option>`),
+      ...(STATE.bulkDocuments || []).filter(b => !b.archived && !used.has(b.id)).map(b => `<option value="b:${b.id}">Uploaded: ${E(b.file_name || b.doc_number || '')}</option>`)].join('');
+    const mods = (p.linked_modules || []).filter(k => MODULE_META[k] && canAccessModule(k));
+    const kinds = new Set(links.map(l => l.document_id ? docKind(documentById(l.document_id) || {}) : ''));
+    const gaps = ['Policy', 'Procedure', 'Register', 'Checklist / form'].filter(k => !kinds.has(k));
+    return `<div class="detail-card" style="margin-bottom:18px;">
+      <div class="panel-head"><h3 style="font-family:Arial,sans-serif;font-size:15.5px;font-weight:600;">Linked documents &amp; records</h3>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn-small" onclick="showModule('all_documents')">All Documents</button><button class="btn-small" onclick="showModule('documents')">Master Documents Register</button>${editable ? `<button class="btn-small" onclick="pcSuggestLinks('${p.id}')">Suggest links with AI</button>` : ''}</div></div>
+      <p style="font-size:12px;color:var(--text-faint);margin-bottom:10px;">The policies, procedures, registers and checklists that govern this process. Approved documents live in All Documents and the Master Documents Register, which hold the revision history and review and approval trail.</p>
+      ${rows || '<p style="font-size:12.5px;color:var(--text-faint);">No documents linked yet.</p>'}
+      ${links.length && gaps.length ? `<div style="font-size:11.5px;color:var(--text-faint);margin-top:8px;">Nothing linked yet for: ${gaps.map(E).join(', ')}.</div>` : ''}
+      ${editable ? `<div style="display:flex;gap:8px;margin-top:10px;"><select id="fdl-pick-${fc ? fc.id : p.id}" style="flex:1;max-width:520px;"><option value="">Link a document…</option>${opts}</select><button class="btn-small primary" onclick="pcLinkDoc('${p.id}')">Link</button></div>` : ''}
+      ${mods.length ? `<div style="margin-top:12px;font-size:12px;color:var(--text-faint);">Connected registers:</div><div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:6px;">${mods.map(k => `<span class="linked-task-chip" style="cursor:pointer;" onclick="showModule('${k}')">${E(pcModuleLabel(k))}</span>`).join('')}</div>` : ''}
+    </div>`;
+  }
+  window.pcLinkDoc = async function(pid){
+    const p = STATE.processes.find(x => x.id === pid); if(!p || !p.flowchart_id) return;
+    await window.flowchartLinkDoc(p.flowchart_id);
+  };
+  /* link / unlink re-render the unified page */
+  { const o = window.flowchartLinkDoc; window.flowchartLinkDoc = async function(fid){ const r = await o.apply(this, arguments); const p = procOfFlow(fid); if(p){ STATE._pfMag = p.id; renderProcessFlowchartsList(); } return r; }; }
+  { const o = window.pcUnlinkDoc; window.pcUnlinkDoc = async function(lid, pid){ const r = await o.apply(this, arguments); STATE._pfMag = pid; renderProcessFlowchartsList(); return r; }; }
+
+  function pageHtml(p){
+    const fc = p.flowchart_id ? flowchartById(p.flowchart_id) : null, editable = canEditFlowchart();
+    const steps = fc ? STATE.orgFlowchartSteps.filter(s => s.flowchart_id === fc.id).sort((a, b) => a.sort_order - b.sort_order) : [];
+    const kpis = pcKpisOf(p), c = pcCompliance(p), links = pcDocLinksOf(p);
+    const tplKpis = fc ? STATE.orgFlowchartKpis.filter(k => k.flowchart_id === fc.id).sort((a, b) => a.sort_order - b.sort_order) : [];
+    const stat = (n, l, color) => `<div style="flex:1;min-width:110px;background:var(--panel,#fff);border:1px solid var(--border-soft,#e5e5e5);border-radius:10px;padding:10px 12px;"><div style="font-size:22px;font-weight:800;color:${color || 'inherit'};">${n}</div><div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.04em;">${l}</div></div>`;
+    const approvedLinks = links.filter(l => l.document_id && documentById(l.document_id) && documentWorkflowBadge(documentById(l.document_id)).key === 'approved').length;
+    const box = (label, text) => text ? `<div style="flex:1;min-width:240px;"><div style="font-size:10.5px;font-weight:700;color:var(--accent,#B21616);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">${label}</div><div style="font-size:13px;line-height:1.55;text-align:justify;">${E(text)}</div></div>` : '';
+    const missing = []; if(!steps.length) missing.push('flowchart'); if(!kpis.length && !tplKpis.length) missing.push('KPIs'); if(!links.length) missing.push('linked documents'); if(!p.purpose) missing.push('purpose');
+    return `
+      <div class="mag-top"><button class="btn-small" onclick="pcMagClose()">&larr; All processes</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn-small" onclick="printProcess('${p.id}')">Print / PDF</button>${window.pcEditBtn ? window.pcEditBtn(p) : ''}</div></div>
+      <div class="detail-card" style="margin:12px 0 16px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-faint);letter-spacing:.06em;">PROCESS ${E(p.doc_number || p.ref_code || '')}</div>
+        <h2 style="font-family:Arial,sans-serif;font-size:22px;margin:2px 0 6px;">${E(p.name)}</h2>
+        <div style="font-size:12.5px;color:var(--text-dim);">Owner: <b>${E(memberName(p.owner_id))}</b> · Review: ${E(String(p.review_frequency || '—').replace(/_/g, ' '))} · Revision ${E(fmtRev(p.revision == null ? 0 : p.revision))}${p.revision_date ? ' (' + fmtDate(d10(p.revision_date)) + ')' : ''} · ${pill(p.status || 'active')}</div>
+        ${fc && (fc.standard_refs || []).length ? `<div style="font-size:11.5px;color:var(--text-faint);margin-top:4px;">${E(fc.standard_refs.join(' · '))}</div>` : ''}
+        ${fc && fc.is_stale ? `<div style="margin-top:8px;font-size:12px;color:#B8791C;">A newer version of the source template is in the library. Your edits are untouched.</div>` : ''}
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;">
+          ${stat(c.pct == null ? '—' : c.pct + '%', 'KPI compliance', col(c.pct))}${stat(steps.length, 'Steps')}${stat(kpis.filter(k => k.is_active).length, 'KPIs measured')}${stat(links.length ? approvedLinks + '/' + links.length : '0', 'Linked docs approved')}
+        </div>
+        ${missing.length && editable ? `<div style="margin-top:12px;padding:8px 12px;background:var(--amber-tint,#FBF2DE);border-radius:6px;font-size:12px;">To complete the loop, add: ${missing.join(', ')}.</div>` : ''}
+      </div>
+      ${(p.purpose || p.inputs || p.outputs) ? `<div class="detail-card" style="margin-bottom:16px;"><div style="display:flex;gap:22px;flex-wrap:wrap;">${box('Purpose', p.purpose)}${box('Inputs', p.inputs)}${box('Outputs', p.outputs)}</div></div>` : ''}
+      <div class="detail-card" style="margin-bottom:16px;" id="r47-swim">
+        <div class="panel-head" style="flex-wrap:wrap;gap:8px;"><h3 style="font-family:Arial,sans-serif;font-size:16px;font-weight:700;">Process flow (swim lanes)</h3><span style="flex:1"></span>
+          ${steps.length ? `<button class="btn-small" onclick="swimFit(this)">Fit to screen</button><button class="btn-small" onclick="swimPrint('${fc.id}')">Print poster</button><button class="btn-small" onclick="swimDownload('${fc.id}')">Download SVG</button>` : ''}
+          ${editable && pcUnlocked(p.id) ? `<button class="btn-small primary" onclick="openProcessWizard('${p.id}')">${steps.length ? 'Rebuild with the assistant' : 'Build the flowchart'}</button>` : ''}</div>
+        ${steps.length ? `<div id="sw-wrap" style="overflow:auto;border-radius:10px;">${swimlaneSvg(steps)}</div><p style="font-size:11.5px;color:var(--text-faint);margin-top:8px;">Lanes are the roles named on each step. Dashed lines are return loops.${editable && pcUnlocked(p.id) ? ' Click Edit on a step below to change its role, title or branches.' : ''}</p>`
+          : `<p style="font-size:13px;color:var(--text-dim);">No flowchart yet. ${editable ? 'Use Request update, then build one from a template or with the assistant.' : ''}</p>`}
+        ${steps.length ? `<details style="margin-top:10px;"><summary style="cursor:pointer;font-size:12.5px;font-weight:600;">Step detail (${steps.length})</summary><div style="margin-top:8px;">${steps.map((s, i) => `<div style="padding:7px 0;border-top:1px solid var(--border-soft,#eee);font-size:12.5px;"><b>${i + 1}. ${E(s.title)}</b> <span style="color:var(--text-faint);font-size:11px;">${E(FLOWCHART_STEP_KIND_LABEL[s.step_kind] || 'Step')}${s.responsible_role ? ' · ' + E(s.responsible_role) : ''}</span>${s.description ? `<div style="color:var(--text-dim);margin-top:2px;text-align:justify;">${E(s.description)}</div>` : ''}${s.standard_ref ? `<div style="font-size:10.5px;color:var(--text-faint);">${E(s.standard_ref)}</div>` : ''}${editable && pcUnlocked(p.id) ? `<button class="btn-link" style="font-size:10.5px;" onclick="editFlowchartStep('${s.id}')">Edit this step</button>` : ''}${s.linked_module_key && canAccessModule(s.linked_module_key) ? `<button class="btn-link" style="font-size:10.5px;margin-left:10px;" onclick="showModule('${s.linked_module_key}')">Go to ${E(pcModuleLabel(s.linked_module_key))}</button>` : ''}</div>`).join('')}</div></details>` : ''}
+      </div>
+      ${fc ? flowchartKpiSectionHtml(fc, tplKpis, editable) : `<div class="detail-card" style="margin-bottom:16px;"><div class="panel-head"><h3 style="font-family:Arial,sans-serif;font-size:15.5px;font-weight:600;">KPIs &amp; measurement</h3></div><div class="kpi-grid">${kpis.map(k => kpiCardHtml(k, editable)).join('')}</div>${kpis.length ? '' : '<p style="font-size:12.5px;color:var(--text-faint);">Build the flowchart first, then set up KPIs.</p>'}</div>`}
+      ${hubHtml(p, fc, editable)}
+      <div class="detail-card" style="margin-bottom:16px;"><div class="panel-head"><h3 style="font-family:Arial,sans-serif;font-size:15.5px;font-weight:600;">Document control &amp; reviews</h3><button class="btn-small" onclick="pcMagEdit('${p.id}')">Details, reviews &amp; history</button></div>
+        <p style="font-size:12px;color:var(--text-faint);">Revision ${E(fmtRev(p.revision == null ? 0 : p.revision))}${p.revision_date ? ' dated ' + fmtDate(d10(p.revision_date)) : ''}. Reviewed by ${E(p.reviewed_by ? memberName(p.reviewed_by) : '—')}, approved by ${E(p.approved_by ? memberName(p.approved_by) : '—')}${p.approved_date ? ' on ' + fmtDate(d10(p.approved_date)) : ''}.</p></div>`;
+  }
+
+  /* the process page replaces the old page view and the flowchart detail */
+  window.pcPageHtml = pageHtml;
+  { const o = renderProcessFlowchartsList; renderProcessFlowchartsList = window.renderProcessFlowchartsList = function(){
+      const root = document.getElementById('pf-root'); if(!root) return o.apply(this, arguments);
+      if(STATE._pfTab === 'flowcharts') STATE._pfTab = 'register';
+      if(STATE._pfOpenId){ const p = procOfFlow(STATE._pfOpenId); if(p){ STATE._pfMag = p.id; } STATE._pfOpenId = null; STATE._pfFromProcess = null; }
+      if(!STATE._r47Checked && canEditFlowchart() && (STATE.orgFlowcharts || []).length){
+        STATE._r47Checked = true;
+        adoptOrphans().then(ch => { if(ch && document.getElementById('pf-root')) renderProcessFlowchartsList(); });
+      }
+      if(STATE._pfMag && STATE._pfMag !== true && (STATE._pfTab || 'register') === 'register'){
+        const p = (STATE.processes || []).find(x => x.id === STATE._pfMag);
+        if(p){ root.innerHTML = `<div id="process-detail-slot"></div>` + pageHtml(p); return; }
+        STATE._pfMag = null;
+      }
+      return o.apply(this, arguments);
+    }; }
+  renderProcessFlowchartDetail = window.renderProcessFlowchartDetail = function(fid){
+    const p = procOfFlow(fid); if(p){ STATE._pfMag = p.id; STATE._pfTab = 'register'; STATE._pfOpenId = null; renderProcessFlowchartsList(); } else renderProcessFlowchartsList();
+  };
+  window.openProcessFlowchart = id => renderProcessFlowchartDetail(id);
+  window.closeProcessFlowchart = function(){ STATE._pfOpenId = null; STATE._pfMag = null; renderProcessFlowchartsList(); };
+  window.pcOpenFlowchart = function(pid){ window.pcMag(pid); };
+  window.pcMag = function(id){ STATE._pfMag = id; STATE._pfTab = 'register'; STATE._pfOpenId = null; renderProcessFlowchartsList(); window.scrollTo({ top:0 }); };
+
+  /* creating a process lands on its new page */
+  { const o = window.pcCreate; window.pcCreate = async function(){
+      const before = new Set((STATE.processes || []).map(p => p.id)), ex = STATE._pc && STATE._pc.existingId;
+      const od = window.openProcessDetail; let landed = null;
+      window.openProcessDetail = openProcessDetail = async function(id){ landed = id; };
+      try{ await o.apply(this, arguments); } finally { window.openProcessDetail = openProcessDetail = od; }
+      const id = landed || ex || ((STATE.processes || []).find(p => !before.has(p.id)) || {}).id;
+      if(id){ STATE._pfMag = id; STATE._pfTab = 'register'; if(document.getElementById('pf-root')) renderProcessFlowchartsList(); }
+    }; }
+
 })();
 
 </script>
