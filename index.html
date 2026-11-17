@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R45b 2026-11-16"><meta charset="UTF-8">
+<meta name="wm-release" content="R46 2026-11-17"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -655,7 +655,7 @@
     .print-meta-grid b{color:#615C59; font-weight:600;}
     .print-section-title{font-family:Arial,Helvetica,sans-serif; font-weight:700; font-size:13px; color:#1E1C1B; margin:16px 0 8px; border-bottom:1px solid #EDEBE9; padding-bottom:4px;}
     .print-body{font-size:12.5px; line-height:1.6; color:#1E1C1B;}
-    .print-table{width:100%; border-collapse:collapse; font-size:11px; margin-top:8px;}
+    .print-table{width:100%; border-collapse:collapse; font-size:11px; margin-top:8px;} .print-table tr,.print-body svg,.print-body .pf-step,.print-body .mag-kpi{break-inside:avoid; page-break-inside:avoid;} .print-section-title{break-after:avoid; page-break-after:avoid;} .print-table thead{display:table-header-group;}
     .print-table th{text-align:left; padding:6px 8px; background:#F0F0EF; border:1px solid #E3E1DF; font-family:Arial,Helvetica,sans-serif; text-transform:uppercase; font-size:9.5px; color:#615C59;}
     .print-table td{padding:6px 8px; border:1px solid #E3E1DF;}
     .print-body{padding-bottom:26px;}
@@ -9677,20 +9677,12 @@ window.downloadDocumentPdf = async function(id, mode){
   function ensureSpace(needed){
     if(y + needed > pageH - footerH){ doc.addPage(); y = headerH + 20; }
   }
+  const _L = { mL: marginL, cW: contentW, bottom: pageH - footerH, newPage(){ doc.addPage(); y = headerH + 20; } };
+  Object.defineProperty(_L, 'y', { get(){ return y; }, set(v){ y = v; } });
+  const kit = wmPdfKit(doc, _L);
 
-  function addHeading(text, size){
-    ensureSpace(size + 16);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(size); doc.setTextColor(0,0,0);
-    doc.text(text, marginL, y);
-    y += size + 10;
-  }
-  function addParagraph(text){
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(12); doc.setTextColor(0,0,0);
-    const lines = doc.splitTextToSize(text, contentW);
-    ensureSpace(lines.length * 16); // whole paragraph together - passing lines one at a time to doc.text() silently drops justification
-    doc.text(lines, marginL, y, { align: 'justify', maxWidth: contentW });
-    y += lines.length * 16 + 8;
-  }
+  function addHeading(text, size){ kit.heading(text, size); }
+  function addParagraph(text){ kit.para(text, 12, 16); }
 
   if((sections || []).length){
     addHeading('Table of Contents', 16);
@@ -9738,9 +9730,9 @@ window.downloadDocumentPdf = async function(id, mode){
 
   (sections || []).forEach((s, idx) => {
     addHeading(`${idx + 1}. ${s.section_title}`, 14);
-    (s.content || '').split('\n').forEach(p => { if(p.trim()) addParagraph(p); });
+    kit.rich(s.content || '');
     (sectionTables||[]).filter(t => t.section_id === s.id).forEach(t => {
-      addPdfTable(t.table_data, t.caption);
+      const _rows = t.table_data || []; if(_rows.length) kit.table(_rows[0], _rows.slice(1), { caption: t.caption, noBoldFirst: true });
     });
     (sectionImages||[]).filter(img => img.section_id === s.id).forEach(img => {
       const imgData = sectionImageData[img.id];
@@ -9764,7 +9756,7 @@ window.downloadDocumentPdf = async function(id, mode){
     addHeading('Addendums', 16);
     addendums.forEach((a, idx) => {
       addHeading(`${String.fromCharCode(65+idx)}. ${a.title}`, 13);
-      (a.content||'').split('\n').forEach(p => { if(p.trim()) addParagraph(p); });
+      kit.rich(a.content || '');
       if(a.storage_path){
         doc.setFont('helvetica','italic'); doc.setFontSize(10);
         ensureSpace(14); doc.text(`(See attached file: ${a.title})`, marginL, y); y += 18;
@@ -9806,7 +9798,7 @@ window.downloadDocumentPdf = async function(id, mode){
       if(_ls.length > 2){ doc.setFontSize(10); _ls = doc.splitTextToSize(String(d.title||''), _maxW); }
       else if(_ls.length > 1){ doc.setFontSize(11); _ls = doc.splitTextToSize(String(d.title||''), _maxW); }
       doc.text(_ls.slice(0,3), pageW - marginR, hy, { align: 'right' }); }
-    doc.setLineWidth(1.2); doc.line(marginL, headerH - 15, pageW - marginR, headerH - 15);
+    doc.setDrawColor(0,0,0); doc.setLineWidth(1.2); doc.line(marginL, headerH - 15, pageW - marginR, headerH - 15);
 
     // Footer, repeated identically on every page — the real "Page X of Y"
     // this format never allowed reliably before
@@ -9896,8 +9888,9 @@ window.printDocumentContent = async function(id){
   const reviewLine = d.reviewer_id
     ? `Reviewer: ${memberName(d.reviewer_id)}\n${d.reviewer_signed_off_at ? 'Reviewed: '+fmtDate(d.reviewer_signed_off_at) : 'Review: Pending'}`
     : 'Reviewer: —';
-  const approveLine = d.approver_id
-    ? `Approver: ${memberName(d.approver_id)}\n${d.approver_signed_off_at ? 'Approved: '+fmtDate(d.approver_signed_off_at) : 'Approval: Pending'}`
+  const _wAt = d.approver_signed_off_at || ((d.approval_status === 'approved' || d.workflow_status === 'approved') ? d.approved_date : null), _wBy = d.approver_id || d.approved_by;
+  const approveLine = _wBy
+    ? `Approver: ${memberName(_wBy)}\n${_wAt ? 'Approved: '+fmtDate(_wAt) : 'Approval: Pending'}`
     : 'Approver: —';
 
   function footerCell(text, widthPct){
@@ -9912,7 +9905,7 @@ window.printDocumentContent = async function(id){
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder, insideHorizontal: thinBorder, insideVertical: thinBorder },
     rows: [ new TableRow({ children: [
-      footerCell(`Document Number: ${d.doc_number}\nRevision Status: ${d.current_revision}\nRevision Date: ${fmtDate(d.current_revision_date)}\nStatus: ${wordSigStatus.label}`, 26),
+      footerCell(`Document Number: ${d.doc_number}\nRevision Status: ${fmtRev(d.current_revision)}\nRevision Date: ${fmtDate(d.current_revision_date || d.approved_date)}\nStatus: ${wordSigStatus.label}`, 26),
       footerCell(`This document is controlled within QaSHE Watchman. A printed or saved copy is valid only at the time of printing and may not reflect the current revision. Personnel must always refer to QaSHE Watchman for the latest approved version.`, 39),
       footerCell(reviewLine, 17.5),
       footerCell(approveLine, 17.5),
@@ -9940,25 +9933,10 @@ window.printDocumentContent = async function(id){
       children: [new TextRun({ text: `${idx + 1}. ${s.section_title}`, bold: true, size: 28, font: "Arial", color: "000000" })],
       spacing: { before: 240, after: 120 },
     }));
-    (s.content || '').split('\n').forEach(para => {
-      if(!para.trim()) return;
-      bodyChildren.push(new Paragraph({
-        alignment: AlignmentType.JUSTIFIED,
-        spacing: { after: 160, line: 276 },
-        children: [new TextRun({ text: para, size: 24, font: "Arial", color: "000000" })],
-      }));
-    });
+    wmDocxRich(docxLib, s.content || '').forEach(el => bodyChildren.push(el));
     (sectionTables || []).filter(t => t.section_id === s.id).forEach(t => {
       const rows = t.table_data || [];
-      bodyChildren.push(new Table({
-        width: { size: 100, type: WidthType.PERCENTAGE },
-        borders: { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder, insideHorizontal: thinBorder, insideVertical: thinBorder },
-        rows: rows.map((row, ri) => new TableRow({
-          children: row.map(cell => new TableCell({
-            children: [new Paragraph({ children: [new TextRun({ text: String(cell ?? ''), size: 22, font: "Arial", bold: ri === 0, color: "000000" })] })],
-          })),
-        })),
-      }));
+      if(rows.length) bodyChildren.push(wmDocxTable(docxLib, rows[0], rows.slice(1), { noBoldFirst: true }));
       if(t.caption){
         bodyChildren.push(new Paragraph({
           alignment: AlignmentType.CENTER,
@@ -17140,6 +17118,7 @@ window.kpiSetup = function(flowchartId, kpiId, tplKpiId){
       <div class="field"><label>"Near target" tolerance %</label><input id="kp-tol" type="number" step="any" value="${v.amber_tolerance_pct??10}"></div>
       <div class="field"><label>Measure</label><select id="kp-freq">${Object.entries(KPI_FREQ).map(([key,f])=>`<option value="${key}" ${v.frequency===key?'selected':''}>${f.label}</option>`).join('')}</select></div>
       <div class="field"><label>Owner (gets the reminders)</label><select id="kp-owner">${memberOptions(v.owner_id)}</select></div>
+      <div class="field span2"><label>Also responsible for readings (hold Ctrl or Cmd to pick several)</label><select id="kp-resp" multiple size="3">${(STATE.members||STATE.orgMembers||[]).map(m=>{ const id=m.user_id||m.id; return `<option value="${id}" ${(v.responsible_ids||[]).includes(id)?'selected':''}>${escapeHtml(memberName(id))}</option>`; }).join('')}</select></div>
       <div class="field span3"><label>When a reading is off target</label><select id="kp-red">
         <option value="none" ${v.on_red_action==='none'?'selected':''}>Just show it in red</option>
         <option value="task" ${v.on_red_action==='task'?'selected':''}>Offer to create a follow-up task</option>
@@ -17158,12 +17137,15 @@ window.kpiSaveSetup = async function(flowchartId, kpiId, tplKpiId){
     amber_tolerance_pct: Number(document.getElementById('kp-tol').value) || 10, frequency: document.getElementById('kp-freq').value,
     owner_id: document.getElementById('kp-owner').value || null, on_red_action: document.getElementById('kp-red').value, process_id: document.getElementById('kp-process').value || null };
   let error;
+  const _respEl = document.getElementById('kp-resp'); if(_respEl && STATE._kpiRespOk !== false) row.responsible_ids = [...(_respEl.selectedOptions||[])].map(o=>o.value);
   if(kpiId) ({ error } = await STATE.supabase.from('org_kpis').update(row).eq('id', kpiId));
   else {
     row.created_by = STATE.user.id;
     if(tplKpiId){ row.source_flowchart_kpi_id = tplKpiId; const t = STATE.orgFlowchartKpis.find(x=>x.id===tplKpiId); if(t) row.watchman_metric_key = t.watchman_metric_key || null; }
     ({ error } = await STATE.supabase.from('org_kpis').insert(row));
   }
+  if(error && /responsible_ids/.test(error.message || '')){ STATE._kpiRespOk = false; delete row.responsible_ids;
+    ({ error } = kpiId ? await STATE.supabase.from('org_kpis').update(row).eq('id', kpiId) : await STATE.supabase.from('org_kpis').insert(row)); toast('Saved. Run the Release 46 SQL script to keep the list of responsible people.', 'info'); }
   if(error){ toast('Could not save the KPI: ' + error.message + (/org_kpis/.test(error.message) ? ' (run the process-kpi-measurement SQL first)' : ''), 'error'); return; }
   kpiCloseOverlay(); await loadOrgKpis(); renderProcessFlowchartsList(); toast('KPI saved.', 'success');
 };
@@ -32197,7 +32179,7 @@ window.brandFromLogo = function(){
 </div>
     <div class="toolbar"><div class="filters"><input id="mr2-q" placeholder="Search number or title…" oninput="mr2Render()" style="min-width:260px;">
       <select id="mr2-dept" onchange="mr2Render()"><option value="">All departments</option>${depts.map(d=>`<option>${escapeHtml(d)}</option>`).join('')}</select>
-      <select id="mr2-src" onchange="mr2Render()"><option value="">All sources</option><option>Document Management</option><option>All Documents</option><option>Processes &amp; KPIs</option></select>
+      <select id="mr2-src" onchange="mr2Render()"><option value="">All sources</option><option>Document Management</option><option>All Documents</option><option>Processes &amp; KPIs</option><option>Company Performance Report</option></select>
       <select id="mr2-st" onchange="mr2Render()"><option value="">All statuses</option>${[...new Set(rows.map(r=>r.status))].sort().map(x=>`<option>${escapeHtml(x)}</option>`).join('')}</select></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">${(window.dhHas&&window.dhHas().all)?'<button class="btn-small" onclick="switchDocSubtab(\'alldocs\')" title="Upload external or historical documents; they appear in this register">Upload External Documents</button>':''}<button class="btn-small" onclick="exportMasterRegister()">Export Excel</button></div></div>
     <div class="panel" style="padding:0;overflow:hidden;"><div id="mr2-table"></div></div>
@@ -32209,9 +32191,9 @@ window.brandFromLogo = function(){
     const w=document.getElementById('mr2-table'); if(!w) return;
     const q=(document.getElementById('mr2-q').value||'').toLowerCase().trim(), d=document.getElementById('mr2-dept').value, s=document.getElementById('mr2-src').value, st=(document.getElementById('mr2-st')||{}).value||'';
     const rows=mrRows().filter(r=>(!d||r.dept===d)&&(!s||r.src===s)&&(!st||r.status===st)&&(!q||(r.num+' '+r.title).toLowerCase().includes(q)));
-    w.innerHTML=rows.length?`<table><tr><th>Document Number</th><th>Title</th><th>Department</th><th>Type</th><th>Rev</th><th>Status</th><th>Source</th><th></th></tr>${rows.slice(0,500).map(r=>`<tr class="clickable" onclick="mr2Open('${r.kind}','${r.id}')" title="Click to view the document as PDF"><td class="mono-cell">${escapeHtml(r.num)}</td><td class="strong">${escapeHtml(r.title)}</td><td>${escapeHtml(r.dept)}</td><td>${escapeHtml(r.type)}</td><td style="text-align:center;">${escapeHtml(String(r.rev))}</td><td>${r.kind==='c'&&r.wf!=='approved'&&r.wf!=='withdrawn'&&r.wf!=='superseded'?`<span class="sev-badge" style="background:${r.color};color:#fff;cursor:pointer;" title="Open in Document Workflow" onclick="event.stopPropagation(); hubOpenDoc('${r.id}')">${escapeHtml(r.status)} ›</span>`:`<span class="sev-badge" style="background:${r.color||'#5A6B7B'};color:#fff;">${escapeHtml(r.status)}</span>`}</td><td>${r.src}</td><td style="text-align:right;">${r.kind==='c'?`<button class="btn-small" onclick="event.stopPropagation(); downloadDocumentPdf('${r.id}')">View Document</button>`:r.kind==='p'?`<button class="btn-small" onclick="event.stopPropagation(); processDocumentPdf('${r.id}')">View Document</button>`:(r.path?`<button class="btn-small" onclick="event.stopPropagation(); downloadFromBucket('documents','${r.path}')">View Document</button>`:'')} <button class="btn-small" onclick="event.stopPropagation(); ${r.kind==='p'?'processRequestUpdate':'mrRequestUpdate'}('${r.kind==='p'?'':r.kind+"','"}${r.id}')">Request update</button></td></tr>`).join('')}</table>${rows.length>500?'<p style="padding:10px;font-size:12px;color:var(--text-faint);">Showing the first 500: refine your search to narrow the list.</p>':''}`:'<div class="empty-state"><p>No documents match.</p></div>';
+    w.innerHTML=rows.length?`<table><tr><th>Document Number</th><th>Title</th><th>Department</th><th>Type</th><th>Rev</th><th>Status</th><th>Source</th><th></th></tr>${rows.slice(0,500).map(r=>`<tr class="clickable" onclick="mr2Open('${r.kind}','${r.id}')" title="Click to view the document as PDF"><td class="mono-cell">${escapeHtml(r.num)}</td><td class="strong">${escapeHtml(r.title)}</td><td>${escapeHtml(r.dept)}</td><td>${escapeHtml(r.type)}</td><td style="text-align:center;">${escapeHtml(String(r.rev))}</td><td>${r.kind==='c'&&r.wf!=='approved'&&r.wf!=='withdrawn'&&r.wf!=='superseded'?`<span class="sev-badge" style="background:${r.color};color:#fff;cursor:pointer;" title="Open in Document Workflow" onclick="event.stopPropagation(); hubOpenDoc('${r.id}')">${escapeHtml(r.status)} ›</span>`:`<span class="sev-badge" style="background:${r.color||'#5A6B7B'};color:#fff;">${escapeHtml(r.status)}</span>`}</td><td>${r.src}</td><td style="text-align:right;">${r.kind==='c'?`<button class="btn-small" onclick="event.stopPropagation(); downloadDocumentPdf('${r.id}')">View Document</button>`:r.kind==='p'?`<button class="btn-small" onclick="event.stopPropagation(); processDocumentPdf('${r.id}')">View Document</button>`:r.kind==='r'?`<button class="btn-small" onclick="event.stopPropagation(); perfReportPdf('${r.id}')">View Document</button>`:(r.path?`<button class="btn-small" onclick="event.stopPropagation(); downloadFromBucket('documents','${r.path}')">View Document</button>`:'')} ${r.kind==='r'?'':`<button class="btn-small" onclick="event.stopPropagation(); ${r.kind==='p'?'processRequestUpdate':'mrRequestUpdate'}('${r.kind==='p'?'':r.kind+"','"}${r.id}')">Request update</button>`}</td></tr>`).join('')}</table>${rows.length>500?'<p style="padding:10px;font-size:12px;color:var(--text-faint);">Showing the first 500: refine your search to narrow the list.</p>':''}`:'<div class="empty-state"><p>No documents match.</p></div>';
   };
-  window.mr2Open=function(kind,id){ if(kind==='p') return processDocumentPdf(id); const r=mrRows().find(x=>x.kind===kind&&String(x.id)===String(id)); if(!r) return; if(r.kind==='c') return downloadDocumentPdf(r.id); if(r.path) return downloadFromBucket('documents',r.path); toast('This entry has no file to view.','info'); };
+  window.mr2Open=function(kind,id){ if(kind==='p') return processDocumentPdf(id); if(kind==='r') return perfReportPdf(id); const r=mrRows().find(x=>x.kind===kind&&String(x.id)===String(id)); if(!r) return; if(r.kind==='c') return downloadDocumentPdf(r.id); if(r.path) return downloadFromBucket('documents',r.path); toast('This entry has no file to view.','info'); };
   window.exportMasterRegister=async function(){
     try{ const XLSX=await ensureXLSX(); const rows=mrRows(); const ws=XLSX.utils.json_to_sheet(rows.map(r=>({'Document Number':r.num,'Title':r.title,'Department':r.dept,'Type':r.type,'Revision':r.rev,'Status':r.status,'Source':r.src}))); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Master Register'); XLSX.writeFile(wb,'master-documents-register.xlsx'); }catch(e){ toast('Export is not available right now.','error'); }
   };
@@ -38808,7 +38790,7 @@ async function renderNcResponsePage(token){
       <div class="mag-top">
         <button class="btn-small" onclick="pcMagClose()">&larr; All processes</button>
         <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn-small" onclick="printProcess('${p.id}')">Print / PDF</button>
-          ${canEditFlowchart() || canRecordKpi() ? `<button class="btn-small primary" onclick="pcMagEdit('${p.id}')">Edit this page</button>` : ''}</div></div>
+          ${window.pcEditBtn ? window.pcEditBtn(p) : ''}</div></div>
       <div class="mag-spread">
         <div class="mag-page l">
           <div class="mag-eyebrow">Process ${E(p.ref_code)}</div><div class="mag-title">${E(p.name)}</div>
@@ -53312,8 +53294,435 @@ Likelihood and impact are whole numbers from 1 to 5.`;
 
   /* publish processes to the Master Documents Register */
   WM_PDF_SOURCES.push({ key:'process', src:'Processes & KPIs', rows(){
-    return (STATE.processes || []).map(p => ({ src:'Processes & KPIs', num:p.ref_code || '', title:p.name || '', dept:'Processes & KPIs', deptId:'', type:'Process', rev:'', status:p.status === 'inactive' ? 'Inactive' : 'Active', color:p.status === 'inactive' ? '#6B6B6B' : '#2E5AA8', wf:'approved', id:p.id, kind:'p' }));
+    return (STATE.processes || []).map(p => ({ src:'Processes & KPIs', num:p.doc_number || p.ref_code || '', title:p.name || '', dept:'Processes & KPIs', deptId:'', type:'Process', rev:fmtRev(p.revision == null || p.revision === '' ? 0 : p.revision), status:p.status === 'inactive' ? 'Inactive' : 'Active', color:p.status === 'inactive' ? '#6B6B6B' : '#2E5AA8', wf:'approved', id:p.id, kind:'p' }));
   }});
+})();
+
+
+/* ============================================================================
+   R46: TIDY DOCUMENTS. Shared content parser (tables, lists, key facts), PDF layout kit,
+   Word table builders, process PDF redesign, Company Performance Report controlled PDF.
+   ============================================================================ */
+(function(){
+  const clean = s => String(s == null ? '' : s).replace(/\*\*/g, '').replace(/[ \t]+/g, ' ').trim();
+  const isPipe = l => /\S/.test(l) && ((l.match(/\|/g) || []).length >= 2 || /\S\s\|\s\S/.test(l));
+  const bulletRe = /^\s*[-*•–]\s+(.*)$/, numRe = /^\s*(\d{1,2})[.)]\s+(.*)$/, kvRe = /^\s*([^:|\n]{2,34}?):\s+(\S.*)$/;
+
+  window.wmParseRich = function(text){
+    const lines = String(text == null ? '' : text).split('\n'); const out = []; let i = 0;
+    while(i < lines.length){
+      const l = lines[i]; if(!/\S/.test(l)){ i++; continue; }
+      let hdr = null;
+      if(/^\s*format\s*:/i.test(l) && i + 1 < lines.length && isPipe(lines[i + 1])){ const h = l.replace(/^\s*format\s*:[^|]*?:\s*/i, ''); hdr = isPipe(h) ? h.split('|').map(clean) : null; i++; }
+      if(isPipe(lines[i])){
+        const rows = [];
+        while(i < lines.length && isPipe(lines[i])){ rows.push(lines[i].replace(/^\s*[-*•]\s+(?=[^|]*\|)/, '').split('|').map(clean)); i++; }
+        let head = hdr;
+        if(!head && rows.length > 1 && !rows[0].some(c => /^\d+([.,]\d+)?\s*%?$/.test(c)) && /(kpi|title|measure|item|name|description|requirement|responsib|task|position|date|target|weight)/i.test(rows[0].join(' '))) head = rows.shift();
+        if(head) head = head.map(h => /^title$/i.test(h) ? 'KPI' : h.replace(/\s*%$/, ' %'));
+        const n = Math.max((head || []).length, ...rows.map(r => r.length));
+        const pad = r => { const c = r.slice(); while(c.length < n) c.push(''); return c; };
+        const wc = head ? head.findIndex(h => /weight/i.test(h)) : -1;
+        out.push({ t:'table', head: head ? pad(head) : null, rows: rows.map(pad), weightCol: wc });
+        continue;
+      }
+      if(bulletRe.test(l)){ const items = []; while(i < lines.length && bulletRe.test(lines[i])){ items.push(clean(lines[i].match(bulletRe)[1])); i++; } out.push({ t:'ul', items }); continue; }
+      if(numRe.test(l)){ const items = []; while(i < lines.length && numRe.test(lines[i])){ items.push(clean(lines[i].match(numRe)[2])); i++; } out.push({ t:'ol', items }); continue; }
+      const kvAt = j => { const m = lines[j] && lines[j].match(kvRe); return m && m[1].trim().split(/\s+/).length <= 5 && !/[.!?]$/.test(m[1]) && !isPipe(lines[j]) ? [clean(m[1]), clean(m[2])] : null; };
+      if(kvAt(i)){ let j = i; const rows = []; while(kvAt(j)){ rows.push(kvAt(j)); j++; } if(rows.length >= 3){ out.push({ t:'kv', rows }); i = j; continue; } }
+      if(/^\s*\*\*[^*]+\*\*:?\s*$/.test(l) || /^\s*[A-Z][A-Za-z0-9 &\/,'()–-]{2,60}:\s*$/.test(l)){ out.push({ t:'sub', text: clean(l).replace(/:$/, '') }); i++; continue; }
+      out.push({ t:'p', text: clean(l) }); i++;
+    }
+    return out;
+  };
+
+  /* ---------------- PDF layout kit (shared by controlled documents, processes and reports) ---------------- */
+  window.wmPdfKit = function(doc, L){
+    const INK = [20,20,22], HEAD = [38,40,46], ZEB = [246,246,248], LINE = [212,212,216], ACC = [178,22,22], FAINT = [110,110,118];
+    const col = { green:[46,125,79], amber:[196,128,20], red:[179,38,30], grey:[120,120,128], blue:[46,90,168] };
+    const ens = n => { if(L.y + n > L.bottom){ L.newPage(); return true; } return false; };
+    const tx = c => doc.setTextColor(c[0], c[1], c[2]);
+    function para(t, size, lh){
+      size = size || 11; lh = lh || 15; doc.setFont('helvetica', 'normal'); doc.setFontSize(size); tx(INK);
+      const ls = doc.splitTextToSize(String(t), L.cW); ens(Math.min(ls.length, 3) * lh); 
+      ls.forEach(s => { ens(lh); doc.text(s, L.mL, L.y + size); L.y += lh; }); L.y += 5;
+    }
+    function heading(t, size){
+      size = size || 13; L.y += 6; ens(size + 40); doc.setFont('helvetica', 'bold'); doc.setFontSize(size); tx(INK);
+      doc.text(String(t), L.mL, L.y + size); doc.setDrawColor(ACC[0], ACC[1], ACC[2]); doc.setLineWidth(1.4); doc.line(L.mL, L.y + size + 5, L.mL + 34, L.y + size + 5); L.y += size + 16;
+    }
+    function sub(t){ ens(40); doc.setFont('helvetica', 'bold'); doc.setFontSize(11.5); tx(INK); doc.text(String(t), L.mL, L.y + 11); L.y += 20; }
+    function list(items, ordered){
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(11); tx(INK);
+      items.forEach((it, k) => { const ls = doc.splitTextToSize(String(it), L.cW - 22); ens(Math.min(ls.length, 2) * 14);
+        doc.setFont('helvetica', 'bold'); tx(ACC); doc.text(ordered ? (k + 1) + '.' : '•', L.mL + 4, L.y + 11); tx(INK); doc.setFont('helvetica', 'normal');
+        ls.forEach(s => { ens(14); doc.text(s, L.mL + 20, L.y + 11); L.y += 14; }); L.y += 3; });
+      L.y += 4;
+    }
+    function table(head, rows, o){
+      o = o || {}; rows = rows || []; const n = Math.max((head || []).length, ...rows.map(r => r.length)); if(!n) return;
+      doc.setFontSize(9);
+      const nat = []; for(let c = 0; c < n; c++){ const cells = [head && head[c]].concat(rows.map(r => r[c])).map(x => String(x == null ? '' : x)); const mx = Math.max(...cells.map(x => x.length)), av = cells.reduce((a, x) => a + x.length, 0) / cells.length; nat.push(Math.min(46, Math.max(6, (mx + av * 2) / 3))); }
+      if(o.weightCol != null && o.weightCol >= 0) nat[o.weightCol] = 11;
+      if(o.widths) o.widths.forEach((w, c) => { nat[c] = w; });
+      const tot = nat.reduce((a, b) => a + b, 0); let W = nat.map(v => v / tot * L.cW);
+      const minW = c => (c === o.weightCol ? 66 : 40); let fix = 0; W = W.map((w, c) => { const m = Math.max(w, minW(c)); fix += m - w; return m; });
+      if(fix > 0){ const free = W.reduce((a, w, c) => a + (w > minW(c) + 20 ? w : 0), 0); W = W.map((w, c) => w > minW(c) + 20 ? w - fix * (w / free) : w); }
+      const sc = L.cW / W.reduce((a, b) => a + b, 0); W = W.map(w => w * sc);
+      const px = 5, lh = 11, wmax = o.weightCol >= 0 ? Math.max(1, ...rows.map(r => parseFloat(String(r[o.weightCol]).replace('%', '')) || 0)) : 1;
+      const measure = (cells, bold) => { doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(9); const ls = cells.map((c, i) => doc.splitTextToSize(String(c == null ? '' : c), W[i] - 2 * px)); return { ls, h: Math.max(...ls.map(l => l.length)) * lh + 10 }; };
+      const drawHead = () => { const m = measure(head, true); let x = L.mL; head.forEach((c, i) => { doc.setFillColor(HEAD[0], HEAD[1], HEAD[2]); doc.rect(x, L.y, W[i], m.h, 'F'); doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.text(m.ls[i], x + px, L.y + 14); x += W[i]; }); L.y += m.h; };
+      const hm = head ? measure(head, true).h : 0, f0 = rows.length ? measure(rows[0], false).h : 0;
+      ens(hm + f0 + 4); if(head) drawHead();
+      rows.forEach((r, ri) => {
+        const m = measure(r, false); if(ens(m.h)){ if(head) drawHead(); }
+        let x = L.mL; doc.setLineWidth(0.5); doc.setDrawColor(LINE[0], LINE[1], LINE[2]);
+        r.forEach((c, i) => {
+          if(ri % 2) { doc.setFillColor(ZEB[0], ZEB[1], ZEB[2]); doc.rect(x, L.y, W[i], m.h, 'F'); }
+          doc.rect(x, L.y, W[i], m.h); doc.setFont('helvetica', i === 0 && !o.noBoldFirst ? 'bold' : 'normal'); doc.setFontSize(9); tx(INK);
+          const txt = String(c == null ? '' : c);
+          if(o.statusCol === i){ const k = /^on target|^complete|^approved|^active|^yes/i.test(txt) ? 'green' : /^near|^pending|^review|^due/i.test(txt) ? 'amber' : /^off|^overdue|^no\b|^inactive/i.test(txt) ? 'red' : 'grey';
+            doc.setFillColor(col[k][0], col[k][1], col[k][2]); doc.circle(x + px + 3, L.y + 13, 3, 'F'); doc.setFont('helvetica', 'bold'); tx(col[k]); doc.text(m.ls[i], x + px + 11, L.y + 14); }
+          else if(o.weightCol === i){ const v = parseFloat(txt.replace('%', '')) || 0; doc.setFont('helvetica', 'bold'); doc.text(txt, x + px, L.y + 14); const bx = x + px + 26, bw = W[i] - 2 * px - 26; if(bw > 8){ doc.setFillColor(232, 232, 236); doc.roundedRect(bx, L.y + 7, bw, 7, 3.5, 3.5, 'F'); doc.setFillColor(ACC[0], ACC[1], ACC[2]); doc.roundedRect(bx, L.y + 7, Math.max(3, bw * v / wmax), 7, 3.5, 3.5, 'F'); } }
+          else doc.text(m.ls[i], x + px, L.y + 14);
+          x += W[i];
+        });
+        L.y += m.h;
+      });
+      if(o.caption){ L.y += 5; doc.setFont('helvetica', 'italic'); doc.setFontSize(9); tx([68, 68, 68]); doc.text(String(o.caption), L.mL, L.y + 9); L.y += 18; } else L.y += 14;
+    }
+    function kv(rows){ table(null, rows, { widths:[10, 30], noBoldFirst:false }); }
+    function rich(text){
+      wmParseRich(text).forEach(b => {
+        if(b.t === 'p') para(b.text, 11.5, 15.5); else if(b.t === 'sub') sub(b.text); else if(b.t === 'ul') list(b.items, false); else if(b.t === 'ol') list(b.items, true);
+        else if(b.t === 'kv') kv(b.rows);
+        else if(b.t === 'table'){
+          if(b.weightCol >= 0 && b.rows.length){ const tw = b.rows.reduce((s, r) => s + (parseFloat(String(r[b.weightCol]).replace('%', '')) || 0), 0); chips([[b.rows.length + ' measures', col.blue], ['Total weight ' + Math.round(tw) + '%', Math.round(tw) === 100 ? col.green : col.amber]]); }
+          table(b.head, b.rows, { weightCol: b.weightCol });
+        }
+      });
+    }
+    function chips(list){ ens(26); let x = L.mL; doc.setFont('helvetica', 'bold'); doc.setFontSize(8); list.forEach(([t, c]) => { const w = doc.getTextWidth(String(t)) + 16; doc.setFillColor(c[0], c[1], c[2]); doc.roundedRect(x, L.y, w, 16, 8, 8, 'F'); doc.setTextColor(255, 255, 255); doc.text(String(t), x + 8, L.y + 11); x += w + 6; }); L.y += 24; }
+    function card(x, y, w, h, label, value, color){
+      doc.setFillColor(247, 247, 249); doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.setLineWidth(0.6); doc.roundedRect(x, y, w, h, 5, 5, 'FD');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7); tx(FAINT); doc.text(String(label).toUpperCase(), x + 9, y + 14);
+      doc.setFontSize(11.5); tx(color || INK); const ls = doc.splitTextToSize(String(value == null || value === '' ? '—' : value), w - 18); doc.text(ls.slice(0, 2), x + 9, y + 30);
+    }
+    function ring(cx, cy, r, pct, color, label){
+      doc.setLineCap('round'); doc.setLineWidth(9);
+      const seg = (a0, a1, c) => { doc.setDrawColor(c[0], c[1], c[2]); let px = null, py = null; const steps = Math.max(2, Math.ceil(Math.abs(a1 - a0) / 6)); for(let k = 0; k <= steps; k++){ const a = (a0 + (a1 - a0) * k / steps - 90) * Math.PI / 180, x = cx + r * Math.cos(a), y = cy + r * Math.sin(a); if(px != null) doc.line(px, py, x, y); px = x; py = y; } };
+      seg(0, 359.5, [230, 230, 235]); if(pct != null && pct > 0) seg(0, Math.min(359.5, pct * 3.6), color);
+      doc.setLineCap('butt'); doc.setLineWidth(0.6); doc.setFont('helvetica', 'bold'); doc.setFontSize(20); tx(pct == null ? FAINT : color); doc.text(pct == null ? '—' : pct + '%', cx, cy + 5, { align:'center' });
+      doc.setFontSize(6.5); tx(FAINT); doc.text(String(label || '').toUpperCase(), cx, cy + 15, { align:'center' });
+    }
+    return { para, heading, sub, list, table, kv, rich, chips, card, ring, col, ens, INK, FAINT, LINE, ACC, HEAD };
+  };
+
+  /* ---------------- Word builders ---------------- */
+  window.wmDocxTable = function(lib, head, rows, o){
+    o = o || {}; const { Table, TableRow, TableCell, Paragraph, TextRun, WidthType, BorderStyle, ShadingType } = lib;
+    const n = Math.max((head || []).length, ...rows.map(r => r.length)); const total = 9000;
+    const nat = []; for(let c = 0; c < n; c++){ const cells = [head && head[c]].concat(rows.map(r => r[c])).map(x => String(x == null ? '' : x)); const mx = Math.max(...cells.map(x => x.length)), av = cells.reduce((a, x) => a + x.length, 0) / cells.length; nat.push(Math.min(46, Math.max(6, (mx + av * 2) / 3))); }
+    if(o.weightCol >= 0) nat[o.weightCol] = 11; if(o.widths) o.widths.forEach((w, c) => { nat[c] = w; });
+    const sum = nat.reduce((a, b) => a + b, 0), widths = nat.map(v => Math.max(900, Math.round(v / sum * total)));
+    const b = { style: BorderStyle.SINGLE, size: 4, color: 'D4D4D8' }, borders = { top:b, bottom:b, left:b, right:b };
+    const wmax = o.weightCol >= 0 ? Math.max(1, ...rows.map(r => parseFloat(String(r[o.weightCol]).replace('%', '')) || 0)) : 1;
+    const cell = (txt, i, hd, zebra) => {
+      const kids = [new Paragraph({ spacing:{ before:40, after:40 }, children:[ new TextRun({ text:String(txt == null ? '' : txt), size:19, font:'Arial', bold: hd || (i === 0 && !o.noBoldFirst), color: hd ? 'FFFFFF' : '111111' }) ] })];
+      if(!hd && o.weightCol === i){ const v = parseFloat(String(txt).replace('%', '')) || 0, nb = Math.max(1, Math.round(v / wmax * 10)); kids.push(new Paragraph({ children:[ new TextRun({ text:'█'.repeat(nb), size:14, font:'Arial', color:'B21616' }), new TextRun({ text:'█'.repeat(10 - nb), size:14, font:'Arial', color:'E4E4E8' }) ] })); }
+      return new TableCell({ width:{ size:widths[i], type:WidthType.DXA }, borders, margins:{ top:50, bottom:50, left:100, right:100 }, shading: hd ? { type:ShadingType.CLEAR, fill:'26282E', color:'auto' } : (zebra ? { type:ShadingType.CLEAR, fill:'F6F6F8', color:'auto' } : undefined), children:kids });
+    };
+    const trs = [];
+    if(head) trs.push(new TableRow({ tableHeader:true, cantSplit:true, children: head.map((h, i) => cell(h, i, true)) }));
+    rows.forEach((r, ri) => trs.push(new TableRow({ cantSplit:true, children: r.map((c, i) => cell(c, i, false, ri % 2 === 1)) })));
+    return new Table({ width:{ size:total, type:WidthType.DXA }, columnWidths:widths, rows:trs });
+  };
+  window.wmDocxRich = function(lib, text){
+    const { Paragraph, TextRun, AlignmentType } = lib; const out = [];
+    wmParseRich(text).forEach(b => {
+      if(b.t === 'p') out.push(new Paragraph({ alignment:AlignmentType.JUSTIFIED, spacing:{ after:160, line:276 }, children:[ new TextRun({ text:b.text, size:24, font:'Arial', color:'000000' }) ] }));
+      else if(b.t === 'sub') out.push(new Paragraph({ keepNext:true, spacing:{ before:160, after:80 }, children:[ new TextRun({ text:b.text, bold:true, size:24, font:'Arial' }) ] }));
+      else if(b.t === 'ul' || b.t === 'ol') b.items.forEach((it, k) => out.push(new Paragraph({ spacing:{ after:80 }, indent:{ left:420, hanging:300 }, children:[ new TextRun({ text:(b.t === 'ol' ? (k + 1) + '.' : '•') + '\t', bold:true, color:'B21616', size:24, font:'Arial' }), new TextRun({ text:it, size:24, font:'Arial' }) ] })));
+      else if(b.t === 'kv'){ out.push(wmDocxTable(lib, null, b.rows, { widths:[10, 30] })); out.push(new Paragraph({ spacing:{ after:140 }, children:[] })); }
+      else if(b.t === 'table'){
+        if(b.weightCol >= 0 && b.rows.length){ const tw = b.rows.reduce((s, r) => s + (parseFloat(String(r[b.weightCol]).replace('%', '')) || 0), 0); out.push(new Paragraph({ keepNext:true, spacing:{ after:80 }, children:[ new TextRun({ text:`${b.rows.length} measures  |  Total weight ${Math.round(tw)}%`, bold:true, size:20, font:'Arial', color: Math.round(tw) === 100 ? '2E7D4F' : 'C48014' }) ] })); }
+        out.push(wmDocxTable(lib, b.head, b.rows, { weightCol:b.weightCol })); out.push(new Paragraph({ spacing:{ after:160 }, children:[] }));
+      }
+    });
+    return out;
+  };
+})();
+
+/* ===== R46: process controlled PDF (overview page, KPI table, whole flowchart on one page, no broken segments) ===== */
+(function(){
+  const sb = () => STATE.supabase, missing = m => /relation|schema cache|does not exist|column/i.test(m || '');
+  async function svgToCanvas(svgStr, scale){
+    return new Promise((resolve, reject) => {
+      const vb = (svgStr.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/) || []); const w = parseFloat(vb[1]) || 540, h = parseFloat(vb[2]) || 400;
+      const svg = svgStr.replace('<svg ', `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" `);
+      const img = new Image();
+      img.onload = () => { const c = document.createElement('canvas'); c.width = Math.round(w * scale); c.height = Math.round(h * scale); const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height); resolve({ canvas:c, w, h }); };
+      img.onerror = reject; img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    });
+  }
+  const revOf = p => fmtRev(p.revision == null || p.revision === '' ? 0 : p.revision);
+  const numOf = p => p.doc_number || p.ref_code || '';
+
+  window.processDocumentPdf = async function(id, mode){
+    mode = mode || 'view';
+    const p = (STATE.processes || []).find(x => x.id === id); if(!p) return;
+    if(mode === 'download' && !canDownload()){ toast("You don't have permission to download files: you can still view and print.", 'error'); return; }
+    if(mode !== 'blob') showLoader('Generating PDF…');
+    try{
+      const { jsPDF } = await import('https://cdn.jsdelivr.net/npm/jspdf@4.2.1/+esm');
+      const doc = new jsPDF({ unit:'pt', format:'a4' });
+      const dims = [[595, 842]]; const mL = 38, mR = 38;
+      const L = { mL, cW: 595 - mL - mR, y: 110, bottom: 842 - 70, newPage(){ doc.addPage('a4', 'p'); dims.push([595, 842]); L.cW = 595 - mL - mR; L.y = 110; L.bottom = 842 - 70; } };
+      const K = wmPdfKit(doc, L);
+      let logoImage = null; if(STATE.org.logo_url){ try{ logoImage = await fetchImageForDocx(STATE.org.logo_url); }catch(e){} }
+      const fc = p.flowchart_id ? flowchartById(p.flowchart_id) : null;
+      const steps = fc ? (STATE.orgFlowchartSteps || []).filter(s => s.flowchart_id === fc.id).sort((a, b) => a.sort_order - b.sort_order) : [];
+      const kpis = pcKpisOf(p).filter(k => k.is_active), links = pcDocLinksOf(p);
+      let reviews = []; try{ const r = await sb().from('process_reviews').select('*').eq('process_id', id).order('review_date', { ascending:false }); reviews = r.data || []; }catch(e){}
+      const c = window.pcCompliance ? window.pcCompliance(p) : { pct:null, on:0, near:0, off:0, none:0, measured:0, total:kpis.length };
+      const stCol = pct => pct == null ? K.col.grey : pct >= 90 ? K.col.green : pct >= 70 ? K.col.amber : K.col.red;
+
+      /* ---- page 1: overview ---- */
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(K.FAINT[0], K.FAINT[1], K.FAINT[2]); doc.text('PROCESS DOCUMENT', L.mL, L.y); L.y += 6;
+      doc.setFontSize(19); doc.setTextColor(20, 20, 22); const tl = doc.splitTextToSize(String(p.name || ''), L.cW); doc.text(tl.slice(0, 3), L.mL, L.y + 18); L.y += 18 + tl.slice(0, 3).length * 22 + 6;
+      const cw = (L.cW - 3 * 8) / 4;
+      [['Document number', numOf(p)], ['Owner', memberName(p.owner_id)], ['Review frequency', p.review_frequency ? String(p.review_frequency).replace(/_/g, ' ') : '—'], ['Status', p.status ? String(p.status).replace(/_/g, ' ') : '—']].forEach((x, i) => K.card(L.mL + i * (cw + 8), L.y, cw, 42, x[0], x[1]));
+      L.y += 52;
+      if(fc && fc.standard_refs && fc.standard_refs.length){ K.chips(fc.standard_refs.map(s => [s, K.col.blue])); }
+      /* KPI performance strip */
+      K.ens(130); const top = L.y;
+      doc.setFillColor(247, 247, 249); doc.setDrawColor(212, 212, 216); doc.setLineWidth(0.6); doc.roundedRect(L.mL, top, L.cW, 104, 6, 6, 'FD');
+      K.ring(L.mL + 62, top + 50, 34, c.pct, stCol(c.pct), 'Compliance');
+      const tiles = [['On target', c.on, K.col.green], ['Near target', c.near, K.col.amber], ['Off target', c.off, K.col.red], ['Not measured', c.none, K.col.grey]], tw = (L.cW - 130 - 3 * 8) / 4;
+      tiles.forEach((t, i) => { const x = L.mL + 124 + i * (tw + 8); doc.setFillColor(255, 255, 255); doc.setDrawColor(212, 212, 216); doc.roundedRect(x, top + 18, tw, 68, 5, 5, 'FD'); doc.setFont('helvetica', 'bold'); doc.setFontSize(24); doc.setTextColor(t[2][0], t[2][1], t[2][2]); doc.text(String(t[1] || 0), x + tw / 2, top + 55, { align:'center' }); doc.setFontSize(7.5); doc.setTextColor(K.FAINT[0], K.FAINT[1], K.FAINT[2]); doc.text(t[0].toUpperCase(), x + tw / 2, top + 72, { align:'center' }); });
+      L.y = top + 118;
+      /* purpose / inputs / outputs as boxes */
+      const box = (x, y, w, label, text) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(10); const ls = doc.splitTextToSize(String(text || '—'), w - 20), h = 30 + ls.length * 13; return { x, y, w, label, ls, h }; };
+      const drawBox = (b, h) => { doc.setFillColor(255, 255, 255); doc.setDrawColor(212, 212, 216); doc.roundedRect(b.x, b.y, b.w, h, 5, 5, 'FD'); doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(K.ACC[0], K.ACC[1], K.ACC[2]); doc.text(b.label.toUpperCase(), b.x + 10, b.y + 15); doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(20, 20, 22); doc.text(b.ls, b.x + 10, b.y + 30); };
+      if(p.purpose){ const b = box(L.mL, L.y, L.cW, 'Purpose', p.purpose); K.ens(b.h + 8); b.y = L.y; drawBox(b, b.h); L.y += b.h + 10; }
+      if(p.inputs || p.outputs){ const hw = (L.cW - 10) / 2, a = box(L.mL, L.y, hw, 'Inputs', p.inputs), b2 = box(L.mL + hw + 10, L.y, hw, 'Outputs', p.outputs), h = Math.max(a.h, b2.h); K.ens(h + 8); a.y = b2.y = L.y; drawBox(a, h); drawBox(b2, h); L.y += h + 12; }
+      if(p.departments_involved){ K.para('Departments involved: ' + p.departments_involved, 10, 14); }
+      /* KPI table */
+      K.heading('Key Performance Indicators', 13);
+      if(kpis.length){
+        K.table(['KPI', 'Target', 'Latest reading', 'Status', 'Frequency', 'Owner'], kpis.map(k => { const i = kpiInfo(k), l = i.latest;
+          return [k.name, `${k.direction === 'lower' ? '<=' : '>='} ${k.target_value != null ? k.target_value : '—'} ${k.unit || ''}`.trim(), l ? `${l.value} ${k.unit || ''} (${fmtDate(l.period_date)})` : 'No reading yet',
+            i.status === 'green' ? 'On target' : i.status === 'amber' ? 'Near target' : i.status === 'red' ? 'Off target' : 'Not measured', KPI_FREQ[k.frequency] ? KPI_FREQ[k.frequency].label : '', k.owner_id ? memberName(k.owner_id) : '—']; }), { statusCol:3, widths:[16, 11, 14, 9, 8, 10] });
+      } else K.para('No active KPIs have been set for this process.', 10.5, 14);
+
+      /* ---- flowchart: whole chart on its own page, never cut through a step ---- */
+      L.newPage(); K.heading('Process Flow', 14);
+      let plan = { landscape:false };
+      if(steps.length && window.pcFlowSvg){
+        const whole = await svgToCanvas(window.pcFlowSvg(steps), 2), availH = L.bottom - L.y - 10;
+        const s1 = Math.min(1, L.cW / whole.w, availH / whole.h);
+        plan = { k:1, s:s1, parts:[{ canvas:whole.canvas, w:whole.w, h:whole.h }] };
+        if(s1 < 0.62 && steps.length >= 8){
+          for(const k of [2, 3]){
+            const size = Math.ceil(steps.length / k), parts = []; let a = 0;
+            while(a < steps.length){ let b = Math.min(steps.length, a + size); while(b < steps.length && b - a > 3 && /decision/.test(String(steps[b - 1].step_kind || steps[b - 1].kind || ''))) b--; parts.push(steps.slice(a, b)); a = b; }
+            const cs = []; for(const ps of parts) cs.push(await svgToCanvas(window.pcFlowSvg(ps), 2));
+            const LW = 842 - 2 * mL, colW = (LW - (k - 1) * 14) / k, availL = 595 - 80 - 136 - 22;
+            const s = Math.min(1, ...cs.map(x => Math.min(colW / x.w, availL / x.h)));
+            if(s > plan.s * 1.3 && (!plan.landscape || s > plan.s)) plan = { k, s, landscape:true, parts:cs, colW, LW };
+          }
+        }
+        if(plan.landscape){
+          doc.deletePage(doc.internal.getNumberOfPages()); doc.addPage('a4', 'l'); dims.pop(); dims.push([842, 595]); L.cW = 842 - 2 * mL; L.bottom = 595 - 80; L.y = 100; K.heading('Process Flow', 14);
+          plan.parts.forEach((x, i) => { const dw = x.w * plan.s, dh = x.h * plan.s, cx = mL + i * (plan.colW + 14) + (plan.colW - dw) / 2; doc.addImage(x.canvas.toDataURL('image/png'), 'PNG', cx, L.y, dw, dh);
+            doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(K.FAINT[0], K.FAINT[1], K.FAINT[2]);
+            if(i < plan.parts.length - 1) doc.text('continued in the next column', mL + i * (plan.colW + 14) + plan.colW / 2, L.y + dh + 12, { align:'center' }); });
+          L.y = L.bottom;
+        } else {
+          const x = plan.parts[0], dw = x.w * plan.s, dh = x.h * plan.s; doc.addImage(x.canvas.toDataURL('image/png'), 'PNG', L.mL + (L.cW - dw) / 2, L.y, dw, dh); L.y += dh + 8;
+        }
+      } else K.para('No flowchart has been built for this process yet.', 10.5, 14);
+
+      /* ---- closing content: linked documents, reviews, document control ---- */
+      if(!plan.landscape && steps.length && window.pcFlowSvg) L.y += 6; else L.newPage();
+      const dl = links.map(l => { const d = l.document_id ? documentById(l.document_id) : null; return d ? [d.doc_number || '', d.title || ''] : null; }).filter(Boolean);
+      if(dl.length){ K.heading('Linked Documents', 13); K.table(['Document number', 'Title'], dl, { widths:[2, 6] }); }
+      if(reviews.length){ K.heading('Review History', 13); K.table(['Date', 'Reviewed by', 'Result', 'Status'], reviews.map(r => [fmtDate(r.review_date), memberName(r.reviewed_by), r.overall_achievement_pct != null ? Number(r.overall_achievement_pct).toFixed(1) + '%' : '—', String(r.status || '').replace(/_/g, ' ')]), { widths:[3, 4, 2, 3] }); }
+      K.heading('Document Control', 13);
+      K.table(null, [['Document number', numOf(p)], ['Revision', revOf(p)], ['Revision date', p.revision_date ? fmtDate(p.revision_date) : fmtDate((p.updated_at || new Date().toISOString()).slice(0, 10))], ['Process owner', memberName(p.owner_id)], ['Printed', new Date().toLocaleString('en-GB')]], { widths:[10, 30] });
+
+      /* ---- header and footer on every page, sized to the page ---- */
+      const n = doc.internal.getNumberOfPages(), issued = p.revision_date ? fmtDate(p.revision_date) : fmtDate((p.updated_at || new Date().toISOString()).slice(0, 10));
+      for(let i = 1; i <= n; i++){
+        doc.setPage(i); const [pw, ph] = dims[i - 1] || [595, 842], hy = 30, nx = mL + (logoImage ? 115 : 0);
+        if(logoImage){ const ld = fitImageDimensions(logoImage.naturalWidth, logoImage.naturalHeight, 100, 40); doc.addImage(arrayBufferToDataUrl(logoImage.data, logoImage.type === 'png' ? 'image/png' : 'image/jpeg'), logoImage.type.toUpperCase(), mL, hy - 10, ld.width, ld.height); }
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(0, 0, 0); doc.text(STATE.org.name || '', nx, hy); const nameW = doc.getTextWidth(STATE.org.name || '');
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); let addrW = 0; if(STATE.org.address){ doc.text(STATE.org.address, nx, hy + 14); addrW = doc.getTextWidth(STATE.org.address); }
+        const maxW = Math.max(110, pw - mR - (nx + Math.max(nameW, addrW) + 16)); doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
+        let ls = doc.splitTextToSize(String(p.name || ''), maxW); if(ls.length > 2){ doc.setFontSize(10); ls = doc.splitTextToSize(String(p.name || ''), maxW); } else if(ls.length > 1){ doc.setFontSize(11); ls = doc.splitTextToSize(String(p.name || ''), maxW); }
+        doc.text(ls.slice(0, 3), pw - mR, hy, { align:'right' }); doc.setDrawColor(0, 0, 0); doc.setLineWidth(1.2); doc.line(mL, 80, pw - mR, 80);
+        const fy = ph - 70 + 14; doc.setDrawColor(208, 208, 208); doc.setLineWidth(0.6); doc.line(mL, fy - 10, pw - mR, fy - 10);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(0, 0, 0);
+        doc.text(`Doc No: ${numOf(p)}`, mL, fy); doc.text(`Rev ${revOf(p)}: ${issued}`, mL, fy + 10); doc.text(`Status: ${p.status ? String(p.status).replace(/_/g, ' ') : '—'}`, mL, fy + 20);
+        doc.text(doc.splitTextToSize('This document is generated from the live process record in QaSHE Watchman and is current at the time of printing. Personnel must always refer to QaSHE Watchman for the latest version.', pw > 700 ? 330 : 230), mL + 130, fy);
+        doc.text(`Page ${i} of ${n}`, pw - mR, fy + 20, { align:'right' });
+      }
+      hideLoader();
+      if(mode === 'blob') return doc.output('blob');
+      if(mode === 'download'){ doc.save(`${numOf(p)} - ${p.name}.pdf`); toast('PDF downloaded.', 'success'); }
+      else { window.open(doc.output('bloburl'), '_blank'); toast("PDF opened for viewing: use your browser's print option to print it.", 'success'); }
+    }catch(e){ hideLoader(); console.error(e); toast('Could not generate the PDF: ' + (e.message || e), 'error'); }
+  };
+  window.printProcess = id => window.processDocumentPdf(id);
+  window.printProcessFlowchart = id => window.processDocumentPdf(id);
+})();
+
+/* ===== R46: Processes & KPIs lock. Definitions are locked until Request update is raised. KPI readings stay open to the responsible people. ===== */
+(function(){
+  const sb = () => STATE.supabase, missing = m => /relation|schema cache|does not exist|column/i.test(m || '');
+  STATE._pcUpd = STATE._pcUpd || { open:{}, local:{}, table:null, loaded:false };
+  async function loadUpd(){
+    if(!STATE.org) return;
+    try{ const r = await sb().from('process_update_requests').select('*').eq('organisation_id', STATE.org.id).eq('status', 'open');
+      if(r.error){ if(missing(r.error.message)) STATE._pcUpd.table = false; return; }
+      STATE._pcUpd.table = true; const o = {}; (r.data || []).forEach(x => { o[x.process_id] = x; }); STATE._pcUpd.open = o;
+    }catch(e){}
+  }
+  window.pcUnlocked = pid => !!(STATE._pcUpd.open[pid] || STATE._pcUpd.local[pid]);
+  const procOfFc = fid => fid ? (STATE.processes || []).find(p => p.flowchart_id === fid) : null;
+  const procOfKpi = k => k ? (k.process_id ? (STATE.processes || []).find(p => p.id === k.process_id) : procOfFc(k.flowchart_id)) : null;
+  function guard(pid){
+    if(!pid || pcUnlocked(pid)) return true;
+    toast('This process is locked. Use Request update to open the flowchart, purpose and KPI definitions for editing. KPI readings stay open.', 'info'); return false;
+  }
+  function wrap(name, pidOf){
+    const o = window[name]; if(typeof o !== 'function') return;
+    window[name] = function(){ let pid = null; try{ pid = pidOf.apply(null, arguments); }catch(e){} if(!guard(pid)) return; return o.apply(this, arguments); };
+  }
+  wrap('openProcessWizard', id => id);
+  wrap('pcUnlinkDoc', (l, pid) => pid); wrap('pcApplyLinks', pid => pid); wrap('pcModulesSave', pid => pid); wrap('pcModulesEditor', pid => pid);
+  wrap('submitProcessKpi', pid => pid); wrap('toggleProcessKpiActive', (k, pid) => pid); wrap('saveProcessDocInfo', pid => pid); wrap('addFlowchartStep', pid => pid);
+  wrap('pcCreate', () => STATE._pc && STATE._pc.existingId);
+  const pidOfSetup = (fid, kid) => { const sel = document.getElementById('kp-process'); const k = kid ? (STATE.orgKpis || []).find(x => x.id === kid) : null; const p = (sel && sel.value) ? (STATE.processes || []).find(x => x.id === sel.value) : (procOfKpi(k) || procOfFc(fid)); return p && p.id; };
+  wrap('kpiSetup', pidOfSetup); wrap('kpiSaveSetup', pidOfSetup);
+  wrap('kpiToggleActive', id => { const p = procOfKpi((STATE.orgKpis || []).find(x => x.id === id)); return p && p.id; });
+  { const o = window.deleteFlowchartStepConfirm; if(typeof o === 'function') window.deleteFlowchartStepConfirm = async function(stepId){
+      try{ const { data } = await sb().from('process_flowchart_steps').select('process_id').eq('id', stepId).single(); if(data && !guard(data.process_id)) return; }catch(e){}
+      return o.apply(this, arguments); }; }
+
+  /* ----- who may record KPI readings: admin, platform staff, KPI owner, extra responsible people, process owner ----- */
+  window.kpiCanRecord = function(k){
+    if(!k) return canRecordKpi(); if(STATE.myRole === 'admin' || (STATE.profile && STATE.profile.is_platform_staff)) return true;
+    const proc = procOfKpi(k), named = [k.owner_id].concat(k.responsible_ids || [], proc ? [proc.owner_id] : []).filter(Boolean);
+    return named.length ? named.includes(STATE.user.id) : canRecordKpi();
+  };
+  const denyRec = () => toast('Only the people responsible for this KPI (its owner, the process owner and anyone named as responsible) can record readings.', 'info');
+  ['kpiRecord', 'kpiSaveReading'].forEach(n => { const o = window[n]; if(typeof o === 'function') window[n] = function(id){ const k = (STATE.orgKpis || []).find(x => x.id === id); if(!kpiCanRecord(k)){ denyRec(); return; } return o.apply(this, arguments); }; });
+  { const o = window.kpiDeleteReading; if(typeof o === 'function') window.kpiDeleteReading = function(rid, kid){ const k = (STATE.orgKpis || []).find(x => x.id === kid); if(!kpiCanRecord(k)){ denyRec(); return; } return o.apply(this, arguments); }; }
+
+  /* ----- buttons on the process page ----- */
+  window.pcEditBtn = function(p){
+    if(!canEditFlowchart()) return '';
+    if(pcUnlocked(p.id)) return `<span class="pill" style="font-size:11px;">Update open</span> <button class="btn-small primary" onclick="pcMagEdit('${p.id}')">Edit this page</button> <button class="btn-small" onclick="processCompleteUpdate('${p.id}')">Complete update</button>`;
+    return `<span class="pill" style="font-size:11px;" title="Flowchart, purpose and KPI definitions are locked. KPI readings stay open.">Locked</span> <button class="btn-small primary" onclick="processRequestUpdate('${p.id}')">Request update</button>`;
+  };
+
+  window.processRequestUpdate = async function(id){
+    const p = (STATE.processes || []).find(x => x.id === id); if(!p) return;
+    if(!canEditFlowchart()){ toast('Ask a manager or an administrator to request the update.', 'info'); return; }
+    if(pcUnlocked(id)){ pcMagEdit(id); return; }
+    const reason = prompt('What needs to change in ' + (p.doc_number || p.ref_code || 'this process') + '? Raising the request opens the flowchart, purpose and KPI definitions for editing.');
+    if(!reason || !reason.trim()) return;
+    let logged = false;
+    try{ const r = await sb().from('process_update_requests').insert({ organisation_id:STATE.org.id, process_id:id, reason:reason.trim(), requested_by:STATE.user.id, revision_before:p.revision || null }).select().single();
+      if(!r.error){ STATE._pcUpd.open[id] = r.data; STATE._pcUpd.table = true; logged = true; }
+      else if(!missing(r.error.message)){ toast('Could not log the request: ' + r.error.message, 'error'); return; }
+    }catch(e){}
+    if(!logged){ STATE._pcUpd.local[id] = true; toast('Update opened for this session only. Run the Release 46 SQL script so requests are logged.', 'info'); }
+    try{ const to = [p.owner_id].filter(Boolean).filter(x => x !== STATE.user.id); if(to.length && typeof notifyDocumentUsers === 'function') await notifyDocumentUsers(to, `Update requested: ${p.ref_code || ''}`, `${memberName(STATE.user.id)} has opened ${p.ref_code || 'a process'} for update: ${reason.trim()}`); }catch(e){}
+    try{ await sb().from('audit_log').insert({ organisation_id:STATE.org.id, user_id:STATE.user.id, action:'process_update_requested', details:{ process_id:id, ref:p.ref_code, reason:reason.trim() } }); }catch(e){}
+    toast('Update requested. The process is open for editing.', 'success');
+    pcMagEdit(id);
+  };
+  const bump = r => { const s = String(r == null ? '' : r).trim(); const m = s.match(/^(.*?)(\d+)$/); return m ? m[1] + String(parseInt(m[2], 10) + 1).padStart(m[2].length, '0') : '1'; };
+  window.processCompleteUpdate = async function(id){
+    const p = (STATE.processes || []).find(x => x.id === id); if(!p) return;
+    const sum = prompt('Summarise what changed. This becomes the revision note and the process revision moves on.'); if(sum === null) return;
+    if(!sum.trim()){ toast('Add a short summary of the change.', 'info'); return; }
+    const before = p.revision || '', after = bump(before), today = todayISO();
+    const u = await sb().from('processes').update({ revision:after, revision_date:today }).eq('id', id);
+    if(u.error){ toast('Could not update the revision: ' + u.error.message, 'error'); return; }
+    const req = STATE._pcUpd.open[id];
+    if(req){ try{ await sb().from('process_update_requests').update({ status:'completed', completed_at:new Date().toISOString(), completed_by:STATE.user.id, change_summary:sum.trim(), revision_before:before || null, revision_after:after }).eq('id', req.id); }catch(e){} }
+    delete STATE._pcUpd.open[id]; delete STATE._pcUpd.local[id];
+    try{ await loadProcesses(); }catch(e){}
+    try{ STATE._pfMag = id; renderProcessFlowchartsList(); }catch(e){}
+    toast(`Update completed. The process is locked again at revision ${after}.`, 'success');
+  };
+
+  /* load the open requests with the KPIs and whenever the module opens */
+  { const o = loadOrgKpis; loadOrgKpis = window.loadOrgKpis = async function(){ const r = await o.apply(this, arguments); await loadUpd(); return r; }; }
+  { const o = renderProcessFlowchartsList; renderProcessFlowchartsList = window.renderProcessFlowchartsList = function(){
+      if(!STATE._pcUpd.loaded){ STATE._pcUpd.loaded = true; loadUpd().then(() => { try{ o.apply(this, arguments); }catch(e){} }); }
+      return o.apply(this, arguments); }; }
+})();
+
+/* ===== R46: Company Performance Report as a controlled PDF in the Master Documents Register ===== */
+(function(){
+  const sb = () => STATE.supabase;
+  const bandOf = v => v == null ? ['Not rated', 'grey'] : v >= 97 ? ['Significant', 'green'] : v >= 90 ? ['Standard', 'green'] : v >= 81 ? ['Moderate', 'amber'] : v >= 60 ? ['Partial', 'amber'] : v >= 50 ? ['Not acceptable', 'red'] : ['Not done', 'red'];
+  const pc = v => v == null ? '—' : (Math.round(v * 10) / 10) + '%';
+  const allowed = () => { try{ return !!(window.wmPeopleScope && wmPeopleScope().all); }catch(e){ return false; } };
+  async function loadPublished(){
+    if(!STATE.org || !allowed()) { STATE._perfPub = []; return; }
+    try{ const r = await sb().from('performance_reports').select('id,report_month,company_result,participants,published_at').eq('organisation_id', STATE.org.id).order('report_month', { ascending:false }); STATE._perfPub = r.error ? [] : (r.data || []); }catch(e){ STATE._perfPub = []; }
+  }
+  window.perfReportPdf = async function(id, mode){
+    mode = mode || 'view'; if(!allowed()){ toast('The Company Performance Report is restricted to administrators and HR.', 'info'); return; }
+    if(mode !== 'blob') showLoader('Generating PDF…');
+    try{
+      const r = await sb().from('performance_reports').select('*').eq('id', id).single(); if(r.error) throw r.error; const vm = r.data.payload || {};
+      const { jsPDF } = await import('https://cdn.jsdelivr.net/npm/jspdf@4.2.1/+esm'); const doc = new jsPDF({ unit:'pt', format:'a4' }); const mL = 38, mR = 38;
+      const L = { mL, cW:595 - mL - mR, y:110, bottom:772, newPage(){ doc.addPage(); L.y = 110; } }; const K = wmPdfKit(doc, L);
+      let logo = null; if(STATE.org.logo_url){ try{ logo = await fetchImageForDocx(STATE.org.logo_url); }catch(e){} }
+      const colOf = k => K.col[k] || K.col.grey, [bn, bc] = bandOf(vm.company);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(K.FAINT[0], K.FAINT[1], K.FAINT[2]); doc.text('COMPANY PERFORMANCE REPORT', L.mL, L.y); L.y += 6;
+      doc.setFontSize(20); doc.setTextColor(20, 20, 22); doc.text(String(vm.label || ''), L.mL, L.y + 20); L.y += 34;
+      const top = L.y; doc.setFillColor(247, 247, 249); doc.setDrawColor(212, 212, 216); doc.setLineWidth(0.6); doc.roundedRect(L.mL, top, L.cW, 110, 6, 6, 'FD');
+      K.ring(L.mL + 66, top + 54, 36, vm.company == null ? null : Math.round(vm.company * 10) / 10, colOf(bc), 'Company result');
+      const tiles = [['Target', (vm.target || 100) + '%', K.INK], ['Rating', bn, colOf(bc)], ['Previous month', pc(vm.prev), K.INK], ['Appraised', `${vm.appraised || 0} of ${vm.total || 0}`, K.INK]], tw = (L.cW - 140 - 3 * 8) / 4;
+      tiles.forEach((t, i) => { const x = L.mL + 132 + i * (tw + 8); doc.setFillColor(255, 255, 255); doc.setDrawColor(212, 212, 216); doc.roundedRect(x, top + 22, tw, 66, 5, 5, 'FD'); doc.setFont('helvetica', 'bold'); doc.setFontSize(t[1].length > 8 ? 11 : 17); doc.setTextColor(t[2][0], t[2][1], t[2][2]); doc.text(String(t[1]), x + tw / 2, top + 54, { align:'center' }); doc.setFontSize(7.5); doc.setTextColor(K.FAINT[0], K.FAINT[1], K.FAINT[2]); doc.text(t[0].toUpperCase(), x + tw / 2, top + 72, { align:'center' }); });
+      L.y = top + 124;
+      if((vm.org || []).length){ K.heading('Organisation summary', 13); K.list(vm.org, false); }
+      const ms = vm.months || [], tr = vm.trend || [];
+      if(ms.length){ K.heading('Trend through the financial year', 13); K.table(['Month', 'Company result', 'Rating'], ms.map((m, i) => [m.label || m.long || '', pc(tr[i]), tr[i] == null ? '—' : bandOf(tr[i])[0]]).filter(r => r[1] !== '—'), { widths:[3, 3, 3] }); }
+      K.heading('Individual results', 13);
+      K.table(['Person', 'Position', 'Line manager', 'Result', 'Rating', 'Year to date'], (vm.people || []).map(x => [x.name, x.position || '', x.manager || '', pc(x.result), x.result == null ? 'Not appraised' : bandOf(x.result)[0], pc(x.annualToDate)]), { widths:[14, 13, 12, 7, 10, 8] });
+      if((vm.ofiOrg || []).length){ K.heading('Opportunities for Improvement: organisation', 13); K.table(['KPI', 'People below Standard', 'Average result', 'Rated 0'], vm.ofiOrg.map(g => [g.title, `${g.count} of ${g.of}`, pc(g.avg), String(g.zero || 0)]), { widths:[16, 7, 6, 4] }); }
+      if((vm.ofiPeople || []).length){ K.heading('Opportunities for Improvement: individuals', 13); vm.ofiPeople.forEach(pp => { K.sub(`${pp.name}${pp.position ? '  |  ' + pp.position : ''}`); K.table(['KPI', 'Rating', 'Result', "Manager's notes"], pp.items.map(it => [it.title, bandOf(it.pct)[0] + ' (' + it.rating + ')', pc(it.pct), it.notes || '—']), { widths:[12, 7, 5, 16] }); }); }
+      const n = doc.internal.getNumberOfPages(), issued = vm.month ? fmtDate(String(vm.month).slice(0, 10)) : '';
+      for(let i = 1; i <= n; i++){
+        doc.setPage(i); const hy = 30, nx = mL + (logo ? 115 : 0);
+        if(logo){ const ld = fitImageDimensions(logo.naturalWidth, logo.naturalHeight, 100, 40); doc.addImage(arrayBufferToDataUrl(logo.data, logo.type === 'png' ? 'image/png' : 'image/jpeg'), logo.type.toUpperCase(), mL, hy - 10, ld.width, ld.height); }
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(0, 0, 0); doc.text(STATE.org.name || '', nx, hy); const nameW = doc.getTextWidth(STATE.org.name || '');
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); let aw = 0; if(STATE.org.address){ doc.text(STATE.org.address, nx, hy + 14); aw = doc.getTextWidth(STATE.org.address); }
+        const maxW = Math.max(110, 595 - mR - (nx + Math.max(nameW, aw) + 16)); doc.setFont('helvetica', 'bold'); doc.setFontSize(12); const ls = doc.splitTextToSize('Company Performance Report ' + (vm.label || ''), maxW); doc.text(ls.slice(0, 3), 595 - mR, hy, { align:'right' });
+        doc.setDrawColor(0, 0, 0); doc.setLineWidth(1.2); doc.line(mL, 80, 595 - mR, 80);
+        const fy = 842 - 70 + 14; doc.setDrawColor(208, 208, 208); doc.setLineWidth(0.6); doc.line(mL, fy - 10, 595 - mR, fy - 10); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(0, 0, 0);
+        doc.text(`Report: ${vm.label || ''}`, mL, fy); doc.text(`Published: ${r.data.published_at ? fmtDate(String(r.data.published_at).slice(0, 10)) : ''}`, mL, fy + 10); doc.text('Status: Published', mL, fy + 20);
+        doc.text(doc.splitTextToSize('Confidential. This report contains individual performance information and is restricted to the Managing Director, administrators and human resources. A printed copy is valid only at the time of printing.', 230), mL + 130, fy);
+        doc.text(`Page ${i} of ${n}`, 595 - mR, fy + 20, { align:'right' });
+      }
+      hideLoader(); if(mode === 'blob') return doc.output('blob');
+      if(mode === 'download'){ doc.save(`Company Performance Report ${vm.label || ''}.pdf`); toast('PDF downloaded.', 'success'); } else { window.open(doc.output('bloburl'), '_blank'); toast("PDF opened for viewing: use your browser's print option to print it.", 'success'); }
+    }catch(e){ hideLoader(); console.error(e); toast('Could not generate the PDF: ' + (e.message || e), 'error'); }
+  };
+  WM_PDF_SOURCES.push({ key:'perf', src:'Company Performance Report', rows(){
+    if(!allowed()) return [];
+    return (STATE._perfPub || []).map((x, i) => ({ src:'Company Performance Report', num:'CPR-' + String(x.report_month).slice(0, 7), title:'Company Performance Report ' + new Date(String(x.report_month).slice(0, 10) + 'T00:00:00Z').toLocaleDateString('en-GB', { month:'long', year:'numeric', timeZone:'UTC' }), dept:'Human Resources', deptId:'', type:'Report', rev:'', status:'Published', color:'#2E5AA8', wf:'approved', id:x.id, kind:'r' }));
+  } });
+  /* load published reports when the Master Documents Register opens, then repaint it */
+  { const o = window.showModule; window.showModule = showModule = function(m){ const r = o.apply(this, arguments); if(m === 'documents') loadPublished().then(() => { try{ if(STATE.currentModule === 'documents' && typeof mr2Render === 'function') mr2Render(); }catch(e){} }); return r; }; }
 })();
 
 </script>
