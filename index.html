@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R47 2026-11-17"><meta charset="UTF-8">
+<meta name="wm-release" content="R49 2026-11-17"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -54199,6 +54199,85 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     const s = await sb().storage.from('appraisal-evidence').createSignedUrl(q.data.storage_path, 60, { download: q.data.file_name });
     if(s.error){ toast('Could not open: ' + s.error.message, 'error'); return; } window.open(s.data.signedUrl, '_blank');
   };
+})();
+
+
+/* ===== R49: Master Documents Register shows every document (created and bulk uploaded); Document Workflow shows work in progress ===== */
+(function(){
+  const E = s => escapeHtml(String(s == null ? '' : s));
+  const d10 = v => v ? String(v).slice(0, 10) : '';
+
+  /* 1. every uploaded document is loaded for the register, whichever tab the user opened first */
+  async function loadBulk(force){
+    if(!STATE.org) return;
+    if(!force && STATE._bulkOrg === STATE.org.id && STATE._bulkLoadedAt && Date.now() - STATE._bulkLoadedAt < 120000) return;
+    let data = [];
+    for(let from = 0; from < 40000; from += 1000){
+      const r = await STATE.supabase.from('bulk_documents').select('*').eq('organisation_id', STATE.org.id).order('doc_number', { ascending:true }).range(from, from + 999);
+      if(r.error){ console.warn('bulk load', r.error.message); return; }
+      data = data.concat(r.data || []); if(!r.data || r.data.length < 1000) break;
+    }
+    STATE.bulkDocuments = data; STATE._bulkOrg = STATE.org.id; STATE._bulkLoadedAt = Date.now();
+  }
+  window.wmLoadBulkDocuments = loadBulk;
+  const countStat = () => {
+    const n = (STATE.documents || []).filter(x => x.doc_number).length + (STATE.bulkDocuments || []).filter(x => !x.archived).length + (window.WM_PDF_SOURCES || []).reduce((s, x) => { try{ return s + x.rows().length; }catch(e){ return s; } }, 0);
+    const b = document.querySelector('.doc-hub .dh-stat b'); if(b) b.textContent = n;
+  };
+  { const o = window.renderMasterRegisterPage; window.renderMasterRegisterPage = renderMasterRegisterPage = function(){
+      const r = o.apply(this, arguments);
+      loadBulk().then(() => { if(document.getElementById('mr2-root') && document.getElementById('mr2-table')){ o.call(window); countStat(); } }).catch(() => {});
+      return r; }; }
+  { const o = window.showModule; window.showModule = showModule = function(m){ const r = o.apply(this, arguments); if(m === 'documents' || m === 'master_register' || m === 'all_documents') loadBulk().then(countStat).catch(() => {}); return r; }; }
+  /* a new upload or an edit on the All Documents page keeps the cache fresh */
+  { const o = window.renderBulkDocumentsRegister || renderBulkDocumentsRegister; if(o) renderBulkDocumentsRegister = window.renderBulkDocumentsRegister = async function(){ const r = await o.apply(this, arguments); STATE._bulkLoadedAt = Date.now(); STATE._bulkOrg = STATE.org.id; return r; }; }
+
+  /* 2. processes in the register: revision, revision date and a real revision status */
+  try{
+    const src = (window.WM_PDF_SOURCES || []).find(x => x.key === 'process');
+    if(src) src.rows = function(){
+      return (STATE.processes || []).map(p => {
+        const issued = (Number(p.revision) > 0) || !!p.approved_date || !!p.revision_date;
+        const inactive = p.status === 'inactive';
+        return { src:'Processes & KPIs', num:p.doc_number || p.ref_code || '', title:p.name || '', dept:'Processes & KPIs', deptId:'', type:'Process',
+          rev: fmtRev(p.revision == null || p.revision === '' ? 0 : p.revision), revDate: d10(p.revision_date),
+          status: inactive ? 'Inactive' : issued ? 'Approved' : 'Not yet issued', color: inactive ? '#6B6B6B' : issued ? '#2E5AA8' : '#B26A16', wf:'approved', id:p.id, kind:'p' };
+      });
+    };
+  }catch(e){ console.warn('R49 process rows', e); }
+
+  /* revision date under the revision on every row of the register (the page builds its rows itself, so it is added after it paints) */
+  { const o = window.mr2Render; if(o) window.mr2Render = mr2Render = function(){
+      const r = o.apply(this, arguments);
+      try{
+        const w = document.getElementById('mr2-table'); if(!w) return r;
+        const byKey = {}; try{ (window.WM_PDF_SOURCES || []).forEach(x => x.rows().forEach(z => { byKey[z.kind + ':' + z.id] = z; })); }catch(e){}
+        (STATE.documents || []).forEach(d => { byKey['c:' + d.id] = { revDate: d10(d.current_revision_date) }; });
+        w.querySelectorAll('tr.clickable').forEach(tr => {
+          const m = (tr.getAttribute('onclick') || '').match(/mr2Open\('(\w)','([^']+)'\)/); if(!m) return;
+          const z = byKey[m[1] + ':' + m[2]]; if(!z || !z.revDate) return;
+          const td = tr.children[4]; if(td && !td.querySelector('.rd')) td.insertAdjacentHTML('beforeend', `<div class="rd" style="font-size:10.5px;color:var(--text-faint);white-space:nowrap;">${E(fmtDate(z.revDate))}</div>`);
+        });
+        const th = w.querySelector('tr th:nth-child(5)'); if(th) th.textContent = 'Rev / date';
+      }catch(e){ console.warn('R49 revdate', e); }
+      return r; }; }
+
+  /* 3. Document Workflow = work in progress: new documents, documents in review, amendments and update requests */
+  const openReq = id => (STATE.docReviewRequests || []).some(q => q.document_id === id && ['pending', 'in_progress'].includes(q.status));
+  const inProgress = d => !['approved', 'withdrawn', 'superseded'].includes(documentWorkflowBadge(d).key) || openReq(d.id);
+  { const o = renderDocumentsTable; renderDocumentsTable = window.renderDocumentsTable = function(){
+      const wrap = document.getElementById('doc-table-wrap'), sel = document.getElementById('doc-filter-status');
+      if(!wrap || !sel) return o.apply(this, arguments);
+      const all = STATE.documents, limit = !STATE._wfAll && !sel.value;
+      if(limit) STATE.documents = all.filter(inProgress);
+      try{ o.call(this); } finally { STATE.documents = all; }
+      const old = document.getElementById('wf-scope'); if(old) old.remove();
+      const approved = all.filter(d => documentWorkflowBadge(d).key === 'approved').length, n = all.filter(inProgress).length;
+      wrap.insertAdjacentHTML('beforebegin', `<div id="wf-scope" style="padding:10px 14px;font-size:12.5px;background:var(--panel-alt,#f6f7f9);border-bottom:1px solid var(--border,#e3e1df);display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <span>${limit ? `<b>Work in progress:</b> ${n} new, in review or being amended. Approved documents (${approved}) and uploaded documents are in the Master Documents Register.` : 'Showing every controlled document.'}</span>
+        ${sel.value ? '' : `<button class="btn-small" onclick="STATE._wfAll=${limit ? 'true' : 'false'}; renderDocumentsTable();">${limit ? 'Show approved documents too' : 'Show work in progress only'}</button>`}
+        <button class="btn-small" onclick="switchDocSubtab('master')">Open the Master Documents Register</button></div>`);
+    }; }
 })();
 
 </script>
