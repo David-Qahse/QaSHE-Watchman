@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R50 2026-11-17"><meta charset="UTF-8">
+<meta name="wm-release" content="R51 2026-11-18"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -3284,7 +3284,7 @@ function renderTitleCategoryPicker(idPrefix, currentTitle){
   const isOther = currentTitle && !matchingType;
   return `
     <div class="field span2">
-      <label>Title (Category) <a style="font-weight:400;cursor:pointer;color:var(--red)" onclick="toggleNCTypesPanel()" title="Add to or edit your organisation's list">+ add or edit list</a></label>
+      <label>Type (Category) <a style="font-weight:700;cursor:pointer;color:var(--red);text-transform:uppercase;font-size:11px;margin-left:6px;" onclick="toggleNCTypesPanel()" title="Add to or edit your organisation's list">+ Add or edit list</a></label>
       <select id="${idPrefix}-title-select" onchange="toggleTitleOtherField('${idPrefix}')">
         <option value="">— choose —</option>
         ${STATE.ncTypes.filter(t=>t.is_active).map(t=>`<option value="${t.name}" ${t.name===currentTitle?'selected':''}>${t.name}</option>`).join('')}
@@ -3405,7 +3405,7 @@ const RENDERERS = {
           ${STATE.ncTypes.map(t=>`<option value="${t.id}">${t.name}</option>`).join('')}
         </select>
       </div>
-      <button class="btn-small" onclick="toggleNCTypesPanel()">Manage Title (Category) List</button>
+      <button class="btn-small" onclick="toggleNCTypesPanel()">Manage Types (Category) List</button>
       <button class="btn-small" onclick="openImportModal('nonconformances')">Import Excel</button>
       <button class="btn-small" onclick="exportModuleExcel('nonconformances')">Export Excel</button>
       <button class="btn-small" onclick="printCurrentRegister('nonconformances','Nonconformances Register')">Print Register</button>
@@ -3413,8 +3413,8 @@ const RENDERERS = {
     </div>
 
     <div class="form-panel" id="nc-types-panel">
-      <h3 style="font-family:Arial,Helvetica,sans-serif; font-size:15.5px; font-weight:600; margin-bottom:6px;">Title (Category) Master List</h3>
-      <p style="font-size:12px; color:var(--text-faint); margin-bottom:14px;">Every client starts with the same standard master list. Keep it, switch off what is not relevant to this client, edit the wording, or add your own categories. These appear in the Title (Category) drop down when raising a nonconformance.</p>
+      <h3 style="font-family:Arial,Helvetica,sans-serif; font-size:15.5px; font-weight:600; margin-bottom:6px;">Types (Category) Master List</h3>
+      <p style="font-size:12px; color:var(--text-faint); margin-bottom:14px;">Every client starts with the same standard master list. Keep it, switch off what is not relevant to this client, edit the wording, or add your own categories. These appear in the Type (Category) drop down when raising a nonconformance.</p>
       <div id="nc-types-list" style="margin-bottom:12px; max-height:260px; overflow-y:auto;"></div>
       <div class="form-grid">
         <div class="field span3"><label>New category</label><input id="nc-type-new-name" placeholder="e.g. Housekeeping observation"></div>
@@ -4567,7 +4567,7 @@ const RENDERERS = {
         <button class="btn-small" onclick="goToDocAdminTool('requests')">Document Review Requests${(STATE.docReviewRequests||[]).filter(r=>r.status==='pending').length ? ` (${(STATE.docReviewRequests||[]).filter(r=>r.status==='pending').length})` : ''}</button>
         <button class="btn-small" onclick="goToDocAdminTool('setup')">Document Naming Convention</button>
         <button class="btn-small ${STATE._adminSubtab==='orgprofile'?'primary':''}" onclick="switchAdminSubtab('orgprofile')">Organisation Profile</button>
-        ${STATE.profile.is_platform_staff ? `<button class="btn-small ${STATE._adminSubtab==='templatelibrary'?'primary':''}" onclick="switchAdminSubtab('templatelibrary')">Template Library</button>` : ''}
+        ${(STATE.profile.is_platform_staff && /[?&]tplstaff=1/.test(location.search)) ? `<button class="btn-small ${STATE._adminSubtab==='templatelibrary'?'primary':''}" onclick="switchAdminSubtab('templatelibrary')">Template Library (staff)</button>` : ''}
       </div>
     </div>
     <div id="admin-subtab-content"></div>
@@ -5849,8 +5849,8 @@ function renderAuditPlan(){
       </div>
     </div>
 
-    <div class="detail-card">
-      <div class="panel-head"><h3>Planned Audits (${planned.length})</h3></div>
+    <div class="mr-sec" style="margin:6px 0 8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;"><h3 style="margin:0;font-size:15.5px;font-weight:800;color:#3A3836;">Planned Audits (${planned.length})</h3><span style="flex:1"></span><button class="btn-small" onclick="exportAuditList('planned')">Export Excel</button><button class="btn-small" onclick="printAuditList('planned')">Print Register</button></div>
+    <div class="panel" style="padding:0; overflow:hidden;">
       ${planned.length ? `<table>
         <tr><th>Title</th><th>Type</th><th>Scheduled</th><th>Lead Auditor</th></tr>
         ${planned.map(a => `<tr class="clickable" onclick="openAuditDetail('${a.id}')">
@@ -5859,11 +5859,11 @@ function renderAuditPlan(){
           <td>${dateStatusBadge(a.planned_date, false)}</td>
           <td>${a.auditor_id ? memberName(a.auditor_id) : (a.external_auditor_name || '—')}</td>
         </tr>`).join('')}
-      </table>` : '<p style="font-size:12.5px; color:var(--text-faint);">Nothing scheduled yet.</p>'}
+      </table>` : '<p style="font-size:12.5px; color:var(--text-faint);padding:16px 18px;margin:0;">Nothing scheduled yet.</p>'}
     </div>
 
-    <div class="detail-card">
-      <div class="panel-head"><h3>Completed Audits (${completed.length})</h3></div>
+    <div class="mr-sec" style="margin:18px 0 8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;"><h3 style="margin:0;font-size:15.5px;font-weight:800;color:#3A3836;">Completed Audits (${completed.length})</h3><span style="flex:1"></span><button class="btn-small" onclick="exportAuditList('completed')">Export Excel</button><button class="btn-small" onclick="printAuditList('completed')">Print Register</button></div>
+    <div class="panel" style="padding:0; overflow:hidden;">
       ${completed.length ? `<table>
         <tr><th>Title</th><th>Type</th><th>Completed</th><th>Standard(s)</th></tr>
         ${completed.map(a => `<tr class="clickable" onclick="openAuditDetail('${a.id}')">
@@ -5872,11 +5872,23 @@ function renderAuditPlan(){
           <td>${fmtDate(a.actual_date)}</td>
           <td>${(a.standards && a.standards.length) ? a.standards.join(', ') : (a.standard || '—')}</td>
         </tr>`).join('')}
-      </table>` : '<p style="font-size:12.5px; color:var(--text-faint);">No completed audits yet.</p>'}
+      </table>` : '<p style="font-size:12.5px; color:var(--text-faint);padding:16px 18px;margin:0;">No completed audits yet.</p>'}
     </div>
   `;
   toggleAuditorField();
 }
+function auditListData(kind){
+  const lead = a => a.auditor_id ? memberName(a.auditor_id) : (a.external_auditor_name || '');
+  const std = a => (a.standards && a.standards.length) ? a.standards.join(', ') : (a.standard || '');
+  if(kind === 'planned'){
+    const rows = STATE.audits.filter(a => a.status === 'planned').sort((a,b) => new Date(a.planned_date) - new Date(b.planned_date));
+    return { title:'Planned Audits Register', head:['Title','Type','Scheduled','Lead Auditor','Standard(s)'], rows: rows.map(a => [a.title, a.audit_type, fmtDate(a.planned_date), lead(a), std(a)]) };
+  }
+  const rows = STATE.audits.filter(a => ['completed','report_issued'].includes(a.status)).sort((a,b) => new Date(b.actual_date||0) - new Date(a.actual_date||0));
+  return { title:'Completed Audits Register', head:['Title','Type','Completed','Lead Auditor','Standard(s)'], rows: rows.map(a => [a.title, a.audit_type, fmtDate(a.actual_date), lead(a), std(a)]) };
+}
+window.printAuditList = function(kind){ const d = auditListData(kind); const e = v => escapeHtml(String(v == null ? '' : v)); printRegister(d.title, d.head.map(e), d.rows.map(r => r.map(e)), 'audits'); };
+window.exportAuditList = async function(kind){ try{ const d = auditListData(kind); const X = await ensureXLSX(); const ws = X.utils.aoa_to_sheet([d.head].concat(d.rows)); const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, ws, kind === 'planned' ? 'Planned' : 'Completed'); X.writeFile(wb, d.title.replace(/\s+/g,'-').toLowerCase() + '.xlsx'); }catch(e){ toast('Export is not available right now.', 'error'); } };
 window.toggleScheduleAuditForm = function(){
   const el = document.getElementById('schedule-audit-form');
   el.style.display = el.style.display === 'none' ? 'block' : 'none';
@@ -6193,6 +6205,7 @@ window.promoteAuditChecklistItem = async function(responseId, auditId){
   const { data: newNc, error: ncErr } = await STATE.supabase.from('nonconformances').insert({
     organisation_id: STATE.org.id,
     title: `Audit finding: ${audit ? audit.title : 'checklist'}`.slice(0,120),
+    nc_type_id: (window.wmPickedNcType() || {}).id || null,
     description: `${r.item_text}${r.notes ? ': '+r.notes : ''}`,
     severity: 'major',
     raised_by: STATE.user.id,
@@ -11258,6 +11271,7 @@ window.promoteSurveyComplaint = async function(surveyId, customerId){
   const { data: newNc, error: ncErr } = await STATE.supabase.from('nonconformances').insert({
     organisation_id: STATE.org.id,
     title: `Customer feedback: ${customer ? customer.name : 'customer'}`,
+    nc_type_id: (window.wmPickedNcType() || {}).id || null,
     description: survey.comments,
     discipline: 'quality',
     source: 'customer_complaint',
@@ -11543,7 +11557,7 @@ const IMPORT_SPECS = {
     table: 'raga_alerts',
     columns: [
       {key:'alert_type', label:'Alert type (red, orange or green)', required:true, type:'enum', values:['red','orange','green'], example:'orange'},
-      {key:'type', label:'Title (Category): exact name from the list', required:true, type:'nc_type', example:'Housekeeping'},
+      {key:'type', label:'Type (Category): exact name from the list', required:true, type:'nc_type', example:'Housekeeping'},
       {key:'description', label:'Description', required:false, type:'text', example:'Walkways blocked by pallets'},
       {key:'immediate_action_taken', label:'Immediate Action Taken', required:false, type:'text', example:'Pallets moved'},
       {key:'contact_details', label:'Contact Details of Involved Parties', required:false, type:'text', example:'J Smith, 082 555 1234'},
@@ -26417,7 +26431,7 @@ window.sfRaiseFromEvent = async function(eventId){
   if(!confirm(`Raise this as a ${usesNc ? 'nonconformance' : 'RAGA alert'} with a follow-up task (target ${fmtDate(target)})?`)) return;
   let linkPatch = {}, ref, linkedType, newId;
   if(usesNc){
-    const type = STATE.ncTypes.find(t => t.is_active && /incident|accident|safety|health/i.test(t.name) && e.event_type === 'incident') || STATE.ncTypes.find(t => t.is_active && /inspection|site|safety/i.test(t.name)) || STATE.ncTypes.find(t => t.is_active);
+    const type = window.wmPickedNcType() || STATE.ncTypes.find(t => t.is_active && /incident|accident|safety|health/i.test(t.name) && e.event_type === 'incident') || STATE.ncTypes.find(t => t.is_active && /inspection|site|safety/i.test(t.name)) || STATE.ncTypes.find(t => t.is_active);
     const payload = { organisation_id: STATE.org.id, title: type ? type.name : titleText.slice(0,120), nc_type_id: type ? type.id : null, description: `${titleText}\n\n${description}`, severity, discipline:'safety', source, immediate_action_taken: d.immediate_action || null, raised_by: STATE.user.id, owner_id: owner, target_close_date: target, site_file_id: f.id };
     const { data: nc, error } = await STATE.supabase.from('nonconformances').insert(payload).select().single();
     if(error){ toast('Could not raise the nonconformance: ' + error.message, 'error'); return; }
@@ -36246,7 +36260,7 @@ window.WM_IT_TPL = {
   ];
   const INCLUDED = [
     ['Overview and Compliance Dashboard', 'Always on for every client. They cannot be switched off.'],
-    ['Template Library (search first)', 'Generic policies, procedures, forms, registers, checklists, flowcharts and letters of appointment. Clients adapt a template, or fall back to generating a new document.'],
+    ['Templates', 'Only the templates your service provider has activated for you appear in the template lists. With none activated, every document is created from scratch with the AI assistant.'],
   ];
   const TABLES = [
     ['org_appointments', 'qashe-watchman-schema-appointments.sql', 'Appointments Register, personnel documents and qualifications'],
@@ -36295,7 +36309,7 @@ window.WM_IT_TPL = {
         <div class="detail-card"><div class="panel-head"><h3>Always included</h3></div>
           <table>${INCLUDED.map(([a, b]) => `<tr><td class="strong">${esc(a)}</td><td style="font-size:12px;color:var(--text-faint)">${esc(b)}</td></tr>`).join('')}</table>
           <p style="font-size:12px;color:var(--text-faint);margin-top:10px">Checklists and Policies and Procedures are retired as modules: their content now comes from the Template Library, and checklists remain available inside Audits, so they have no switch. Non-admin users see these modules only when ticked under Team and Access.</p>
-          <div style="margin-top:8px"><button class="btn-small" onclick="switchAdminSubtab('templatelibrary')">Open the Template Library</button></div></div>
+          </div>
         <div class="detail-card"><div class="panel-head"><h3>Database readiness</h3><button class="btn-small" onclick="adminDbCheck()">Run check</button></div>
           <p style="font-size:12px;color:var(--text-faint);margin-bottom:8px">Confirms that the SQL files for the newer features have been run on this database.</p><div id="adm-dbcheck"></div></div>`;
       if(card) card.outerHTML = newCard; else wrap.insertAdjacentHTML('beforeend', newCard);
@@ -42162,6 +42176,7 @@ window.WMTutorial = { open, lessons: () => Object.keys(window.WMLESSONS || {}), 
     const d=new Date(); d.setDate(d.getDate()+14);
     slot.innerHTML=`<div class="detail-card"><div class="panel-head"><h3>Record information security incident</h3></div>
       <div class="form-grid">
+        ${renderTitleCategoryPicker('isi', ((STATE.ncTypes||[]).find(x=>x.is_active&&/^information security/i.test(x.name))||{}).name||'')}
         <div class="field span3"><label>What happened</label><textarea id="isi-desc" placeholder="Describe the incident"></textarea></div>
         <div class="field"><label>Severity</label><select id="isi-sev"><option value="minor">Minor</option><option value="major">Major</option><option value="critical">Critical</option></select></div>
         <div class="field"><label>Owner</label><select id="isi-owner">${ownerOpts(STATE.user&&STATE.user.id)}</select></div>
@@ -42175,7 +42190,7 @@ window.WMTutorial = { open, lessons: () => Object.keys(window.WMLESSONS || {}), 
   window.isiSave=async function(){
     const desc=document.getElementById('isi-desc').value.trim();
     if(!desc){ toast('Describe the incident first.','error'); return; }
-    const t=(STATE.ncTypes||[]).find(x=>/^information security/i.test(x.name));
+    const _sel=document.getElementById('isi-title-select'); const t=(_sel&&_sel.value&&_sel.value!=='__other__')?(STATE.ncTypes||[]).find(x=>x.name===_sel.value):(STATE.ncTypes||[]).find(x=>/^information security/i.test(x.name));
     const payload={organisation_id:STATE.org.id,title:t?t.name:'Information security incident',nc_type_id:t?t.id:null,description:desc,
       severity:document.getElementById('isi-sev').value,raised_by:STATE.user.id,owner_id:document.getElementById('isi-owner').value,
       target_close_date:document.getElementById('isi-target').value,immediate_action_taken:document.getElementById('isi-imm').value.trim()};
@@ -42959,7 +42974,7 @@ window.WMTutorial = { open, lessons: () => Object.keys(window.WMLESSONS || {}), 
   window.arRaise=async function(auditId){
     const a=STATE.audits.find(x=>x.id===auditId); const s=a&&a.ai_summary; if(!s) return; const picks=[...document.querySelectorAll('.ar-pick:checked')].map(c=>+c.value);
     if(!picks.length){ toast('Tick at least one finding.','error'); return; } const owner=document.getElementById('ar-owner').value||STATE.user.id; const usesNc=STATE.org.nc_enabled!==false;
-    const ty=arr(STATE.ncTypes).filter(t=>t.is_active); const nty=ty.find(t=>/audit|external|finding/i.test(t.name))||ty[0]; if(usesNc&&!nty){ toast('Add a nonconformance type first.','error'); return; }
+    const ty=arr(STATE.ncTypes).filter(t=>t.is_active); const nty=window.wmPickedNcType()||ty.find(t=>/audit|external|finding/i.test(t.name))||ty[0]; if(usesNc&&!nty){ toast('Add a nonconformance type first.','error'); return; }
     showLoader('Logging findings and raising nonconformances…'); let nf=0, nn=0;
     try{
       for(const i of picks){
@@ -45874,7 +45889,7 @@ Prices must be in ${doc.currency}. If you are unsure of a price, set it to your 
     return probeCache[k] = ok;
   }
   const busy = new Set();
-  const ncTypeFor = () => (arr(STATE.ncTypes).find(t => t.is_active && /internal/i.test(t.name)) || arr(STATE.ncTypes).find(t => t.is_active) || null);
+  const ncTypeFor = () => (window.wmPickedNcType() || arr(STATE.ncTypes).find(t => t.is_active && /internal/i.test(t.name)) || arr(STATE.ncTypes).find(t => t.is_active) || null);
 
   /* Each finder returns candidate deficiencies that have no nonconformance or RAGA alert yet. */
   async function findAll(scope){
@@ -54468,6 +54483,83 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   let tm = null; const root0 = document.getElementById('content-root');
   if(root0) new MutationObserver(() => { clearTimeout(tm); tm = setTimeout(() => { try{ const o = document.getElementById('wm-regbar'); if(o && !document.getElementById('content-root').contains(o)) o.remove(); bar(); }catch(e){} }, 500); }).observe(root0, { childList:true, subtree:true });
   { const o = window.showModule; window.showModule = showModule = function(){ const x = document.getElementById('wm-regbar'); if(x) x.remove(); return o.apply(this, arguments); }; }
+})();
+
+
+/* ===== R51: Type (Category) everywhere a nonconformance is raised, duplicate clean-up ===== */
+(function(){
+  const E = s => escapeHtml(String(s == null ? '' : s));
+  const norm = s => String(s || '').toLowerCase().replace(/&/g, ' and ').replace(/\s+/g, ' ').trim();
+
+  /* one clean list: duplicates are folded into the first entry, in the database where the person is allowed to change it */
+  { const o = window.loadNCTypes; if(o) window.loadNCTypes = loadNCTypes = async function(){
+      await o.apply(this, arguments);
+      try{
+        const seen = new Map(), dupes = [];
+        (STATE.ncTypes || []).forEach(t => { const k = norm(t.name); if(!seen.has(k)) seen.set(k, t); else dupes.push({ dupe:t, keep:seen.get(k) }); });
+        if(!dupes.length) return;
+        STATE.ncTypes = STATE.ncTypes.filter(t => !dupes.some(d => d.dupe.id === t.id));
+        const key = 'ncdedupe:' + (STATE.org && STATE.org.id); if(STATE[key]) return; STATE[key] = true;
+        for(const d of dupes){
+          try{
+            await STATE.supabase.from('nonconformances').update({ nc_type_id: d.keep.id }).eq('nc_type_id', d.dupe.id);
+            const r = await STATE.supabase.from('nc_types').delete().eq('id', d.dupe.id);
+            if(r.error) await STATE.supabase.from('nc_types').update({ is_active:false }).eq('id', d.dupe.id);
+          }catch(e){ /* the list on screen is already clean */ }
+        }
+      }catch(e){ console.warn('R51 nc type clean-up', e); }
+    }; }
+
+  /* choose the Type (Category) for a nonconformance raised from another module */
+  window.wmPickedNcType = () => STATE._ncPick || null;
+  window.wmAskNcType = function(suggest){
+    return new Promise(res => {
+      const types = (STATE.ncTypes || []).filter(t => t.is_active);
+      if(!types.length){ toast('Add at least one type under Nonconformances, Manage Types (Category) List first.', 'error'); return res(null); }
+      const guess = types.find(t => suggest && new RegExp(suggest, 'i').test(t.name));
+      const el = document.createElement('div'); el.style.cssText = 'position:fixed;inset:0;background:rgba(30,28,27,.5);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px;';
+      el.innerHTML = `<div class="detail-card" style="max-width:460px;width:100%;margin:0;">
+        <div class="panel-head"><h3>Type (Category)</h3></div>
+        <p style="font-size:12.5px;color:var(--text-faint);margin:0 0 10px;">Every issue is classified so trends can be analysed. Choose the Type (Category) that best fits.</p>
+        <select id="wm-ncpick" style="width:100%;margin-bottom:14px;"><option value="">Choose…</option>${types.map(t => `<option value="${t.id}" ${guess && guess.id === t.id ? 'selected' : ''}>${E(t.name)}</option>`).join('')}</select>
+        <div class="form-actions"><button class="btn-cancel" id="wm-ncpick-x">Cancel</button><button class="btn-primary" id="wm-ncpick-ok">Continue</button></div></div>`;
+      document.body.appendChild(el);
+      el.querySelector('#wm-ncpick-x').onclick = () => { el.remove(); res(null); };
+      el.querySelector('#wm-ncpick-ok').onclick = () => { const v = el.querySelector('#wm-ncpick').value; if(!v){ toast('Choose a Type (Category).', 'error'); return; } el.remove(); res(types.find(t => t.id === v)); };
+    });
+  };
+  const gate = (name, suggest, when) => { const o = window[name]; if(!o) return; window[name] = async function(){
+      if(when && !when.apply(this, arguments)) return o.apply(this, arguments);
+      const t = await wmAskNcType(suggest); if(!t) return;
+      STATE._ncPick = t; try{ return await o.apply(this, arguments); } finally { STATE._ncPick = null; } }; };
+  gate('promoteAuditChecklistItem', 'audit|internal');
+  gate('promoteSurveyComplaint', 'customer');
+  gate('sfRaiseFromEvent', 'incident|inspection|safety', () => STATE.org.nc_enabled !== false);
+  gate('arRaise', 'audit|external|finding', () => STATE.org.nc_enabled !== false);
+  gate('dfRaiseSelected', 'internal');
+})();
+
+
+/* ===== R51: a client sees only the library templates activated for it (set in the Admin Console) ===== */
+(function(){
+  const o = window.loadContentTemplates; if(!o) return;
+  window.loadContentTemplates = loadContentTemplates = async function(){
+    const org = STATE.org && STATE.org.id; if(!org) return;
+    if(STATE._tplOrg === org && STATE._tplReady && (STATE.contentTemplates || []).length) return;
+    STATE.contentTemplates = [];
+    await o.apply(this, arguments);
+    try{
+      const r = await STATE.supabase.from('org_template_access').select('template_id').eq('organisation_id', org);
+      if(!r.error){
+        const ok = new Set((r.data || []).map(x => x.template_id));
+        STATE.contentTemplates = (STATE.contentTemplates || []).filter(t => ok.has(t.id));
+        ['contentTemplateSteps', 'contentTemplateKpis', 'contentTemplateChecklistItems', 'contentTemplatePolicySections'].forEach(k => { STATE[k] = (STATE[k] || []).filter(x => ok.has(x.template_id)); });
+      }
+    }catch(e){ console.warn('R51 template access', e); }
+    STATE._tplOrg = org; STATE._tplReady = true;
+  };
+  /* a switch of client reloads the list */
+  const so = window.selectOrganisation || null; void so;
 })();
 
 </script>
