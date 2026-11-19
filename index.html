@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R52 2026-11-19"><meta charset="UTF-8">
+<meta name="wm-release" content="R53 2026-11-19"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -9838,11 +9838,12 @@ window.printDocumentContent = async function(id){
   }
 
   const headerChildren = [];
+  const MAG = (typeof wmOutStyle === 'function') && wmOutStyle('word') === 'magazine', ACC = (typeof wmAccentHex === 'function') ? wmAccentHex() : 'B21616';
   if(logoImage){
     const logoDims = fitImageDimensions(logoImage.naturalWidth, logoImage.naturalHeight, 140, 60);
     headerChildren.push(new Paragraph({ children: [new ImageRun({ data: logoImage.data, type: logoImage.type, transformation: logoDims })] }));
   }
-  headerChildren.push(new Paragraph({ children: [new TextRun({ text: STATE.org.name, bold: true, size: 32, font: "Arial" })] }));
+  headerChildren.push(new Paragraph({ children: [new TextRun(MAG ? { text: STATE.org.name, bold: true, size: 22, font: "Arial", color: ACC, allCaps: true, characterSpacing: 40 } : { text: STATE.org.name, bold: true, size: 32, font: "Arial" })] }));
   if(STATE.org.address){
     STATE.org.address.split('\n').forEach(line => {
       headerChildren.push(new Paragraph({ children: [new TextRun({ text: line, size: 22, font: "Arial" })] }));
@@ -9851,7 +9852,7 @@ window.printDocumentContent = async function(id){
   if(STATE.org.registration_number){
     headerChildren.push(new Paragraph({ children: [new TextRun({ text: `Reg No: ${STATE.org.registration_number}`, size: 22, font: "Arial" })] }));
   }
-  headerChildren.push(new Paragraph({ children: [new TextRun({ text: d.title, bold: true, size: 32, font: "Arial" })], spacing: { before: 200 } }));
+  headerChildren.push(new Paragraph(MAG ? { children: [new TextRun({ text: d.title, bold: true, size: 26, font: "Arial", color: ACC })], spacing: { before: 120, after: 60 }, border: { bottom: { style: BorderStyle.SINGLE, size: 18, color: ACC, space: 4 } } } : { children: [new TextRun({ text: d.title, bold: true, size: 32, font: "Arial" })], spacing: { before: 200 } }));
 
   const _ctl = await wmDocControl(d);
   const reviewLine = (_ctl.reviewers.length ? _ctl.reviewers.map(r => 'Reviewed by: ' + r.name + (r.date ? '\n' + fmtDate(String(r.date).slice(0, 10)) : '\nreview pending')).join('\n') : 'Reviewed by: —');
@@ -9879,10 +9880,18 @@ window.printDocumentContent = async function(id){
   // Body content — real paragraph headings in bold, real justified
   // body text, real section illustrations embedded inline.
   const bodyChildren = [];
+  if(MAG){
+    const { ShadingType } = docxLib;
+    bodyChildren.push(new Paragraph({ shading: { type: ShadingType.CLEAR, fill: ACC, color: 'auto' }, spacing: { before: 0, after: 0 }, indent: { left: 120, right: 120 }, children: [new TextRun({ text: ' ', size: 8 })] }));
+    bodyChildren.push(new Paragraph({ shading: { type: ShadingType.CLEAR, fill: ACC, color: 'auto' }, spacing: { before: 0, after: 0 }, indent: { left: 120, right: 120 }, children: [new TextRun({ text: '  ' + (d.doc_number || ''), size: 20, font: 'Arial', color: 'FFFFFF', bold: true, characterSpacing: 40 })] }));
+    bodyChildren.push(new Paragraph({ shading: { type: ShadingType.CLEAR, fill: ACC, color: 'auto' }, spacing: { before: 0, after: 0 }, indent: { left: 120, right: 120 }, children: [new TextRun({ text: '  ' + d.title, size: 56, font: 'Arial', color: 'FFFFFF', bold: true })] }));
+    bodyChildren.push(new Paragraph({ shading: { type: ShadingType.CLEAR, fill: ACC, color: 'auto' }, spacing: { before: 0, after: 300 }, indent: { left: 120, right: 120 }, children: [new TextRun({ text: '  ' + STATE.org.name, size: 22, font: 'Arial', color: 'FFFFFF' })] }));
+  }
   if((sections || []).length){
     bodyChildren.push(new Paragraph({
-      children: [new TextRun({ text: "Table of Contents", bold: true, size: 32, font: "Arial", color: "000000" })],
+      children: [new TextRun({ text: "Table of Contents", bold: true, size: 32, font: "Arial", color: MAG ? ACC : "000000" })],
       spacing: { after: 200 },
+      ...(MAG ? { border: { bottom: { style: BorderStyle.SINGLE, size: 12, color: ACC, space: 4 } } } : {}),
     }));
     sections.forEach((s, idx) => {
       bodyChildren.push(new Paragraph({
@@ -9894,8 +9903,9 @@ window.printDocumentContent = async function(id){
   }
   (sections || []).forEach((s, idx) => {
     bodyChildren.push(new Paragraph({
-      children: [new TextRun({ text: `${idx + 1}. ${s.section_title}`, bold: true, size: 28, font: "Arial", color: "000000" })],
+      children: [new TextRun({ text: `${idx + 1}. ${s.section_title}`, bold: true, size: MAG ? 32 : 28, font: "Arial", color: MAG ? ACC : "000000" })],
       spacing: { before: 240, after: 120 },
+      ...(MAG ? { border: { bottom: { style: BorderStyle.SINGLE, size: 8, color: ACC, space: 3 } }, keepNext: true } : {}),
     }));
     wmDocxRich(docxLib, s.content || '', idx + 1).forEach(el => bodyChildren.push(el));
     (sectionTables || []).filter(t => t.section_id === s.id).forEach(t => {
@@ -9934,7 +9944,7 @@ window.printDocumentContent = async function(id){
   if((addendums || []).length){
     bodyChildren.push(new Paragraph({ children: [new PageBreak()] }));
     bodyChildren.push(new Paragraph({
-      children: [new TextRun({ text: "Addendums", bold: true, size: 32, font: "Arial", color: "000000" })],
+      children: [new TextRun({ text: "Addendums", bold: true, size: 32, font: "Arial", color: MAG ? ACC : "000000" })],
       spacing: { after: 200 },
     }));
     addendums.forEach((a, idx) => {
@@ -54905,6 +54915,213 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   new MutationObserver(scan).observe(document.body, { childList:true, subtree:true });
   setInterval(() => { if(STATE && STATE.org && STATE.org.id && numOrg !== STATE.org.id) loadNumbering(); }, 2000);
   scan();
+})();
+
+/* ============================================================================
+   Release 53: light grey lines between register rows, and the Plain / Magazine
+   output style for PDF view and print, Word and Excel downloads.
+   ============================================================================ */
+(function(){
+  if(window.__r53) return; window.__r53 = true;
+  const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  /* ---------- 1. light grey line between every register line ---------- */
+  const css = document.createElement('style'); css.id = 'r53-css';
+  css.textContent = `
+  #content-root table:not(.print-table) td{border-bottom:1px solid #DAD7D4;}
+  #content-root table:not(.print-table) tr:last-child td{border-bottom:none;}
+  #content-root table:not(.print-table) th{border-bottom:1.5px solid #C9C5C1;}
+  #content-root table:not(.print-table) tbody tr:hover td, #content-root .panel table tr.clickable:hover td{background:#FAF9F8;}
+
+  /* ---------- magazine / infographic output ---------- */
+  .pm-mag{--pm:#B21616; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-family:Arial,Helvetica,sans-serif;}
+  .pm-mag *{-webkit-print-color-adjust:exact; print-color-adjust:exact;}
+  .pm-mag .print-header{background:var(--pm)!important; color:#fff!important; border:none!important; border-radius:14px; padding:22px 24px!important; margin-bottom:16px!important; position:relative; overflow:hidden;}
+  .pm-mag .print-header:after{content:""; position:absolute; right:-40px; top:-40px; width:170px; height:170px; border-radius:50%; background:rgba(255,255,255,.12);}
+  .pm-mag .print-header .print-logo{background:#fff; border-radius:8px; padding:6px;}
+  .pm-mag .print-brand{color:rgba(255,255,255,.85)!important; font-size:11px!important; letter-spacing:.14em; text-transform:uppercase;}
+  .pm-mag .print-doc-title{color:#fff!important; font-size:30px!important; line-height:1.1; font-weight:800!important; margin-top:6px!important;}
+  .pm-mag .print-ref{color:rgba(255,255,255,.8)!important;}
+  .pm-mag .print-meta-grid{display:grid!important; grid-template-columns:repeat(3,1fr)!important; gap:8px!important; border:none!important; padding:0!important; margin-bottom:16px!important;}
+  .pm-mag .print-meta-grid > div{background:#F6F3F1; border-radius:10px; padding:9px 12px; font-size:12px;}
+  .pm-mag .print-meta-grid b{display:block; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--pm)!important; margin-bottom:2px;}
+  .pm-mag .print-section-title{display:flex; align-items:center; gap:10px; background:#F6F3F1; border:none!important; border-left:6px solid var(--pm)!important; border-radius:0 10px 10px 0; padding:8px 12px!important; font-size:12.5px!important; letter-spacing:.07em; text-transform:uppercase; margin:20px 0 10px!important; color:#1E1C1B!important;}
+  .pm-mag .print-body{font-size:13px!important; line-height:1.7!important;}
+  .pm-mag .print-table{border-collapse:separate!important; border-spacing:0; border-radius:10px; overflow:hidden; border:1px solid #E3E1DF; margin-top:10px;}
+  .pm-mag .print-table th{background:var(--pm)!important; color:#fff!important; border:none!important; padding:8px 10px!important; font-size:9.5px!important; letter-spacing:.07em;}
+  .pm-mag .print-table td{border:none!important; border-bottom:1px solid #ECE9E6!important; padding:7px 10px!important;}
+  .pm-mag .print-table tbody tr:nth-child(even) td{background:#F8F6F4;}
+  .pm-mag .pm-kpis{display:flex; flex-wrap:wrap; gap:10px; margin:2px 0 14px;}
+  .pm-mag .pm-kpi{flex:1 1 120px; min-width:110px; background:#fff; border:1px solid #E3E1DF; border-top:5px solid var(--pm); border-radius:12px; padding:10px 14px; break-inside:avoid;}
+  .pm-mag .pm-kpi b{display:block; font-size:30px; line-height:1; font-weight:800; color:var(--pm);}
+  .pm-mag .pm-kpi span{display:block; margin-top:5px; font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:#615C59;}
+  .pm-mag .print-footer-fixed{border-top:3px solid var(--pm)!important; color:#615C59!important;}
+  .pm-mag .print-closing-note{background:#F6F3F1; border:none!important; border-radius:10px; padding:10px 12px!important;}
+  #wm-view-ov .vpage.pm-mag .print-header{border-bottom:none;}
+  #wm-view-ov .vbar select{border:0; border-radius:6px; padding:7px 10px; font:600 13px Arial,Helvetica,sans-serif; background:#fff; color:#1E1C1B}
+  .pm-style-card{border:1.5px solid #E3E1DF; border-radius:12px; padding:14px 16px; margin-bottom:12px; background:#fff}
+  .pm-style-card h4{margin:0 0 4px; font-size:14px} .pm-style-card .opts{display:flex; gap:12px; flex-wrap:wrap; margin-top:8px}
+  .pm-opt{flex:1 1 230px; border:2px solid #E3E1DF; border-radius:12px; padding:11px 13px; cursor:pointer; font-size:12.5px; line-height:1.45}
+  .pm-opt.on{border-color:#B21616; background:#FFF6F4} .pm-opt b{display:block; font-size:13px; margin-bottom:2px}
+  `;
+  document.head.appendChild(css);
+
+  /* ---------- the preference ---------- */
+  const LKEY = () => 'wm_out_style_' + ((STATE.org && STATE.org.id) || '');
+  let orgStyle = null, orgFor = null;
+  const local = () => { try{ return JSON.parse(localStorage.getItem(LKEY()) || '{}') || {}; }catch(e){ return {}; } };
+  async function loadOrgStyle(){
+    if(!STATE.org || !STATE.supabase || orgFor === STATE.org.id) return; orgFor = STATE.org.id; orgStyle = {};
+    try{ const { data, error } = await STATE.supabase.from('organisations').select('output_style').eq('id', STATE.org.id).maybeSingle();
+      if(!error && data && data.output_style && typeof data.output_style === 'object') orgStyle = data.output_style; }catch(e){}
+  }
+  setInterval(() => { if(STATE && STATE.org && STATE.org.id && orgFor !== STATE.org.id) loadOrgStyle(); }, 2500);
+  window.wmOutStyle = function(kind){ const l = local(); return (l[kind] === 'magazine' || l[kind] === 'plain') ? l[kind] : ((orgStyle && orgStyle[kind]) === 'magazine' ? 'magazine' : 'plain'); };
+  window.wmAccent = function(){ const c = String((STATE.org && STATE.org.brand_primary_color) || '').trim(); return /^#?[0-9a-f]{6}$/i.test(c) ? '#' + c.replace('#', '') : '#B21616'; };
+  window.wmAccentHex = () => wmAccent().slice(1).toUpperCase();
+
+  /* ---------- PDF view and print ---------- */
+  function styleBox(box){ if(!box) return; const mag = wmOutStyle('pdf') === 'magazine'; box.classList.toggle('pm-mag', mag); if(mag) box.style.setProperty('--pm', wmAccent()); else box.style.removeProperty('--pm'); }
+  const _print = window.print.bind(window);
+  window.print = function(){
+    const c = document.getElementById('print-container');
+    if(c && !c.classList.contains('qr-label-mode')) styleBox(c);
+    return _print.apply(this, arguments);
+  };
+  /* the preview bar gets a style switch, and the page follows it */
+  new MutationObserver(() => {
+    const ov = document.getElementById('wm-view-ov'); if(!ov) return;
+    const bar = ov.querySelector('.vbar'), page = document.getElementById('wm-view-page');
+    if(bar && !bar.querySelector('#pm-sel')){
+      const sel = document.createElement('select'); sel.id = 'pm-sel'; sel.title = 'Print style';
+      sel.innerHTML = '<option value="plain">Plain style</option><option value="magazine">Magazine style</option>';
+      sel.onchange = () => { const l = local(); l.pdf = sel.value; try{ localStorage.setItem(LKEY(), JSON.stringify(l)); }catch(e){} styleBox(page); styleBox(document.getElementById('print-container')); };
+      bar.insertBefore(sel, bar.querySelector('.vp'));
+    }
+    if(ov.classList.contains('on') && page){ const sel = bar && bar.querySelector('#pm-sel'); if(sel) sel.value = wmOutStyle('pdf'); styleBox(page); }
+  }).observe(document.body, { childList:true, subtree:true, attributes:true, attributeFilter:['class'] });
+
+  /* a register print gets a summary strip in magazine style */
+  const _pr = window.printRegister;
+  if(typeof _pr === 'function'){
+    const w = function(label, headers, rows, key){
+      if(wmOutStyle('pdf') !== 'magazine') return _pr.apply(this, arguments);
+      const strip = s => String(s == null ? '' : s).replace(/<[^>]*>/g, '').trim();
+      const si = headers.findIndex(h => /^status$/i.test(strip(h))); const tiles = [['Records', rows.length]];
+      if(si >= 0){ const c = {}; rows.forEach(r => { const k = strip(r[si]) || '—'; c[k] = (c[k] || 0) + 1; }); Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, 5).forEach(([k, v]) => tiles.push([k, v])); }
+      const kp = `<div class="pm-kpis">${tiles.map(([k, v]) => `<div class="pm-kpi"><b>${E(v)}</b><span>${E(k)}</span></div>`).join('')}</div>`;
+      return printRecord(label, rows.length + ' record' + (rows.length === 1 ? '' : 's'), [], kp + printTable(headers, rows), null, key);
+    };
+    try{ printRegister = w; }catch(e){} window.printRegister = w;
+  }
+
+  /* ---------- Excel ---------- */
+  let exLib = null;
+  async function loadExcelJS(){
+    if(exLib) return exLib;
+    for(const u of ['https://esm.sh/exceljs@4.4.0', 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/+esm']){
+      try{ const m = await import(u); const L = (m && m.Workbook) ? m : (m && m.default && m.default.Workbook ? m.default : null); if(L){ exLib = L; return L; } }catch(e){}
+    }
+    throw new Error('The styled Excel library could not be loaded');
+  }
+  window.wmMagWorkbook = function(ExcelJS, sheets, o){
+    const argb = 'FF' + o.accent.replace('#', '').toUpperCase(), wb = new ExcelJS.Workbook();
+    wb.creator = o.org || 'QaSHE Watchman'; wb.created = new Date();
+    const thin = { style:'thin', color:{ argb:'FFE3E1DF' } };
+    sheets.forEach(sh => {
+      const rows = sh.rows || [], head = rows[0] || [], body = rows.slice(1), nc = Math.max(head.length, 1);
+      const ws = wb.addWorksheet(String(sh.name || 'Sheet').replace(/[\\\/?*\[\]:]/g, ' ').slice(0, 31) || 'Sheet', { views:[{ showGridLines:false }] });
+      const colL = i => { let s = '', n = i + 1; while(n > 0){ const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
+      const last = colL(Math.max(nc - 1, 3));
+      ws.mergeCells('A1:' + last + '1'); const t = ws.getCell('A1'); t.value = (o.org ? o.org + '  |  ' : '') + sh.title; t.font = { name:'Arial', size:18, bold:true, color:{ argb:'FFFFFFFF' } };
+      t.fill = { type:'pattern', pattern:'solid', fgColor:{ argb } }; t.alignment = { vertical:'middle', indent:1 }; ws.getRow(1).height = 38;
+      ws.mergeCells('A2:' + last + '2'); const s2 = ws.getCell('A2'); s2.value = (o.sub || '') + (o.sub ? '  |  ' : '') + body.length + ' record' + (body.length === 1 ? '' : 's');
+      s2.font = { name:'Arial', size:10, color:{ argb:'FF615C59' } }; s2.alignment = { indent:1, vertical:'middle' }; ws.getRow(2).height = 20;
+      let r = 3;
+      const si = head.findIndex(h => /^status$/i.test(String(h).trim()));
+      const tiles = [['Records', body.length]];
+      if(si >= 0){ const c = {}; body.forEach(x => { const k = String(x[si] == null || x[si] === '' ? '—' : x[si]); c[k] = (c[k] || 0) + 1; }); Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, 4).forEach(e => tiles.push(e)); }
+      if(body.length){
+        tiles.slice(0, Math.max(1, nc)).forEach((tl, i) => {
+          const c0 = i; if(c0 >= nc) return; const A = colL(c0) + r, B = colL(c0) + (r + 1);
+          ws.getCell(A).value = tl[1]; ws.getCell(A).font = { name:'Arial', size:20, bold:true, color:{ argb } }; ws.getCell(A).alignment = { horizontal:'left', indent:1, vertical:'middle' };
+          ws.getCell(B).value = String(tl[0]).toUpperCase(); ws.getCell(B).font = { name:'Arial', size:8, bold:true, color:{ argb:'FF615C59' } }; ws.getCell(B).alignment = { horizontal:'left', indent:1 };
+          [A, B].forEach(a => { ws.getCell(a).fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFF6F3F1' } }; });
+          ws.getCell(A).border = { top:{ style:'thick', color:{ argb } } };
+        });
+        ws.getRow(r).height = 32; r += 3;
+      } else r += 1;
+      const hr = ws.getRow(r); head.forEach((h, i) => { const c = hr.getCell(i + 1); c.value = h; c.font = { name:'Arial', size:10, bold:true, color:{ argb:'FFFFFFFF' } }; c.fill = { type:'pattern', pattern:'solid', fgColor:{ argb } }; c.alignment = { vertical:'middle', wrapText:true, indent:0 }; });
+      hr.height = 26; const hdrRow = r; r++;
+      body.forEach((row, ri) => { const rr = ws.getRow(r++); for(let i = 0; i < nc; i++){ const c = rr.getCell(i + 1); const v = row[i]; c.value = (v === '' || v == null) ? null : v; c.font = { name:'Arial', size:10, color:{ argb:'FF1E1C1B' } };
+          c.alignment = { vertical:'top', wrapText:true }; c.border = { bottom:thin }; if(ri % 2) c.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFF8F6F4' } }; } });
+      for(let i = 0; i < nc; i++){ let w = String(head[i] == null ? '' : head[i]).length + 4; body.slice(0, 300).forEach(x => { const l = String(x[i] == null ? '' : x[i]).split('\n').reduce((m, z) => Math.max(m, z.length), 0); if(l + 3 > w) w = l + 3; }); ws.getColumn(i + 1).width = Math.min(Math.max(w, 11), 60); }
+      ws.views = [{ state:'frozen', ySplit:hdrRow, showGridLines:false }];
+      if(body.length) ws.autoFilter = { from:{ row:hdrRow, column:1 }, to:{ row:hdrRow, column:nc } };
+      ws.pageSetup = { orientation:'landscape', fitToPage:true, fitToWidth:1, fitToHeight:0 };
+    });
+    return wb;
+  };
+  const SKIP = /(import-template|problem-rows)/i;
+  async function magWrite(plainWrite, XLSX, wb, filename){
+    if(wmOutStyle('excel') !== 'magazine' || SKIP.test(String(filename))) return plainWrite(wb, filename);
+    try{
+      const ExcelJS = await loadExcelJS();
+      const sheets = (wb.SheetNames || []).map(n => ({ name:n, title:/^(export|sheet\d*)$/i.test(n) ? String(filename).replace(/\.xlsx$/i, '').replace(/[-_]+/g, ' ') : n, rows:XLSX.utils.sheet_to_json(wb.Sheets[n], { header:1, defval:'', raw:true }) }));
+      const out = wmMagWorkbook(ExcelJS, sheets, { accent:wmAccent(), org:STATE.org && STATE.org.name, sub:'Generated ' + new Date().toLocaleDateString('en-GB') + (STATE.profile && STATE.profile.name ? ' by ' + STATE.profile.name : '') });
+      const buf = await out.xlsx.writeBuffer(); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+      a.download = filename; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 800);
+    }catch(e){ console.warn('magazine excel', e); toast('The magazine-style workbook could not be built, so the plain version was downloaded.', 'info'); return plainWrite(wb, filename); }
+  }
+  const _ens = ensureXLSX;
+  const wrapped = async function(){
+    const X = await _ens.apply(this, arguments);
+    return new Proxy(X, { get(t, k){ if(k === 'writeFile'){ const pw = (typeof t.writeFile === 'function') ? t.writeFile.bind(t) : null; return (wb, fn) => pw ? magWrite(pw, t, wb, fn) : undefined; } const v = t[k]; return typeof v === 'function' ? v.bind(t) : v; } });
+  };
+  try{ ensureXLSX = wrapped; }catch(e){} window.ensureXLSX = wrapped;
+
+  /* ---------- the settings page: Administration, Print and Download Style ---------- */
+  window.wmSaveOutStyle = async function(all){
+    const g = k => (document.querySelector('input[name="pm-' + k + '"]:checked') || {}).value || 'plain';
+    const v = { pdf:g('pdf'), word:g('word'), excel:g('excel') };
+    if(all){
+      let ok = false; try{ const { error } = await STATE.supabase.from('organisations').update({ output_style:v }).eq('id', STATE.org.id); ok = !error; }catch(e){}
+      if(ok){ orgStyle = v; try{ localStorage.removeItem(LKEY()); }catch(e){} toast('Saved for everyone in your organisation.', 'success'); }
+      else toast('Could not save for the organisation (run the R53 SQL first). Saved on this computer instead.', 'error'), localStorage.setItem(LKEY(), JSON.stringify(v));
+    } else { try{ localStorage.setItem(LKEY(), JSON.stringify(v)); }catch(e){} toast('Saved for you on this computer.', 'success'); }
+    pmDraw();
+  };
+  window.wmClearMyStyle = () => { try{ localStorage.removeItem(LKEY()); }catch(e){} pmDraw(); toast('Your own choice was cleared: the organisation setting applies.', 'success'); };
+  window.wmStyleSample = async function(){
+    const g = k => (document.querySelector('input[name="pm-' + k + '"]:checked') || {}).value;
+    const l = local(); l.pdf = g('pdf') || 'plain'; try{ localStorage.setItem(LKEY(), JSON.stringify(l)); }catch(e){}
+    const rows = [['RAGA-001', 'Housekeeping on the loading bay', 'Open', '12 Nov 2026'], ['RAGA-002', 'Forklift near miss', 'Closed', '10 Nov 2026'], ['RAGA-003', 'Guard missing on press 4', 'Open', '08 Nov 2026'], ['RAGA-004', 'Late calibration', 'In progress', '05 Nov 2026']];
+    printRegister('Sample register', ['Ref', 'Title', 'Status', 'Raised'], rows, null);
+  };
+  function pmDraw(){
+    const wrap = document.getElementById('admin-subtab-content'); if(!wrap || STATE._adminSubtab !== 'outstyle') return;
+    const l = local(), cur = k => wmOutStyle(k), adm = ['admin', 'manager'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
+    const card = (k, title, plain, mag) => `<div class="pm-style-card"><h4>${title}</h4><div class="opts">
+      <label class="pm-opt ${cur(k) === 'plain' ? 'on' : ''}"><input type="radio" name="pm-${k}" value="plain" ${cur(k) === 'plain' ? 'checked' : ''} onchange="this.closest('.opts').querySelectorAll('.pm-opt').forEach(x=>x.classList.toggle('on',x.contains(this)))"> <b style="display:inline">Plain</b><br>${plain}</label>
+      <label class="pm-opt ${cur(k) === 'magazine' ? 'on' : ''}"><input type="radio" name="pm-${k}" value="magazine" ${cur(k) === 'magazine' ? 'checked' : ''} onchange="this.closest('.opts').querySelectorAll('.pm-opt').forEach(x=>x.classList.toggle('on',x.contains(this)))"> <b style="display:inline">Modern magazine</b><br>${mag}</label></div></div>`;
+    wrap.innerHTML = `<div class="detail-card"><h3 style="margin-bottom:4px;">Print and Download Style</h3>
+      <p style="font-size:12.5px;color:var(--text-faint);line-height:1.5;margin-bottom:14px;">Choose how reports look. Plain is the standard formal layout. Modern magazine uses your brand colour, a bold cover band, information tiles and banded tables. You can also switch a single PDF view with the style box at the top of the preview.${Object.keys(l).length ? ' <b>You have your own choice saved on this computer, which overrides the organisation setting.</b>' : ''}</p>
+      ${card('pdf', 'PDF view and print', 'Formal black and white report layout.', 'Brand-colour cover band, summary tiles, banded tables.')}
+      ${card('word', 'Word downloads', 'Formal document layout.', 'Brand-colour title banner and section headings with accent rules.')}
+      ${card('excel', 'Excel downloads', 'Plain table, as exported today.', 'Branded title bar, record and status tiles, banded rows, frozen header, filters.')}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+        ${adm ? '<button class="btn-small primary" onclick="wmSaveOutStyle(true)">Save for everyone in the organisation</button>' : ''}
+        <button class="btn-small" onclick="wmSaveOutStyle(false)">Save for me only</button>
+        <button class="btn-small" onclick="wmStyleSample()">Print a sample</button>
+        ${Object.keys(l).length ? '<button class="btn-small" onclick="wmClearMyStyle()">Clear my own choice</button>' : ''}</div></div>`;
+  }
+  const _rs = renderAdminSubtabContent;
+  const rs2 = function(tab){ if(tab === 'outstyle'){ pmDraw(); return; } return _rs.apply(this, arguments); };
+  try{ renderAdminSubtabContent = rs2; }catch(e){} window.renderAdminSubtabContent = rs2;
+  new MutationObserver(() => {
+    const b = document.querySelector('#content-root .toolbar button[onclick="switchAdminSubtab(\'orgprofile\')"]');
+    if(b && !b.parentNode.querySelector('[data-pm-style]')){ const n = document.createElement('button'); n.className = 'btn-small' + (STATE._adminSubtab === 'outstyle' ? ' primary' : ''); n.dataset.pmStyle = '1'; n.textContent = 'Print and Download Style'; n.setAttribute('onclick', "switchAdminSubtab('outstyle')"); b.insertAdjacentElement('afterend', n); }
+  }).observe(document.body, { childList:true, subtree:true });
 })();
 </script>
 </body>
