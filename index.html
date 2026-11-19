@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R51 2026-11-18"><meta charset="UTF-8">
+<meta name="wm-release" content="R52 2026-11-19"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -54562,6 +54562,350 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   const so = window.selectOrganisation || null; void so;
 })();
 
+
+/* ============================================================================
+   Release 52: Issue Management (Nonconformances, Incidents, RAGA, Information Security)
+   A. detail records open as their own page over a darker, still translucent backdrop
+   B. radar while a large record, register or preview is being prepared
+   C. Bulk tools: bulk delete (numbers kept), permanent removal with numbering restart, own number first
+   D. People involved and witnesses: pick from the organisation, add external parties, several people
+   E. Own (internal unique) reference duplicate warning
+   ============================================================================ */
+(function(){
+  if(window.__r52) return; window.__r52 = true;
+  const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  /* ---------------- A. own page over a darker backdrop ---------------- */
+  const SLOTS = ['nc','raga','audit','risk','mr','obj','legal','sup','cust'].map(k => '#' + k + '-detail-slot');
+  const css = document.createElement('style'); css.id = 'r52-css';
+  css.textContent = `
+  ${SLOTS.map(s => s + ':not(:empty)').join(',')}{position:fixed;inset:0;z-index:8000;background:rgba(14,16,22,.76);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);overflow:auto;padding:28px 18px 56px;box-sizing:border-box;}
+  ${SLOTS.map(s => s + ':not(:empty) > .detail-panel').join(',')}{max-width:1120px;margin:0 auto 24px;box-shadow:0 26px 80px rgba(0,0,0,.5);scroll-margin-top:0;}
+  body:has(${SLOTS.map(s => s + ':not(:empty)').join('),body:has(')}){overflow:hidden;}
+  #wm-view-ov{background:rgba(14,16,22,.8)!important;-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);}
+  .toast{z-index:12000!important}
+  #toast-root{z-index:12000!important}
+  #global-loader{z-index:13000!important}
+  #r52-bulk{position:fixed;inset:0;z-index:9500;background:rgba(14,16,22,.76);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);overflow:auto;padding:24px 14px 48px;box-sizing:border-box}
+  #r52-bulk .bx{max-width:1060px;margin:0 auto;background:var(--panel,#fff);border-radius:14px;box-shadow:0 26px 80px rgba(0,0,0,.5);padding:20px 22px;font-family:Arial,Helvetica,sans-serif}
+  #r52-bulk h3{margin:0;font-size:17px} #r52-bulk h4{margin:18px 0 6px;font-size:13.5px}
+  #r52-bulk .bt{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0}
+  #r52-bulk .bt input,#r52-bulk .bt select{padding:7px 9px;border:1px solid var(--border,#ddd);border-radius:6px;font-size:12.5px}
+  #r52-bulk .bl{max-height:340px;overflow:auto;border:1px solid var(--border,#ddd);border-radius:8px}
+  #r52-bulk table{width:100%;border-collapse:collapse;font-size:12.5px} #r52-bulk th{position:sticky;top:0;background:#f4f3f2;text-align:left;padding:7px 9px;font-size:11px;text-transform:uppercase;color:#615C59}
+  #r52-bulk td{padding:6px 9px;border-top:1px solid #eee} #r52-bulk tr.sel td{background:#fff6f4}
+  #r52-bulk .warn{background:#fdecea;border:1.5px solid #D50000;border-radius:8px;padding:11px 13px;font-size:12.5px;line-height:1.5}
+  #r52-bulk .note{font-size:12px;color:var(--text-faint,#777);line-height:1.5}
+  .wm-ppl{border:1px solid var(--border,#d9d6d3);border-radius:8px;padding:10px;background:#fbfaf9}
+  .wm-ppl .r{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
+  .wm-ppl select,.wm-ppl input{padding:7px 9px;border:1px solid var(--border,#d9d6d3);border-radius:6px;font-size:12.5px;min-width:0}
+  .wm-ppl .grow{flex:1 1 180px} .wm-ppl .lbl{font-size:11px;font-weight:700;color:#615C59;text-transform:uppercase;letter-spacing:.04em;margin:2px 0 4px}
+  .wm-ppl .chips{display:flex;flex-direction:column;gap:5px;margin-top:6px}
+  .wm-ppl .chip{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #e3e1df;border-radius:8px;padding:6px 9px;font-size:12.5px}
+  .wm-ppl .chip b{font-weight:700} .wm-ppl .chip small{color:#615C59} .wm-ppl .chip button{margin-left:auto;border:0;background:none;color:#9B2C2C;font-size:16px;cursor:pointer;line-height:1}
+  .wm-ppl .empty{font-size:12px;color:#9C9895}
+  .wm-dup{font-size:11.5px;color:#B21616;margin-top:3px}
+  `;
+  document.head.appendChild(css);
+
+  const slotOf = el => el && el.closest ? el.closest('[id$="-detail-slot"]') : null;
+  const isOverlaySlot = s => s && SLOTS.includes('#' + s.id) && s.childElementCount > 0;
+  document.addEventListener('input', e => { const s = slotOf(e.target); if(s) s.dataset.dirty = '1'; }, true);
+  document.addEventListener('change', e => { const s = slotOf(e.target); if(s) s.dataset.dirty = '1'; }, true);
+  new MutationObserver(ms => { for(const m of ms){ const t = m.target; if(t && t.id && /-detail-slot$/.test(t.id)){ delete t.dataset.dirty; if(t.childElementCount) t.scrollTop = 0; } } })
+    .observe(document.body, { childList:true, subtree:true });
+  function closeSlot(s){
+    if(!s) return;
+    if(s.dataset.dirty && !confirm('You have unsaved changes on this page. Close it without saving?')) return;
+    const id = s.id; if(id === 'nc-detail-slot' && typeof window.closeNCDetail === 'function'){ try{ window.closeNCDetail(); return; }catch(e){} }
+    s.innerHTML = '';
+  }
+  document.addEventListener('mousedown', e => { if(isOverlaySlot(e.target) && e.target.id && /-detail-slot$/.test(e.target.id)) e.target.__bd = true; else document.querySelectorAll('[id$="-detail-slot"]').forEach(x => x.__bd = false); }, true);
+  document.addEventListener('click', e => { const s = e.target; if(isOverlaySlot(s) && s.__bd){ s.__bd = false; closeSlot(s); } }, true);
+  document.addEventListener('keydown', e => {
+    if(e.key !== 'Escape') return;
+    if(document.getElementById('r52-bulk') || document.getElementById('wm-view-ov')?.classList.contains('on') || document.getElementById('void-modal')) return;
+    const open = [...document.querySelectorAll('[id$="-detail-slot"]')].filter(isOverlaySlot).pop();
+    if(open){ e.preventDefault(); closeSlot(open); }
+  });
+
+  /* ---------------- B. radar while it works ---------------- */
+  let busyN = 0;
+  function busyWrap(name, text, delay){
+    const o = window[name]; if(typeof o !== 'function' || o.__r52b) return;
+    const w = async function(){
+      let on = false; const t = setTimeout(() => { on = true; busyN++; try{ showLoader(text); }catch(e){} }, delay == null ? 220 : delay);
+      try{ return await o.apply(this, arguments); }
+      finally{ clearTimeout(t); if(on){ busyN--; if(!busyN){ try{ hideLoader(); }catch(e){} } } }
+    };
+    w.__r52b = true;
+    try{ eval(name + ' = w'); }catch(e){} window[name] = w;
+  }
+  [['openNCDetail','Opening the record…'],['openRagaDetail','Opening the RAGA alert…'],['isiOpen','Opening the incident…'],['viewNC','Preparing the preview…'],['viewRaga','Preparing the preview…'],
+   ['openAuditDetail','Opening the audit…'],['openRiskDetail','Opening the risk…'],['openMRDetail','Opening the review…'],['openObjectiveDetail','Opening the objective…'],
+   ['loadNCs','Loading the register…'],['loadRagaAlerts','Loading the register…']].forEach(([n, t]) => busyWrap(n, t, /^load/.test(n) ? 600 : 200));
+  /* view buttons that build a PDF synchronously after a few awaits */
+  ['buildAndPrintNC','buildAndPrintRaga'].forEach(n => busyWrap(n, 'Preparing the preview…', 250));
+
+  /* ---------------- helpers ---------------- */
+  const isAdm = () => ['admin','manager'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const IAN = ['incident','accident','near_miss'];
+  const MODS = {
+    nc:   { label:'Nonconformances', table:'nonconformances', voidKey:'nonconformances' },
+    ian:  { label:'Incidents, Accidents and Near Misses', table:'nonconformances', voidKey:'nonconformances' },
+    isi:  { label:'Information Security Incidents', table:'nonconformances', voidKey:'nonconformances' },
+    raga: { label:'RAGA alerts', table:'raga_alerts', voidKey:'raga_alerts' }
+  };
+  function records(mod){
+    if(mod === 'raga') return (STATE.ragaAlerts || []).map(r => ({ id:r.id, ref:r.ref_code || '', own:r.client_ref || '', title:r.title || '', kind:({red:'Red',orange:'Orange',green:'Green'})[r.alert_type] || r.alert_type || '', status:r.status || '', at:r.created_at || r.raised_date || '' }));
+    const isi = new Set((STATE.secIncidents || []).map(s => s.nonconformance_id));
+    return (STATE.ncs || []).filter(n => mod === 'ian' ? IAN.includes(n.record_class) : mod === 'isi' ? isi.has(n.id) : (!n.record_class || n.record_class === 'nonconformance'))
+      .map(n => ({ id:n.id, ref:n.ref_code || '', own:n.client_ref || '', title:n.title || '', kind:({incident:'Incident',accident:'Accident',near_miss:'Near miss'})[n.record_class] || '', status:n.status || '', at:n.created_at || '' }));
+  }
+  function voided(mod){ return ((STATE._voided || {})[MODS[mod].voidKey] || []).filter(r => mod === 'raga' ? true : (mod === 'ian' ? IAN.includes(r.record_class) : (mod === 'nc' ? (!r.record_class || r.record_class === 'nonconformance') : true))); }
+  const refresh = async mod => { try{ if(mod === 'raga') await loadRagaAlerts(); else await loadNCs(); if(mod === 'isi' && window.renderIsiPage) await window.renderIsiPage(); else showModule(STATE.currentModule); }catch(e){} };
+
+  /* ---------------- numbering display (own number first) ---------------- */
+  const NUMKEY = () => 'wm_issue_num_' + (STATE.org && STATE.org.id);
+  let numCache = null, numOrg = null;
+  async function loadNumbering(){
+    if(!STATE.org || !STATE.supabase) return;
+    if(numOrg === STATE.org.id && numCache) return; numOrg = STATE.org.id; numCache = {};
+    try{ numCache = JSON.parse(localStorage.getItem(NUMKEY()) || '{}') || {}; }catch(e){}
+    try{ const { data, error } = await STATE.supabase.from('organisations').select('issue_numbering').eq('id', STATE.org.id).maybeSingle();
+      if(!error && data && data.issue_numbering && typeof data.issue_numbering === 'object') numCache = Object.assign({}, numCache, data.issue_numbering); }catch(e){}
+    scan();
+  }
+  const numMode = mod => (numCache && numCache[mod]) || 'system';
+  window.wmSetNumMode = async function(mod, mode){
+    numCache = Object.assign({}, numCache || {}); numCache[mod] = mode;
+    try{ localStorage.setItem(NUMKEY(), JSON.stringify(numCache)); }catch(e){}
+    let saved = false;
+    try{ const { error } = await STATE.supabase.from('organisations').update({ issue_numbering: numCache }).eq('id', STATE.org.id); saved = !error; }catch(e){}
+    toast(saved ? 'Saved for everyone in your organisation.' : 'Saved on this computer only (run the R52 SQL to save it for everyone).', saved ? 'success' : 'info');
+    try{ showModule(STATE.currentModule); }catch(e){}
+  };
+  const TABLES = { nc:'#nc-table-wrap table', raga:'#raga-table-wrap table', ian:'#ian-body table', isi:'#isi-table table' };
+  const lookup = (mod, id) => mod === 'raga' ? (STATE.ragaAlerts || []).find(r => r.id === id) : (STATE.ncs || []).find(r => r.id === id);
+  function applyNumbering(mod){
+    const tb = document.querySelector(TABLES[mod]); if(!tb || numMode(mod) !== 'own') return;
+    const rows = [...tb.querySelectorAll('tr')], head = rows[0]; if(!head) return;
+    const txt = c => (c.textContent || '').trim().toLowerCase();
+    const find = re => [...head.children].findIndex(c => re.test(txt(c)));
+    const sigOf = () => head.children.length + '|' + [...head.children].map(txt).join(',');
+    if(tb.dataset.r52n === sigOf()) return;
+    const body = rows.slice(1).filter(tr => tr.children.length === head.children.length);
+    let own = find(/^(internal unique ref|number)$/);
+    if(find(/^ref$/) < 0 && own !== 0) return;
+    if(own < 0){
+      const th = document.createElement('th'); head.insertBefore(th, head.firstElementChild);
+      body.forEach(tr => { const m = (tr.getAttribute('onclick') || '').match(/'([0-9a-f-]{36})'/), r = m && lookup(mod, m[1]), c = document.createElement('td');
+        c.className = 'mono-cell'; c.style.whiteSpace = 'nowrap'; c.textContent = (r && r.client_ref) || ''; tr.insertBefore(c, tr.firstElementChild); });
+    } else if(own > 0){
+      head.insertBefore(head.children[own], head.firstElementChild); body.forEach(tr => tr.insertBefore(tr.children[own], tr.firstElementChild));
+    }
+    head.children[0].textContent = 'Number';
+    const ref = find(/^ref$/);
+    if(ref > 0){
+      head.children[ref].style.display = 'none';
+      body.forEach(tr => { const first = tr.children[0], rc = tr.children[ref];
+        if(first && rc && !first.textContent.trim()){ first.textContent = rc.textContent; first.style.color = '#9C9895'; first.title = 'No own number recorded: the system number is shown'; }
+        if(rc) rc.style.display = 'none'; });
+    }
+    tb.dataset.r52n = sigOf();
+  }
+
+  /* ---------------- bulk tools ---------------- */
+  let BK = null;
+  window.wmBulk = async function(mod){
+    if(!MODS[mod]) return;
+    await loadNumbering();
+    BK = { mod, sel:new Set(), q:'', from:'', to:'', status:'' };
+    let ov = document.getElementById('r52-bulk'); if(ov) ov.remove();
+    ov = document.createElement('div'); ov.id = 'r52-bulk'; document.body.appendChild(ov);
+    ov.addEventListener('mousedown', e => { ov.__bd = (e.target === ov); }); ov.addEventListener('click', e => { if(e.target === ov && ov.__bd) wmBulkClose(); });
+    bulkDraw();
+  };
+  window.wmBulkClose = () => { const o = document.getElementById('r52-bulk'); if(o) o.remove(); BK = null; };
+  const shown = () => { const q = BK.q.toLowerCase(); return records(BK.mod).filter(r => (!q || (r.ref + ' ' + r.own + ' ' + r.title + ' ' + r.kind).toLowerCase().includes(q)) && (!BK.status || r.status === BK.status)
+      && (!BK.from || String(r.at).slice(0,10) >= BK.from) && (!BK.to || String(r.at).slice(0,10) <= BK.to)); };
+  function bulkDraw(keepFocus){
+    const ov = document.getElementById('r52-bulk'); if(!ov || !BK) return;
+    const m = MODS[BK.mod], all = records(BK.mod), list = shown(), adm = isAdm(), statuses = [...new Set(all.map(r => r.status).filter(Boolean))];
+    const v = voided(BK.mod).length, nSel = BK.sel.size, own = numMode(BK.mod) === 'own';
+    const act = document.activeElement && document.activeElement.id, pos = document.activeElement && document.activeElement.selectionStart;
+    ov.innerHTML = `<div class="bx">
+      <div style="display:flex;align-items:center;gap:10px;"><h3>Bulk tools: ${E(m.label)}</h3><span style="flex:1"></span><button class="btn-small" onclick="wmBulkClose()">Close</button></div>
+      <p class="note" style="margin:6px 0 0;">${all.length} record${all.length === 1 ? '' : 's'} in this register${v ? ', plus ' + v + ' already marked Deleted (their numbers are still held)' : ''}.</p>
+
+      <h4>1. Which number leads the register</h4>
+      <div class="bt"><label style="font-size:12.5px;"><input type="radio" name="r52n" ${own ? '' : 'checked'} onchange="wmSetNumMode('${BK.mod}','system')"> System number first (default)</label>
+        <label style="font-size:12.5px;"><input type="radio" name="r52n" ${own ? 'checked' : ''} onchange="wmSetNumMode('${BK.mod}','own')"> Our own number only: show the Internal unique reference in the first column and hide the system number</label></div>
+      <p class="note">Applies to this register for everyone in your organisation. A record without an own number shows its system number in grey so no row is blank. Printed reports are not changed.</p>
+
+      <h4>2. Choose the records</h4>
+      <div class="bt"><input id="r52-q" placeholder="Search number, title, type" style="min-width:230px" value="${E(BK.q)}" oninput="wmBulkSet('q',this.value)">
+        <select onchange="wmBulkSet('status',this.value)"><option value="">Any status</option>${statuses.map(s => `<option ${BK.status === s ? 'selected' : ''}>${E(s)}</option>`).join('')}</select>
+        <label class="note">Created from <input type="date" value="${E(BK.from)}" onchange="wmBulkSet('from',this.value)"></label>
+        <label class="note">to <input type="date" value="${E(BK.to)}" onchange="wmBulkSet('to',this.value)"></label>
+        <button class="btn-small" onclick="wmBulkAll(true)">Select all ${list.length} shown</button><button class="btn-small" onclick="wmBulkAll(false)">Clear</button>
+        <b style="font-size:13px;">${nSel} selected</b></div>
+      <div class="bl"><table><tr><th style="width:34px"></th><th>${own ? 'Own number' : 'Number'}</th>${own ? '<th>System no.</th>' : '<th>Own number</th>'}<th>Title</th><th>Type</th><th>Status</th><th>Created</th></tr>
+        ${list.length ? list.map(r => `<tr class="${BK.sel.has(r.id) ? 'sel' : ''}"><td><input type="checkbox" style="width:auto" ${BK.sel.has(r.id) ? 'checked' : ''} onchange="wmBulkTick('${r.id}',this.checked)"></td>
+          <td class="mono-cell">${E(own ? (r.own || r.ref) : r.ref)}</td><td class="mono-cell">${E(own ? r.ref : r.own)}</td><td>${E(r.title)}</td><td>${E(r.kind)}</td><td>${E(r.status)}</td><td>${E(String(r.at).slice(0,10))}</td></tr>`).join('')
+          : '<tr><td colspan="7" style="padding:14px" class="note">Nothing matches.</td></tr>'}</table></div>
+
+      <h4>3. What to do with the selected records</h4>
+      ${adm ? `
+      <div style="border:1px solid var(--border,#ddd);border-radius:8px;padding:12px 14px;margin-bottom:12px;">
+        <b style="font-size:13px;">Delete and keep the numbers (normal, audit-safe)</b>
+        <p class="note" style="margin:4px 0 8px;">The records leave the working lists. Each number stays in the sequence, shown as Deleted with your reason, who did it and when.</p>
+        <div class="bt"><input id="r52-vr" placeholder="Reason (at least 10 characters)" style="min-width:320px;flex:1" oninput="wmBulkGate()"><button class="btn-small" id="r52-vgo" style="color:#9B2C2C;border-color:#D9A3A3" onclick="wmBulkVoid()" disabled>Delete ${nSel} selected</button></div>
+      </div>
+      <div class="warn"><b style="color:#B21616;">Remove permanently and restart numbering</b>
+        <p style="margin:6px 0 8px;">For test entries or a bulk upload that must be redone. The records, their evidence, tasks and links are erased and cannot be recovered. Their numbers are released: when you remove <b>every</b> record in this register, numbering starts again from the beginning. A log entry records who did it, when and why.</p>
+        <label style="font-size:12.5px;display:block;margin-bottom:6px;"><input type="checkbox" id="r52-incv" style="width:auto" ${v ? 'checked' : ''} ${v ? '' : 'disabled'} onchange="wmBulkGate()"> Also release the ${v} number${v === 1 ? '' : 's'} already marked Deleted${BK.mod === 'raga' || BK.mod === 'nc' ? '' : ' (every kind in the shared register)'}</label>
+        <div class="bt"><input id="r52-pr" placeholder="Reason (at least 10 characters), e.g. Bulk upload of 200 alerts to be redone" style="min-width:320px;flex:1" oninput="wmBulkGate()">
+          <input id="r52-pt" placeholder="Type REMOVE to confirm" style="width:170px" oninput="wmBulkGate()" autocomplete="off">
+          <button class="btn-small" id="r52-pgo" style="background:#B21616;color:#fff;border-color:#B21616" onclick="wmBulkPurge()" disabled>Remove ${nSel} permanently</button></div>
+      </div>` : '<p class="note">Only an administrator or manager can delete records.</p>'}
+      <div id="r52-out"></div></div>`;
+    wmBulkGate();
+    if(keepFocus && act){ const el = document.getElementById(act); if(el){ el.focus(); try{ el.setSelectionRange(pos, pos); }catch(e){} } }
+  }
+  window.wmBulkSet = (k, v) => { if(!BK) return; BK[k] = v; clearTimeout(window.__r52t); window.__r52t = setTimeout(() => bulkDraw(true), k === 'q' ? 220 : 0); };
+  window.wmBulkTick = (id, on) => { on ? BK.sel.add(id) : BK.sel.delete(id); bulkDraw(); };
+  window.wmBulkAll = on => { shown().forEach(r => on ? BK.sel.add(r.id) : BK.sel.delete(r.id)); if(!on) BK.sel.clear(); bulkDraw(); };
+  window.wmBulkGate = () => {
+    if(!BK) return; const n = BK.sel.size, g = id => ((document.getElementById(id) || {}).value || '').trim();
+    const vb = document.getElementById('r52-vgo'), pb = document.getElementById('r52-pgo');
+    if(vb) vb.disabled = !(n && g('r52-vr').length >= 10);
+    if(pb) pb.disabled = !(n && g('r52-pr').length >= 10 && g('r52-pt') === 'REMOVE');
+  };
+  const chunks = (a, n) => { const o = []; for(let i = 0; i < a.length; i += n) o.push(a.slice(i, i + n)); return o; };
+  window.wmBulkVoid = async function(){
+    const ids = [...BK.sel], reason = document.getElementById('r52-vr').value.trim(); if(!ids.length || reason.length < 10) return;
+    if(!confirm('Delete ' + ids.length + ' record(s)? Their numbers will stay in the register as Deleted.')) return;
+    const mod = BK.mod, table = MODS[mod].table; let done = 0, fail = 0, firstErr = '';
+    showLoader('Deleting 0 of ' + ids.length + '…');
+    try{
+      for(const part of chunks(ids, 6)){
+        const rs = await Promise.all(part.map(id => STATE.supabase.rpc('void_record', { p_table:table, p_id:id, p_reason:'Bulk delete: ' + reason })));
+        rs.forEach(r => { if(r.error){ fail++; firstErr = firstErr || r.error.message; } else done++; });
+        document.getElementById('global-loader-text').textContent = 'Deleting ' + (done + fail) + ' of ' + ids.length + '…';
+      }
+    } finally { hideLoader(); }
+    BK.sel.clear(); await refresh(mod); if(BK) bulkDraw();
+    toast(done + ' deleted' + (fail ? ', ' + fail + ' could not be deleted: ' + firstErr : '. Numbers kept as Deleted.'), fail ? 'error' : 'success');
+  };
+  window.wmBulkPurge = async function(){
+    const mod = BK.mod, ids = [...BK.sel], reason = document.getElementById('r52-pr').value.trim();
+    if(!ids.length || reason.length < 10 || document.getElementById('r52-pt').value.trim() !== 'REMOVE') return;
+    let all = ids.slice();
+    if((document.getElementById('r52-incv') || {}).checked) all = all.concat(voided(mod).map(r => r.id));
+    if(!confirm('Permanently remove ' + all.length + ' record(s)? This cannot be undone.')) return;
+    let removed = 0, files = [], numbering = null, err = '';
+    showLoader('Removing 0 of ' + all.length + '…');
+    try{
+      for(const part of chunks(all, 60)){
+        const { data, error } = await STATE.supabase.rpc('wm_issue_purge', { p_org:STATE.org.id, p_module:mod, p_ids:part, p_reason:reason });
+        if(error){ err = error.message; break; }
+        removed += (data && data.removed) || 0; files = files.concat((data && data.files) || []); numbering = (data && data.numbering) || numbering;
+        document.getElementById('global-loader-text').textContent = 'Removing ' + removed + ' of ' + all.length + '…';
+      }
+      if(files.length){ document.getElementById('global-loader-text').textContent = 'Removing stored files…';
+        for(const part of chunks(files.map(f => f.path), 100)){ try{ await STATE.supabase.storage.from('evidence').remove(part); }catch(e){} } }
+    } finally { hideLoader(); }
+    BK.sel.clear(); await refresh(mod);
+    if(!BK) return; bulkDraw();
+    const out = document.getElementById('r52-out'); if(!out) return;
+    if(err){ out.innerHTML = `<div class="warn" style="margin-top:12px;"><b>Stopped.</b> ${E(removed)} record(s) were removed before this problem: ${E(err)}${/does not exist|schema cache|Could not find the function/i.test(err) ? '<br>Run <b>qashe-watchman-schema-r52-issue-management.sql</b> in the Supabase SQL editor first.' : ''}</div>`; return; }
+    const hi = numbering && numbering.highest_left, ctr = (numbering && numbering.counter_tables) || [];
+    out.innerHTML = `<div style="border:1.5px solid #2E7D4F;border-radius:8px;padding:12px 14px;margin-top:12px;font-size:12.5px;line-height:1.55;"><b style="color:#2E7D4F;">Done: ${removed} record(s) removed permanently.</b>
+      <div>Highest number left in this register: <b>${hi ? E(hi) : 'none (the register is empty)'}</b>.</div>
+      <div>${hi ? 'Records remain, so new records continue after the highest number left.' : 'The register is empty. Raise one test record to confirm numbering starts again from the beginning; if it continues from the old count, send this report to your administrator.'}</div>
+      ${ctr.length ? `<div class="note">Counter tables present in the database: ${E(ctr.join(', '))}.</div>` : ''}</div>`;
+  };
+
+  /* ---------------- D. people involved and witnesses ---------------- */
+  const PPL_IDS = { 'f-contact-details':'Add people involved', 'd-contact-details':'Add people involved', 'raga-contact-details':'Add people involved', 'raga-d-contact-details':'Add people involved',
+    'ian-contacts':'Add people involved', 'ian-wit':'Add witnesses', 'ief-wit':'Add witnesses', 'sfi-others':'Add other people involved or witnesses' };
+  function orgPeople(){
+    const out = [], seen = new Set();
+    (STATE.personnel || []).filter(p => p.full_name && (p.status || 'active') !== 'inactive' && (p.status || '') !== 'left').forEach(p => { out.push({ name:p.full_name, email:p.email || '', phone:p.mobile_number || '' }); seen.add(String(p.full_name).toLowerCase()); });
+    (STATE.members || []).forEach(m => { const n = m.profiles && m.profiles.name; if(n && !seen.has(String(n).toLowerCase())){ out.push({ name:n, email:(m.profiles && m.profiles.email) || '', phone:'' }); seen.add(String(n).toLowerCase()); } });
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  }
+  const fmt = p => p.name + (p.email || p.phone ? ' (' + [p.email, p.phone].filter(Boolean).join(', ') + ')' : '');
+  function parse(v){
+    return String(v || '').split(/\r?\n|;\s+/).map(s => s.trim()).filter(Boolean).map(s => {
+      const m = s.match(/^(.*?)\s*\(([^()]*)\)$/); if(!m) return { name:s, email:'', phone:'' };
+      const bits = m[2].split(',').map(x => x.trim()); return { name:m[1], email:bits.find(b => /@/.test(b)) || '', phone:bits.filter(b => !/@/.test(b)).join(', ') };
+    });
+  }
+  const WIDGETS = new Set();
+  function enhance(el){
+    if(el.dataset.wmPpl) return; el.dataset.wmPpl = '1';
+    const people = orgPeople(), multi = el.tagName === 'TEXTAREA', btnLabel = PPL_IDS[el.id], uid = 'ppl' + Math.random().toString(36).slice(2, 8);
+    const w = document.createElement('div'); w.className = 'wm-ppl'; el.insertAdjacentElement('afterend', w); el.style.display = 'none';
+    let list = parse(el.value), last = el.value;
+    const write = () => { const v = list.map(fmt).join(multi ? '\n' : '; '); last = v; el.value = v; el.dispatchEvent(new Event('input', { bubbles:true })); };
+    const draw = () => {
+      w.innerHTML = `<div class="lbl">From your organisation</div>
+        <div class="r"><select class="grow" data-k="sel"><option value="">Choose a person (name, email, contact number)</option>${people.map((p, i) => `<option value="${i}">${E(p.name)}${p.email ? ' — ' + E(p.email) : ''}${p.phone ? ' — ' + E(p.phone) : ''}</option>`).join('')}</select>
+          <button type="button" class="btn-small" data-k="addsel">${E(btnLabel)}</button></div>
+        <div class="lbl">Other people or external parties</div>
+        <div class="r"><input class="grow" data-k="n" placeholder="Full name"><input class="grow" data-k="e" placeholder="Email address" type="email"><input data-k="p" placeholder="Contact number" style="width:150px"><button type="button" class="btn-small" data-k="addx">Add</button></div>
+        <div class="chips">${list.length ? list.map((p, i) => `<div class="chip"><span><b>${E(p.name)}</b>${p.email || p.phone ? ' <small>' + E([p.email, p.phone].filter(Boolean).join(' · ')) + '</small>' : ''}</span><button type="button" title="Remove" data-rm="${i}">×</button></div>`).join('') : '<div class="empty">Nobody added yet. You can add as many people as needed.</div>'}</div>`;
+    };
+    w.addEventListener('click', e => {
+      const t = e.target.closest('button'); if(!t) return; const q = k => w.querySelector('[data-k="' + k + '"]');
+      if(t.dataset.rm != null){ list.splice(+t.dataset.rm, 1); write(); draw(); return; }
+      if(t.dataset.k === 'addsel'){ const s = q('sel'); if(s.value === '') return; const p = people[+s.value]; if(!list.some(x => x.name.toLowerCase() === p.name.toLowerCase())) list.push(Object.assign({}, p)); write(); draw(); return; }
+      if(t.dataset.k === 'addx'){ const name = q('n').value.trim(), email = q('e').value.trim(), phone = q('p').value.trim();
+        if(!name){ q('n').focus(); toast('Enter the full name first.', 'error'); return; }
+        if(email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ q('e').focus(); toast('That email address does not look right.', 'error'); return; }
+        list.push({ name, email, phone }); write(); draw(); }
+    });
+    w.addEventListener('keydown', e => { if(e.key === 'Enter' && e.target.matches('input')){ e.preventDefault(); const b = w.querySelector('[data-k="addx"]'); if(b) b.click(); } });
+    draw(); w.__sync = () => { if(!document.contains(el)){ return false; } if(el.value !== last){ list = parse(el.value); last = el.value; draw(); } return true; };
+    WIDGETS.add(w);
+  }
+  setInterval(() => { WIDGETS.forEach(w => { if(!w.isConnected || !w.__sync()){ WIDGETS.delete(w); } }); }, 600);
+
+  /* ---------------- E. own number: duplicate warning ---------------- */
+  document.addEventListener('change', e => {
+    const el = e.target; if(!el || !/^(f-client-ref|raga-client-ref|isi-client-ref|d-client-ref|raga-d-client-ref)$/.test(el.id || '')) return;
+    const isRaga = /raga/.test(el.id), v = el.value.trim().toLowerCase(), old = el.parentNode.querySelector('.wm-dup'); if(old) old.remove();
+    if(!v || v === String(el.defaultValue || '').trim().toLowerCase()) return;
+    const pool = (isRaga ? (STATE.ragaAlerts || []) : (STATE.ncs || [])).concat((STATE._voided && STATE._voided[isRaga ? 'raga_alerts' : 'nonconformances']) || []);
+    const hit = pool.find(r => String(r.client_ref || '').trim().toLowerCase() === v);
+    if(hit){ const d = document.createElement('div'); d.className = 'wm-dup'; d.textContent = 'This own number is already used by ' + (hit.ref_code || 'another record') + (hit.voided_at ? ' (deleted)' : '') + '. Own numbers should be unique.'; el.parentNode.appendChild(d); }
+  });
+
+  /* ---------------- injection and scanning ---------------- */
+  function addBulkButtons(){
+    const put = (anchor, mod) => { if(!anchor || anchor.parentNode.querySelector('.r52-bulkbtn[data-m="' + mod + '"]')) return;
+      const b = document.createElement('button'); b.className = 'btn-small r52-bulkbtn'; b.dataset.m = mod; b.type = 'button'; b.textContent = 'Bulk tools'; b.title = 'Bulk delete, restart numbering, choose which number leads'; b.onclick = () => wmBulk(mod); anchor.parentNode.insertBefore(b, anchor); };
+    put(document.querySelector('button[onclick="toggleNCTypesPanel()"]'), 'nc');
+    put(document.querySelector('button[onclick*="openImportModal(\'raga\')"]'), 'raga');
+    put(document.querySelector('#ian-root button[onclick="ianToggleForm()"]'), 'ian');
+    put(document.querySelector('#isi-root button[onclick="isiNew()"]'), 'isi');
+  }
+  let scanT = null;
+  function scan(){
+    clearTimeout(scanT); scanT = setTimeout(() => {
+      try{ addBulkButtons(); Object.keys(TABLES).forEach(applyNumbering);
+        Object.keys(PPL_IDS).forEach(id => { const el = document.getElementById(id); if(el && !el.dataset.wmPpl) enhance(el); });
+        const inj = document.getElementById('ian-injured'); if(inj && !inj.list){ let dl = document.getElementById('r52-people-dl'); if(!dl){ dl = document.createElement('datalist'); dl.id = 'r52-people-dl'; document.body.appendChild(dl); }
+          dl.innerHTML = orgPeople().map(p => `<option value="${E(p.name)}">`).join(''); inj.setAttribute('list', 'r52-people-dl'); }
+      }catch(e){ console.warn('r52 scan', e); }
+    }, 60);
+  }
+  new MutationObserver(scan).observe(document.body, { childList:true, subtree:true });
+  setInterval(() => { if(STATE && STATE.org && STATE.org.id && numOrg !== STATE.org.id) loadNumbering(); }, 2000);
+  scan();
+})();
 </script>
 </body>
 </html>
