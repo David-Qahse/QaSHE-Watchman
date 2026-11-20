@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R53 2026-11-19"><meta charset="UTF-8">
+<meta name="wm-release" content="R54 2026-11-20"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -53328,7 +53328,8 @@ Likelihood and impact are whole numbers from 1 to 5.`;
 
   /* ---------------- PDF layout kit (shared by controlled documents, processes and reports) ---------------- */
   window.wmPdfKit = function(doc, L){
-    const INK = [20,20,22], HEAD = [38,40,46], ZEB = [246,246,248], LINE = [212,212,216], ACC = [178,22,22], FAINT = [110,110,118];
+    const MAG = (typeof wmOutStyle === 'function') && wmOutStyle('pdf') === 'magazine', _ah = (typeof wmAccent === 'function' ? wmAccent() : '#B21616').replace('#', ''), AC = [parseInt(_ah.slice(0, 2), 16), parseInt(_ah.slice(2, 4), 16), parseInt(_ah.slice(4, 6), 16)];
+    const INK = [20,20,22], HEAD = MAG ? AC : [38,40,46], ZEB = MAG ? [248,245,243] : [246,246,248], LINE = MAG ? [226,223,220] : [212,212,216], ACC = MAG ? AC : [178,22,22], FAINT = [110,110,118];
     const col = { green:[46,125,79], amber:[196,128,20], red:[179,38,30], grey:[120,120,128], blue:[46,90,168] };
     const ens = n => { if(L.y + n > L.bottom){ L.newPage(); return true; } return false; };
     const tx = c => doc.setTextColor(c[0], c[1], c[2]);
@@ -53349,16 +53350,18 @@ Likelihood and impact are whole numbers from 1 to 5.`;
       ls.forEach((s, k) => { ens(lh); drawJust(s, L.mL, L.y + size, L.cW, k === ls.length - 1); L.y += lh; }); L.y += 5;
     }
     function heading(t, size){
-      size = size || 13; L.y += 6; ens(size + 64); doc.setFont('helvetica', 'bold'); doc.setFontSize(size); tx(INK);
+      size = size || 13; L.y += 6; ens(size + 64); doc.setFont('helvetica', 'bold'); doc.setFontSize(size); tx(MAG ? AC : INK);
+      if(MAG){ doc.setFillColor(AC[0], AC[1], AC[2]); doc.roundedRect(L.mL, L.y + 1, 5, size + 5, 2, 2, 'F'); doc.text(String(t), L.mL + 14, L.y + size); L.y += size + 9;
+        doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.setLineWidth(0.7); doc.line(L.mL, L.y, L.mL + L.cW, L.y); L.y += 8; return; }
       doc.text(String(t), L.mL, L.y + size); L.y += size + 12;
     }
-    function sub(t){ ens(40); doc.setFont('helvetica', 'bold'); doc.setFontSize(11.5); tx(INK); doc.text(String(t), L.mL, L.y + 11); L.y += 20; }
+    function sub(t){ ens(40); doc.setFont('helvetica', 'bold'); doc.setFontSize(11.5); tx(MAG ? AC : INK); doc.text(String(t), L.mL, L.y + 11); L.y += 20; }
     function list(items, ordered){
       doc.setFont('helvetica', 'normal'); doc.setFontSize(11); tx(INK);
       items.forEach((it, k) => {
         const label = ordered ? (secNo != null ? secNo + '.' + (++secCtr) : (k + 1) + '.') : '\u2022', ind = ordered && secNo != null ? 32 : 20;
         doc.setFont('helvetica', 'normal'); doc.setFontSize(11); const ls = hardWrap(it, L.cW - ind - 2); ens(Math.min(ls.length, 2) * 14);
-        doc.setFont('helvetica', 'bold'); tx(INK); doc.text(label, L.mL + 2, L.y + 11); doc.setFont('helvetica', 'normal');
+        doc.setFont('helvetica', 'bold'); tx(MAG ? AC : INK); doc.text(label, L.mL + 2, L.y + 11); doc.setFont('helvetica', 'normal');
         ls.forEach((s, j) => { ens(14); drawJust(s, L.mL + ind, L.y + 11, L.cW - ind - 2, j === ls.length - 1); L.y += 14; }); L.y += 3; });
       L.y += 4;
     }
@@ -53408,6 +53411,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     function chips(list){ ens(26); let x = L.mL; doc.setFont('helvetica', 'bold'); doc.setFontSize(8); list.forEach(([t, c]) => { const w = doc.getTextWidth(String(t)) + 16; doc.setFillColor(c[0], c[1], c[2]); doc.roundedRect(x, L.y, w, 16, 8, 8, 'F'); doc.setTextColor(255, 255, 255); doc.text(String(t), x + 8, L.y + 11); x += w + 6; }); L.y += 24; }
     function card(x, y, w, h, label, value, color){
       doc.setFillColor(247, 247, 249); doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.setLineWidth(0.6); doc.roundedRect(x, y, w, h, 5, 5, 'FD');
+      if(MAG){ doc.setFillColor(AC[0], AC[1], AC[2]); doc.roundedRect(x, y, w, 4, 2, 2, 'F'); }
       doc.setFont('helvetica', 'bold'); doc.setFontSize(7); tx(FAINT); doc.text(String(label).toUpperCase(), x + 9, y + 14);
       doc.setFontSize(11.5); tx(color || INK); const ls = doc.splitTextToSize(String(value == null || value === '' ? '—' : value), w - 18); doc.text(ls.slice(0, 2), x + 9, y + 30);
     }
@@ -53483,17 +53487,19 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     for(let i = 1; i <= n; i++){
       doc.setPage(i); const [pw, ph] = (o.dims && o.dims[i - 1]) || [595, 842], hy = 30, nx = mL + (logo ? 115 : 0);
       if(logo){ const ld = fitImageDimensions(logo.naturalWidth, logo.naturalHeight, 100, 40); doc.addImage(arrayBufferToDataUrl(logo.data, logo.type === 'png' ? 'image/png' : 'image/jpeg'), logo.type.toUpperCase(), mL, hy - 10, ld.width, ld.height); }
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(0, 0, 0); doc.text(STATE.org.name || '', nx, hy); const nameW = doc.getTextWidth(STATE.org.name || '');
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); let addrW = 0; if(STATE.org.address){ doc.text(STATE.org.address, nx, hy + 14); addrW = doc.getTextWidth(STATE.org.address); }
-      const maxW = Math.max(110, pw - mR - (nx + Math.max(nameW, addrW) + 16)); doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
+      const MAG = (typeof wmOutStyle === 'function') && wmOutStyle('pdf') === 'magazine', _ah = (typeof wmAccent === 'function' ? wmAccent() : '#B21616').replace('#', ''), AC = [parseInt(_ah.slice(0, 2), 16), parseInt(_ah.slice(2, 4), 16), parseInt(_ah.slice(4, 6), 16)];
+      if(MAG){ doc.setFillColor(AC[0], AC[1], AC[2]); doc.rect(0, 0, pw, 9, 'F'); }
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(13); MAG ? doc.setTextColor(AC[0], AC[1], AC[2]) : doc.setTextColor(0, 0, 0); doc.text(STATE.org.name || '', nx, hy); const nameW = doc.getTextWidth(STATE.org.name || '');
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); if(MAG) doc.setTextColor(95, 95, 100); let addrW = 0; if(STATE.org.address){ doc.text(STATE.org.address, nx, hy + 14); addrW = doc.getTextWidth(STATE.org.address); }
+      const maxW = Math.max(110, pw - mR - (nx + Math.max(nameW, addrW) + 16)); doc.setFont('helvetica', 'bold'); doc.setFontSize(13); if(MAG) doc.setTextColor(AC[0], AC[1], AC[2]); else doc.setTextColor(0, 0, 0);
       let ls = doc.splitTextToSize(String(o.title || ''), maxW); if(ls.length > 2){ doc.setFontSize(10); ls = doc.splitTextToSize(String(o.title || ''), maxW); } else if(ls.length > 1){ doc.setFontSize(11); ls = doc.splitTextToSize(String(o.title || ''), maxW); }
-      doc.text(ls.slice(0, 3), pw - mR, hy, { align:'right' }); doc.setDrawColor(0, 0, 0); doc.setLineWidth(1.2); doc.line(mL, 80, pw - mR, 80);
-      const fy = ph - 70 + 14, cw = pw - mL - mR; doc.setDrawColor(208, 208, 208); doc.setLineWidth(0.6); doc.line(mL, fy - 10, pw - mR, fy - 10);
+      doc.text(ls.slice(0, 3), pw - mR, hy, { align:'right' }); if(MAG){ doc.setDrawColor(AC[0], AC[1], AC[2]); doc.setLineWidth(2.4); } else { doc.setDrawColor(0, 0, 0); doc.setLineWidth(1.2); } doc.line(mL, 80, pw - mR, 80);
+      const fy = ph - 70 + 14, cw = pw - mL - mR; if(MAG){ doc.setDrawColor(AC[0], AC[1], AC[2]); doc.setLineWidth(1.6); } else { doc.setDrawColor(208, 208, 208); doc.setLineWidth(0.6); } doc.line(mL, fy - 10, pw - mR, fy - 10);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(0, 0, 0);
       doc.text('Doc No: ' + dash(info.docNo), mL, fy); doc.text('Rev ' + dash(info.rev) + ': ' + dash(info.revDate), mL, fy + 10); doc.text('Status: ' + dash(info.status), mL, fy + 20);
       const cx = mL + 150, mw = cw - 150 - 70;
       let yy = fy; ctl.forEach(t => { const w = doc.splitTextToSize(t, mw).slice(0, 2); doc.text(w, cx, yy); yy += 9.5 * w.length; });
-      doc.text('Page ' + i + ' of ' + n, pw - mR, fy + 20, { align:'right' });
+      if(MAG){ doc.setFont('helvetica', 'bold'); doc.setTextColor(AC[0], AC[1], AC[2]); } doc.text('Page ' + i + ' of ' + n, pw - mR, fy + 20, { align:'right' }); if(MAG) doc.setFont('helvetica', 'normal');
       doc.setFontSize(6.5); doc.setTextColor(95, 95, 100);
       doc.text(doc.splitTextToSize(o.disclaimer || 'This document is controlled within QaSHE Watchman. A printed or saved copy is valid only at the time of printing and may not reflect the current revision. Personnel must always refer to QaSHE Watchman for the latest approved version.', cw), mL, fy + 33);
       doc.setTextColor(0, 0, 0);
@@ -54979,14 +54985,17 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   window.wmOutStyle = function(kind){ const l = local(); return (l[kind] === 'magazine' || l[kind] === 'plain') ? l[kind] : ((orgStyle && orgStyle[kind]) === 'magazine' ? 'magazine' : 'plain'); };
   window.wmAccent = function(){ const c = String((STATE.org && STATE.org.brand_primary_color) || '').trim(); return /^#?[0-9a-f]{6}$/i.test(c) ? '#' + c.replace('#', '') : '#B21616'; };
   window.wmAccentHex = () => wmAccent().slice(1).toUpperCase();
+  window.wmAskEach = function(){ const l = local(); return l.ask === true || (l.ask == null && !!(orgStyle && orgStyle.ask === true)); };
 
   /* ---------- PDF view and print ---------- */
   function styleBox(box){ if(!box) return; const mag = wmOutStyle('pdf') === 'magazine'; box.classList.toggle('pm-mag', mag); if(mag) box.style.setProperty('--pm', wmAccent()); else box.style.removeProperty('--pm'); }
   const _print = window.print.bind(window);
   window.print = function(){
-    const c = document.getElementById('print-container');
-    if(c && !c.classList.contains('qr-label-mode')) styleBox(c);
-    return _print.apply(this, arguments);
+    const c = document.getElementById('print-container'), self = this, args = arguments;
+    const go = () => { if(c && !c.classList.contains('qr-label-mode')) styleBox(c); return _print.apply(self, args); };
+    if(wmAskEach() && c && c.innerHTML.length > 80 && !c.classList.contains('qr-label-mode') && typeof wmAskStyle === 'function' && !(window.__r54consume && window.__r54consume()))
+      return wmAskStyle().then(v => { if(v) go(); });
+    return go();
   };
   /* the preview bar gets a style switch, and the page follows it */
   new MutationObserver(() => {
@@ -55083,7 +55092,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   /* ---------- the settings page: Administration, Print and Download Style ---------- */
   window.wmSaveOutStyle = async function(all){
     const g = k => (document.querySelector('input[name="pm-' + k + '"]:checked') || {}).value || 'plain';
-    const v = { pdf:g('pdf'), word:g('word'), excel:g('excel') };
+    const v = { pdf:g('pdf'), word:g('word'), excel:g('excel'), ask:!!(document.getElementById('pm-ask') || {}).checked };
     if(all){
       let ok = false; try{ const { error } = await STATE.supabase.from('organisations').update({ output_style:v }).eq('id', STATE.org.id); ok = !error; }catch(e){}
       if(ok){ orgStyle = v; try{ localStorage.removeItem(LKEY()); }catch(e){} toast('Saved for everyone in your organisation.', 'success'); }
@@ -55107,6 +55116,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     wrap.innerHTML = `<div class="detail-card"><h3 style="margin-bottom:4px;">Print and Download Style</h3>
       <p style="font-size:12.5px;color:var(--text-faint);line-height:1.5;margin-bottom:14px;">Choose how reports look. Plain is the standard formal layout. Modern magazine uses your brand colour, a bold cover band, information tiles and banded tables. You can also switch a single PDF view with the style box at the top of the preview.${Object.keys(l).length ? ' <b>You have your own choice saved on this computer, which overrides the organisation setting.</b>' : ''}</p>
       ${card('pdf', 'PDF view and print', 'Formal black and white report layout.', 'Brand-colour cover band, summary tiles, banded tables.')}
+      <div class="pm-style-card" style="padding:10px 16px;"><label style="font-size:13px;display:flex;gap:8px;align-items:center;cursor:pointer;"><input type="checkbox" id="pm-ask" style="width:auto" ${wmAskEach() ? 'checked' : ''}> <span><b>Ask me each time</b> before any PDF view or print opens (a pop-up offers Plain or Magazine). Document views and asset prints always ask.</span></label></div>
       ${card('word', 'Word downloads', 'Formal document layout.', 'Brand-colour title banner and section headings with accent rules.')}
       ${card('excel', 'Excel downloads', 'Plain table, as exported today.', 'Branded title bar, record and status tiles, banded rows, frozen header, filters.')}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
@@ -55123,6 +55133,97 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     if(b && !b.parentNode.querySelector('[data-pm-style]')){ const n = document.createElement('button'); n.className = 'btn-small' + (STATE._adminSubtab === 'outstyle' ? ' primary' : ''); n.dataset.pmStyle = '1'; n.textContent = 'Print and Download Style'; n.setAttribute('onclick', "switchAdminSubtab('outstyle')"); b.insertAdjacentElement('afterend', n); }
   }).observe(document.body, { childList:true, subtree:true });
 })();
+
+/* ============================================================================
+   Release 54: ask Plain or Magazine before a document view or an asset print opens
+   ============================================================================ */
+(function(){
+  if(window.__r54) return; window.__r54 = true;
+  const css = document.createElement('style'); css.id = 'r54-css';
+  css.textContent = `
+  #r54-ask{position:fixed;inset:0;z-index:12500;background:rgba(14,16,22,.78);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:18px;font-family:Arial,Helvetica,sans-serif}
+  #r54-ask .bx{background:#fff;border-radius:16px;max-width:640px;width:100%;padding:22px 24px;box-shadow:0 26px 80px rgba(0,0,0,.5)}
+  #r54-ask h3{margin:0 0 4px;font-size:18px} #r54-ask p{margin:0 0 14px;font-size:12.5px;color:#615C59;line-height:1.5}
+  #r54-ask .cards{display:flex;gap:12px;flex-wrap:wrap} #r54-ask .cd{flex:1 1 250px;border:2px solid #E3E1DF;border-radius:14px;padding:12px;cursor:pointer;background:#fff;text-align:left;font:inherit}
+  #r54-ask .cd.on{border-color:var(--pm,#B21616);background:#FFF8F6;box-shadow:0 0 0 3px rgba(178,22,22,.12)} #r54-ask .cd b{display:block;font-size:14px;margin:8px 0 2px} #r54-ask .cd span{font-size:12px;color:#615C59;line-height:1.4}
+  #r54-ask .mini{height:128px;border:1px solid #D9D6D3;border-radius:8px;background:#fff;padding:9px;position:relative;overflow:hidden}
+  #r54-ask .mini i{display:block;border-radius:2px;background:#DAD7D4;height:5px;margin-bottom:5px}
+  #r54-ask .mini .tt{height:8px;width:58%;background:#222;margin-bottom:6px}
+  #r54-ask .mini .rule{height:2px;background:#222;margin-bottom:8px}
+  #r54-ask .mini .band{margin:-9px -9px 8px;height:34px;background:var(--pm,#B21616);padding:9px}
+  #r54-ask .mini .band i{background:rgba(255,255,255,.9);height:8px;width:55%;margin:0}
+  #r54-ask .mini .tl{display:flex;gap:5px;margin-bottom:7px} #r54-ask .mini .tl i{flex:1;height:17px;margin:0;background:#F6F3F1;border-top:3px solid var(--pm,#B21616)}
+  #r54-ask .mini .zb{background:#F6F3F1}
+  #r54-ask .ft{display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap} #r54-ask .ft .n{font-size:11.5px;color:#7a7571;flex:1 1 200px}
+  `;
+  document.head.appendChild(css);
+
+  /* ---- the pop-up ---- */
+  let open = null;
+  window.wmAskStyle = function(){
+    if(open) return open;
+    open = new Promise(resolve => {
+      const cur = wmOutStyle('pdf');
+      const ov = document.createElement('div'); ov.id = 'r54-ask'; ov.style.setProperty('--pm', wmAccent());
+      ov.innerHTML = `<div class="bx" role="dialog" aria-label="Choose the style"><h3>Choose the style</h3>
+        <p>Pick how this document or report should look before it opens. Your choice is remembered on this computer and can be changed in Administration, Print and Download Style.</p>
+        <div class="cards">
+          <button type="button" class="cd ${cur === 'plain' ? 'on' : ''}" data-v="plain"><div class="mini"><div class="tt"></div><div class="rule"></div><i></i><i style="width:90%"></i><i style="width:80%"></i><i></i><i style="width:70%"></i><i style="width:85%"></i></div><b>Plain</b><span>Formal black and white layout, as used for controlled documents.</span></button>
+          <button type="button" class="cd ${cur === 'magazine' ? 'on' : ''}" data-v="magazine"><div class="mini"><div class="band"><i></i></div><div class="tl"><i></i><i></i><i></i></div><i class="zb" style="height:7px"></i><i style="height:7px"></i><i class="zb" style="height:7px"></i><i style="height:7px"></i><i class="zb" style="height:7px"></i></div><b>Modern magazine</b><span>Brand-colour banner, bold headings, summary tiles and banded tables.</span></button>
+        </div>
+        <div class="ft"><span class="n">Press Enter to continue or Esc to cancel.</span><button type="button" class="btn-small" data-a="cancel">Cancel</button><button type="button" class="btn-small primary" data-a="go">Continue</button></div></div>`;
+      document.body.appendChild(ov);
+      let choice = cur;
+      const done = v => { document.removeEventListener('keydown', key, true); ov.remove(); open = null;
+        if(v){ try{ const k = 'wm_out_style_' + ((STATE.org && STATE.org.id) || ''); const l = JSON.parse(localStorage.getItem(k) || '{}') || {}; l.pdf = v; localStorage.setItem(k, JSON.stringify(l)); }catch(e){} window.__r54ok = Date.now(); }
+        resolve(v || null); };
+      const key = e => { if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); done(null); } else if(e.key === 'Enter'){ e.preventDefault(); e.stopPropagation(); done(choice); } };
+      document.addEventListener('keydown', key, true);
+      ov.addEventListener('click', e => {
+        const c = e.target.closest('.cd'), b = e.target.closest('[data-a]');
+        if(c){ choice = c.dataset.v; ov.querySelectorAll('.cd').forEach(x => x.classList.toggle('on', x === c)); if(e.detail === 2) done(choice); }
+        else if(b) done(b.dataset.a === 'go' ? choice : null);
+        else if(e.target === ov) done(null);
+      });
+      setTimeout(() => { const g = ov.querySelector('[data-a="go"]'); if(g) g.focus(); }, 30);
+    });
+    return open;
+  };
+  const askedRecently = () => window.__r54ok && (Date.now() - window.__r54ok) < 90000;
+  window.__r54consume = () => { const r = askedRecently(); window.__r54ok = 0; return r; };
+
+  /* ---- wrap the entry points ---- */
+  function askWrap(name, skip){
+    const o = window[name]; if(typeof o !== 'function' || o.__r54) return;
+    const w = async function(){
+      const a = arguments;
+      if(skip && skip.apply(null, a)) return o.apply(this, a);
+      if(askedRecently()) return o.apply(this, a);              /* an outer wrapper already asked */
+      const v = await wmAskStyle(); if(!v) return;
+      return o.apply(this, a);
+    };
+    w.__r54 = true; try{ eval(name + ' = w'); }catch(e){} window[name] = w;
+  }
+  const notBlob = (id, mode) => mode === 'blob';
+  ['downloadDocumentPdf', 'processDocumentPdf', 'perfReportPdf', 'wmReviewReport'].forEach(n => askWrap(n, notBlob));
+
+  /* asset and maintenance reports are drawn as tiles and charts; Plain flattens the tiles for the formal look */
+  const ac = document.createElement('style');
+  ac.textContent = `body.r54-ap #wm-view-page [style*="background:#FAFAF9"],body.r54-ap #print-container [style*="background:#FAFAF9"]{background:#fff!important;border-radius:0!important;border-color:#bbb!important}
+  body.r54-ap #wm-view-page [style*="border-radius:8px"],body.r54-ap #print-container [style*="border-radius:8px"]{border-radius:0!important}`;
+  document.head.appendChild(ac);
+  ['printAsset', 'printAssetFullReport', 'printAssetRegisterReport', 'printAssetInspection', 'printAwAsset'].forEach(n => {
+    const o = window[n]; if(typeof o !== 'function') return;
+    const w = async function(){
+      document.body.classList.toggle('r54-ap', wmOutStyle('pdf') !== 'magazine');
+      if(document.body.classList.contains('r54-ap')){ const t = setInterval(() => { if(!document.getElementById('wm-view-ov') && !document.getElementById('r54-ask')){ document.body.classList.remove('r54-ap'); clearInterval(t); } }, 1500); }
+      return o.apply(this, arguments);
+    };
+    try{ eval(n + ' = w'); }catch(e){} window[n] = w;
+  });
+  ['printAsset', 'printAssetFullReport', 'printAssetRegisterReport', 'printAssetInspection', 'printAwAsset'].forEach(n => askWrap(n));
+})();
+
 </script>
 </body>
 </html>
