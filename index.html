@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R54 2026-11-20"><meta charset="UTF-8">
+<meta name="wm-release" content="R55 2026-11-20"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -54993,8 +54993,6 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   window.print = function(){
     const c = document.getElementById('print-container'), self = this, args = arguments;
     const go = () => { if(c && !c.classList.contains('qr-label-mode')) styleBox(c); return _print.apply(self, args); };
-    if(wmAskEach() && c && c.innerHTML.length > 80 && !c.classList.contains('qr-label-mode') && typeof wmAskStyle === 'function' && !(window.__r54consume && window.__r54consume()))
-      return wmAskStyle().then(v => { if(v) go(); });
     return go();
   };
   /* the preview bar gets a style switch, and the page follows it */
@@ -55116,7 +55114,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     wrap.innerHTML = `<div class="detail-card"><h3 style="margin-bottom:4px;">Print and Download Style</h3>
       <p style="font-size:12.5px;color:var(--text-faint);line-height:1.5;margin-bottom:14px;">Choose how reports look. Plain is the standard formal layout. Modern magazine uses your brand colour, a bold cover band, information tiles and banded tables. You can also switch a single PDF view with the style box at the top of the preview.${Object.keys(l).length ? ' <b>You have your own choice saved on this computer, which overrides the organisation setting.</b>' : ''}</p>
       ${card('pdf', 'PDF view and print', 'Formal black and white report layout.', 'Brand-colour cover band, summary tiles, banded tables.')}
-      <div class="pm-style-card" style="padding:10px 16px;"><label style="font-size:13px;display:flex;gap:8px;align-items:center;cursor:pointer;"><input type="checkbox" id="pm-ask" style="width:auto" ${wmAskEach() ? 'checked' : ''}> <span><b>Ask me each time</b> before any PDF view or print opens (a pop-up offers Plain or Magazine). Document views and asset prints always ask.</span></label></div>
+      <div class="pm-style-card" style="padding:10px 16px;"><label style="font-size:13px;display:flex;gap:8px;align-items:center;cursor:pointer;"><input type="checkbox" id="pm-ask" style="width:auto" ${wmAskEach() ? 'checked' : ''}> <span><b>Ask me each time</b> before any print or PDF view opens in any module (a pop-up offers Plain or Magazine). Untick to always use the style saved above.</span></label></div>
       ${card('word', 'Word downloads', 'Formal document layout.', 'Brand-colour title banner and section headings with accent rules.')}
       ${card('excel', 'Excel downloads', 'Plain table, as exported today.', 'Branded title bar, record and status tiles, banded rows, frozen header, filters.')}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
@@ -55198,7 +55196,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     const w = async function(){
       const a = arguments;
       if(skip && skip.apply(null, a)) return o.apply(this, a);
-      if(askedRecently()) return o.apply(this, a);              /* an outer wrapper already asked */
+      if(askedRecently() || (window.wmAskEach && !wmAskEach())) return o.apply(this, a);              /* an outer wrapper already asked, or asking is switched off */
       const v = await wmAskStyle(); if(!v) return;
       return o.apply(this, a);
     };
@@ -55222,6 +55220,59 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     try{ eval(n + ' = w'); }catch(e){} window[n] = w;
   });
   ['printAsset', 'printAssetFullReport', 'printAssetRegisterReport', 'printAssetInspection', 'printAwAsset'].forEach(n => askWrap(n));
+})();
+
+
+/* ============================================================================
+   Release 55: one consistent way to choose the style, in every module
+   - the section picker ("What should this printout include?") now sits above full-page records
+   - every print and PDF view button asks Plain or Magazine first (after any section picker)
+   ============================================================================ */
+(function(){
+  if(window.__r55) return; window.__r55 = true;
+  const css = document.createElement('style'); css.id = 'r55-css';
+  css.textContent = `
+  #print-options-overlay, .import-overlay.active, .sf-modal-overlay.active, #oc-print-dialog{z-index:8600 !important}
+  #wm-view-ov .vbar #pm-sel{display:none !important}`;
+  document.head.appendChild(css);
+
+  const OPENERS = new Set(['printNC', 'printRaga', 'printCompanyOrgChart', 'printDivisionOrgChart', 'sfOpenPrintPicker', 'closePrintOptions', 'wmViewPrint', 'wmViewClose']);
+  const VIEWS = new Set(['viewNC', 'viewRaga', 'wmReviewReport', 'downloadDocumentPdf']);
+  const SKIP = /qr|tag|label|namingconflict|closeprint|setprint|printoptions$/i;
+  const TXT = /^\s*(view\s*(\/\s*print\s*)?pdf|print(\s*\/\s*(save\s*as\s*)?pdf)?|download\s*pdf|print\s*register|view\s*document)\b/i;
+  const NOTIN = '#wm-view-ov, #ar-view-ov, #r54-ask, #r52-bulk, #print-container, .pm-style-card';
+  let pass = null;
+  function needsAsk(el){
+    if(!el || (el.closest && el.closest(NOTIN))) return false;
+    const a = el.getAttribute && el.getAttribute('onclick');
+    if(a){
+      const m = a.match(/^\s*(?:return\s+)?(?:window\.)?([A-Za-z_$][\w$]*)\s*\(/); if(!m) return false;
+      const n = m[1]; if(OPENERS.has(n) || SKIP.test(n)) return false;
+      return /print|pdf/i.test(n) || VIEWS.has(n);
+    }
+    if(el.classList && el.classList.contains('nc-pdfview-top')) return true;
+    if((el.tagName === 'BUTTON' || el.tagName === 'A') && el.onclick) return TXT.test(el.textContent || '');
+    return false;
+  }
+  document.addEventListener('click', function(e){
+    const el = e.target && e.target.closest ? e.target.closest('button,a,[onclick]') : null;
+    if(!el) return;
+    if(pass === el){ pass = null; return; }
+    if(!window.wmAskEach || !window.wmAskStyle || !wmAskEach()) return;
+    if(!needsAsk(el)) return;
+    e.stopImmediatePropagation(); e.preventDefault();
+    window.__r54ok = 0;
+    wmAskStyle().then(v => { if(!v) return; pass = el; try{ el.click(); }catch(x){ pass = null; } });
+  }, true);
+
+  /* the "ask each time" switch now means "ask on every print or view" and is on unless you turn it off */
+  window.wmAskEach = function(){
+    const k = 'wm_out_style_' + ((STATE.org && STATE.org.id) || '');
+    let l = {}; try{ l = JSON.parse(localStorage.getItem(k) || '{}') || {}; }catch(e){}
+    if(l.ask === false) return false; if(l.ask === true) return true;
+    const o = STATE.org && STATE.org.output_style; if(o && o.ask === false) return false;
+    return true;
+  };
 })();
 
 </script>
