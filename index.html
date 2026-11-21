@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R55 2026-11-20"><meta charset="UTF-8">
+<meta name="wm-release" content="R56 2026-11-21"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -1959,11 +1959,17 @@ window.selectOrg = async function(orgId){
   // Every register loads at the same time rather than one after another — each loader
   // only fills its own slice of STATE, so none depends on another. allSettled means one
   // failing table (each already reports its own error) never blocks the rest.
-  const [membersResult] = await Promise.allSettled([
-    membersPromise,
-    loadNCs(),
-    loadRagaAlerts(),
+  // Two tiers (R56): the registers the first screen needs load first; everything else keeps loading
+  // in the background while the person is already working, so sign-in no longer waits for all of it.
+  if(STATE._deferP && !STATE._deferDone){ try{ await STATE._deferP; }catch(e){} }
+  const _deferNow = (typeof pendingModule !== 'undefined' && pendingModule && pendingModule !== 'overview');
+  const _loadTier2 = () => Promise.allSettled([
     loadNCTypes(),
+    loadCompetence(),
+    loadPopupSettings(),
+    loadDocuments(),
+    loadDocDepartments(),
+    loadDocTypes(),
     loadAssessmentTemplates(),
     loadAssessmentItems(),
     loadAssessmentRecords(),
@@ -1975,17 +1981,12 @@ window.selectOrg = async function(orgId){
     loadManagementReviewActions(),
     loadInvites(),
     loadFormerMembers(),
-    loadModuleDescriptions(),
     loadProcessReviews(),
-    loadTasks(),
     loadAudits(),
     loadAuditChecklistTemplates(),
     loadAuditChecklistItems(),
     loadAuditTeamMembers(),
     loadRisks(),
-    loadDocuments(),
-    loadDocDepartments(),
-    loadDocTypes(),
     loadDocReviewRequests(),
     loadFormIdentifications(),
     loadChecklistTemplates(),
@@ -2000,7 +2001,6 @@ window.selectOrg = async function(orgId){
     loadPositions(),
     loadPersonnel(),
     loadDivisions(),
-    loadCompetence(),
     loadTraining(),
     loadPositionKpis(),
     loadAppraisals(),
@@ -2009,8 +2009,6 @@ window.selectOrg = async function(orgId){
     loadAssets(),
     loadAssetMaintenance(),
     loadAssetInspectionsSummary(),
-    loadBulletins(),
-    loadPopupSettings(),
     loadAttendance(),
     loadLeaveTypes(),
     loadLeaveApplications(),
@@ -2030,6 +2028,19 @@ window.selectOrg = async function(orgId){
     loadAwSealReplacements(),
     loadSiteFiles(),
   ]);
+  STATE._deferDone = false; STATE._deferP = null; STATE._touched = false;
+  const _tier1 = Promise.allSettled([
+    membersPromise,
+    loadNCs(),
+    loadRagaAlerts(),
+    loadModuleDescriptions(),
+    loadTasks(),
+    loadBulletins(),
+  ]);
+  const _tier2 = _loadTier2();   // issued straight after the first tier, so both run side by side
+  const [membersResult] = await _tier1;
+  STATE._deferP = _tier2.then(() => { STATE._deferDone = true; try{ if(typeof wmAfterDeferredLoad === 'function') wmAfterDeferredLoad(); }catch(e){} });
+  if(_deferNow){ try{ await STATE._deferP; }catch(e){} }
 
   const { data: members, error: memErr } = membersResult.status === 'fulfilled' ? membersResult.value : { data: null, error: membersResult.reason };
   if(memErr){ toast('Could not load organisation members: ' + memErr.message, 'error'); return; }
@@ -2047,7 +2058,7 @@ window.selectOrg = async function(orgId){
   window.scrollTo({top:0, behavior:'instant'});
   const _quietReload = !!STATE._noPopups || (STATE.currentModule==='administration' && pendingModule==='administration');
   showModule(pendingModule || 'overview');
-  if(!_quietReload) setTimeout(showLatestBulletinPopup, 400); // bulletin first, then reminders — small delay so it doesn't collide with the view transition
+  if(!_quietReload){ const _pop = () => setTimeout(showLatestBulletinPopup, 400); /* bulletin first, then reminders; they wait for the second tier so the reminders are complete */ if(STATE._deferDone || !STATE._deferP) _pop(); else STATE._deferP.then(_pop); }
 
   } finally {
     hideBootLoading();
@@ -55275,6 +55286,115 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   };
 })();
 
+
+/* ============================================================================
+   Release 56: faster sign-in (two-tier loading) and a phone-friendly layout
+   ============================================================================ */
+(function(){
+  if(window.__r56) return; window.__r56 = true;
+  /* ---- two-tier loading support ---- */
+  document.addEventListener('pointerdown', () => { STATE._touched = true; }, true);
+  document.addEventListener('keydown', () => { STATE._touched = true; }, true);
+  function overlayOpen(){
+    return !!document.querySelector('#wm-view-ov.on, #r52-bulk, #r54-ask, .reminder-overlay.active, .import-overlay.active, [id$="-detail-slot"]:not(:empty)');
+  }
+  window.wmAfterDeferredLoad = function(){
+    try{ if(typeof applyModuleAccessToNav === 'function') applyModuleAccessToNav(); }catch(e){}
+    try{ if(typeof updateNavBadges === 'function') updateNavBadges(); }catch(e){}
+    try{ hideLoader(); }catch(e){}
+    const m = STATE._r56mod;
+    /* the landing screen was drawn before the remaining data arrived: refresh it once, only if nobody has started working */
+    if(m === 'overview' && !STATE._touched && !overlayOpen()){ try{ showModule('overview'); }catch(e){} }
+  };
+  /* going to another module before the background load has finished waits for it (normally a second or two) */
+  const _sm = window.showModule;
+  if(typeof _sm === 'function'){
+    const w = function(mod){
+      if(STATE._deferP && !STATE._deferDone && mod && mod !== 'overview'){
+        const a = arguments, self = this;
+        try{ showLoader('Loading your data…'); }catch(e){}
+        STATE._deferP.then(() => { try{ hideLoader(); }catch(e){} _sm.apply(self, a); });
+        return;
+      }
+      STATE._r56mod = mod;
+      return _sm.apply(this, arguments);
+    };
+    try{ showModule = w; }catch(e){} window.showModule = w;
+  }
+})();
+
+
+/* ===== R56 mobile: off-canvas navigation, touch targets, overflow safety ===== */
+(function(){
+  if(window.__r56m) return; window.__r56m=1;
+  var css=document.createElement('style'); css.id='r56-mobile-css';
+  css.textContent=`
+  #wm-burger{display:none}
+  #wm-nav-bd{display:none}
+  @media screen and (max-width:820px){
+    html,body{overflow-x:hidden;max-width:100vw;-webkit-text-size-adjust:100%}
+    #dashboard{display:block}
+    .sidebar{position:fixed!important;left:0;top:0;bottom:0;height:100vh;height:100dvh!important;width:min(84vw,310px)!important;z-index:9000;transform:translateX(-105%);transition:transform .22s ease;box-shadow:none;padding-bottom:max(18px,env(safe-area-inset-bottom))!important;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+    body.wm-nav-open .sidebar{transform:none;box-shadow:6px 0 28px rgba(0,0,0,.28)}
+    body.wm-nav-open{overflow:hidden}
+    #wm-nav-bd{position:fixed;inset:0;background:rgba(15,18,24,.5);z-index:8990;display:none}
+    body.wm-nav-open #wm-nav-bd{display:block}
+    #wm-burger{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;width:44px;height:44px;border:1px solid var(--border);border-radius:10px;background:#fff;color:var(--text);cursor:pointer;padding:0}
+    #wm-burger svg{width:22px;height:22px}
+    .nav-item{padding:13px 18px!important;font-size:15px!important;min-height:44px}
+    .nav-group-label{padding-top:14px!important}
+    .topbar{padding:8px 10px!important;padding-top:max(8px,env(safe-area-inset-top))!important;gap:6px 8px!important;flex-wrap:wrap!important;justify-content:flex-start!important}
+    #wm-burger{order:0}
+    .topbar>div:last-child{order:1;margin-left:auto}
+    .topbar-left{order:2;min-width:0;flex:1 1 100%!important;gap:8px!important}
+    .topbar-left h2{font-size:17px!important}
+    .rm-hero h3{padding-right:92px}
+    .topbar-left>div{min-width:0}
+    .topbar-left h2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .topbar-left p{display:none}
+    .header-report-tag,.account-hint,.client-logo-slot,.wm-tut-btn .lbl,.wm-chg-btn .lbl{display:none!important}
+    .avatar-wrap{padding:6px!important}
+    .main{width:100%;overflow-x:hidden}
+    input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),select,textarea{font-size:16px!important}
+    button,.btn,.nav-item,select{min-height:40px}
+    .main table{display:block;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+    .main img,.main canvas,.main video{max-width:100%;height:auto}
+    .main pre{white-space:pre-wrap;word-break:break-word}
+    .modal,.modal-box,.report-problem-modal,[class$="-modal"],[class*="-modal "]{max-width:100vw!important}
+    .kpi-grid,.form-grid,.wd-grid,.compliance-grid,.detail-meta{grid-template-columns:1fr!important}
+    #wm-view-ov,#r52-bulk{padding-left:0!important;padding-right:0!important}
+    .content{padding:14px max(12px,env(safe-area-inset-right)) calc(80px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))!important}
+    .rm-hero{padding:22px 18px 18px!important}.rm-body{padding:16px 18px 22px!important}
+    .ad-hero{padding:22px 18px 18px!important}
+    .content .btn-small,.content button.btn-small{min-height:44px}
+    #mod-back-btn{flex:0 0 auto;padding:0!important;width:44px;height:44px;align-items:center;justify-content:center}
+    #mod-back-btn[style*="display: none"]{display:none!important}
+    #mod-back-btn span,#mod-back-btn .lbl{display:none!important}
+    #mod-les-btn{margin-left:auto!important;padding:0!important;width:44px;height:44px;justify-content:center;border-radius:10px}
+    #mod-les-btn .lb-long,#mod-les-btn .lb-short{display:none!important}
+    .topbar>div:last-child{gap:6px!important;flex:0 0 auto}
+    #wm-tut-btn,#wm-chg-btn{margin:0!important}
+  }
+  @media screen and (max-width:820px) and (hover:none){
+    .nav-item:hover{background:none}
+  }`;
+  document.head.appendChild(css);
+  function ensure(){
+    var tb=document.querySelector('.topbar'); var tl=document.querySelector('.topbar-left'); if(!tb||!tl||document.getElementById('wm-burger')) return;
+    var b=document.createElement('button'); b.id='wm-burger'; b.type='button'; b.setAttribute('aria-label','Open menu');
+    b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>';
+    b.onclick=function(e){e.stopPropagation();document.body.classList.toggle('wm-nav-open')};
+    tb.insertBefore(b,tb.firstChild);
+    var bd=document.createElement('div'); bd.id='wm-nav-bd'; bd.onclick=function(){document.body.classList.remove('wm-nav-open')};
+    document.body.appendChild(bd);
+    var sb=document.querySelector('.sidebar');
+    if(sb) sb.addEventListener('click',function(e){ if(e.target.closest('.nav-item:not(.disabled)')) setTimeout(function(){document.body.classList.remove('wm-nav-open')},60) });
+  }
+  ensure(); document.addEventListener('DOMContentLoaded',ensure);
+  window.addEventListener('resize',function(){ if(innerWidth>820) document.body.classList.remove('wm-nav-open') });
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape') document.body.classList.remove('wm-nav-open') });
+  try{ var _sm=window.showModule; if(typeof _sm==='function'){ var w=function(){ document.body.classList.remove('wm-nav-open'); return _sm.apply(this,arguments) }; try{ showModule=w }catch(e){}; window.showModule=w } }catch(e){}
+})();
 </script>
 </body>
 </html>
