@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R57 2026-11-23"><meta charset="UTF-8">
+<meta name="wm-release" content="R58 2026-11-23"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -47827,7 +47827,8 @@ var WT = (function(){
   async function loadWt(){
     const d = D(), org = STATE.org.id, q = (t, cols) => STATE.supabase.from(t).select(cols || '*').eq('organisation_id', org).limit(5000);
     const tryq = async (t, cols) => { try{ const r = await q(t, cols); return r.error ? null : (r.data || []); }catch(e){ return null; } };
-    const [pl, vi, df, fa, se] = await Promise.all([tryq('wt_plants'), tryq('wt_visits', VCOLS), tryq('wt_defects'), tryq('wt_faults'), tryq('wt_settings')]);
+    const [pl, vi, df, fa, se, si] = await Promise.all([tryq('wt_plants'), tryq('wt_visits', VCOLS), tryq('wt_defects'), tryq('wt_faults'), tryq('wt_settings'), tryq('wt_sites')]);
+    d.sitesMissing = si == null; d.sites = si || [];
     d.broken = pl == null; d.plants = pl || []; d.visits = (vi || []).sort((a, b) => String(b.visit_date).localeCompare(String(a.visit_date)) || String(b.created_at).localeCompare(String(a.created_at)));
     (function(){ const cm = {}; arr(STATE.customers).forEach(c => { cm[c.id] = c.name; }); d.plants.forEach(p => { if(p.customer_id && cm[p.customer_id] && cm[p.customer_id] !== p.customer_name){ p.customer_name = cm[p.customer_id]; if(canW()) STATE.supabase.from('wt_plants').update({ customer_name:p.customer_name }).eq('id', p.id).then(() => {}, () => {}); } }); })();
     d.defects = df || []; d.faults = (fa || []).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))); d.settings = (se || [])[0] || null; d.loaded = true;
@@ -47862,7 +47863,7 @@ var WT = (function(){
 
   /* ---------- shell ---------- */
   let tab = 'plants', view = null;     // view: null | {type:'plant',id} | {type:'form'}
-  async function wtInit(){ try{ await loadWt(); }catch(e){} view = null; wtRender(); }
+  async function wtInit(){ try{ await loadWt(); }catch(e){} view = null; if(tab === 'plants' || tab === 'customers') tab = D().sitesMissing ? 'plants' : 'customers'; wtRender(); }
   window.wtTab = t => { tab = t; view = null; wtRender(); };
   const pill = r => { const x = WT.RES[r]; return x ? `<span class="sev-badge" style="background:${x[1]};color:#fff;">${x[0]}</span>` : '<span style="color:var(--text-faint)">—</span>'; };
   function wtRender(){
@@ -47871,9 +47872,10 @@ var WT = (function(){
     if(d.broken){ root.innerHTML = '<div class="detail-card" style="padding:20px"><h3>Database update needed</h3><p>Run <b>qashe-watchman-schema-water-treatment.sql</b> in the Supabase SQL editor, then reload.</p></div>'; return; }
     if(view && view.type === 'form'){ root.innerHTML = formHtml(); formAfter(); return; }
     if(view && view.type === 'plant'){ root.innerHTML = plantDetailHtml(view.id); return; }
+    if(view && view.type === 'customer'){ root.innerHTML = customerHtml(view); return; }
     const t = tdy(), openDef = d.defects.filter(x => !['completed','declined'].includes(x.status)).length, nf = d.faults.filter(f => f.status === 'new').length;
-    const tabs = [['plants','Plants'],['reports','Service reports'],['defects','Defects and quotations' + (openDef ? ' (' + openDef + ')' : '')],['faults','Reported faults' + (nf ? ' (' + nf + ')' : '')],['settings','Settings']];
-    const body = { plants:plantsHtml, reports:reportsHtml, defects:defectsHtml, faults:faultsHtml, settings:settingsHtml }[tab]();
+    const tabs = [...(D().sitesMissing ? [] : [['customers','Customers']]), ['plants', D().sitesMissing ? 'Plants' : 'All plants'],['reports','Service reports'],['defects','Defects and quotations' + (openDef ? ' (' + openDef + ')' : '')],['faults','Reported faults' + (nf ? ' (' + nf + ')' : '')],['settings','Settings']];
+    const body = { customers:customersHtml, plants:plantsHtml, reports:reportsHtml, defects:defectsHtml, faults:faultsHtml, settings:settingsHtml }[tab]();
     root.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center;">${tabs.map(([k, l]) => `<button class="btn-small ${tab === k ? 'primary' : ''}" onclick="wtTab('${k}')">${l}</button>`).join('')}<span style="flex:1"></span>${canW() ? '<button class="btn-small primary" onclick="wtNewReport()">New service report</button>' : ''}</div>${body}`;
   }
 
@@ -47885,22 +47887,138 @@ var WT = (function(){
     const pl = arr(D().plants).filter(p => p.status !== 'decommissioned').sort((a, b) => String(a.customer_name || '').localeCompare(String(b.customer_name || '')) || String(a.name).localeCompare(String(b.name)));
     return `<div class="detail-card" style="padding:16px"><div class="panel-head"><h3 style="font-size:15px">Plants</h3>${canW() ? '<button class="btn-small primary" onclick="wtPlantEdit()">Add plant</button>' : ''}</div>
       <p style="font-size:12px;color:var(--text-faint);margin:0 0 8px;">Each plant is a boiler house or cooling system at a customer site. Print its QR label and fix it to the plant: scanning opens the plant's page, where anyone can report a fault and Allmech staff can start a service report.</p>
-      <table><tr><th></th><th>Ref</th><th>Plant</th><th>Customer</th><th>Type</th><th>Units</th><th>Last service</th><th>Next due</th><th>Result</th><th>Email ops</th></tr>
-      ${pl.map(p => `<tr class="clickable" onclick="wtPlant('${p.id}')"><td>${p.photo_data ? `<img src="${p.photo_data}" style="width:46px;height:36px;object-fit:cover;border-radius:4px;">` : ''}</td><td class="mono-cell">${E(p.ref_code || '')}</td><td class="strong">${E(p.name)}</td><td>${E(p.customer_name || '—')}${p.customer_name && !p.customer_id ? ' <span style="font-size:10px;color:#B26A16;font-weight:700" title="Not linked to the Customers module">not in Customers</span>' : ''}</td><td style="font-size:12px">${typeLbl(p)}</td><td>${arr(p.units).length}</td><td>${p.last_service_date ? fmtDate(p.last_service_date) : '—'}</td><td>${dueCell(p)}</td><td>${pill(p.last_result)}</td><td style="font-size:12px">${p.notify_ops ? 'On' : 'Off'}</td></tr>`).join('') || '<tr><td colspan="10" style="color:var(--text-faint)">No plants yet. Add the first plant.</td></tr>'}</table></div>`;
+      <table><tr><th></th><th>Ref</th><th>Plant</th><th>Customer</th><th>Site</th><th>Type</th><th>Units</th><th>Last service</th><th>Next due</th><th>Result</th><th>Email ops</th></tr>
+      ${pl.map(p => `<tr class="clickable" onclick="wtPlant('${p.id}')"><td>${p.photo_data ? `<img src="${p.photo_data}" style="width:46px;height:36px;object-fit:cover;border-radius:4px;">` : ''}</td><td class="mono-cell">${E(p.ref_code || '')}</td><td class="strong">${E(p.name)}</td><td>${E(p.customer_name || '—')}${p.customer_name && !p.customer_id ? ' <span style="font-size:10px;color:#B26A16;font-weight:700" title="Not linked to the Customers module">not in Customers</span>' : ''}</td><td style="font-size:12px">${E((siteBy(p.site_id) || {}).name || '—')}</td><td style="font-size:12px">${typeLbl(p)}</td><td>${arr(p.units).length}</td><td>${p.last_service_date ? fmtDate(p.last_service_date) : '—'}</td><td>${dueCell(p)}</td><td>${pill(p.last_result)}</td><td style="font-size:12px">${p.notify_ops ? 'On' : 'Off'}</td></tr>`).join('') || '<tr><td colspan="11" style="color:var(--text-faint)">No plants yet. Add the first plant.</td></tr>'}</table></div>`;
   }
+  /* ---------- R58: Customer > Site > Plant ---------- */
+  const siteBy = id => arr(D().sites).find(s => s.id === id);
+  const custKey = x => (x && x.customer_id) || ('~' + String((x && x.customer_name) || '').trim().toLowerCase());
+  const custRec = id => arr(STATE.customers).find(c => c && c.id === id);
+  const custNameOf = x => { const c = x && x.customer_id ? custRec(x.customer_id) : null; return (c && c.name) || (x && x.customer_name) || '—'; };
+  const RANK = { critical:3, attention:2, compliant:1 };
+  function healthOf(plants){
+    let worst = null, od = false, n = 0;
+    arr(plants).filter(p => p.status !== 'decommissioned').forEach(p => { n++; if(p.last_result && (RANK[p.last_result] || 0) > (RANK[worst] || 0)) worst = p.last_result; if(p.status === 'active' && p.next_service_date && p.next_service_date < tdy()) od = true; });
+    return { worst, od, n };
+  }
+  const healthCell = h => (h.worst ? pill(h.worst) : '<span style="color:var(--text-faint);font-size:12px">Not yet inspected</span>') + (h.od ? ' <span class="sev-badge" style="background:#B3261E;color:#fff;">Overdue</span>' : '');
+  function custRows(){
+    const pls = arr(D().plants).filter(p => p.status !== 'decommissioned'), rows = [];
+    arr(D().sites).filter(s => s.status !== 'inactive').forEach(s => rows.push({ key:custKey(s), customer_id:s.customer_id, customer_name:s.customer_name, site:s, plants:pls.filter(p => p.site_id === s.id) }));
+    const orphan = {};
+    pls.filter(p => !p.site_id || !siteBy(p.site_id)).forEach(p => { const k = custKey(p); (orphan[k] = orphan[k] || { key:k, customer_id:p.customer_id, customer_name:p.customer_name, site:null, plants:[] }).plants.push(p); });
+    Object.keys(orphan).forEach(k => rows.push(orphan[k]));
+    return rows.sort((a, b) => String(custNameOf(a)).localeCompare(String(custNameOf(b))) || String((a.site || {}).name || '').localeCompare(String((b.site || {}).name || '')));
+  }
+  function customersHtml(){
+    if(D().sitesMissing) return '<div class="detail-card" style="padding:20px"><h3>Database update needed</h3><p>Run <b>qashe-watchman-schema-r58-wt-sites.sql</b> in the Supabase SQL editor, then reload. Your plants are moved into customers and sites automatically.</p></div>';
+    const rows = custRows();
+    return `<div class="detail-card" style="padding:16px"><div class="panel-head"><h3 style="font-size:15px">Customers</h3>${canW() ? '<button class="btn-small primary" onclick="wtSiteEdit()">Add customer or site</button>' : ''}</div>
+      <p style="font-size:12px;color:var(--text-faint);margin:0 0 8px;">Customers come from the Customers module (a customer added here is added there too). A customer can have several sites, and a site several plants. Open a customer to see its plants.</p>
+      <table><tr><th>Account no.</th><th>Customer</th><th>Location</th><th>Plants</th><th>Inspection health</th></tr>
+      ${rows.map(r => { const c = r.customer_id ? custRec(r.customer_id) : null, h = healthOf(r.plants); return `<tr class="clickable" onclick="wtCust('${r.key}','${r.site ? r.site.id : ''}')"><td class="mono-cell">${E((c && c.account_number) || '—')}</td><td class="strong">${E(custNameOf(r))}${!r.customer_id ? ' <span style="font-size:10px;color:#B26A16;font-weight:700">not in Customers</span>' : ''}</td><td>${E(r.site ? r.site.name : 'Site not set')}${r.site && r.site.address ? `<div style="font-size:11.5px;color:var(--text-faint)">${E(r.site.address)}</div>` : ''}</td><td>${h.n}</td><td>${healthCell(h)}</td></tr>`; }).join('') || '<tr><td colspan="5" style="color:var(--text-faint)">No customers yet. Press Add customer or site.</td></tr>'}</table></div>`;
+  }
+  window.wtCust = function(key, siteId){ view = { type:'customer', key, site:siteId || null }; tab = 'customers'; wtRender(); window.scrollTo(0, 0); };
+  function customerHtml(v){
+    const rows = custRows().filter(r => r.key === v.key), first = rows[0];
+    if(!first) return '<p>Customer not found. <button class="btn-small" onclick="wtTab(\'customers\')">Back to customers</button></p>';
+    const c = first.customer_id ? custRec(first.customer_id) : null, sites = rows.filter(r => r.site).map(r => r.site);
+    const plants = rows.reduce((a, r) => a.concat(r.plants), []).filter(p => !v.site || p.site_id === v.site).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    const hAll = healthOf(rows.reduce((a, r) => a.concat(r.plants), []));
+    const chip = (id, l) => `<button class="btn-small ${v.site === id || (!v.site && !id) ? 'primary' : ''}" onclick="wtCust('${v.key}','${id}')">${E(l)}</button>`;
+    return `<div style="margin-bottom:10px;font-size:13px;"><a href="#" onclick="wtTab('customers');return false;" style="color:var(--red);font-weight:600">Customers</a> &rsaquo; <b>${E(custNameOf(first))}</b></div>
+      <div class="detail-card" style="padding:16px;margin-bottom:14px;"><div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start;">
+        <div style="flex:1;min-width:240px;"><div style="font-size:11px;color:var(--text-faint)">${E((c && c.ref_code) || '')}${c && c.account_number ? ' &middot; Account ' + E(c.account_number) : ''}</div><h2 style="margin:2px 0 6px;font-size:20px;">${E(custNameOf(first))}</h2>
+          <div style="font-size:13px;line-height:1.7;">${c ? `<b>Contact:</b> ${E(c.contact_name || '—')} ${c.contact_email ? '&lt;' + E(c.contact_email) + '&gt;' : ''} ${E(c.contact_phone || '')}<br>` : ''}<b>Sites:</b> ${sites.length} &nbsp; <b>Plants:</b> ${hAll.n} &nbsp; ${healthCell(hAll)}</div>
+          ${!first.customer_id && canW() ? `<div style="margin-top:8px;background:#FFF4E5;border:1px solid #F0C98A;border-radius:8px;padding:8px 10px;font-size:12.5px;">Not in the Customers module. <a href="#" onclick="wtLinkCustomer('${v.key}');return false;" style="color:var(--red);font-weight:700">Add it</a></div>` : ''}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">${canW() ? `<button class="btn-small" onclick="wtSiteEdit(null,'${v.key}')">Add site</button><button class="btn-small primary" onclick="wtPlantEdit(null,{customer:'${v.key}',site:'${v.site || ''}'})">Add plant</button><button class="btn-small" onclick="wtNewReport()">New service report</button>` : ''}</div></div></div>
+      <div class="detail-card" style="padding:16px;margin-bottom:14px;"><div class="panel-head"><h3 style="font-size:15px">Sites</h3></div>
+        <table><tr><th>Site</th><th>Physical address</th><th>Site contact</th><th>Operations manager</th><th>Plants</th><th>Health</th><th></th></tr>
+        ${sites.map(s => { const r = rows.find(x => x.site && x.site.id === s.id), h = healthOf(r.plants); return `<tr class="clickable" onclick="wtCust('${v.key}','${s.id}')"><td class="strong">${E(s.name)}</td><td style="font-size:12.5px">${E(s.address || '—')}</td><td style="font-size:12.5px">${E(s.contact_name || '—')}${s.contact_phone ? '<br>' + E(s.contact_phone) : ''}${s.contact_email ? '<br>' + E(s.contact_email) : ''}</td><td style="font-size:12.5px">${E(s.ops_manager_name || '—')}${s.ops_manager_email ? '<br>' + E(s.ops_manager_email) : ''}<br><span style="color:var(--text-faint)">Email on completion: ${s.notify_ops ? 'On' : 'Off'}</span></td><td>${h.n}</td><td>${healthCell(h)}</td><td>${canW() ? `<button class="btn-small" onclick="event.stopPropagation();wtSiteEdit('${s.id}')">Edit</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="7" style="color:var(--text-faint)">No site recorded yet. Add a site.</td></tr>'}</table></div>
+      <div class="detail-card" style="padding:16px"><div class="panel-head"><h3 style="font-size:15px">Plants</h3></div>
+        ${sites.length > 1 ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">${chip('', 'All sites')}${sites.map(s => chip(s.id, s.name)).join('')}</div>` : ''}
+        <table><tr><th></th><th>Ref</th><th>Plant</th><th>Site</th><th>Type</th><th>Units</th><th>Last service</th><th>Next due</th><th>Result</th></tr>
+        ${plants.map(p => `<tr class="clickable" onclick="wtPlant('${p.id}')"><td>${p.photo_data ? `<img src="${p.photo_data}" style="width:46px;height:36px;object-fit:cover;border-radius:4px;">` : ''}</td><td class="mono-cell">${E(p.ref_code || '')}</td><td class="strong">${E(p.name)}</td><td style="font-size:12px">${E((siteBy(p.site_id) || {}).name || '—')}</td><td style="font-size:12px">${typeLbl(p)}</td><td>${arr(p.units).length}</td><td>${p.last_service_date ? fmtDate(p.last_service_date) : '—'}</td><td>${dueCell(p)}</td><td>${pill(p.last_result)}</td></tr>`).join('') || '<tr><td colspan="9" style="color:var(--text-faint)">No plants here yet. Press Add plant.</td></tr>'}</table></div>`;
+  }
+  window.wtLinkCustomer = async function(key){
+    if(!custOk()){ toast('The Customers module is not available to you.', 'error'); return; }
+    const r = custRows().find(x => x.key === key); if(!r) return; const name = r.customer_name;
+    try{ const c = custByName(name) || await addCustomerFull({ name }); const ids = arr(D().plants).filter(p => custKey(p) === key).map(p => p.id), sids = arr(D().sites).filter(s => custKey(s) === key).map(s => s.id);
+      if(ids.length) await STATE.supabase.from('wt_plants').update({ customer_id:c.id }).in('id', ids); if(sids.length) await STATE.supabase.from('wt_sites').update({ customer_id:c.id }).in('id', sids);
+      await loadWt(); view = { type:'customer', key:c.id, site:null }; wtRender(); toast('Linked to the Customers module.', 'success'); }catch(e){ toast('Could not add the customer: ' + (e.message || e), 'error'); }
+  };
+  async function addCustomerFull(o){
+    const payload = { organisation_id:STATE.org.id, name:o.name, contact_name:o.contact_name || '', contact_email:o.contact_email || '', contact_phone:o.contact_phone || '', account_owner_id:STATE.user.id, created_by:STATE.user.id };
+    if(o.account_number) payload.account_number = o.account_number;
+    const r = await STATE.supabase.from('customers').insert(payload).select().single(); if(r.error) throw r.error; try{ await loadCustomers(); }catch(e){} return r.data;
+  }
+  let SF = null;
+  window.wtSiteEdit = function(id, ckey){
+    if(!canW()){ toast('You do not have permission to change sites.', 'error'); return; }
+    const s = id ? Object.assign({}, siteBy(id)) : { notify_ops:false };
+    let fixed = null; if(id) fixed = { customer_id:s.customer_id, customer_name:s.customer_name }; else if(ckey){ const r = custRows().find(x => x.key === ckey); if(r) fixed = { customer_id:r.customer_id, customer_name:r.customer_name }; }
+    SF = { s, fixed }; siteFormDraw();
+  };
+  window.wtSiteCustSel = function(v){ const b = document.getElementById('ws2-newcust'); if(b) b.style.display = v === '__new' ? '' : 'none'; };
+  function siteFormDraw(){
+    const { s, fixed } = SF, cl = custList(), f = (k, l, t) => `<div class="field"><label>${l}</label><input id="ws2-${k}" type="${t || 'text'}" value="${E(s[k] == null ? '' : s[k])}"></div>`;
+    const cf = (k, l, t) => `<div class="field"><label>${l}</label><input id="wc-${k}" type="${t || 'text'}"></div>`;
+    kpiOverlay(`<h3 style="font-family:Arial,Helvetica,sans-serif;margin:0 0 10px;">${s.id ? 'Edit site' : (fixed ? 'Add site' : 'Add customer or site')}</h3>
+      <div class="form-grid">
+        ${fixed ? `<div class="field" style="grid-column:1/-1"><label>Customer</label><input value="${E(custNameOf(fixed))}" disabled></div>` : `<div class="field" style="grid-column:1/-1"><label>Customer (from the Customers module)</label><select id="ws2-cust" onchange="wtSiteCustSel(this.value)"><option value="">Select a customer…</option>${cl.map(c => `<option value="${c.id}">${E(c.name)}</option>`).join('')}<option value="__new">New customer: add it here and in the Customers module…</option></select></div>
+        <div id="ws2-newcust" style="display:none;grid-column:1/-1" class="form-grid">${cf('name', 'New customer name')}${cf('account', 'Your account number (optional)')}${cf('contact', 'Customer contact name')}${cf('phone', 'Customer contact phone')}${cf('email', 'Customer contact email', 'email')}</div>`}
+        ${f('name', 'Site name (for example the town or plant location)')}${f('address', 'Physical address')}
+        ${f('contact_name', 'Site contact')}${f('contact_phone', 'Site contact phone')}${f('contact_email', 'Site contact email', 'email')}
+        ${f('ops_manager_name', 'Operations manager (customer)')}${f('ops_manager_email', 'Operations manager email', 'email')}
+        <div class="field"><label>Email the operations manager when a service is completed</label><select id="ws2-notify_ops"><option value="false" ${!s.notify_ops ? 'selected' : ''}>No notification</option><option value="true" ${s.notify_ops ? 'selected' : ''}>Send a notification</option></select></div>
+        <div class="field" style="grid-column:1/-1"><label>Notes</label><textarea id="ws2-notes" rows="2">${E(s.notes || '')}</textarea></div></div>
+      <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" onclick="wtSiteSave()">Save site</button></div>`);
+  }
+  window.wtSiteSave = async function(){
+    const { s, fixed } = SF, g = k => ((document.getElementById('ws2-' + k) || {}).value || '').trim() || null;
+    const row = { organisation_id:STATE.org.id, name:g('name'), address:g('address'), contact_name:g('contact_name'), contact_phone:g('contact_phone'), contact_email:g('contact_email'), ops_manager_name:g('ops_manager_name'), ops_manager_email:g('ops_manager_email'), notify_ops:(document.getElementById('ws2-notify_ops') || {}).value === 'true', notes:g('notes'), updated_at:new Date().toISOString() };
+    if(!row.name){ toast('Please give the site a name.', 'error'); return; }
+    if(row.ops_manager_email && !validEmail(row.ops_manager_email)){ toast('The operations manager email is not valid.', 'error'); return; }
+    try{
+      let cust = fixed;
+      if(!cust){
+        const sel = (document.getElementById('ws2-cust') || {}).value || '';
+        if(!sel){ toast('Select the customer, or choose to add a new one.', 'error'); return; }
+        if(sel === '__new'){ const gv = k => ((document.getElementById('wc-' + k) || {}).value || '').trim(); const nm = gv('name'); if(!nm){ toast('Type the new customer name.', 'error'); return; }
+          if(!custOk()){ toast('The Customers module is not available to you, so a new customer cannot be added here.', 'error'); return; }
+          const ex = custByName(nm), c = ex || await addCustomerFull({ name:nm, account_number:gv('account') || null, contact_name:gv('contact'), contact_phone:gv('phone'), contact_email:gv('email') }); cust = { customer_id:c.id, customer_name:c.name }; if(!ex) toast('Customer added to the Customers module' + (c.ref_code ? ' as ' + c.ref_code : '') + '.', 'success'); }
+        else { const c = custRec(sel); cust = { customer_id:sel, customer_name:c ? c.name : null }; }
+      }
+      row.customer_id = cust.customer_id || null; row.customer_name = custNameOf(cust) === '—' ? cust.customer_name : custNameOf(cust);
+      let sid = s.id;
+      if(sid){ const { error } = await STATE.supabase.from('wt_sites').update(row).eq('id', sid); if(error) throw error; }
+      else { row.created_by = STATE.user.id; const r = await STATE.supabase.from('wt_sites').insert(row).select().single(); if(r.error) throw r.error; sid = r.data.id; }
+      if(s.id){ const { error } = await STATE.supabase.from('wt_plants').update({ site_address:row.address, ops_manager_name:row.ops_manager_name, ops_manager_email:row.ops_manager_email, notify_ops:row.notify_ops, customer_name:row.customer_name }).eq('site_id', sid); if(error) throw error; }
+      kpiCloseOverlay(); await loadWt(); view = { type:'customer', key:custKey(row), site:null }; tab = 'customers'; wtRender(); toast('Site saved.', 'success');
+    }catch(e){ toast('Could not save: ' + (e.message || e), 'error'); }
+  };
   let PF = null; // plant form state
   const custList = () => arr(STATE.customers).filter(c => c && c.name).slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
   const custByName = n => custList().find(c => String(c.name).trim().toLowerCase() === String(n || '').trim().toLowerCase());
   const custOk = () => { try{ return canAccessModule('customers'); }catch(e){ return false; } };
-  window.wtPlantEdit = function(id){
+  window.wtPlantEdit = function(id, pre){
     if(!canW()){ toast('You do not have permission to change plants.', 'error'); return; }
     const p = id ? Object.assign({}, plantBy(id)) : { plant_type:'boiler', status:'active', units:[{ no:1, name:'Boiler 1', kind:'oil_coal', status:'active' }], notify_ops:false };
     p.units = JSON.parse(JSON.stringify(arr(p.units)));
     if(!p.customer_id && p.customer_name){ const m = custByName(p.customer_name); if(m) p.customer_id = m.id; }
+    if(!id && pre && pre.customer){ const r = custRows().find(x => x.key === pre.customer); if(r){ p.customer_id = r.customer_id || null; p.customer_name = custNameOf(r); } if(pre.site) p.site_id = pre.site; }
     PF = { p, photo:p.photo_data || null };
     plantFormDraw();
   };
-  window.wtCustSel = function(v){ const b = document.getElementById('wp-newcust'); if(b) b.style.display = v === '__new' ? '' : 'none'; };
+  window.wtCustSel = function(v){ if(v === '__new'){ const b = document.getElementById('wp-newcust'); if(b) b.style.display = ''; return; } pfRead(); PF.p.site_id = null; PF.p.__newsite = false; plantFormDraw(); };
+  function sitePick(p){
+    if(D().sitesMissing) return '';
+    const cid = p.customer_id, ss = arr(D().sites).filter(s => s.status !== 'inactive' && (cid ? s.customer_id === cid : (!s.customer_id && String(s.customer_name || '').toLowerCase() === String(p.customer_name || '').toLowerCase())));
+    const sel = p.site_id && ss.find(s => s.id === p.site_id) ? p.site_id : (p.__newsite ? '__new' : (ss.length === 1 && !p.id ? ss[0].id : ''));
+    return `<div class="field"><label>Site</label><select id="wp-site_id" onchange="wtSiteSel(this.value)"><option value="">Select the site…</option>${ss.map(s => `<option value="${s.id}" ${sel === s.id ? 'selected' : ''}>${E(s.name)}${s.address ? ' (' + E(s.address) + ')' : ''}</option>`).join('')}<option value="__new" ${sel === '__new' ? 'selected' : ''}>New site…</option></select></div>
+      <div class="field" id="wp-newsite" style="grid-column:1/-1;${sel === '__new' ? '' : 'display:none'}"><div class="form-grid"><div class="field"><label>New site name</label><input id="wp-sitenew_name" value="${E(p.__sn || '')}"></div><div class="field"><label>Physical address</label><input id="wp-sitenew_addr" value="${E(p.__sa || '')}"></div></div><div style="font-size:11.5px;color:var(--text-faint)">Site contact and operations manager can be added afterwards on the customer page.</div></div>`;
+  }
+  window.wtSiteSel = function(v){ const b = document.getElementById('wp-newsite'); if(b) b.style.display = v === '__new' ? '' : 'none'; };
   function plantFormDraw(){
     const { p } = PF, cl = custList();
     const kinds = WT.KINDS[p.plant_type] || WT.KINDS.boiler;
@@ -47916,11 +48034,11 @@ var WT = (function(){
           <b>This customer is not in your Customers module.</b> Type the name, and tick the box to add it to the Customers module so it can be selected next time.
           <input id="wp-customer_new" style="margin-top:6px" placeholder="Customer name" value="${E(legacy ? p.customer_name : '')}">
           <label style="display:flex;gap:6px;align-items:center;margin-top:6px;cursor:pointer;"><input type="checkbox" id="wp-cust_add" style="width:auto" ${custOk() ? 'checked' : 'disabled'}> Also add this customer to the Customers module${custOk() ? '' : ' (the Customers module is not available to you)'}</label></div></div>
-        ${f('site_address', 'Site address')}${f('location_note', 'Where on site')}${f('make_model', 'Make and model')}${f('serial_no', 'Serial number')}${f('capacity', 'Capacity')}
+        ${sitePick(p)}${D().sitesMissing ? f('site_address', 'Site address') : ''}${f('location_note', 'Where on site')}${f('make_model', 'Make and model')}${f('serial_no', 'Serial number')}${f('capacity', 'Capacity')}
         ${f('service_frequency_days', 'Service every (days)', 'number')}${f('last_service_date', 'Last service', 'date')}
         <div class="field"><label>Status</label><select id="wp-status"><option value="active" ${p.status === 'active' ? 'selected' : ''}>Active</option><option value="offline" ${p.status === 'offline' ? 'selected' : ''}>Offline</option><option value="decommissioned" ${p.status === 'decommissioned' ? 'selected' : ''}>Decommissioned</option></select></div>
-        ${f('ops_manager_name', 'Operations manager (customer)')}${f('ops_manager_email', 'Operations manager email', 'email')}
-        <div class="field"><label>Email the operations manager when a service is completed</label><select id="wp-notify_ops"><option value="false" ${!p.notify_ops ? 'selected' : ''}>No notification</option><option value="true" ${p.notify_ops ? 'selected' : ''}>Send a notification</option></select></div>
+        ${D().sitesMissing ? `${f('ops_manager_name', 'Operations manager (customer)')}${f('ops_manager_email', 'Operations manager email', 'email')}
+        <div class="field"><label>Email the operations manager when a service is completed</label><select id="wp-notify_ops"><option value="false" ${!p.notify_ops ? 'selected' : ''}>No notification</option><option value="true" ${p.notify_ops ? 'selected' : ''}>Send a notification</option></select></div>` : '<div class="field" style="grid-column:1/-1;font-size:12px;color:var(--text-faint)">The address, site contact and operations manager notification are set on the site.</div>'}
         <div class="field" style="grid-column:1/-1"><label>${p.plant_type === 'cooling' ? 'Cooling towers and closed systems' : 'Boilers'} on this plant</label>
           ${arr(p.units).map((u, i) => `<div style="display:flex;gap:6px;margin-bottom:6px;"><input style="flex:2" value="${E(u.name || '')}" onchange="PFU(${i},'name',this.value)" placeholder="Name"><select style="flex:2" onchange="PFU(${i},'kind',this.value)">${kinds.map(([k, l]) => `<option value="${k}" ${u.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select><select style="flex:1" onchange="PFU(${i},'status',this.value)"><option value="active" ${u.status !== 'offline' ? 'selected' : ''}>Active</option><option value="offline" ${u.status === 'offline' ? 'selected' : ''}>Offline</option></select><button class="btn-small" onclick="PFUdel(${i})">Remove</button></div>`).join('')}
           <button class="btn-small" onclick="PFUadd()">Add a unit</button></div>
@@ -47935,7 +48053,8 @@ var WT = (function(){
     const sel = (document.getElementById('wp-customer_id') || {}).value || '';
     if(sel && sel !== '__new'){ const c = custList().find(x => x.id === sel); p.customer_id = sel; p.customer_name = c ? c.name : p.customer_name; p.addCust = false; }
     else { p.customer_id = null; p.customer_name = ((document.getElementById('wp-customer_new') || {}).value || '').trim() || null; p.addCust = !!(document.getElementById('wp-cust_add') || {}).checked; }
-    p.status = document.getElementById('wp-status').value; p.notify_ops = document.getElementById('wp-notify_ops').value === 'true'; p.plant_type = document.getElementById('wp-plant_type').value; }
+    const ssel = document.getElementById('wp-site_id'); if(ssel){ p.site_id = ssel.value && ssel.value !== '__new' ? ssel.value : null; p.__newsite = ssel.value === '__new'; p.__sn = ((document.getElementById('wp-sitenew_name') || {}).value || '').trim(); p.__sa = ((document.getElementById('wp-sitenew_addr') || {}).value || '').trim(); }
+    p.status = document.getElementById('wp-status').value; if(document.getElementById('wp-notify_ops')) p.notify_ops = document.getElementById('wp-notify_ops').value === 'true'; p.plant_type = document.getElementById('wp-plant_type').value; }
   window.wtPlantType = v => { pfRead(); PF.p.plant_type = v; PF.p.units = [{ no:1, name:v === 'cooling' ? 'Cooling tower 1' : 'Boiler 1', kind:v === 'cooling' ? 'tower' : 'oil_coal', status:'active' }]; plantFormDraw(); };
   window.PFU = (i, k, v) => { PF.p.units[i][k] = v; };
   window.PFUadd = () => { pfRead(); const u = PF.p.units, t = PF.p.plant_type; u.push({ no:u.length + 1, name:(t === 'cooling' ? 'Unit ' : 'Boiler ') + (u.length + 1), kind:t === 'cooling' ? 'tower' : 'oil_coal', status:'active' }); plantFormDraw(); };
@@ -47958,18 +48077,24 @@ var WT = (function(){
     p.units.forEach((u, i) => u.no = i + 1);
     try{
       if(!p.customer_id){ const m = custByName(p.customer_name); if(m){ p.customer_id = m.id; p.customer_name = m.name; } else if(p.addCust && custOk()){ const c = await addCustomerRec(p.customer_name, p); p.customer_id = c.id; toast('Customer added to the Customers module' + (c.ref_code ? ' as ' + c.ref_code : '') + '.', 'success'); } }
-      const row = { organisation_id:STATE.org.id, plant_type:p.plant_type, name:p.name, customer_name:p.customer_name, customer_id:p.customer_id || null, site_address:p.site_address, location_note:p.location_note, make_model:p.make_model, serial_no:p.serial_no, capacity:p.capacity,
+      if(!D().sitesMissing){
+        if(p.__newsite){ if(!p.__sn){ toast('Give the new site a name.', 'error'); return; }
+          const sr = await STATE.supabase.from('wt_sites').insert({ organisation_id:STATE.org.id, customer_id:p.customer_id || null, customer_name:p.customer_name, name:p.__sn, address:p.__sa || null, created_by:STATE.user.id }).select().single(); if(sr.error) throw sr.error; p.site_id = sr.data.id; }
+        if(!p.site_id){ toast('Select the site, or choose New site.', 'error'); return; }
+        const st = arr(D().sites).find(x => x.id === p.site_id) || { address:p.__sa || null }; p.site_address = st.address || null; if(st.ops_manager_name !== undefined){ p.ops_manager_name = st.ops_manager_name || null; p.ops_manager_email = st.ops_manager_email || null; p.notify_ops = !!st.notify_ops; }
+      }
+      const row = { organisation_id:STATE.org.id, site_id:p.site_id || null, plant_type:p.plant_type, name:p.name, customer_name:p.customer_name, customer_id:p.customer_id || null, site_address:p.site_address, location_note:p.location_note, make_model:p.make_model, serial_no:p.serial_no, capacity:p.capacity,
         units:p.units, service_frequency_days:p.service_frequency_days, last_service_date:p.last_service_date, status:p.status, photo_data:PF.photo, ops_manager_name:p.ops_manager_name, ops_manager_email:p.ops_manager_email, notify_ops:p.notify_ops, notes:p.notes };
       row.next_service_date = row.last_service_date && row.service_frequency_days ? addDays(row.last_service_date, row.service_frequency_days) : (p.next_service_date || null);
-      if(p.id){ let { error } = await STATE.supabase.from('wt_plants').update(row).eq('id', p.id); if(error && /customer_id/.test(error.message)){ delete row.customer_id; ({ error } = await STATE.supabase.from('wt_plants').update(row).eq('id', p.id)); } if(error) throw error; }
+      if(p.id){ let { error } = await STATE.supabase.from('wt_plants').update(row).eq('id', p.id); if(error && /customer_id|site_id/.test(error.message)){ delete row.customer_id; delete row.site_id; ({ error } = await STATE.supabase.from('wt_plants').update(row).eq('id', p.id)); } if(error) throw error; }
       else { row.created_by = STATE.user.id; const r = await STATE.supabase.rpc('gov_next_no', { p_org:STATE.org.id, p_kind:'wp' }); if(!r.error && r.data != null) row.ref_code = 'WTP-' + String(r.data).padStart(4, '0');
-        let { error } = await STATE.supabase.from('wt_plants').insert(row); if(error && /customer_id/.test(error.message)){ delete row.customer_id; ({ error } = await STATE.supabase.from('wt_plants').insert(row)); } if(error) throw error; }
+        let { error } = await STATE.supabase.from('wt_plants').insert(row); if(error && /customer_id|site_id/.test(error.message)){ delete row.customer_id; delete row.site_id; ({ error } = await STATE.supabase.from('wt_plants').insert(row)); } if(error) throw error; }
     }catch(e){ toast('Could not save: ' + (e.message || e), 'error'); return; }
-    kpiCloseOverlay(); await loadWt(); wtRender(); toast('Plant saved.', 'success');
+    kpiCloseOverlay(); await loadWt(); if(view && view.type === 'customer'){ view = { type:'customer', key:custKey(p), site:p.site_id || null }; } wtRender(); toast('Plant saved.', 'success');
   };
-  window.wtPlant = function(id){ view = { type:'plant', id }; tab = 'plants'; wtRender(); window.scrollTo(0, 0); };
-  window.wtBack = function(){ view = null; wtRender(); };
-  window.wtNotifyToggle = async function(id, on){ const { error } = await STATE.supabase.from('wt_plants').update({ notify_ops:!!on }).eq('id', id); if(error){ toast('Could not update: ' + error.message, 'error'); return; } const p = plantBy(id); if(p) p.notify_ops = !!on; toast(on ? 'The operations manager will be emailed when a service is completed.' : 'Notification switched off.', 'success'); wtRender(); };
+  window.wtPlant = function(id){ view = { type:'plant', id, from:(view && view.type === 'customer') ? view : null }; if(!view.from) tab = 'plants'; wtRender(); window.scrollTo(0, 0); };
+  window.wtBack = function(){ view = (view && view.from) ? view.from : null; wtRender(); };
+  window.wtNotifyToggle = async function(id, on){ const p0 = plantBy(id); let q = STATE.supabase.from('wt_plants').update({ notify_ops:!!on }); q = p0 && p0.site_id ? q.eq('site_id', p0.site_id) : q.eq('id', id); const { error } = await q; if(error){ toast('Could not update: ' + error.message, 'error'); return; } if(p0 && p0.site_id){ await STATE.supabase.from('wt_sites').update({ notify_ops:!!on }).eq('id', p0.site_id); arr(D().plants).filter(x => x.site_id === p0.site_id).forEach(x => x.notify_ops = !!on); const s0 = siteBy(p0.site_id); if(s0) s0.notify_ops = !!on; } const p = plantBy(id); if(p) p.notify_ops = !!on; toast(on ? 'The operations manager will be emailed when a service is completed.' : 'Notification switched off.', 'success'); wtRender(); };
   function trendCharts(p){
     const vs = arr(D().visits).filter(v => v.plant_id === p.id && v.status === 'completed').sort((a, b) => String(a.visit_date).localeCompare(String(b.visit_date))).slice(-6);
     const u0 = arr(p.units).filter(u => u.status !== 'offline')[0]; if(!u0 || vs.length < 2) return '';
@@ -47979,11 +48104,12 @@ var WT = (function(){
   function plantDetailHtml(id){
     const p = plantBy(id); if(!p) return '<p>Plant not found.</p>';
     const vs = arr(D().visits).filter(v => v.plant_id === id), qr = qrSvg(plantUrl(p), 150), tc = trendCharts(p);
-    return `<div style="margin-bottom:10px"><button class="btn-small" onclick="wtBack()">Back to plants</button></div>
+    const st = siteBy(p.site_id), crumb = D().sitesMissing ? `<button class="btn-small" onclick="wtBack()">Back to plants</button>` : `<div style="font-size:13px;"><a href="#" onclick="wtTab('customers');return false;" style="color:var(--red);font-weight:600">Customers</a> &rsaquo; <a href="#" onclick="wtCust('${custKey(p)}','${p.site_id || ''}');return false;" style="color:var(--red);font-weight:600">${E(custNameOf(p))}</a>${st ? ' &rsaquo; ' + E(st.name) : ''} &rsaquo; <b>${E(p.name)}</b></div>`;
+    return `<div style="margin-bottom:10px">${crumb}</div>
       <div class="detail-card" style="padding:18px;margin-bottom:14px;display:flex;gap:18px;flex-wrap:wrap;">
         ${p.photo_data ? `<img src="${p.photo_data}" style="width:220px;height:165px;object-fit:cover;border-radius:8px;">` : '<div style="width:220px;height:165px;background:var(--grey-tint);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-faint);font-size:12px;">No photo yet</div>'}
         <div style="flex:1;min-width:260px;"><div style="font-size:11px;color:var(--text-faint)">${E(p.ref_code || '')} &middot; ${typeLbl(p)}</div><h2 style="margin:2px 0 6px;font-size:20px;">${E(p.name)}</h2>
-          <div style="font-size:13px;line-height:1.7;"><b>Customer:</b> ${E(p.customer_name || '—')}${p.customer_name && !p.customer_id ? ` <span style="background:#FFF4E5;border:1px solid #F0C98A;border-radius:6px;padding:1px 6px;font-size:11px;">Not in the Customers module ${canW() ? `<a href="#" onclick="wtAddCustomerFromPlant('${p.id}');return false;" style="color:var(--red);font-weight:700">Add it</a>` : ''}</span>` : ''}<br><b>Site:</b> ${E(p.site_address || '—')} ${p.location_note ? '(' + E(p.location_note) + ')' : ''}<br><b>Make and model:</b> ${E(p.make_model || '—')} &nbsp; <b>Serial:</b> ${E(p.serial_no || '—')} &nbsp; <b>Capacity:</b> ${E(p.capacity || '—')}<br><b>Units:</b> ${arr(p.units).map(u => E(u.name) + (u.status === 'offline' ? ' (offline)' : '')).join(', ') || '—'}<br><b>Last service:</b> ${p.last_service_date ? fmtDate(p.last_service_date) : '—'} &nbsp; <b>Next due:</b> ${dueCell(p)} &nbsp; ${pill(p.last_result)}</div>
+          <div style="font-size:13px;line-height:1.7;"><b>Customer:</b> ${E(p.customer_name || '—')}${p.customer_name && !p.customer_id ? ` <span style="background:#FFF4E5;border:1px solid #F0C98A;border-radius:6px;padding:1px 6px;font-size:11px;">Not in the Customers module ${canW() ? `<a href="#" onclick="wtAddCustomerFromPlant('${p.id}');return false;" style="color:var(--red);font-weight:700">Add it</a>` : ''}</span>` : ''}<br><b>Site:</b> ${st ? E(st.name) + ' &middot; ' : ''}${E(p.site_address || '—')} ${p.location_note ? '(' + E(p.location_note) + ')' : ''}${st && (st.contact_name || st.contact_phone) ? `<br><b>Site contact:</b> ${E(st.contact_name || '')} ${E(st.contact_phone || '')} ${st.contact_email ? '&lt;' + E(st.contact_email) + '&gt;' : ''}` : ''}<br><b>Make and model:</b> ${E(p.make_model || '—')} &nbsp; <b>Serial:</b> ${E(p.serial_no || '—')} &nbsp; <b>Capacity:</b> ${E(p.capacity || '—')}<br><b>Units:</b> ${arr(p.units).map(u => E(u.name) + (u.status === 'offline' ? ' (offline)' : '')).join(', ') || '—'}<br><b>Last service:</b> ${p.last_service_date ? fmtDate(p.last_service_date) : '—'} &nbsp; <b>Next due:</b> ${dueCell(p)} &nbsp; ${pill(p.last_result)}</div>
           <div style="margin-top:10px;padding:8px 10px;background:var(--grey-tint);border-radius:8px;font-size:12.5px;"><b>Operations manager:</b> ${E(p.ops_manager_name || '—')} ${p.ops_manager_email ? '&lt;' + E(p.ops_manager_email) + '&gt;' : '(no email)'}<br>
             <label style="display:inline-flex;gap:6px;align-items:center;margin-top:4px;cursor:pointer;"><input type="checkbox" style="width:auto" ${p.notify_ops ? 'checked' : ''} ${canW() ? '' : 'disabled'} onchange="wtNotifyToggle('${p.id}',this.checked)"> Email the operations manager when a service is completed</label></div>
           <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;">${canW() ? `<button class="btn-small primary" onclick="wtNewReport('${p.id}')">New service report</button><button class="btn-small" onclick="wtPlantEdit('${p.id}')">Edit plant</button>` : ''}<button class="btn-small" onclick="wtPrintQr('${p.id}')">Print QR label</button><button class="btn-small" onclick="wtCopy('${plantUrl(p)}')">Copy QR link</button></div></div>
