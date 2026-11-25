@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R60 2026-11-25"><meta charset="UTF-8">
+<meta name="wm-release" content="R61 2026-11-25"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -56220,6 +56220,158 @@ window.showRatingGuide = function(){
       const el = document.querySelector('.nav-item[data-mod="wf"]'); if(el) el.style.display = canAccessModule('wf') ? '' : 'none'; return r; }; }
   { const _s = showModule; showModule = window.showModule = function(mod){ const r = _s.apply(this, arguments); if(mod !== 'wf'){ try{ document.body.style.overflow = ''; }catch(e){} } if(mod === 'wf' && document.getElementById('wf-root')) wfInit(); return r; }; }
   setTimeout(() => { try{ applyModuleAccessToNav(); }catch(e){} }, 0);
+})();
+
+/* ===== R61: personnel records show and keep in step with each person's Watchman login (status, level, modules) ===== */
+(function(){
+  const E = s => escapeHtml(String(s == null ? '' : s));
+  const lc = s => String(s || '').trim().toLowerCase();
+  const isAdm = () => STATE.myRole === 'admin' || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const canWrite = () => isAdm() || STATE.myRole === 'manager';
+  const noKey = () => 'wm_nolink_' + ((STATE.org && STATE.org.id) || '');
+  const noSet = () => { try{ return new Set(JSON.parse(localStorage.getItem(noKey()) || '[]')); }catch(e){ return new Set(); } };
+  const noAdd = id => { try{ const s = noSet(); s.add(id); localStorage.setItem(noKey(), JSON.stringify([...s])); }catch(e){} };
+  const noDel = id => { try{ const s = noSet(); s.delete(id); localStorage.setItem(noKey(), JSON.stringify([...s])); }catch(e){} };
+
+  /* 1. match people to logins: by the link already saved, then by email, then by an exact unique name */
+  let busy = null;
+  async function resolveLinks(){
+    if(busy) return busy;
+    busy = (async () => {
+      let changed = false;
+      try{
+        if(!STATE.org || !(STATE.members || []).length || !(STATE.personnel || []).length) return false;
+        const map = await ensureMemberEmails();
+        const skip = noSet();
+        const linked = new Set(STATE.personnel.map(p => p.linked_profile_id).filter(Boolean));
+        const free = STATE.personnel.filter(p => !p.linked_profile_id && !skip.has(p.id));
+        const todo = [];
+        for(const m of STATE.members){
+          if(linked.has(m.user_id)) continue;
+          const em = lc(map && map[m.user_id] && map[m.user_id].email), nm = lc((m.profiles && m.profiles.name) || (map && map[m.user_id] && map[m.user_id].name));
+          let hit = em ? free.filter(p => lc(p.email) === em) : [];
+          if(hit.length !== 1 && nm) { const byName = free.filter(p => lc(p.full_name) === nm); if(!hit.length && byName.length === 1) hit = byName; }
+          if(hit.length === 1 && !todo.some(t => t.p === hit[0])){ todo.push({ p:hit[0], uid:m.user_id, via: em && lc(hit[0].email) === em ? 'email' : 'name' }); }
+        }
+        for(const t of todo){
+          t.p.linked_profile_id = t.uid; t.p._wmVia = t.via; changed = true;
+          if(canWrite()){ try{ await STATE.supabase.from('personnel').update({ linked_profile_id: t.uid }).eq('id', t.p.id); t.p._wmSaved = true; }catch(e){} }
+        }
+      }catch(e){ console.warn('R61 link', e); }
+      return changed;
+    })().finally(() => { busy = null; });
+    return busy;
+  }
+  window.wmResolvePersonnelLogins = resolveLinks;
+
+  /* 2. what a person's login looks like right now */
+  function info(p){
+    const m = p.linked_profile_id ? (STATE.members || []).find(x => x.user_id === p.linked_profile_id) : null;
+    if(m) return { st:'active', m, via:p._wmVia || 'linked' };
+    const inv = p.email ? (STATE.invites || []).find(i => i.status === 'pending' && lc(i.email) === lc(p.email)) : null;
+    if(inv) return { st:'invited', inv };
+    if(p.linked_profile_id) return { st:'removed' };
+    return { st:'none' };
+  }
+  const ROLE = { admin:'Administrator', manager:'Manager', contributor:'Contributor', viewer:'Viewer' };
+  function modulesOf(m){
+    if(m.role === 'admin') return null;
+    return (m.module_access || []).filter(k => k !== 'cal_v1' && typeof MODULE_META !== 'undefined' && MODULE_META[k] && (typeof orgHasModule !== 'function' || orgHasModule(k) !== false)).map(k => MODULE_META[k].title);
+  }
+  const chip = (t, bg, fg) => `<span style="display:inline-block;background:${bg};color:${fg || '#fff'};border-radius:999px;padding:2px 9px;font-size:11px;font-weight:700;white-space:nowrap;">${E(t)}</span>`;
+  function badge(p){
+    const i = info(p);
+    if(i.st === 'active') return chip(ROLE[i.m.role] || i.m.role, '#1B8E3E');
+    if(i.st === 'invited') return chip('Invited', '#EF6C00');
+    if(i.st === 'removed') return chip('Login removed', '#6B6B6B');
+    return chip('No login', '#9AA3AB');
+  }
+
+  /* 3. register of personnel: Watchman column and a count */
+  function decorateRegister(){
+    const wrap = document.getElementById('pers-table-wrap'); if(!wrap) return;
+    const t = wrap.querySelector('table'); if(!t || t.dataset.wmLogin) return; t.dataset.wmLogin = '1';
+    const rows = [...t.querySelectorAll('tr')];
+    let withLogin = 0, n = 0;
+    rows.forEach((tr, i) => {
+      if(i === 0){ const th = document.createElement('th'); th.textContent = 'Watchman access'; tr.appendChild(th); return; }
+      const m = (tr.getAttribute('onclick') || '').match(/openPersonDetail\('([^']+)'\)/); const td = document.createElement('td');
+      const p = m ? (STATE.personnel || []).find(x => x.id === m[1]) : null;
+      if(p){ td.innerHTML = badge(p); n++; if(info(p).st === 'active') withLogin++; }
+      tr.appendChild(td);
+    });
+    const note = document.createElement('p'); note.style.cssText = 'font-size:12px;color:var(--text-faint);margin:0 0 8px;';
+    note.textContent = `${withLogin} of ${n} people shown have a Watchman login.`;
+    wrap.insertBefore(note, t);
+  }
+  { const o = window.renderPersonnelTable; if(o){
+      renderPersonnelTable = window.renderPersonnelTable = function(){
+        const r = o.apply(this, arguments); try{ decorateRegister(); }catch(e){}
+        resolveLinks().then(ch => { if(ch && document.getElementById('pers-table-wrap')){ o.call(window); try{ decorateRegister(); }catch(e){} } }).catch(() => {});
+        return r; }; } }
+
+  /* 4. person profile: login card */
+  function card(p){
+    const i = info(p); let body = '';
+    if(i.st === 'active'){
+      const m = i.m, mods = modulesOf(m);
+      body = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">${chip('Has a Watchman login', '#1B8E3E')} ${chip('Level: ' + (ROLE[m.role] || m.role), '#1565C0')}${m.is_approver ? ' ' + chip('Approval authority', '#6A1B9A') : ''}${m.can_download || m.role === 'admin' ? ' ' + chip('Can download files', '#455A64') : ''}</div>
+        <div style="margin-top:8px;font-size:12px;color:var(--text-dim);"><b>Modules:</b> ${mods === null ? 'All modules (Administrators see everything)' : mods.length ? mods.map(E).join(' · ') : '<span style="color:var(--red);">None ticked</span>'}</div>
+        ${i.via !== 'linked' ? `<div style="margin-top:6px;font-size:11px;color:var(--text-faint);">Matched automatically by ${i.via === 'email' ? 'email address' : 'name'}.</div>` : ''}
+        ${isAdm() ? `<div style="margin-top:8px;"><button class="btn-small" onclick="wmPdAccess('${m.user_id}')">Change level and modules</button></div><table style="width:100%;"><tr id="admin-member-edit-${m.user_id}"><td style="padding:0;"></td></tr></table>` : ''}`;
+    } else if(i.st === 'invited'){
+      body = `<div>${chip('Invited, not accepted yet', '#EF6C00')}</div><div style="margin-top:6px;font-size:12px;color:var(--text-dim);">Invite sent to ${E(i.inv.email)} as ${E(ROLE[i.inv.role] || i.inv.role)}. This updates by itself when they accept.</div>`;
+    } else if(i.st === 'removed'){
+      body = `<div>${chip('Login removed', '#6B6B6B')}</div><div style="margin-top:6px;font-size:12px;color:var(--text-dim);">The login that was linked to this person is no longer a member of this organisation. Use the list below to link another login, or choose Not linked.</div>`;
+    } else {
+      body = `<div>${chip('No Watchman login', '#9AA3AB')}</div><div style="margin-top:6px;font-size:12px;color:var(--text-dim);">${p.email ? 'No login or pending invite was found for ' + E(p.email) + '.' : 'Add this person\'s email address to the record so a login can be matched automatically.'} Use the Invite button, or choose a login from the list below.</div>`;
+    }
+    return `<div id="wm-login-card" style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin:10px 0 6px;background:#fff;"><div style="font-size:10.5px;color:var(--text-faint);text-transform:uppercase;margin-bottom:6px;font-family:'DM Mono',monospace;">Watchman login status</div>${body}</div>`;
+  }
+  function decorateProfile(id){
+    const sel = document.getElementById('pd-linked-user'); if(!sel) return;
+    const p = (STATE.personnel || []).find(x => x.id === id); if(!p) return;
+    const row = sel.closest('.status-row'); if(!row) return;
+    const old = document.getElementById('wm-login-card'); if(old) old.remove();
+    row.insertAdjacentHTML('beforebegin', card(p));
+    if(p.linked_profile_id && sel.querySelector(`option[value="${p.linked_profile_id}"]`)) sel.value = p.linked_profile_id;
+    if(info(p).st === 'active') row.querySelectorAll('.wp-inv').forEach(x => x.remove());
+  }
+  { const o = window.openPersonDetail; if(o){
+      openPersonDetail = window.openPersonDetail = async function(id){
+        STATE._wmPdId = id;
+        try{ if(!STATE.invites) await loadInvites(); await resolveLinks(); }catch(e){}
+        const r = await o.apply(this, arguments);
+        try{ decorateProfile(id); }catch(e){ console.warn('R61 card', e); }
+        return r; }; } }
+  window.wmPdAccess = function(uid){ try{ toggleAdminMemberEdit(uid); }catch(e){ toast('Could not open the access editor.', 'error'); } };
+
+  /* 5. everything stays in step when a login changes elsewhere (Administration, invite accepted, access ticked or cleared, person removed) */
+  function refresh(){
+    try{
+      if(document.getElementById('pers-table-wrap')){ renderPersonnelTable(); }
+      if(STATE._wmPdId && document.getElementById('wm-login-card')){ const keep = STATE._wmPdId; openPersonDetail(keep); }
+    }catch(e){}
+  }
+  for(const fn of ['saveAdminMemberAccess', 'removeAdminMember', 'cancelAdminInvite']){
+    const o = window[fn]; if(typeof o !== 'function') continue;
+    window[fn] = function(){
+      const r = o.apply(this, arguments);
+      Promise.resolve(r).then(async () => { try{ await loadInvites(); }catch(e){} refresh(); }).catch(() => { refresh(); });
+      return r; };
+    try{ eval(fn + ' = window.' + fn); }catch(e){}
+  }
+
+  /* 6. saving a link by hand: remember an explicit "Not linked" so it is not matched again */
+  { const o = window.savePersonLink; if(o){
+      savePersonLink = window.savePersonLink = async function(id){
+        const v = (document.getElementById('pd-linked-user') || {}).value || '';
+        if(v) noDel(id); else noAdd(id);
+        const p = (STATE.personnel || []).find(x => x.id === id); if(p){ delete p._wmVia; }
+        return o.apply(this, arguments); }; } }
+
+  /* members who log in elsewhere are picked up when the page is shown again */
+  document.addEventListener('visibilitychange', () => { if(!document.hidden && STATE.org && document.getElementById('pers-table-wrap')){ (async () => { try{ await reloadAdminMembers(); STATE._emailMap = null; await loadInvites(); }catch(e){} refresh(); })(); } });
 })();
 </script>
 </body>
