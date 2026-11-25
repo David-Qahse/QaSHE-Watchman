@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R58 2026-11-23"><meta charset="UTF-8">
+<meta name="wm-release" content="R59 2026-11-25"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -3625,6 +3625,7 @@ const RENDERERS = {
         </select>
       </div>
       <button class="btn-small ro-btn" onclick="showRiskInfographic()">Risk Dashboard</button>
+      <button class="btn-small ro-btn" onclick="showRatingGuide()">How ratings work</button>
       <button class="btn-small ro-btn" onclick="showFrameworkOverview()">Registers Overview</button>
       <button class="btn-small ro-btn" onclick="openRiskAiReview()">AI Audit Register</button>
       <button class="btn-small ro-btn" onclick="openAlignmentReview('risks')" title="Check every entry against your Business Context Profile">AI Alignment Review</button>
@@ -8722,7 +8723,7 @@ async function openDocumentDetail(id){
         <div><span class="ref">${d.doc_number}${dept && type ? ' · '+dept.name+' / '+type.name : ''}</span><h3>${d.title}</h3></div>
         <div style="display:flex; gap:8px;">
           ${docCanManage() ? `<button class="btn-small" onclick="openReviewDateModal('${d.id}')" title="Change the next review date">Review date: ${d.next_review_date ? fmtDate(d.next_review_date) : 'set'}</button>` : ''}
-          <button class="btn-small" onclick="printDocumentContent('${d.id}')" title="Editable copy for review and drafting">Download Word (Review Copy)</button>
+          <button class="btn-small" onclick="printDocumentContent('${d.id}')" title="Editable Word (.docx) copy: available while drafting, in review and after the document is published">Download Word (.docx)</button>
           <button class="btn-small primary" onclick="downloadDocumentPdf('${d.id}')" title="Final, non-editable copy for printing">View / Print PDF (Final)</button>
           <button class="btn-small" onclick="wmReviewReport('${d.id}')" title="Who reviewed and approved this document, when, and what changed">Review &amp; Approval Report</button>
           ${canDownload() ? `<button class="btn-small" onclick="downloadDocumentPdf('${d.id}','download')" title="Download a copy of the final PDF">Download PDF</button>` : ''}
@@ -33572,7 +33573,7 @@ window.brandFromLogo = function(){
     if($('wg-style')) return;
     const st=document.createElement('style'); st.id='wg-style';
     st.textContent=`
-    #wg-bubble{position:fixed;right:24px;bottom:96px;width:340px;max-width:calc(100vw - 32px);z-index:420;font-family:Arial,Helvetica,sans-serif;display:none}
+    #wg-bubble{position:fixed;right:16px;bottom:30px;width:340px;max-width:calc(100vw - 32px);z-index:420;font-family:Arial,Helvetica,sans-serif;display:none}
     #wg-bubble.on{display:block;animation:wgin .25s ease-out}
     @keyframes wgin{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
     #wg-bubble .wg-card{background:#fff;border-radius:18px 18px 4px 18px;box-shadow:0 14px 40px rgba(0,0,0,.28);border:2px solid #b21616;overflow:hidden}
@@ -33595,7 +33596,9 @@ window.brandFromLogo = function(){
     #wg-bubble .wg-cnt{font-size:11px;color:#777;margin-left:auto}
     .wg-hl{outline:3px solid #e8730c!important;outline-offset:3px;border-radius:6px;animation:wgpulse 1.4s infinite;position:relative;z-index:5}
     @keyframes wgpulse{0%,100%{outline-color:#e8730c}50%{outline-color:#b21616}}
-    #wg-relaunch{position:fixed;right:24px;bottom:96px;z-index:410;display:none;background:#b21616;color:#fff;border:0;border-radius:999px;padding:9px 16px;font:700 12.5px Arial,Helvetica,sans-serif;cursor:pointer;box-shadow:0 8px 20px rgba(0,0,0,.28)}
+    #wg-relaunch{position:fixed;right:12px;bottom:0;z-index:410;display:none;background:#b21616;color:#fff;border:0;border-radius:8px 8px 0 0;padding:3px 10px 4px;line-height:1.2;font:700 11px Arial,Helvetica,sans-serif;cursor:pointer;box-shadow:0 -2px 8px rgba(0,0,0,.2);opacity:.92}
+    #wg-relaunch:hover{opacity:1}
+    #wg-relaunch{min-height:0!important;height:auto!important}
     #wg-relaunch.on{display:block}
     @media print{#wg-bubble,#wg-relaunch{display:none!important}}`;
     document.head.appendChild(st);
@@ -33605,7 +33608,7 @@ window.brandFromLogo = function(){
     css();
     if(!$('wg-bubble')){
       const d=document.createElement('div'); d.id='wg-bubble'; document.body.appendChild(d);
-      const r=document.createElement('button'); r.id='wg-relaunch'; r.textContent='Guide me through this'; r.onclick=()=>{ if(isMuted()) setMuted(false); const k=currentOpenKey(); if(k){ start(k,true); } else pageHelp(); }; document.body.appendChild(r);
+      const r=document.createElement('button'); r.id='wg-relaunch'; r.textContent='Guide Me'; r.title='Guide me through this'; r.onclick=()=>{ if(isMuted()) setMuted(false); const k=currentOpenKey(); if(k){ start(k,true); } else pageHelp(); }; document.body.appendChild(r);
     }
   }
   function clearHl(){ document.querySelectorAll('.wg-hl').forEach(e=>e.classList.remove('wg-hl')); }
@@ -33654,7 +33657,7 @@ window.brandFromLogo = function(){
     ensure(); const r=$('wg-relaunch'); if(!r) return;
     const k=currentOpenKey();
     const canPage=!k&&!!pageAddBtn();
-    r.textContent=k?'Guide me through this':'Help with this page';
+    r.textContent='Guide Me'; r.title=k?'Guide me through this':'Help with this page';
     r.classList.toggle('on', !!(enabled()&&(k||canPage)&&!S.key&&!S.doneShown&&!($('wg-bubble')&&$('wg-bubble').classList.contains('on'))));
   }
   function finish(key){
@@ -33861,7 +33864,7 @@ window.brandFromLogo = function(){
   body.skin-plain #wg-bubble .wg-head{background:var(--charcoal-dark)}
   body.skin-plain #wg-bubble .wg-foot button{border-color:var(--red);color:var(--red)}
   body.skin-plain #wg-bubble .wg-foot button.p{background:var(--red);color:#fff}
-  body.skin-plain #wg-relaunch{background:var(--red);box-shadow:0 2px 8px rgba(31,41,51,.25);border-radius:8px}
+  body.skin-plain #wg-relaunch{background:var(--red);box-shadow:0 -1px 6px rgba(31,41,51,.25);border-radius:6px 6px 0 0}
   body.skin-plain .wg-hl{outline-color:#2F4B66!important;animation:none}
   body.skin-plain .wd-dial-card{background:#2B3340!important;border-color:#2B3340!important}
   body.skin-plain #mod-back-btn{border-radius:6px!important;box-shadow:none!important}
@@ -54553,13 +54556,14 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   const badge = r => r.kind === 'c' && !['approved', 'withdrawn', 'superseded'].includes(r.wf)
     ? `<span class="sev-badge" style="background:${r.color};color:#fff;cursor:pointer;" title="Open in Documents Work in Progress" onclick="event.stopPropagation(); hubOpenDoc('${r.id}')">${E(r.status)} ›</span>`
     : `<span class="sev-badge" style="background:${r.color || '#5A6B7B'};color:#fff;">${E(r.status)}</span>`;
-  const viewBtn = r => r.kind === 'c' ? `<button class="btn-small" onclick="event.stopPropagation(); downloadDocumentPdf('${r.id}')">View Document</button>`
+  const viewBtn = r => r.kind === 'c' ? `<button class="btn-small" onclick="event.stopPropagation(); downloadDocumentPdf('${r.id}')">View Document</button> <button class="btn-small" onclick="event.stopPropagation(); printDocumentContent('${r.id}')" title="Download an editable Word (.docx) copy">Word</button>`
     : r.kind === 'p' ? `<button class="btn-small" onclick="event.stopPropagation(); processDocumentPdf('${r.id}')">View Document</button>`
     : r.kind === 'r' ? `<button class="btn-small" onclick="event.stopPropagation(); perfReportPdf('${r.id}')">View Document</button>`
     : (r.path ? `<button class="btn-small" onclick="event.stopPropagation(); downloadFromBucket('documents','${r.path}')">View Document</button>` : '');
   const reqBtn = r => r.kind === 'r' ? '' : `<button class="btn-small" onclick="event.stopPropagation(); ${r.kind === 'p' ? "processRequestUpdate('" + r.id + "')" : "mrRequestUpdate('" + r.kind + "','" + r.id + "')"}">Request update</button>`;
-  const tableA = rows => rows.length ? `<table><tr><th>Document Number</th><th>Title</th><th>Department</th><th>Type</th><th>Rev / date</th><th>Status</th><th>Source</th><th></th></tr>${rows.map(r => `<tr class="clickable" onclick="mr2Open('${r.kind}','${r.id}')" title="Click to view the document as PDF"><td class="mono-cell">${E(r.num)}</td><td class="strong">${E(r.title)}</td><td>${E(r.dept)}</td><td>${E(r.type)}</td><td style="text-align:center;">${E(r.rev)}${r.revDate ? `<div style="font-size:10.5px;color:var(--text-faint);white-space:nowrap;">${E(fmtDate(r.revDate))}</div>` : ''}</td><td>${badge(r)}</td><td>${E(r.src)}</td><td style="text-align:right;white-space:nowrap;">${viewBtn(r)} ${reqBtn(r)}</td></tr>`).join('')}</table>` : '<div class="empty-state"><p>No documents match.</p></div>';
-  const tableB = rows => rows.length ? `<table><tr><th>Document Number</th><th>File / title</th><th>Department</th><th>Type</th><th>Uploaded</th><th>Status</th><th></th></tr>${rows.map(r => `<tr class="clickable" onclick="mr2Open('b','${r.id}')" title="Click to open the uploaded file"><td class="mono-cell">${E(r.num)}</td><td class="strong">${E(r.title)}</td><td>${E(r.dept)}</td><td>${E(r.type)}</td><td>${r.uploaded ? E(fmtDate(r.uploaded)) : ''}</td><td>${badge(r)}</td><td style="text-align:right;white-space:nowrap;">${viewBtn(r)} ${reqBtn(r)}</td></tr>`).join('')}</table>` : '<div class="empty-state"><p>No uploaded historical documents match. Use <b>Bulk upload historical documents</b> above to add them.</p></div>';
+  const delBtn = r => ((r.kind === 'c' || r.kind === 'b') && (STATE.myRole === 'admin' || (STATE.profile && STATE.profile.is_platform_staff))) ? `<button class="btn-small" style="color:#b21616;border-color:#b21616;" title="Delete this document permanently (administrators only)" onclick="event.stopPropagation(); mrDeleteDoc('${r.kind}','${r.id}')">Delete</button>` : '';
+  const tableA = rows => rows.length ? `<table><tr><th>Document Number</th><th>Title</th><th>Department</th><th>Type</th><th>Rev / date</th><th>Status</th><th>Source</th><th></th></tr>${rows.map(r => `<tr class="clickable" onclick="mr2Open('${r.kind}','${r.id}')" title="Click to view the document as PDF"><td class="mono-cell">${E(r.num)}</td><td class="strong">${E(r.title)}</td><td>${E(r.dept)}</td><td>${E(r.type)}</td><td style="text-align:center;">${E(r.rev)}${r.revDate ? `<div style="font-size:10.5px;color:var(--text-faint);white-space:nowrap;">${E(fmtDate(r.revDate))}</div>` : ''}</td><td>${badge(r)}</td><td>${E(r.src)}</td><td style="text-align:right;white-space:nowrap;">${viewBtn(r)} ${reqBtn(r)} ${delBtn(r)}</td></tr>`).join('')}</table>` : '<div class="empty-state"><p>No documents match.</p></div>';
+  const tableB = rows => rows.length ? `<table><tr><th>Document Number</th><th>File / title</th><th>Department</th><th>Type</th><th>Uploaded</th><th>Status</th><th></th></tr>${rows.map(r => `<tr class="clickable" onclick="mr2Open('b','${r.id}')" title="Click to open the uploaded file"><td class="mono-cell">${E(r.num)}</td><td class="strong">${E(r.title)}</td><td>${E(r.dept)}</td><td>${E(r.type)}</td><td>${r.uploaded ? E(fmtDate(r.uploaded)) : ''}</td><td>${badge(r)}</td><td style="text-align:right;white-space:nowrap;">${viewBtn(r)} ${reqBtn(r)} ${delBtn(r)}</td></tr>`).join('')}</table>` : '<div class="empty-state"><p>No uploaded historical documents match. Use <b>Bulk upload historical documents</b> above to add them.</p></div>';
 
   window.mr2Render = function(){
     const wa = document.getElementById('mr2-table-a'), wb = document.getElementById('mr2-table-b'); if(!wa || !wb) return;
@@ -55569,6 +55573,54 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   document.addEventListener('keydown',function(e){ if(e.key==='Escape') document.body.classList.remove('wm-nav-open') });
   try{ var _sm=window.showModule; if(typeof _sm==='function'){ var w=function(){ document.body.classList.remove('wm-nav-open'); return _sm.apply(this,arguments) }; try{ showModule=w }catch(e){}; window.showModule=w } }catch(e){}
 })();
+
+/* ===== R59: delete duplicates from the Master Documents Register; Word download everywhere; Guide Me tab ===== */
+(function(){
+  window.mrDeleteDoc = async function(kind, id){
+    if(!(STATE.myRole === 'admin' || (STATE.profile && STATE.profile.is_platform_staff))){ toast('Only an administrator can delete documents.', 'error'); return; }
+    const sb = STATE.supabase;
+    if(kind === 'b'){
+      const d = (STATE.bulkDocuments || []).find(x => x.id === id); if(!d) return;
+      if(!confirm('Delete this uploaded document permanently?\n\n' + (d.doc_number || 'Not numbered') + '  ' + (d.file_name || '') + '\n\nThis cannot be undone. Use it to remove duplicates.')) return;
+      if(d.storage_path){ try{ await sb.storage.from('documents').remove([d.storage_path]); }catch(e){} }
+      try{ await sb.from('document_review_requests').delete().eq('bulk_document_id', id); }catch(e){}
+      const r = await sb.from('bulk_documents').delete().eq('id', id);
+      if(r.error){ toast('Could not delete: ' + r.error.message, 'error'); return; }
+      STATE.bulkDocuments = (STATE.bulkDocuments || []).filter(x => x.id !== id);
+    } else {
+      const d = (STATE.documents || []).find(x => x.id === id); if(!d) return;
+      const msg = 'Delete this controlled document permanently?\n\n' + (d.doc_number || '') + '  ' + (d.title || '') + '\n\nIts revisions, content, workflow comments and issue records are removed with it. This cannot be undone. If it was issued and should stay on record, use Withdraw instead.\n\nType DELETE to confirm.';
+      if((prompt(msg) || '').trim().toUpperCase() !== 'DELETE') return;
+      for(const t of ['document_issues','document_section_images','document_section_tables','document_addendums','document_content_sections','document_workflow_comments','document_revisions']){ try{ await sb.from(t).delete().eq('document_id', id); }catch(e){} }
+      try{ await sb.from('document_review_requests').update({ document_id:null }).eq('document_id', id); }catch(e){}
+      const r = await sb.from('documents').delete().eq('id', id);
+      if(r.error){ toast('Could not delete: ' + r.error.message + ' Use Withdraw to take it out of use.', 'error'); return; }
+      STATE.documents = (STATE.documents || []).filter(x => x.id !== id);
+    }
+    try{ window.mr2Render(); }catch(e){ try{ renderMasterRegisterPage(); }catch(_){} }
+    toast('Document deleted.', 'success');
+  };
+})();
+
+/* R59: How ratings work pop-up (rating scale, ALARP tiers, hierarchy of controls) */
+window.showRatingGuide = function(){
+  const L=['Rare','Unlikely','Possible','Likely','Almost certain'], I=['Insignificant','Minor','Moderate','Major','Catastrophic'];
+  let m='<table style="border-collapse:collapse;width:100%;font-size:12px;text-align:center;"><tr><th style="padding:4px;">Likelihood ↓ / Impact →</th>'+I.map((x,i)=>`<th style="padding:4px;">${i+1}<div style="font-weight:400;font-size:10px;">${x}</div></th>`).join('')+'</tr>';
+  for(let l=5;l>=1;l--){ m+=`<tr><th style="padding:4px;text-align:left;">${l} <span style="font-weight:400;font-size:10px;">${L[l-1]}</span></th>`+[1,2,3,4,5].map(i=>{const sc=l*i;return `<td style="padding:7px;background:${scoreTier(sc).c};color:#fff;font-weight:700;border:2px solid #fff;">${sc}</td>`}).join('')+'</tr>'; }
+  m+='</table>';
+  const tiers=[
+    ['#D50000','15 to 25: Intolerable','Not acceptable as it stands. Needs a control higher than administrative or PPE (elimination, substitution or engineering), a management programme, and Top Management attention. Work should not continue until the risk is reduced.'],
+    ['#EF6C00','8 to 14: Tolerable, ALARP','Acceptable only if reduced As Low As Reasonably Practicable. Show that further controls were considered, apply the hierarchy of controls, link a management programme, and review regularly. Cost or effort is only a valid reason to stop if it is grossly disproportionate to the risk reduction.'],
+    ['#1B8E3E','1 to 7: Acceptable','Manage by routine controls and monitoring. Keep the existing controls in place.']];
+  const h=HOC_LEVELS.map((x,i)=>`<div style="display:flex;gap:8px;align-items:center;margin:3px 0;"><span style="background:${x.c};color:#fff;font-weight:700;border-radius:4px;padding:2px 8px;min-width:110px;text-align:center;font-size:12px;">${i+1}. ${x.l}</span><span style="font-size:12.5px;">${x.d}</span></div>`).join('');
+  roShell(`<div class="rm-hero" style="background:linear-gradient(135deg,#1c1c1c 0%,#4a0d0d 100%);">${roXBtn}<h3>How ratings work</h3><p class="rm-sub">Risk &amp; Opportunity: rating scale, ALARP and controls</p></div><div class="rm-body">
+    <p style="font-size:13px;">Score = Likelihood × Impact (each 1 to 5, maximum 25). Rated before controls (inherent) and again after controls (residual). The residual score drives the colour and the checks once it is rated.</p>
+    <div style="margin:8px 0 12px;">${m}</div>
+    ${tiers.map(t=>`<div style="border-left:5px solid ${t[0]};padding:6px 10px;margin:6px 0;background:#f7f7f7;border-radius:4px;"><b>${t[1]}</b><div style="font-size:12.5px;margin-top:2px;">${t[2]}</div></div>`).join('')}
+    <div class="ro-h" style="margin-top:12px;">Hierarchy of controls: choose from the top down</div>${h}
+    <p style="font-size:12px;color:var(--text-faint);margin-top:10px;">Checks the register runs: score 15 or more needs a control above administrative or PPE; score 8 or more needs a linked management programme. Opportunities use Probability × Impact.</p>
+    <div class="rm-actions"><button class="rm-btn" onclick="roClose()">Close</button></div></div>`);
+};
 </script>
 </body>
 </html>
