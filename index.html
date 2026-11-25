@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R62 2026-11-25"><meta charset="UTF-8">
+<meta name="wm-release" content="R63 2026-11-25"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -56600,6 +56600,54 @@ window.showRatingGuide = function(){
   { const _s = showModule; showModule = window.showModule = function(mod){ const r = _s.apply(this, arguments); sweepSoon(); return r; }; }
   /* categories are already loaded for this session when the script runs after sign-in */
   setTimeout(() => { try{ if(STATE.org && STATE.org.id && STATE.supabase){ loadRiskCats().then(() => { hookRiskWrites(); }); } }catch(e){} sweepSoon(); }, 0);
+})();
+
+/* ===== Release 63: one rule for the module ticks (invite, Edit access, person invite) =====
+   - Bespoke modules (Water Treatment, Inspection and Testing, JBSS Workflow) are offered only in a tenant where Group QaSHE CG has switched them on.
+   - Master Documents Register is offered wherever the client has Document Management.
+   - The switches are read in one place, with a fallback, and the lists refresh once they have loaded. */
+(function(){
+  const arr = a => Array.isArray(a) ? a : [];
+  const BESPOKE = { wt:'Water Treatment', it:'Inspection and Testing', wf:'JBSS Workflow' };
+  async function wmLoadSwitches(force){
+    const o = STATE.org; if(!o || !STATE.supabase) return false;
+    if(o._swTried && !force) return !!o._swLoaded;
+    o._swTried = true;
+    let rows = null;
+    try{ const r = await STATE.supabase.from('org_modules').select('module_key,enabled').eq('organisation_id', o.id); if(r && !r.error) rows = arr(r.data); }catch(e){}
+    if(!rows || !rows.length){ try{ const r = await STATE.supabase.rpc('org_module_switches', { p_org: o.id }); if(r && !r.error && arr(r.data).length) rows = arr(r.data); }catch(e){} }
+    if(!rows || !rows.length) return false;
+    const map = {}; rows.forEach(r => { map[r.module_key] = r.enabled; });
+    Object.keys(BESPOKE).forEach(k => { o['_' + k + 'On'] = map[k] === true; o[k + '_module_enabled'] = map[k] === true; });
+    const off = new Set(); rows.forEach(r => { if(r.enabled === false) off.add(r.module_key); });
+    o._modOff = off; o._swLoaded = true;
+    try{ applyModuleAccessToNav(); }catch(e){}
+    return true;
+  }
+  window.wmLoadSwitches = wmLoadSwitches;
+
+  const tenantHasDocs = () => { try{ return !!STATE.org && (STATE.org.document_control_enabled !== false); }catch(e){ return true; } };
+  { const _a = adminInviteModules; adminInviteModules = window.adminInviteModules = function(){
+      const o = STATE.org || {};
+      let out = arr(_a.apply(this, arguments)).filter(m => !(m.key in BESPOKE) || o['_' + m.key + 'On'] === true);
+      const have = new Set(out.map(m => m.key));
+      Object.keys(BESPOKE).forEach(k => { if(o['_' + k + 'On'] === true && !have.has(k)){ out.push({ key:k, label:(MODULE_META[k] && MODULE_META[k].title) || BESPOKE[k] }); have.add(k); } });
+      if(!have.has('master_register') && tenantHasDocs() && MODULE_META.master_register){
+        const i = out.findIndex(m => m.key === 'documents');
+        out.splice(i >= 0 ? i + 1 : out.length, 0, { key:'master_register', label:MODULE_META.master_register.title }); }
+      const seen = new Set();
+      out = out.filter(m => { if(seen.has(m.key)) return false; seen.add(m.key); return true; });
+      return out.map(m => (m.key in BESPOKE) ? Object.assign({}, m, { label: String(m.label).replace(/ \(bespoke\)$/, '') + ' (bespoke)' }) : m);
+    }; }
+
+  /* refresh the screens that show the ticks once the switches have loaded */
+  { const _r = renderAdminTeam; renderAdminTeam = window.renderAdminTeam = function(){
+      const r = _r.apply(this, arguments);
+      if(STATE.org && !STATE.org._swTried) wmLoadSwitches().then(ok => { if(ok && STATE._adminSubtab === 'team' && document.querySelector('.admin-inv-module-cb')) renderAdminTeam(); });
+      return r; }; }
+  if(typeof wpInviteOpen === 'function'){ const _w = window.wpInviteOpen; window.wpInviteOpen = async function(){ try{ await wmLoadSwitches(); }catch(e){} return _w.apply(this, arguments); }; }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const r = await _lc.apply(this, arguments); try{ await wmLoadSwitches(true); }catch(e){} return r; }; }
+  setTimeout(() => { try{ wmLoadSwitches(true); }catch(e){} }, 0);
 })();
 </script>
 </body>
