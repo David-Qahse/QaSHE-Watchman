@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R59 2026-11-25"><meta charset="UTF-8">
+<meta name="wm-release" content="R60 2026-11-25"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -48795,8 +48795,8 @@ ${STATE.org.name}${s.tel ? '\nTel: ' + s.tel : ''}`;
 
 /* Release 24: the invite and access lists include every module, including Water Treatment, Project Management and the Education module; and those modules honour the ticks */
 (function(){
-  const EXTRA=['wt','projects','edu','it'];
-  const offFor=k=> k==='wt' ? !(STATE.org&&STATE.org._wtOn) : k==='it' ? !(STATE.org&&STATE.org._itOn) : k==='edu' ? !(STATE.org&&STATE.org._eduOn) : !!(STATE.org && STATE.org._modOff && STATE.org._modOff.has(k));
+  const EXTRA=['wt','projects','edu','it','wf'];
+  const offFor=k=> k==='wt' ? !(STATE.org&&STATE.org._wtOn) : k==='it' ? !(STATE.org&&STATE.org._itOn) : k==='wf' ? !(STATE.org&&STATE.org._wfOn) : k==='edu' ? !(STATE.org&&STATE.org._eduOn) : !!(STATE.org && STATE.org._modOff && STATE.org._modOff.has(k));
   { const _a=adminInviteModules; adminInviteModules=window.adminInviteModules=function(){
       const out=_a.apply(this,arguments); const have=new Set(out.map(x=>x.key));
       EXTRA.forEach(k=>{ if(have.has(k)||!MODULE_META[k]) return; if(offFor(k)) return;
@@ -48804,7 +48804,7 @@ ${STATE.org.name}${s.tel ? '\nTel: ' + s.tel : ''}`;
       return out; }; }
   { const _c=canAccessModule; canAccessModule=window.canAccessModule=function(mod){
       const base=_c.apply(this,arguments);
-      if(mod!=='wt' && mod!=='projects' && mod!=='edu' && mod!=='it') return base;
+      if(mod!=='wt' && mod!=='projects' && mod!=='edu' && mod!=='it' && mod!=='wf') return base;
       if(!base) return base;
       const staff=!!(STATE.profile&&STATE.profile.is_platform_staff);
       if(staff||STATE.myRole==='admin') return base;
@@ -55624,6 +55624,603 @@ window.showRatingGuide = function(){
     <p style="font-size:12px;color:var(--text-faint);margin-top:10px;">Checks the register runs: score 15 or more needs a control above administrative or PPE; score 8 or more needs a linked management programme. Opportunities use Probability × Impact.</p>
     <div class="rm-actions"><button class="rm-btn" onclick="roClose()">Close</button></div></div>`);
 };
+
+/* ===== Release 60: JBSS Workflow (bespoke for JB Switchgear Solutions) =====
+   Process definition built from JBSS-321-00 Processes and the JBSS department document pack. Renders inside a shadow root so its styles cannot affect, or be affected by, the rest of the app. */
+(function(){
+  const CSS="\n:host{display:block;color-scheme:light;font-family:Arial,Helvetica,sans-serif;color:#0f1e33;font-size:15px;line-height:1.45;text-align:left;--ink:#0f1e33;--mut:#5b6b82;--line:#dbe2ec;--bg:#eef2f7;--card:#fff;--nav:#0f2440;--acc:#0b5fff;--red:#e11d2e;--amb:#f08c00;--grn:#12a150;--font:Arial,Helvetica,sans-serif}\nbutton,input,select,textarea{font:inherit;color:inherit}\nbutton{cursor:pointer}\n:focus-visible{outline:3px solid var(--acc);outline-offset:2px}\nh1,h2,h3,h4{margin:0;text-wrap:balance}h1{font-size:26px}h2{font-size:19px}h3{font-size:15px}h4{font-size:15.500px}\n.ic{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none;vertical-align:-3px}\n.head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap;margin-bottom:18px}.sub{color:var(--mut);margin:6px 0 0;max-width:70ch}\n.btn{border:1.500px solid var(--line);background:#fff;border-radius:9px;padding:9px 14px;font-weight:bold;display:inline-flex;gap:7px;align-items:center}\n.btn:hover{border-color:var(--acc);color:var(--acc)}.btn.pri{background:var(--acc);border-color:var(--acc);color:#fff}.btn.pri:hover{filter:brightness(1.08);color:#fff}.btn.full{width:100%;justify-content:center}\n.btn[disabled],.doc[disabled]{opacity:.5;cursor:not-allowed}\n.mini{justify-self:start;border:1px solid var(--line);background:#fff;border-radius:7px;padding:4px 9px;font-size:12.500px;font-weight:bold;margin:4px 4px 0 0}\n.chip{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:bold;padding:3px 9px;border-radius:99px;background:#e6ebf3;color:#33435c;white-space:nowrap}\n.chip .ic{width:13px;height:13px}\n.chip.red,.chip.late{background:var(--red);color:#fff}.chip.amber,.chip.soon{background:var(--amb);color:#fff}.chip.green,.chip.done{background:var(--grn);color:#fff}.chip.active{background:var(--acc);color:#fff}.chip.grey,.chip.wait,.chip.na{background:#cfd7e3;color:#33435c}\n.chip.role{background:#fff;border:1px solid var(--line)}.chip.plain{background:#f2f5fa}.chip.gate{background:#fff3d6;color:#7a4b00}.chip.mod{background:#e7f0ff;color:#0b46b8}\n.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px}\n.kpi{background:var(--card);border-radius:14px;padding:14px 16px;border-left:6px solid #9fb0c7}.kpi b{font-size:30px;display:block;font-variant-numeric:tabular-nums}.kpi span{font-size:13px;color:var(--mut);font-weight:bold}\n.kpi.red{border-color:var(--red)}.kpi.red b{color:var(--red)}.kpi.amber{border-color:var(--amb)}.kpi.amber b{color:#b96a00}\n.jobs{display:grid;gap:12px}\n.job{background:var(--card);border:1.500px solid transparent;border-radius:14px;padding:16px 18px;text-align:left;display:grid;gap:10px;width:100%}.job:hover{border-color:var(--acc)}\n.jtop{display:flex;justify-content:space-between;gap:12px}.jno{font-size:18px;margin-right:10px}.jc{color:var(--mut);font-weight:bold}.jv{font-weight:bold;font-variant-numeric:tabular-nums;white-space:nowrap}\n.dim{color:var(--mut)}.sbar{display:grid;grid-template-columns:repeat(9,1fr);gap:4px}.sbar i{height:10px;border-radius:99px;background:#dfe5ee}.sbar i.all{background:var(--c)}.sbar i.act{background:repeating-linear-gradient(90deg,var(--c) 0 8px,#fff 8px 11px)}.sbar i.late{background:repeating-linear-gradient(90deg,var(--red) 0 8px,#fff 8px 11px)}\n.jbot{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13.500px}.now em{font-style:normal;font-weight:bold;color:#fff;background:var(--c);border-radius:6px;padding:1px 6px;margin-right:3px}.flags{display:flex;gap:6px;flex-wrap:wrap}\n.empty{color:var(--mut);margin:6px 0}\n.back{background:none;border:0;color:var(--acc);font-weight:bold;padding:0;margin-bottom:10px}.back:before{content:\"\\2039  \"}\n.jhead{background:var(--card);border-radius:16px;padding:18px 20px;display:flex;gap:18px;align-items:center;flex-wrap:wrap}\n.ring{--p:0;width:74px;height:74px;border-radius:50%;background:conic-gradient(var(--grn) calc(var(--p)*1%),#e3e9f2 0);display:grid;place-items:center;flex:none}.ring b{background:#fff;width:54px;height:54px;border-radius:50%;display:grid;place-items:center;font-size:15px}\n.jh1{flex:1;min-width:220px}.jh1 p{margin:2px 0 8px;color:var(--mut);font-weight:bold}.meta{display:flex;gap:6px;flex-wrap:wrap}.jacts{display:flex;gap:8px;flex-wrap:wrap}\n.banner{display:flex;gap:10px;align-items:flex-start;border-radius:12px;padding:11px 14px;margin-top:12px;color:#fff}.banner.amber{background:var(--amb)}.banner.red{background:var(--red)}.banner .ic{margin-top:2px;width:18px;height:18px}\n.ribbon{display:grid;grid-template-columns:repeat(9,minmax(104px,1fr));gap:6px;margin:16px 0;overflow-x:auto;padding-bottom:4px}\n.rb{border:0;background:var(--card);border-radius:12px;padding:10px 10px 9px;text-align:left;display:grid;gap:3px;border-top:6px solid var(--c);position:relative}\n.rb .rn{width:26px;height:26px;border-radius:50%;background:var(--c);color:#fff;display:grid;place-items:center;font-weight:bold;font-size:13px}.rb .rn .ic{vertical-align:0}\n.rb .rt{font-weight:bold;font-size:13px;line-height:1.2}.rb .rc{font-size:11.500px;color:var(--mut)}\n.rb.on{background:var(--c);color:#fff}.rb.on .rn{background:#fff;color:var(--c)}.rb.on .rc{color:#ffffffcc}.rb.shut:not(.on){opacity:.55}\n.cols{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:18px;align-items:start}\n.flow{background:var(--card);border-radius:16px;padding:0 0 10px;overflow:hidden}\n.flow>header{background:var(--c);color:#fff;padding:16px 20px;display:flex;gap:14px;align-items:center}.flow>header p{margin:2px 0 0;font-size:13px;opacity:.9}\n.big{width:40px;height:40px;fill:none;stroke:#fff;stroke-width:1.600;stroke-linecap:round;stroke-linejoin:round;flex:none}\n.steps{list-style:none;margin:0;padding:18px 20px 6px}\n.step{display:grid;grid-template-columns:40px 1fr;gap:14px;position:relative;padding-bottom:18px}\n.step:before{content:\"\";position:absolute;left:19px;top:40px;bottom:0;width:3px;background:var(--line)}.step:last-child:before{display:none}.step.done:before{background:var(--c)}\n.node{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-weight:bold;background:#fff;border:3px solid var(--line);color:var(--mut);z-index:1}.node .ic{width:18px;height:18px;vertical-align:0}\n.step.done .node{background:var(--c);border-color:var(--c);color:#fff}.step.active .node,.step.soon .node{border-color:var(--c);color:var(--c);box-shadow:0 0 0 5px color-mix(in srgb,var(--c) 18%,transparent)}.step.late .node{border-color:var(--red);color:var(--red);box-shadow:0 0 0 5px #e11d2e2e}\n.sc{border:1.500px solid var(--line);border-radius:14px;padding:12px 14px;min-width:0}.step.active .sc,.step.soon .sc{border-color:var(--c)}.step.late .sc{border-color:var(--red)}.step.wait .sc,.step.na .sc{background:#f7f9fc}.step.mine .sc{box-shadow:inset 5px 0 0 var(--acc)}\n.st{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.sm{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 4px}\n.note,.waitp,.donep,.duep{margin:4px 0 0;font-size:13px;color:var(--mut)}.duep.late{color:var(--red);font-weight:bold}.duep.soon{color:#b96a00;font-weight:bold}.waitp{color:#7a4b00}\n.docs{margin-top:10px;display:grid;gap:8px}\n.branch{position:relative;padding-left:26px}.branch:before{content:\"\";position:absolute;left:6px;top:-10px;height:calc(50% + 10px);width:18px;border-left:2.500px dashed #9fb0c7;border-bottom:2.500px dashed #9fb0c7;border-bottom-left-radius:10px}\n.doc{width:100%;text-align:left;border:1.500px solid var(--line);background:#fff;border-radius:11px;padding:9px 12px;display:flex;gap:10px;align-items:center}.doc:not([disabled]):hover{border-color:var(--acc);background:#f4f8ff}\n.doc>.ic{width:30px;height:30px;padding:6px;border-radius:8px;background:#e7f0ff;color:var(--acc)}.doc b{display:inline-block;font-size:12px;background:var(--ink);color:#fff;border-radius:5px;padding:1px 6px;margin-right:7px}.doc small{display:block;color:var(--mut);font-size:12.500px;margin-top:2px}\n.doc.saved{border-color:var(--grn);background:#f1fbf5}.doc.saved>.ic{background:var(--grn);color:#fff}.doc.hold{border-color:var(--amb);background:#fff8ea}.doc.hold>.ic{background:var(--amb);color:#fff}\n.side{display:grid;gap:14px}.card{background:var(--card);border-radius:14px;padding:14px 16px}.card h3{display:flex;gap:7px;align-items:center;margin-bottom:10px}\n.small{font-size:13px;color:var(--mut);margin:8px 0}.bad{color:var(--red);font-weight:bold}\n.meter{height:10px;background:#e3e9f2;border-radius:99px;overflow:hidden}.meter i{display:block;height:100%;background:var(--grn);border-radius:99px}.meter.bad i{background:var(--red)}\n.hr{display:grid;grid-template-columns:1fr auto;gap:2px 8px;font-size:13px;margin-bottom:8px}.hr .meter{grid-column:1/-1}\n.task{width:100%;border:0;background:#f5f7fb;border-radius:10px;padding:9px 10px;text-align:left;display:grid;grid-template-columns:8px 1fr auto;gap:10px;align-items:center;margin-bottom:6px}\n.task i{width:8px;align-self:stretch;border-radius:99px;background:var(--grn)}.task.soon i{background:var(--amb)}.task.late i{background:var(--red)}.task.late{background:#fdecee}\n.task b{display:block;font-size:13.500px}.task small{display:block;color:var(--mut);font-size:12px}.task .tr{text-align:right}.task em{font-style:normal;font-size:12px;font-weight:bold}.task.late em{color:var(--red)}\n.side .task{grid-template-columns:8px 1fr}.side .task .tr{grid-column:2;text-align:left}\n.li{display:block;width:100%;text-align:left;border:0;background:#f5f7fb;border-radius:10px;padding:8px 10px;margin-bottom:6px;font-size:13px}\n.log{list-style:none;margin:0;padding:0;font-size:12.500px;display:grid;gap:7px}.log time{display:block;color:var(--mut);font-size:11.500px}\n.tg{margin-bottom:22px}.tg h2{margin-bottom:10px}.tg h2 span{background:#cfd7e3;border-radius:99px;font-size:13px;padding:2px 10px;margin-left:6px}.tg.late h2 span{background:var(--red);color:#fff}.tg.soon h2 span{background:var(--amb);color:#fff}.tg.ok h2 span{background:var(--grn);color:#fff}\n.trow{display:grid;grid-template-columns:130px 1fr;gap:10px;align-items:center}.tj{font-weight:bold;font-size:13px}.trow .task{background:#fff}.trow .task.late{background:#fdecee}\n.regs{display:grid;grid-template-columns:250px minmax(0,1fr);gap:16px;align-items:start}.rlist{display:grid;gap:4px}.rlist button{border:0;background:#fff;border-radius:9px;padding:9px 12px;text-align:left;display:flex;justify-content:space-between;font-weight:bold;font-size:13.500px}.rlist button.on{background:var(--nav);color:#fff}.rlist span{color:var(--mut)}.rlist .on span{color:#fff}\n.scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:13.500px}th{text-align:left;font-size:12px;color:var(--mut);padding:8px;border-bottom:2px solid var(--line);white-space:nowrap}td{padding:9px 8px;border-bottom:1px solid #e3e8ef;vertical-align:top}tr.click{cursor:pointer}tr.click:hover td{background:#f4f8ff}td small{color:var(--mut)}\n.map{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:22px 26px}.mst{background:var(--card);border-radius:16px;position:relative;border-top:8px solid var(--c)}\n.mh{display:flex;gap:12px;align-items:center;padding:14px 16px 6px}.mh svg{width:38px;height:38px;padding:8px;border-radius:12px;background:var(--c);fill:none;stroke:#fff;stroke-width:1.800;stroke-linecap:round;stroke-linejoin:round;flex:none}.mh span{display:block;font-size:12px;color:var(--mut)}\n.mst ol{list-style:none;margin:0;padding:6px 16px 14px;display:grid;gap:8px}.mst li{display:grid;grid-template-columns:38px 1fr;gap:8px;font-size:13.500px;font-weight:bold}.mst li em{font-style:normal;color:var(--c)}.mst small{display:block;font-weight:normal;color:var(--mut);font-size:12px}.mst .dl{color:#0b46b8}\n.arrow{position:absolute;right:-22px;top:34px;width:18px;height:18px;border-top:4px solid #9fb0c7;border-right:4px solid #9fb0c7;transform:rotate(45deg)}\n.sh{margin:28px 0 12px}.sup{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}.sup .chip{white-space:normal;border-radius:10px}.sup p{margin:0 0 10px;font-size:13.500px;color:var(--mut)}\n/* form page */\n#page{position:fixed;inset:0;background:#0a1626cc;display:none;overflow:auto;padding:28px 16px;z-index:9000}#page.on{display:block}\n.sheet{background:#fff;max-width:980px;margin:0 auto;border-radius:16px;overflow:hidden;box-shadow:0 20px 60px #0008}\n.sheet>header{background:var(--nav);color:#fff;padding:18px 22px;display:flex;justify-content:space-between;gap:14px}.sheet>header p{margin:4px 0 0;font-size:13px;color:#c9d5e6}\n.dno{display:inline-block;background:#ffd43b;color:#3a2c00;font-weight:bold;font-size:12.500px;border-radius:6px;padding:2px 8px;margin-bottom:6px}\n.xbtn{background:#ffffff1f;border:0;color:#fff;border-radius:9px;width:38px;height:38px;flex:none}.xbtn .ic{width:20px;height:20px;vertical-align:0}\n.strip{display:flex;gap:22px;flex-wrap:wrap;background:#f2f5fa;padding:11px 22px;font-weight:bold;font-size:14px;align-items:center}.strip small{display:block;font-weight:normal;color:var(--mut);font-size:11.500px}\n.ctl{margin-left:auto;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 10px;font-size:12.500px;font-weight:bold;color:#0b46b8}\n.ferr{margin:14px 22px 0;background:#fdecee;border:1.500px solid var(--red);border-radius:10px;padding:10px 14px;font-size:14px}.ferr ul{margin:6px 0 0;padding-left:18px}\n.fgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 18px;padding:18px 22px}\n.fld{display:grid;gap:5px;align-content:start;min-width:0}.fld.wide,.fh,.fi{grid-column:1/-1}\n.fld label,.ynh label{font-weight:bold;font-size:13.500px}.fld label i,.ynh label i{font-style:normal;font-weight:normal;font-size:11.500px;color:var(--red);margin-left:6px}\n.fld input[type=text],.fld input[type=number],.fld input[type=date],.fld select,.fld textarea{width:100%;border:1.500px solid #c5cfdd;border-radius:9px;padding:9px 10px;background:#fff;font-size:16px}\n.fld.err input,.fld.err select,.fld.err textarea,.fld.err .yn,.fld.err .sigbox,.fld.err .filebox{border-color:var(--red);background:#fff6f7}\n.fh{border-bottom:2px solid var(--line);padding:8px 0 6px;margin-top:4px;font-size:15px}\n.fi{margin:0;background:#eef4ff;border-radius:10px;padding:9px 12px;font-size:13.500px;display:flex;gap:8px;color:#12366f}.fi .ic{margin-top:2px}\n.filebox,.sigbox{border:1.500px dashed #c5cfdd;border-radius:9px;padding:9px 10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;min-height:44px}.fname{font-size:13px;color:var(--mut)}.filebox input{max-width:100%;font-size:13px}\n.sigbox b{color:var(--grn);display:flex;gap:6px;align-items:center}.sigbox small{color:var(--mut)}\n.ynh{display:flex;justify-content:space-between;align-items:center;gap:10px}.yn{border:1.500px solid #c5cfdd;border-radius:10px;overflow:hidden}\n.ynr{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(110px,190px);gap:8px 10px;padding:8px 10px;border-bottom:1px solid #e3e8ef;align-items:center;font-size:14px}.ynr:last-child{border-bottom:0}.ynr.no{background:#fff3f4}\n.q em{font-style:normal;font-weight:bold;color:var(--mut);margin-right:8px}\n.seg{display:inline-flex;border:1.500px solid #c5cfdd;border-radius:8px;overflow:hidden}.seg label{font-weight:bold;font-size:12.500px}.seg input{position:absolute;opacity:0}.seg span{display:block;padding:6px 10px;cursor:pointer}\n.seg input:checked+span{background:var(--grn);color:#fff}.seg label:nth-child(2) input:checked+span{background:var(--red)}.seg label:nth-child(3) input:checked+span{background:#7b8798}.seg input:focus-visible+span{outline:3px solid var(--acc);outline-offset:-3px}\n.yn .rem,.actn input,.actn select{border:1px solid #c5cfdd;border-radius:7px;padding:6px 8px;font-size:14px;width:100%}\n.actn{grid-column:1/-1;display:none;grid-template-columns:2fr 1fr 150px;gap:8px}.ynr.no .actn{display:grid}.cl{grid-column:1/-1;color:var(--grn);font-weight:bold}\n.ft td{padding:3px}.ft input{width:100%;min-width:90px;border:1px solid #c5cfdd;border-radius:6px;padding:7px 8px;font-size:14px}\n.sheet>footer{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px;border-top:1px solid var(--line);background:#f7f9fc;position:sticky;bottom:0}\n.packb{padding:18px 22px;display:grid;gap:10px}.prow{display:grid;grid-template-columns:34px 1fr;gap:10px;border:1.500px solid var(--line);border-radius:11px;padding:10px 12px}.prow.ok{border-color:var(--grn);background:#f1fbf5}\n.pn{width:30px;height:30px;border-radius:50%;background:#e3e9f2;display:grid;place-items:center;font-weight:bold}.prow.ok .pn{background:var(--grn);color:#fff}.prow small{display:block;color:var(--mut);font-size:12.500px}.prow small.bad{color:var(--red)}\n.agrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px}.agrid span{font-size:13px;display:flex;gap:7px;align-items:center;background:#f2f5fa;border-radius:8px;padding:6px 9px}.agrid .ok{background:#e4f7ec;color:#0b6b34;font-weight:bold}\n#dlg{position:fixed;inset:0;background:#0a162699;display:none;place-items:center;z-index:9100;padding:16px}#dlg.on{display:grid}.dbox{background:#fff;border-radius:14px;padding:20px 22px;max-width:480px;display:grid;gap:10px}.dbox p{margin:0 0 8px}.dact{display:flex;justify-content:flex-end}\n@media (max-width:1050px){.cols{grid-template-columns:1fr}.regs{grid-template-columns:1fr}.rlist{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}}\n@media (max-width:760px){.fgrid{grid-template-columns:1fr}.ynr{grid-template-columns:1fr}.actn{grid-template-columns:1fr}.trow{grid-template-columns:1fr}.task{grid-template-columns:8px 1fr}.task .tr{grid-column:2;text-align:left}.jacts .btn{flex:1 1 45%;justify-content:center}.arrow{display:none}#page{padding:0}.sheet{border-radius:0;min-height:100%}}\n\n*{box-sizing:border-box}\n.wf{background:var(--bg);border-radius:16px;padding:16px 18px 40px}\n.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px;background:var(--nav);border-radius:12px;padding:6px}\n.tabs button{background:none;border:0;color:#d5deeb;padding:9px 14px;border-radius:8px;font-weight:bold;display:flex;gap:8px;align-items:center}\n.tabs button:hover{background:#ffffff14}.tabs button.on{background:#fff;color:var(--nav)}\n.badge{background:var(--red);color:#fff;border-radius:99px;padding:1px 8px;font-size:12px}\n.fi.wide{grid-column:1/-1}\n.roles{display:grid;gap:10px}.rolerow{display:grid;grid-template-columns:190px 1fr;gap:10px;border-bottom:1px solid var(--line);padding-bottom:10px}.who{display:flex;gap:6px 14px;flex-wrap:wrap}.who label{display:flex;gap:6px;align-items:center;font-size:13.5px}\n.sheet>footer{flex-wrap:wrap}\n@media (max-width:760px){.wf{padding:10px 8px 30px;border-radius:10px}.rolerow{grid-template-columns:1fr}}\n";
+  const ROLES=['Estimator','Financial Manager','Engineer','Engineering Assistant','Buyer','Stores','QA Inspector','Workshop Manager','Test Department','Managing Director'];
+
+  const YN=(k,l,items,o)=>Object.assign({k,l,ty:'yn',items},o||{});
+  const T=(k,l,o)=>Object.assign({k,l,ty:'t'},o||{});
+  const D=(k,l,o)=>Object.assign({k,l,ty:'d'},o||{});
+  const N=(k,l,o)=>Object.assign({k,l,ty:'n'},o||{});
+  const A=(k,l,o)=>Object.assign({k,l,ty:'a'},o||{});
+  const SEL=(k,l,opts,o)=>Object.assign({k,l,ty:'s',opts},o||{});
+  const H=l=>({ty:'h',l});
+  const I=l=>({ty:'i',l});
+  const SIG=(k,l,o)=>Object.assign({k,l,ty:'sig'},o||{});
+  const FILE=(k,l,o)=>Object.assign({k,l,ty:'file'},o||{});
+  const TBL=(k,l,cols,o)=>Object.assign({k,l,ty:'tbl',cols},o||{});
+
+  const FORMS={
+  '101-15':{doc:'JBSS-101-15',t:'Tender Information Supplied With Enquiry',reg:'Enquiry Register',f:[
+    H('Enquiry'),D('received','Date Received',{r:1}),T('customer','Client',{r:1,job:'customer',list:'customers'}),T('reference','Enquiry Reference'),T('contact','Contact Person'),T('tel','Telephone'),T('email','Email Address'),T('principal','Principal Client Or End User'),T('project','Project',{r:1,job:'project'}),D('closing','Closing Date',{r:1}),
+    SEL('method','Received By',['Email','Collection: Tender Invite','Tender Download','Hand Delivery']),SEL('sitevisit','Site Visit Required',['No','Yes']),
+    H('Scope'),SEL('scope','Project Consists Of',['MCC','LV DB','PLC Or SCADA Panel','Container','Field Isolators','Spares','Engineering Hours','Installation','Other'],{r:1,job:'scope'}),SEL('voltage','System Voltage',['380V','415V','525V','690V','3.3kV','6.6kV','11kV']),SEL('control','Control Voltage',['220V AC','110V AC','48V DC','24V DC']),T('fault','Fault Level: kA'),T('ip','IP Rating'),SEL('form','Construction',['Fixed Pattern','Plug In','Local Draw-Out','Open Type']),SEL('material','Enclosure Material',['Mild Steel','3CR12','Stainless Steel 304','Stainless Steel 316','GRP']),
+    A('equip','Type Of Equipment To Be Used Or Alternatives'),SEL('complete','All Information In The Document',['Yes','No: Clarification Required'],{r:1})]},
+  '101-01':{doc:'JBSS-101-01',t:'Quote Register Entry',reg:'Quote Register',num:'Q',f:[
+    I('The quote number is issued when you save. Quotes above R500 000 are flagged on the Job Board in place of the whiteboard.'),
+    T('customer','Customer',{r:1,job:'customer'}),T('enduser','End User'),T('scope','Scope',{job:'scope'}),D('closing','Closing Date',{r:1}),SEL('intent','Intention To Tender',['Yes','No'],{r:1}),SEL('estimator','Estimator Allocated','members',{r:1,job:'estimator'}),SEL('sector','Market Sector',['Mining','Power Generation','Petrochemical','Water','Industrial','Export']),N('est','Estimated Value: Rand')]},
+  '101-02':{doc:'JBSS-101-06',t:'Costing Sheet And Management Approval',reg:'Costing Register',f:[
+    I('Costing structure taken from the Job Initiation Sheet. The hours entered here become the allocated hours that the Workshop and Test timesheets are measured against.'),
+    H('Labour Hours'),N('engHrs','Engineering Hours',{r:1,job:'engHrs'}),N('wsHrs','Workshop Electrical Hours',{r:1,job:'wsHrs'}),N('cuHrs','Copper Hours',{job:'cuHrs'}),N('testHrs','Testing Hours',{r:1,job:'testHrs'}),
+    H('Material'),N('elec','Electrical Material: Rand'),N('copper','Local Copper: Rand'),N('sheet','Local Sheetmetal: Rand'),N('other','Other: Rand'),
+    H('Additional'),N('delivery','Packing, Crating And Delivery: Rand'),N('site','Site Work And Supervision: Rand'),N('cont','Contingency: Rand'),N('markup','Mark-Up: Percent'),
+    N('value','Quoted Value Excluding VAT: Rand',{r:1,job:'value'}),D('validity','Quote Valid Until'),
+    H('Approval'),SIG('approved','Management Approval',{r:1,role:'Managing Director'})]},
+  '101-03':{doc:'JBSS-101-03',t:'Offer Submitted To Client',reg:'Quote Register',f:[
+    SEL('letter','Covering Letter',['JBSS-101-03A: Large Quote','JBSS-101-03B: Small Quote'],{r:1}),D('sent','Date Submitted',{r:1}),T('to','Submitted To'),FILE('file','Quote File: Word, PDF And Excel Named By Quote Number'),A('notes','Clarifications And Exclusions')]},
+  '101-04':{doc:'JBSS-101-04',t:'Quote Follow Up Record',reg:'Follow Up Record',multi:1,f:[
+    D('date','Date Of Follow Up',{r:1}),T('person','Contacted Person',{r:1}),SEL('how','Method',['Email','Telephone','Visit']),A('comments','Comments',{r:1})]},
+  'OUTCOME':{doc:'JBSS-101-01',t:'Quote Outcome',reg:'Quote Register',f:[
+    SEL('outcome','Outcome',['Order Received','Regret: Lost','Regret: Declined To Tender'],{r:1}),A('reason','Reason Or Client Feedback'),I('A regret closes the workflow and issues the Regret Letter JBSS-101-17.')]},
+  'JOBREG':{doc:'Order Book',t:'Job Number Allocation',reg:'Job Register',f:[
+    I('The job number is issued when you save. W Job: Engineering. S Job: Buyout.'),
+    SEL('type','Job Type',['W: Engineering','S: Buyout'],{r:1}),T('orderNo','Customer Order Number',{r:1,job:'orderNo'}),D('orderDate','Order Date',{r:1}),N('value','Order Value Excluding VAT: Rand',{r:1,job:'value'}),D('due','Contract Delivery Date',{r:1,job:'due'}),T('spa','Special Discount Reference: SPA'),FILE('po','Customer Purchase Order',{r:1})]},
+  '101-05':{doc:'JBSS-101-05',t:'Order Acknowledgement',reg:'Job Register',f:[
+    D('sent','Date Sent To Client',{r:1}),T('to','Sent To',{r:1}),SEL('dev','Deviations From Quote',['None','Yes: Listed Below']),A('notes','Deviations Or Conditions')]},
+  '101-06':{doc:'JBSS-101-06',t:'Job Initiation Sheet And Commercial Terms',reg:'Job Register',f:[
+    H('Commercial: JBSS-265'),SEL('terms','Payment Terms',['30 Days From Statement','30 Days From Invoice','Progress Payments','Advance Payment Then Balance On Delivery','Cash On Delivery'],{r:1}),SEL('retention','Retention',['None','5 Percent','10 Percent']),SEL('bond','Performance Bond Or Guarantee',['None','Performance Bond','Advance Payment Guarantee','Retention Guarantee']),SEL('penalties','Penalties Apply',['No','Yes']),T('roe','Rate Of Exchange And Escalation'),SEL('invoiceDay','Invoice Day Of The Month',['25th','Month End','On Delivery','Per Milestone']),
+    H('Scope And Delivery'),SEL('delivery','Delivery',['Ex-Works','Delivered To Site','International']),SEL('docs','Documentation Required',['GA, Schematics And Data Pack','GA, Schematics, O And M Manual And Data Pack','Data Pack Only']),SEL('engineer','Engineer Allocated','members',{r:1,job:'engineer'}),A('special','Special Instructions And Deviations From Quote'),
+    H('Review'),SIG('fin','Commercial Terms Reviewed',{r:1,role:'Financial Manager'})]},
+  'HANDOVER':{doc:'JBSS-QA-101',t:'Handover To Engineering',reg:'Job Register',f:[
+    I('On save, a copy of the order and the Job Initiation Sheet is sent to the Financial Manager, the Managing Director and the Buyer.'),
+    D('date','Handover Meeting Date',{r:1}),T('attendees','Attendees',{r:1}),SEL('file','Quote File Handed Over With Job Number And Order',['Yes'],{r:1}),A('clar','Tender Clarifications Carried Forward'),SIG('est','Handed Over',{r:1,role:'Estimator'}),SIG('eng','Received',{r:1,role:'Engineer'})]},
+  '030':{doc:'JBSS-030',t:'Contract Review Checklist',reg:'Contract Review Register',f:[
+    I('Answer No where action is still needed. Each No with a responsible person and target date becomes a task with reminders.'),
+    YN('q','Contract Review',['Order acknowledgement been done?','Job initiation completed with all relevant information?','Commercial conditions of the contract verified?','Discrepancies between the specification and tender resolved?','Have designs been finalised?','Sheet metal ordered?','Special requirements on sheet metal identified?','Production schedule compiled and forwarded to client?','QCPs generated and forwarded to client?','Special bought out equipment identified?','Free issue equipment listed and sent to stores and the workshop?','Material order date set?','All commercial aspects clarified?','Specific hold points during manufacture agreed?','Invoice day of the month confirmed?'],{r:1,act:1}),A('notes','Notes')]},
+  'KICK-E':{doc:'JBSS-316',t:'Engineering Kick-Off And Project Plan',reg:'Job Register',f:[
+    D('date','Kick-Off Date With Estimator',{r:1}),SEL('cust','Customer Attended',['No','Yes']),T('subjobs','Sub-Job Numbers Allocated: For Example -01 To -04',{r:1}),SEL('plan','Project Plan Required',['No','Yes: Attached']),FILE('planfile','Project Plan'),D('gaDue','GA Drawings Due To Client'),D('fat','Planned FAT Date')]},
+  '102-01':{doc:'JBSS-102-01',t:'Facing Sheet And Works Order',reg:'Works Order Register',num:'WO-',f:[
+    H('Scope'),SEL('manufacture','Manufacture',['Yes','No']),SEL('crating','Crating',['No','Yes']),SEL('delivery','Delivery',['Yes','No: Ex-Works']),SEL('install','Installation',['No','Yes']),SEL('comm','Commissioning',['No','Yes']),
+    H('Electrical Data'),T('panel','Panel Tag Or Description',{r:1}),SEL('voltage','System Voltage',['380V','415V','525V','690V'],{r:1}),SEL('neutral','Neutral',['3 Phase 4 Wire','3 Phase 3 Wire']),T('fault','Fault Rating: 1 Second',{r:1}),T('bbRating','Busbar Rating',{r:1}),T('bbSize','Busbar Size'),SEL('bbTreat','Busbar Treatment',['Bare','Tinned','Sleeved']),T('earth','Earth Bar Size'),T('cv1','Control Voltage 1'),T('cv2','Control Voltage 2'),T('ctrlWire','Control Wire Size'),T('incomer','Incoming Cable Size And Entry'),A('specE','Special Electrical Requirements'),
+    H('Enclosure Data'),T('supplier','Sheetmetal Supplier'),SEL('constr','Construction',['Fixed Pattern','Plug In','Draw-Out']),SEL('mat','Material',['Mild Steel','3CR12','Stainless Steel 304','Stainless Steel 316']),SEL('access','Access',['Front','Front And Rear','Back To Back']),T('ip','IP Rating',{r:1}),SEL('arc','Internal Arc',['No','Yes']),T('colour','Panel Colour And Code',{r:1}),T('chColour','Chassis Colour'),T('paint','Paint Thickness: Microns',{r:1}),SEL('cable','Cable Entry',['Bottom','Top','Top And Bottom']),A('specM','Special Enclosure Requirements'),
+    H('Issue'),SIG('eng','Issued By Engineer',{r:1,role:'Engineer'}),I('A variation requires a new Facing Sheet revision. Use Raise Variation on the job.')]},
+  '107-03':{doc:'JBSS-107-03',t:'Quality Control Plan',reg:'QCP Register',num:'QCP-',f:[
+    SEL('type','QCP Type',['JBSS-107-03E: General','JBSS-107-03A: Container','JBSS-107-03B: DB','JBSS-107-03C: PLC'],{r:1}),T('drawing','Drawing Number'),T('item','Item Description',{r:1}),N('qty','Quantity'),
+    I('The 24 QCP lines are created on the job. Each line is signed off at its step in the workflow: A Engineering Check, F 100 Percent Inspection, H Hold, W Witness.'),
+    SEL('client','Client Intervention Points',['None','Witness: FAT Only','Hold: Drawings And FAT','Hold: Drawings, Chassis Layout And FAT'],{r:1}),SEL('consult','Consultant Or QA Agent Involved',['No','Yes']),D('sent','QCP Sent To Client For Approval',{r:1}),SIG('eng','Prepared By Engineer',{r:1,role:'Engineer'})]},
+  '028':{doc:'JBSS-028',t:'Drawing Register And Client Submission',reg:'Master Drawing Register',multi:1,f:[
+    TBL('drw','Drawings',['Drawing Number','Client Drawing Number','Description','Type: GA, SLD, Schematic','Revision'],{r:1}),D('sub','Submitted To Client',{r:1}),T('trans','Transmittal Number: JBSS-013'),SEL('status','Client Status',['Issued For Approval','Approved','Approved With Comments','Rejected: Resubmit'],{r:1}),D('appr','Client Approval Date'),FILE('signed','Approved Or Stamped Drawings'),I('Hold point. The step completes only when the status is Approved or Approved With Comments. Where JBSS produces the drawings, the Engineer approves.')]},
+  '102-02':{doc:'JBSS-102-02',t:'Order Requisition',reg:'Requisition Register',num:'REQ-',multi:1,f:[
+    SEL('code','Requisition Code',['1: Normal Requisition','2: Change With Client Instruction','3: Change Without Client Instruction','R: Return Requisition'],{r:1}),SEL('cat','Category',['Sheetmetal','Electrical Components','Copper','Labels','Labour Hours','Other'],{r:1}),D('req','Date Required',{r:1}),
+    TBL('items','Items',['Quantity','Part Number','Description: Size, Type, Colour','Estimated Price'],{r:1}),SIG('issued','Issued By',{r:1,role:'Engineer'}),SIG('auth','Authorised By',{role:'Managing Director'}),I('Code 3 must be signed by a Director before Purchasing may order.')]},
+  '102-12':{doc:'JBSS-102-12',t:'Label Issue Record',reg:'Label Issue Record',f:[
+    YN('lab','Labels Issued',['Rating Or Name Plate','Wire Numbers','Component Labels','Group Markers','Tier Labels','Telly Labels','Door Labels','Terminal Markers'],{r:1}),T('rev','Revision'),SIG('eng','Issued By Engineer',{r:1,role:'Engineer'}),SIG('ws','Received By Workshop',{role:'Workshop Manager'})]},
+  '172':{doc:'JBSS-172',t:'Works File Completion Checklist',reg:'Works File Register',f:[
+    I('Items 1 to 8 must be complete before the production and QA files are issued.'),
+    YN('file','Included In First Issue',['Works Order','Requisition For Copper Hours And Labour','Requisition For Labour Hours','General Arrangements','Cut Out Details','Wiring Diagrams','Material Lists','Specification Or Extract','Wire, Terminal And Group Labels','Component Labels','Door Labels','Rating Plate','Main Label','Packing And Delivery Instructions','Quality Control Plans','Manufacturing Programme'],{r:1,act:1}),SIG('eng','Issued By Engineer',{r:1,role:'Engineer'}),SIG('ws','Received By Workshop',{role:'Workshop Manager'}),SIG('test','Received By Test Department',{role:'Test Department'})]},
+  'STOCK':{doc:'JBSS-103-12',t:'Store Requisition: Stock Check',reg:'Store Requisition Register',f:[
+    TBL('items','Items',['Part Number','Description','Quantity Required','Quantity Ex Stock','Balance To Order'],{r:1}),SIG('st','Checked By Stores',{r:1,role:'Stores'})]},
+  '103-01':{doc:'JBSS-103-01',t:'Purchase Order Record',reg:'Purchase Order Register',multi:1,f:[
+    I('The purchase order is produced in Pastel. Record its number here so the job, stores and finance can see it.'),
+    T('po','Pastel Purchase Order Number',{r:1}),T('supplier','Supplier: From Approved Vendors List JBSS-103-06',{r:1}),T('req','Requisition Number'),D('ordered','Date Ordered',{r:1}),D('delivery','Confirmed Delivery Date',{r:1}),N('value','Order Value: Rand'),SIG('buyer','Confirmed By Buyer',{r:1,role:'Buyer'})]},
+  '103-13':{doc:'JBSS-103-13',t:'Goods Receiving And Inspection',reg:'Receiving History',multi:1,f:[
+    T('supplier','Supplier',{r:1}),T('po','Purchase Order Number',{r:1}),T('dn','Supplier Delivery Note Or Invoice Number',{r:1}),D('date','Date Received',{r:1}),SEL('ontime','Delivery On Time',['Yes','No'],{r:1}),SEL('correct','Correct Goods Delivered: Quantity, Type, Make',['Yes','No: Raise Nonconformance'],{r:1}),SEL('free','Customer Supplied Product Verified Against Customer Bill Of Materials',['Not Applicable','Yes','No']),A('late','Reason For Late Delivery Or Discrepancy'),SIG('st','Received By',{r:1,role:'Stores'})]},
+  'SEG':{doc:'JBSS-103-17',t:'Identify And Segregate Job Materials',reg:'Stores Register',f:[
+    YN('seg','Stores Checks',['Job materials identified with the job number: green sticker','Job materials segregated from consumables','Job material file made up: yellow','Consumable stock levels updated on stock cards','Requisition marked with goods received'],{r:1}),SIG('st','Stores',{r:1,role:'Stores'})]},
+  'ISSUE':{doc:'JBSS-103-12',t:'Stock Issue To Workshop',reg:'Stock Issue Register',multi:1,f:[
+    D('date','Date Issued',{r:1}),TBL('items','Items Issued',['Part Number','Description','Quantity','Bin Number'],{r:1}),SEL('cons','Consumables Recorded On JBSS-103-04',['Yes','Not Applicable']),SIG('st','Issued By Stores',{r:1,role:'Stores'}),SIG('ws','Taken By: Workshop Manager Or Contractor',{r:1,role:'Workshop Manager'})]},
+  '102-07A':{doc:'JBSS-102-07A',t:'File Checklist: QA File',reg:'File Checklist Register',f:[
+    YN('blue','QA File: Blue',['JBSS-229 Work In Progress Sheet','QCP','Facing Sheet','GA Drawing','Client Specification: If Applicable','Cut-Out Details'],{r:1,act:1}),SEL('stamps','Drawing Stamps On Drawings, Dated And Signed',['Yes','No'],{r:1}),SIG('qa','Verified By QA',{r:1,role:'QA Inspector'})]},
+  '107-21':{doc:'JBSS-107-21',t:'Chassis Inspection And Release Note',reg:'Release Note Register',num:'CRN-',f:[
+    T('panel','Panel Description',{r:1}),T('man','Manufacturer'),T('dwg','Drawing Number And Revision',{r:1}),N('qty','Quantity',{r:1}),
+    H('Paint Quality: JBSS-107-08'),N('spec','Specified Final Coating: Microns',{r:1}),N('actual','Actual Average: Microns',{r:1,min:'spec'}),SEL('visual','Dimensional And Visual As Per GA',['Pass','Fail'],{r:1,fail:'Fail'}),
+    A('proviso','Remarks Or Proviso'),SIG('qa','Released For Wiring',{r:1,role:'QA Inspector'}),SIG('ws','Accepted By Workshop',{role:'Workshop Manager'})]},
+  '107-18':{doc:'JBSS-107-18',t:'Sheetmetal Checklist And Inspection',reg:'Sheetmetal Inspection Register',f:[
+    T('supplier','Supplier',{r:1}),T('desc','Description And Tag Number',{r:1}),
+    YN('a','Section A: Pre-Paint And Exterior',['Bases manufactured in accordance with drawings: dimensions and material','Doors, top and front covers square; cut-outs as per drawings','General appearance: paint even, no orange peel, no missed areas','Correct colour applied','Paint thickness measured with a micro tester: JBSS-107-08','Tiers joined flush and division plates fitted','Correct door catches or locks fitted','Holes plugged where necessary','Correct hardware used; cover mounting bolts secure and level','Adequate lifting facilities fitted'],{r:1,punch:1}),
+    YN('b','Section B: Interior',['Stand-off chassis bolts fitted','Chassis upright support brackets fitted','Hardware consistent and correct; bolts of equal length and size','Provisions for busbars','Provisions for earth bars','Gland boxes, plates and covers fitted; earth studs on gland plates','Busbar support mounting bracket fitted','Cut-outs for trunking on dividing plates'],{r:1,punch:1}),
+    YN('c','Section C: Doors',['Doors aligned','Spaces between doors even: 8 mm gaps','Door hinges correct type and secure','Correct sealing rubber; door properly sealed','Door catches and adjustments correct','Hinges and locks adequate for an internal arc panel','Earth studs fixed and secured','Door stiffener fitted where wider than 600 mm','Wash lines fitted where cut-outs exist','Doors open and close freely'],{r:1,punch:1}),
+    N('spec','Specified Final Coating: Microns',{r:1}),N('actual','Actual Average: Microns',{r:1,min:'spec'}),SIG('qa','Inspected By',{r:1,role:'QA Inspector'}),I('Each No raises a punch item on the Sheetmetal Punch List JBSS-062-02.')]},
+  '107-17':{doc:'JBSS-107-17',t:'Sheetmetal Release Note',reg:'Release Note Register',num:'SRN-',f:[
+    T('man','Manufacturer',{r:1}),T('dwg','Specification Or Drawing Number And Revision',{r:1}),N('qty','Quantity',{r:1}),SEL('for','Released For',['Assembly','Shipment'],{r:1}),A('proviso','Remarks Or Proviso'),SIG('qa','Released By',{r:1,role:'QA Inspector'})]},
+  '229':{doc:'JBSS-229',t:'Work In Progress Sheet: Project ID Attached To Panels',reg:'Work In Progress Register',f:[
+    T('desc','Description',{r:1,job:'scope'}),T('sup','Supervisor'),D('comp','Completion Date',{r:1,job:'due'}),YN('att','Attached To The Panels',['Project ID: JBSS-229','QCP','GA Drawings Where Required','Job Number Sticker On Every Chassis'],{r:1}),SIG('qa','QA',{r:1,role:'QA Inspector'})]},
+  '102-13':{doc:'JBSS-102-13',t:'Internal Kick-Off Meeting: Workshop To Engineering',reg:'Kick-Off Register',f:[
+    D('date','Meeting Date',{r:1}),T('att','Attendees',{r:1}),T('team','Supervisor And Wiring Team',{r:1}),N('splits','Number Of Splits On The Job'),
+    YN('q','Kick-Off Checklist',['Job file received','Full and final information in the file','Delivery or FAT date of job given','Latest revision of drawings confirmed','Discrepancies between specifications and drawings resolved','Customer specification available where one exists','Special requirements on sheet metal understood','Special bought out equipment identified','Free issue equipment identified','Special electrical requirements understood','Delivery programme confirmed: staggered or single','Special copper work identified','All labels issued','Design responsibility confirmed: client or JBSS','Special packaging requirements identified','Electrical labour hours issued','Copper labour hours issued','Copper value issued','Site work requirement confirmed'],{r:1,act:1}),A('notes','Notes')]},
+  'HRSPO':{doc:'JBSS-136',t:'Labour Hours And Copper: Requisition And Purchase Order',reg:'Hours Purchase Order Register',f:[
+    I('Gate from the Job Hours process. No hours may be worked on this job until a purchase order for the hours exists.'),
+    SEL('who','Work Allocated To',['JBSS Team','Contractor'],{r:1}),T('name','Team Leader Or Contractor Name',{r:1}),N('elec','Electrical Hours Allocated',{r:1,job:'wsHrs'}),N('cu','Copper Hours Allocated',{job:'cuHrs'}),T('po','Pastel Purchase Order Number For Hours',{r:1,job:'hoursPO'}),D('issued','Engineering Requisition Stamped Issue For Manufacture',{r:1}),SIG('ws','Workshop Manager',{r:1,role:'Workshop Manager'}),SIG('buyer','Buyer',{r:1,role:'Buyer'})]},
+  '106-09':{doc:'JBSS-106-09',t:'Planning Sheet For Consumables',reg:'Consumables Planning Register',f:[
+    TBL('items','Consumables Required',['Description: Trunking, DIN Rail, Wire, Lugs, Ferrules','Size','Quantity'],{r:1}),SIG('fm','Foreman',{r:1,role:'Workshop Manager'}),SIG('ap','Approved By',{role:'Buyer'})]},
+  '106-02':{doc:'JBSS-106-02',t:'Chassis Layout Approval',reg:'Chassis Layout Register',f:[
+    I('QCP line 8. Hold point: the Engineer signs before wiring starts.'),
+    T('panel','Panel Or Tier',{r:1}),T('dwg','GA Drawing And Revision',{r:1}),SEL('mat','Bill Of Materials Drawn From Stores',['Yes','Part: Shortages Listed'],{r:1}),A('short','Shortages'),SEL('client','Client Approval Of Layout Required',['No','Yes: Approved','Yes: Awaiting'],{r:1,block:'Yes: Awaiting'}),SIG('eng','Layout Approved By Engineer',{r:1,role:'Engineer'})]},
+  '222':{doc:'JBSS-222',t:'Workshop Job Identification And Production Sign-Off',reg:'Production Register',f:[
+    T('wireman','Allocated Wireman Or Sub Contractor',{r:1}),D('start','Start Date',{r:1}),D('plan','Planned Completion',{r:1}),
+    YN('qcp','QCP Sign-Off',['Busbars manufactured and fitted: JBSS-106-01','Door equipment installed','Chassis equipment installed: JBSS-107-11','Interwiring complete','Wireman sticker on every chassis','Busbar assembly accessories checked: JBSS-107-06B'],{r:1,act:1}),SIG('ws','Workshop Manager',{r:1,role:'Workshop Manager'})]},
+  '107-10':{doc:'JBSS-107-10',t:'Inspection And Test Request',reg:'Test Request Register',num:'ITR-',f:[
+    SEL('kind','Request For',['Internal Test','FAT'],{r:1}),YN('scope','Inspect Or Test',['Chassis layout and wiring inspection','Copper connection torque settings and busbar conformity','Main board equipment inspection','Full function test'],{r:1}),TBL('items','Items To Be Tested',['Item Number','Description','Hours','Quantity']),A('short','Shortages Of Equipment'),SIG('ws','Requested By',{r:1,role:'Workshop Manager'})]},
+  'IT-TEST':{doc:'JBSS-107-04',t:'Inspection And Test Result',reg:'Inspection And Testing Module',f:[
+    I('The boards, checklists, torque register and punch lists are completed in the Inspection And Testing module. This record carries the result back to the workflow.'),
+    N('boards','Boards Tested',{r:1}),SEL('punch','Internal Punch Items',['None Open','Open: Returned To Workshop'],{r:1,block:'Open: Returned To Workshop'}),T('rtc','Routine Test Certificate Numbers',{r:1}),T('doc','Declaration Of Conformity Numbers'),SIG('t','Tester',{r:1,role:'Test Department'}),SIG('e','Responsible Engineer',{r:1,role:'Engineer'})]},
+  'FAT':{doc:'JBSS-011',t:'Factory Acceptance Test With Client',reg:'FAT Register',f:[
+    D('notice','Client Notified: At Least 48 Hours Before',{r:1}),D('date','FAT Date',{r:1}),T('client','Client Representative',{r:1}),SEL('ws','Workshop Present At FAT',['Yes','No'],{r:1}),SEL('list','Customer Punch List: JBSS-062',['No Items','Items Cleared And Verified','Items Open'],{r:1,block:'Items Open'}),FILE('signed','Client Signed QCP And Test Documents',{r:1}),SIG('e','Engineer',{r:1,role:'Engineer'})]},
+  '107-02':{doc:'JBSS-107-02',t:'Release Note: Released For Dispatch',reg:'Release Note Register',num:'RN-',f:[
+    I('Cannot be saved while a nonconformance is open on this job, unless a concession JBSS-110-02 is approved.'),
+    T('equip','Equipment Released',{r:1}),SIG('t','Released By Test Department',{r:1,role:'Test Department'}),SIG('e','Responsible Engineer',{r:1,role:'Engineer'}),T('client','Client Representative: Where Required')]},
+  '064':{doc:'JBSS-064',t:'Packing List',reg:'Packing List Register',num:'PL-',f:[
+    TBL('items','Items Packed',['Description','Quantity','Weight: kg','Dimensions: L x W x H','Crate Or Pack Number'],{r:1}),YN('chk','Before Loading',['Boards cleaned and wrapped','Loose busbar links, keys and touch-up paint packed: JBSS-107-06B','Rating plates and labels fitted'],{r:1}),SIG('ws','Checked By Workshop',{r:1,role:'Workshop Manager'}),SIG('e','Checked By Engineer',{r:1,role:'Engineer'})]},
+  '067-01':{doc:'JBSS-067-01',t:'Transport Requisition',reg:'Transport Register',num:'TR-',f:[
+    I('Submit at least 48 hours before loading.'),D('load','Date Required To Load',{r:1}),D('site','Date Required On Site',{r:1}),SEL('veh','Vehicle Required',['1 Ton','4 Ton','7 Ton','8 Ton With Crane','6 m Container Truck','12 m Container Truck','Air Bed Truck'],{r:1}),A('addr','Delivery Address And Contact',{r:1}),A('spec','Special Instructions'),N('cost','Estimated Cost: Rand')]},
+  '051':{doc:'JBSS-051',t:'Delivery Note',reg:'Delivery Note Register',num:'DN',f:[
+    D('date','Delivery Date',{r:1}),A('addr','Delivery Address',{r:1}),T('contact','Contact Person',{r:1}),TBL('items','Delivered',['Quantity','Description'],{r:1}),T('recv','Received By: Full Name',{r:1}),D('recvDate','Date Received',{r:1}),FILE('signed','Signed And Stamped Delivery Note',{r:1})]},
+  '008':{doc:'JBSS-008',t:'Invoice And Delivery Request To Finance',reg:'Invoice Request Register',num:'INV-REQ-',f:[
+    I('Hand-off to Finance. The invoice is raised in Pastel. Finance records the Pastel invoice number against this request.'),
+    TBL('items','Lines To Invoice',['Quantity','Customer Item','Percent','Description','Price Each'],{r:1}),A('spec','Special Instructions'),SIG('e','Engineer',{r:1,role:'Engineer'}),T('inv','Pastel Invoice Number: Completed By Finance')]},
+  '103-15':{doc:'JBSS-103-15',t:'Returned To Stores',reg:'Stores Returns Register',f:[
+    SEL('any','Excess Materials To Return',['No Excess','Yes: Listed Below'],{r:1}),TBL('items','Items Returned',['Stock Code','Description','Quantity Original Condition','Quantity Used','Return To Stores','Return To Supplier']),SIG('ws','Compiled By',{r:1,role:'Workshop Manager'}),SIG('st','Verified By Stores',{role:'Stores'})]},
+  '016':{doc:'JBSS-016',t:'Data Pack Issued To Client',reg:'Data Pack Register',f:[
+    I('The data pack index is assembled by the system from the records saved on this job. Open Document Pack on the job to see what is still missing.'),
+    D('sent','Date Issued To Client',{r:1}),T('trans','Document Transmittal Number: JBSS-013',{r:1}),T('to','Issued To',{r:1}),SEL('fmt','Format',['Electronic','Electronic And Paper'],{r:1}),SIG('e','Engineer',{r:1,role:'Engineer'})]},
+  '102-07B':{doc:'JBSS-102-07B',t:'File Archive Checklist',reg:'Archive Register',f:[
+    I('Items the system can prove from saved records are ticked for you. Gaps not closed within 7 days raise a nonconformance.'),
+    YN('arch','Archived: Paper And Electronic',['Quote','Commercial Conditions','Purchase Order','Internal Kick-Off Meeting Notes','Facing Sheet And Works Order','Specifications And Special Requirements','GA Drawings: Redline Or As Built','Single Line Diagrams: Redline Or As Built','Schematic Diagrams: Redline Or As Built','Material List: As Built','Label List','Test Report','Photographs: Electronic Only','Signed Delivery Note','Signed Client Release','Lessons Learned'],{r:1,act:1,auto:'arch'}),T('loc','Archive Location And Box Number',{r:1}),SIG('ea','Archived By',{r:1,role:'Engineering Assistant'}),SIG('v','Verified By',{r:1,role:'Test Department'})]},
+  '101-10':{doc:'JBSS-101-10',t:'Lessons Learned And Client Feedback',reg:'Client Feedback Register',f:[
+    A('lessons','Lessons Learned',{r:1}),SEL('fb','Client Feedback Report Sent',['Yes','No'],{r:1}),SEL('rating','Client Overall Rating',['Not Yet Received','1: Excellent','2: Good','3: Average','4: Fair','5: Poor']),A('comments','Client Comments')]},
+  /* cross-cutting */
+  'NCR':{doc:'JBSS-110-01',t:'Nonconformance Report',reg:'Nonconformance Register',num:'NCR-',x:1,f:[
+    I('On save this is also raised in the Nonconformances module with the job number in the title.'),
+    SEL('type','Type',['Product Or Service Quality','Process Performance','Customer Complaint','Supplier Or Subcontractor Performance','Material Scrapped','Health, Safety Or Environmental Incident','Improvement Or Recommendation','Change Management'],{r:1}),SEL('dept','Department',['Estimating','Engineering','Purchasing','Material Control','Quality Assurance Mechanical','Workshop','Inspection And Testing','Finance'],{r:1}),T('supplier','Supplier: If Applicable'),A('desc','Description Of Nonconformance',{r:1}),A('corr','Immediate Correction Taken'),SEL('resp','Responsible Role',ROLES,{r:1}),D('target','Target Date',{r:1}),
+    H('Close-Out'),A('root','Root Cause'),A('ca','Corrective Action Taken'),SEL('conc','Concession JBSS-110-02',['Not Required','Requested','Approved By Client','Rejected By Client']),D('closed','Date Closed: Effectiveness Verified')]},
+  'VO':{doc:'JBSS-106-01',t:'Variation Instruction And Customer Approval',reg:'Variation Register',num:'VO-',x:1,f:[
+    I('No work may start on a variation until the customer has approved it. Hours booked against an unapproved variation are flagged red.'),
+    SEL('type','Type',['Addition','Removal','Design Change','Other'],{r:1}),A('desc','Variation Or Change Details',{r:1}),SEL('drw','Drawings Attached',['Yes','No']),SEL('cost','Responsible For Cost',['Customer','JBSS: Engineering','JBSS: Workshop','Estimating'],{r:1}),N('lab','Labour: Rand'),N('mat','Material: Rand'),N('hrs','Additional Hours'),SEL('time','Impact On Delivery',['None','Delivery Date Moves']),
+    H('Customer Variation Approval: JBSS-106-02'),SEL('status','Status',['Awaiting Client Approval','Approved By Client','Rejected By Client','Not Chargeable: Approved By Director'],{r:1}),D('appr','Date Approved'),FILE('signed','Signed Customer Variation Approval'),T('vopo','Purchase Order Number For Variation Hours')]},
+  'HRS':{doc:'JBSS-228',t:'Job Time Sheet',reg:'Production Hours Register',x:1,multi:1,f:[
+    D('week','Week Ending',{r:1}),SEL('dept','Department',['Workshop: Electrical','Workshop: Copper','Testing','Engineering'],{r:1}),T('name','Name Or Team',{r:1}),N('hours','Hours Worked This Week',{r:1}),SIG('ws','Workshop Manager',{r:1,role:'Workshop Manager'})]},
+  'TASK':{doc:'Task',t:'Task',reg:'Task Register',x:1,f:[
+    T('what','What Needs To Be Done',{r:1}),SEL('role','Assigned To',ROLES,{r:1}),D('due','Due Date',{r:1}),SEL('done','Status',['Open','Done'],{r:1})]}
+  };
+
+  const STAGES=[
+  {id:1,t:'Enquiry And Quote',dept:'Estimating',proc:'JBSS-315',c:'#1d4ed8',ic:'M4 5h16v11H7l-3 3z',steps:[
+   {id:'1.1',t:'Receive Enquiry',role:'Estimator',sla:0,forms:['101-15'],n:'Email, collection or tender download.'},
+   {id:'1.2',t:'Allocate Quote Number And Estimator',role:'Estimator',sla:1,forms:['101-01'],n:'Register updated within 1 day.'},
+   {id:'1.3',t:'Prepare Costing And Obtain Approval',role:'Estimator',sla:7,forms:['101-02'],gate:'Management Approval',n:'Benchmark 7 days.'},
+   {id:'1.4',t:'Submit Offer To Client',role:'Estimator',sla:1,forms:['101-03']},
+   {id:'1.5',t:'Follow Up Weekly',role:'Estimator',sla:7,forms:['101-04'],n:'Repeats every week until an outcome is recorded.'},
+   {id:'1.6',t:'Record Outcome',role:'Estimator',sla:30,forms:['OUTCOME'],gate:'Order Or Regret'}]},
+  {id:2,t:'Order And Handover',dept:'Estimating',proc:'JBSS-315',c:'#6d28d9',ic:'M5 4h10l4 4v12H5zM9 13l2 2 4-4',un:'1.6',steps:[
+   {id:'2.1',t:'Receive Order And Allocate Job Number',role:'Estimator',sla:1,forms:['JOBREG']},
+   {id:'2.2',t:'Send Order Acknowledgement',role:'Estimator',sla:1,forms:['101-05']},
+   {id:'2.3',t:'Job Initiation And Commercial Review',role:'Financial Manager',sla:2,forms:['101-06'],gate:'Commercial Terms Reviewed',mod:'Finance: Pastel'},
+   {id:'2.4',t:'Hand Over To Engineering',role:'Estimator',sla:2,forms:['HANDOVER'],n:'Within 2 days of the order.'}]},
+  {id:3,t:'Engineering',dept:'Engineering',proc:'JBSS-316',c:'#0e7490',ic:'M4 19l5-5m2-8l7 7-3 3-7-7zM14 4l6 6',un:'2.4',steps:[
+   {id:'3.1',t:'Review File And Contract',role:'Engineer',sla:3,forms:['030'],wOnly:1,n:'3 day review period.'},
+   {id:'3.2',t:'Kick-Off, Sub-Job Numbers And Project Plan',role:'Engineer',sla:3,forms:['KICK-E']},
+   {id:'3.3',t:'Generate Facing Sheet And Works Order',role:'Engineer',sla:1,forms:['102-01']},
+   {id:'3.4',t:'Generate Quality Control Plan',role:'Engineer',sla:1,forms:['107-03'],n:'Facing Sheet and QCP together.'},
+   {id:'3.5',t:'GA Drawings: Client Approval',role:'Engineer',sla:14,forms:['028'],gate:'Hold: Client Approval',mod:'Document Control'},
+   {id:'3.6',t:'Place Sheetmetal Order',role:'Engineer',sla:1,forms:['102-02']},
+   {id:'3.7',t:'Electrical Design: Client Approval',role:'Engineer',sla:14,forms:['028'],gate:'Hold: Client Approval',mod:'Document Control'},
+   {id:'3.8',t:'Order Electrical Components',role:'Engineer',sla:2,forms:['102-02']},
+   {id:'3.9',t:'Label Lists, Wire Numbers And Terminal Markers',role:'Engineer',sla:3,forms:['102-12']},
+   {id:'3.10',t:'Issue File To Workshop And Test',role:'Engineering Assistant',sla:1,forms:['172'],gate:'File Complete'}]},
+  {id:4,t:'Purchasing And Stores',dept:'Material Control',proc:'JBSS-105',c:'#a16207',ic:'M3 8l9-5 9 5v9l-9 5-9-5zM3 8l9 5 9-5M12 13v9',un:'3.6',steps:[
+   {id:'4.1',t:'Check Stock Against Requisition',role:'Stores',sla:1,forms:['STOCK']},
+   {id:'4.2',t:'Place Purchase Orders',role:'Buyer',sla:2,forms:['103-01'],mod:'Finance: Pastel',n:'Suppliers from the Approved Vendors List.'},
+   {id:'4.3',t:'Receive And Inspect Goods',role:'Stores',sla:14,forms:['103-13'],mod:'Nonconformances'},
+   {id:'4.4',t:'Identify And Segregate Job Materials',role:'Stores',sla:1,forms:['SEG']},
+   {id:'4.5',t:'Issue Materials To Workshop',role:'Stores',sla:1,forms:['ISSUE'],needs:['6.2']}]},
+  {id:5,t:'Mechanical Quality Assurance',dept:'Quality Assurance Mechanical',proc:'JBSS-319',c:'#be185d',ic:'M12 3l8 3v6c0 5-3.5 8-8 9-4.500-1-8-4-8-9V6zM8.500 12l2.500 2.500 4.500-5',un:'3.6',steps:[
+   {id:'5.1',t:'Verify QA File And Stamped Drawings',role:'QA Inspector',sla:1,forms:['102-07A'],needs:['3.5']},
+   {id:'5.2',t:'Inspect Chassis And Release For Wiring',role:'QA Inspector',sla:2,forms:['107-21'],gate:'Chassis Release',mod:'Nonconformances'},
+   {id:'5.3',t:'Inspect Enclosures And Paint',role:'QA Inspector',sla:2,forms:['107-18'],mod:'Nonconformances'},
+   {id:'5.4',t:'Release Sheetmetal',role:'QA Inspector',sla:1,forms:['107-17'],gate:'Sheetmetal Release'},
+   {id:'5.5',t:'Attach Project ID And QCP To Panels',role:'QA Inspector',sla:1,forms:['229']}]},
+  {id:6,t:'Workshop',dept:'Workshop',proc:'JBSS-321',c:'#c2410c',ic:'M14 6l4 4-9 9H5v-4zM3 21h18',un:'3.10',steps:[
+   {id:'6.1',t:'Receive Job File And Hold Kick-Off',role:'Workshop Manager',sla:2,forms:['102-13'],wOnly:1,n:'2 days.'},
+   {id:'6.2',t:'Hours, Copper And Consumables',role:'Workshop Manager',sla:1,forms:['HRSPO','106-09'],gate:'Purchase Order For Hours',mod:'Finance: Pastel',n:'1 day.'},
+   {id:'6.3',t:'Chassis Layout With Engineer',role:'Workshop Manager',sla:3,forms:['106-02'],needs:['5.2','4.5'],gate:'Hold: Engineer Approval',n:'3 days.'},
+   {id:'6.4',t:'Production: Copper, Equipment And Wiring',role:'Workshop Manager',sla:10,forms:['222'],mod:'Personnel And Competence'},
+   {id:'6.5',t:'Request Inspection And Test',role:'Workshop Manager',sla:1,forms:['107-10'],needs:['5.4'],n:'1 day. Hand over to the Test Department.'}]},
+  {id:7,t:'Inspection And Testing',dept:'Inspection And Testing',proc:'JBSS-322',c:'#0f766e',ic:'M4 12h4l2-6 4 12 2-6h4',un:'6.5',steps:[
+   {id:'7.1',t:'Inspect, Test And Certify',role:'Test Department',sla:3,forms:['IT-TEST'],gate:'No Open Punch Items',mod:'Inspection And Testing'},
+   {id:'7.2',t:'Factory Acceptance Test With Client',role:'Engineer',sla:5,forms:['FAT'],gate:'Witness: Client',n:'Client notified 48 hours before.'},
+   {id:'7.3',t:'Release For Dispatch',role:'Test Department',sla:1,forms:['107-02'],gate:'Release Note',noNcr:1,mod:'Nonconformances'}]},
+  {id:8,t:'Delivery',dept:'Engineering',proc:'JBSS-316',c:'#4338ca',ic:'M2 7h11v9H2zM13 10h5l3 3v3h-8zM6 19a2 2 0 100-4 2 2 0 000 4zM17 19a2 2 0 100-4 2 2 0 000 4z',un:'7.3',steps:[
+   {id:'8.1',t:'Clean, Wrap And Pack',role:'Workshop Manager',sla:3,forms:['064'],n:'3 days.'},
+   {id:'8.2',t:'Book Transport',role:'Engineer',sla:1,forms:['067-01'],n:'48 hours before loading.'},
+   {id:'8.3',t:'Deliver And Obtain Signed Delivery Note',role:'Engineer',sla:3,forms:['051'],gate:'Signed Delivery Note'},
+   {id:'8.4',t:'Request Invoice',role:'Engineer',sla:1,forms:['008'],mod:'Finance: Pastel'},
+   {id:'8.5',t:'Return Excess Materials To Stores',role:'Workshop Manager',sla:3,forms:['103-15']}]},
+  {id:9,t:'Close-Out',dept:'Engineering',proc:'JBSS-314',c:'#334155',ic:'M4 6h16v4H4zM6 10v10h12V10M10 14h4',un:'8.3',steps:[
+   {id:'9.1',t:'Issue Data Pack To Client',role:'Engineer',sla:14,forms:['016'],gate:'Document Pack Complete',packGate:1,n:'No later than 2 weeks after delivery.'},
+   {id:'9.2',t:'Lessons Learned And Client Feedback',role:'Engineer',sla:14,forms:['101-10'],mod:'Customers'},
+   {id:'9.3',t:'Archive The Job File',role:'Engineering Assistant',sla:10,forms:['102-07B'],gate:'Archive Verified',noNcr:1,n:'Within 10 days of final delivery.'}]}
+  ];
+
+  /* Data Pack Index JBSS-016: section -> where the evidence comes from */
+  const PACK=[
+   {n:1,t:'GA And Dimensional Drawings',src:[['3.5','028']]},
+   {n:2,t:'Material List',src:[['3.8','102-02']]},
+   {n:3,t:'Electrical Circuit Diagrams',src:[['3.7','028']]},
+   {n:4,t:'Installation And Maintenance Manual',fixed:'Controlled document JBSS-006, current approved revision, from Document Management'},
+   {n:5,t:'Factory Test And Reports',src:[['7.1','IT-TEST'],['7.2','FAT']]},
+   {n:6,t:'Manufacturing Quality Control Plan',src:[['3.4','107-03']]},
+   {n:7,t:'Inspection Release And Certificates',src:[['5.2','107-21'],['5.4','107-17'],['7.3','107-02']]},
+   {n:8,t:'Compliance Statement',src:[['7.1','IT-TEST']],note:'Declaration of conformity JBSS-014A or 014B from Inspection And Testing'},
+   {n:9,t:'Suppliers Pamphlets',src:[['4.3','103-13']],note:'Uploaded at goods receiving'},
+   {n:10,t:'Certificate Of Calibration',fixed:'Test instrument certificates from the Calibration register, valid on the test date'},
+   {n:11,t:'Copper Connection Torque Settings',src:[['7.1','IT-TEST']],note:'JBSS-107-09 torque register from Inspection And Testing'}
+  ];
+  /* File Archive Checklist JBSS-102-07B item -> evidence */
+  const ARCH=[['1.4','101-03'],['2.3','101-06'],['2.1','JOBREG'],['6.1','102-13'],['3.3','102-01'],['1.1','101-15'],['3.5','028'],['3.7','028'],['3.7','028'],['3.8','102-02'],['3.9','102-12'],['7.1','IT-TEST'],null,['8.3','051'],['7.2','FAT'],['9.2','101-10']];
+
+  const SUPPORT=[
+   {t:'Document Control',d:'Every form opens at its current approved revision from the Master Documents Register.',m:'Document Management'},
+   {t:'Nonconformance',d:'Raise from any step. Failed checks, late suppliers and missed archive dates raise one for you.',m:'Nonconformances'},
+   {t:'Job Hours',d:'Timesheets measured each week against the hours and purchase order on the job.',m:'JBSS Workflow'},
+   {t:'Variation Orders',d:'Costed, sent for customer approval and blocked from work until approved.',m:'JBSS Workflow'},
+   {t:'Finance Hand-Off',d:'Purchase order, invoice request and hours pass to Pastel. Pastel stays the ledger.',m:'Finance'},
+   {t:'Competence',d:'Wiremen and testers allocated to a job are checked against their competency records.',m:'Personnel And Competence'},
+   {t:'Calibration',d:'Test instruments used on a job must hold a valid certificate.',m:'Assets And Calibration'},
+   {t:'Suppliers',d:'Receiving history feeds supplier review and the Approved Vendors List.',m:'Suppliers'}
+  ];
+
+  /* ---------- state and helpers ---------- */
+  const DAY=864e5, HEADK=['customer','project','scope','value','due','estimator','engineer','engHrs','wsHrs','cuHrs','testHrs','hoursPO','orderNo','type','quoteNo','jobNo'];
+  const S={jobs:[],settings:{roles:{},jobStart:1,emailOn:false},loaded:false,broken:false,view:'board',jobId:null,stage:1,reg:null,mine:null};
+  let R=null, draft=null, busy=false;
+  const off=()=>!(STATE.org&&STATE.org._wfOn);
+  const canW=()=>['admin','manager','contributor'].includes(STATE.myRole)||!!(STATE.profile&&STATE.profile.is_platform_staff);
+  const isMgr=()=>['admin','manager'].includes(STATE.myRole)||!!(STATE.profile&&STATE.profile.is_platform_staff);
+  const sb=()=>STATE.supabase, orgId=()=>STATE.org.id, myId=()=>(STATE.user&&STATE.user.id)||null;
+  const me=()=>(STATE.profile&&(STATE.profile.full_name||STATE.profile.name))||(STATE.user&&STATE.user.email)||'User';
+  const members=()=>(STATE.members||[]).map(m=>({id:m.user_id,name:(m.profiles&&m.profiles.name)||'Unknown'}));
+  const holders=role=>((S.settings.roles||{})[role]||[]);
+  const myRoles=()=>ROLES.filter(r=>holders(r).includes(myId()));
+  const roleLabel=role=>{const h=holders(role).map(id=>(members().find(m=>m.id===id)||{}).name).filter(Boolean);return h.length?role+': '+h.join(', '):role};
+  const $=s=>R.querySelector(s);
+  const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const fd=t=>t?new Date(t).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):'';
+  const fdt=t=>t?new Date(t).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+  const iso=t=>{const d=new Date(t);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+  const rand=n=>'R '+Math.round(Number(n||0)).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ');
+  const say=(m,k)=>{try{toast(m,k||'success')}catch(e){}};
+  const STEPS=[];STAGES.forEach(g=>g.steps.forEach((s,i)=>{s.stage=g;s.idx=i;STEPS.push(s)}));
+  const stepOf=id=>STEPS.find(s=>s.id===id);
+  stepOf('5.4').noPunch=1;
+  FORMS['028'].f.find(f=>f.k==='status').block=['Issued For Approval','Rejected: Resubmit'];
+  const blk=(f,v)=>f.block&&[].concat(f.block).includes(v);
+  const jobName=j=>j.jobNo||j.quoteNo||'New Enquiry';
+
+  /* ---------- workflow engine ---------- */
+  const isNA=(j,s)=>!!(s.wOnly&&j.type==='S');
+  const isDone=(j,s)=>isNA(j,s)||!!j.done[s.id];
+  function stageOpen(j,g){ if(j.status==='Lost')return g.id===1; if(!g.un)return true; if(g.id===2){const o=j.recs.find(r=>r.form==='OUTCOME');return !!j.done['1.6']&&!!o&&o.data.outcome==='Order Received'} return isDone(j,stepOf(g.un)); }
+  function blockers(j,s){ const b=[], g=s.stage;
+    if(!stageOpen(j,g)) b.push('Stage opens after '+g.un+': '+stepOf(g.un).t);
+    if(s.idx>0&&!isDone(j,g.steps[s.idx-1])) b.push('Previous step '+g.steps[s.idx-1].id);
+    (s.needs||[]).forEach(n=>{if(!isDone(j,stepOf(n)))b.push('Step '+n+': '+stepOf(n).t)});
+    return b; }
+  const isActive=(j,s)=>j.status==='Open'&&!isDone(j,s)&&blockers(j,s).length===0;
+  function activatedAt(j,s){ let t=j.created; const dep=[]; if(s.idx>0)dep.push(s.stage.steps[s.idx-1].id); else if(s.stage.un)dep.push(s.stage.un); (s.needs||[]).forEach(n=>dep.push(n));
+    dep.forEach(d=>{const x=j.done[d];if(x&&x.at>t)t=x.at}); return t; }
+  const dueAt=(j,s)=>activatedAt(j,s)+Math.max(s.sla,0.5)*DAY;
+  const recsFor=(j,stepId,form)=>j.recs.filter(r=>r.step===stepId&&r.form===form);
+  const ncClosed=r=>{ if(r.data.closed||r.data.conc==='Approved By Client')return true; const n=r.data._nc&&(STATE.ncs||[]).find(x=>x.id===r.data._nc); return !!(n&&n.status==='closed'); };
+  const openNcr=j=>j.recs.filter(r=>r.form==='NCR'&&!ncClosed(r));
+  const openVo=j=>j.recs.filter(r=>r.form==='VO'&&r.data.status==='Awaiting Client Approval');
+  function ynItems(j,flag){ const out=[]; j.recs.forEach(r=>{FORMS[r.form].f.forEach(f=>{if(f.ty==='yn'&&f[flag])(r.data[f.k]||[]).forEach((it,i)=>{if(it&&it.a==='No')out.push({rec:r,f,i,it,txt:f.items[i]})})})}); return out; }
+  const punchItems=j=>ynItems(j,'punch'), actionItems=j=>ynItems(j,'act');
+  function stepState(j,s){ if(isNA(j,s))return 'na'; if(j.done[s.id])return 'done'; if(isActive(j,s)){ const t=Date.now(),d=dueAt(j,s); return t>d?'late':(iso(d)===iso(t)?'soon':'active'); } return 'wait'; }
+  function log(j,txt,at){ j.log.unshift({at:at||Date.now(),by:me(),txt}); if(j.log.length>150)j.log.length=150; }
+  function tryComplete(j,s,by,at){ if(j.done[s.id])return; const ok=s.forms.every(f=>recsFor(j,s.id,f).some(r=>!r.blocked)); if(ok){ j.done[s.id]={at:at||Date.now(),by}; log(j,'Step '+s.id+' complete: '+s.t,at); if(s.id==='9.3'){j.status='Closed';log(j,'Job closed and archived',at)} } }
+  function hours(j){ const used={}; j.recs.filter(r=>r.form==='HRS').forEach(r=>{used[r.data.dept]=(used[r.data.dept]||0)+Number(r.data.hours||0)});
+    const rows=[['Workshop: Electrical',j.wsHrs],['Workshop: Copper',j.cuHrs],['Testing',j.testHrs],['Engineering',j.engHrs]].map(([d,a])=>({d,alloc:Number(a||0),used:used[d]||0}));
+    const noPO=!j.hoursPO&&rows.slice(0,2).some(r=>r.used>0), over=rows.some(r=>r.alloc&&r.used>r.alloc);
+    return {rows,noPO,over}; }
+  function packStatus(j){ const items=PACK.map(p=>{ if(p.fixed)return Object.assign({ok:true,recs:[]},p); const recs=[]; let ok=true; p.src.forEach(([st,f])=>{const r=recsFor(j,st,f).filter(x=>!x.blocked); if(r.length)recs.push(...r); else ok=false}); return Object.assign({ok,recs},p); });
+    const n=items.filter(i=>i.ok).length; return {items,n,pct:Math.round(n/items.length*100)}; }
+  const archAuto=j=>ARCH.map(a=>a?recsFor(j,a[0],a[1]).some(x=>!x.blocked):false);
+  function blockedOf(F,data){ let b=''; F.f.forEach(f=>{ const v=data[f.k]; if(blk(f,v))b=f.l+': '+v; if(f.min&&v!==''&&Number(v)<Number(data[f.min]))b=f.l+' is below specification'; if(f.fail&&v===f.fail)b=f.l+': '+v; }); return b; }
+  /* apply a saved record to the job header: field write-backs, numbers, completion */
+  function applyRecord(j,rec,isEdit){ const F=FORMS[rec.form];
+    F.f.forEach(f=>{ const v=rec.data[f.k]; if(f.job&&v!==''&&v!=null)j[f.job]=v; });
+    if(rec.form==='JOBREG'){ j.type=String(rec.data.type||'W')[0]; if(!j.jobNo&&rec.no)j.jobNo=rec.no; }
+    if(rec.form==='101-01'&&rec.no)j.quoteNo=rec.no;
+    if(rec.form==='OUTCOME'){ if(rec.data.outcome!=='Order Received'){ if(j.status==='Open'){j.status='Lost';log(j,'Quote closed: '+rec.data.outcome)} } else if(j.status==='Lost')j.status='Open'; }
+    log(j,(isEdit?'Updated: ':'Saved to '+F.reg+': ')+F.t+(rec.no?' '+rec.no:''));
+    if(rec.step!=='X'&&!rec.blocked)tryComplete(j,stepOf(rec.step),me()); }
+
+  /* ---------- tasks and reminders ---------- */
+  function tasks(j){ const out=[]; if(j.status!=='Open')return out; const now=Date.now();
+    STEPS.forEach(s=>{ if(isActive(j,s)){ const part=s.forms.filter(f=>recsFor(j,s.id,f).length).length; const bl=s.forms.map(f=>recsFor(j,s.id,f).find(r=>r.blocked)).find(Boolean);
+      out.push({job:j,kind:'step',step:s,role:s.role,due:dueAt(j,s),t:s.id+': '+s.t,sub:bl?'Waiting: '+bl.blocked:(part?part+' of '+s.forms.length+' records saved':s.stage.t)}) } });
+    openNcr(j).forEach(r=>out.push({job:j,kind:'ncr',rec:r,role:r.data.resp,due:Date.parse(r.data.target)||now,t:(r.no||'Nonconformance')+': Close Nonconformance',sub:r.data.desc}));
+    openVo(j).forEach(r=>out.push({job:j,kind:'vo',rec:r,role:'Engineer',due:r.at+3*DAY,t:(r.no||'Variation')+': Obtain Customer Variation Approval',sub:r.data.desc}));
+    punchItems(j).filter(p=>!p.it.closed).forEach(p=>out.push({job:j,kind:'punch',p,role:'QA Inspector',due:p.rec.at+2*DAY,t:'Punch Item: '+p.txt,sub:p.it.r||'Sheetmetal Punch List JBSS-062-02'}));
+    actionItems(j).filter(p=>!p.it.closed).forEach(p=>out.push({job:j,kind:'action',p,role:p.it.resp||'Engineer',due:Date.parse(p.it.target)||p.rec.at+3*DAY,t:'Action: '+p.txt,sub:p.it.act||FORMS[p.rec.form].t}));
+    j.recs.filter(r=>r.form==='TASK'&&r.data.done!=='Done').forEach(r=>out.push({job:j,kind:'manual',rec:r,role:r.data.role,due:Date.parse(r.data.due)||now,t:r.data.what,sub:'Added task'}));
+    const h=hours(j); if(h.noPO)out.push({job:j,kind:'flag',role:'Workshop Manager',due:now-DAY,t:'Hours Booked Without A Purchase Order',sub:'Record the purchase order at step 6.2 or raise a variation'});
+    out.forEach(t=>{t.state=now>t.due?'late':(iso(t.due)===iso(now)?'soon':'ok'); t.esc=now-t.due>2*DAY}); return out; }
+  const showMine=()=>S.mine==null?myRoles().length>0:S.mine;
+  const allTasks=()=>S.jobs.flatMap(tasks).filter(t=>!showMine()||myRoles().includes(t.role)).sort((a,b)=>a.due-b.due);
+
+  /* ---------- storage ---------- */
+  function fromRow(row,recRows){ const j=Object.assign({},row.head||{},{id:row.id,created:Date.parse(row.created_at)||Date.now(),status:row.status||'Open',done:row.done||{},log:Array.isArray(row.log)?row.log:[]});
+    j.recs=(recRows||[]).filter(r=>FORMS[r.form]).map(r=>({id:r.id,form:r.form,step:r.step,no:r.rec_no||'',data:r.data||{},blocked:r.blocked||'',by:r.by_name||'',at:Date.parse(r.created_at)||Date.now(),edited:r.edited_at})).sort((a,b)=>a.at-b.at); return j; }
+  function toRow(j){ const head={}; HEADK.forEach(k=>{if(j[k]!=null&&j[k]!=='')head[k]=j[k]}); return {quote_no:j.quoteNo||null,job_no:j.jobNo||null,customer:j.customer||null,project:j.project||null,status:j.status,head,done:j.done,log:j.log.slice(0,150),updated_at:new Date().toISOString()}; }
+  async function loadWf(){ const q=t=>sb().from(t).select('*').eq('organisation_id',orgId()).limit(10000); const tq=async t=>{try{const r=await q(t);return r.error?null:(r.data||[])}catch(e){return null}};
+    const [jb,rc,se]=await Promise.all([tq('wf_jobs'),tq('wf_records'),tq('wf_settings')]); S.broken=jb==null;
+    const by={}; (rc||[]).forEach(r=>(by[r.job_id]=by[r.job_id]||[]).push(r));
+    S.jobs=(jb||[]).map(r=>fromRow(r,by[r.id])).sort((a,b)=>b.created-a.created);
+    const st=(se||[])[0]; if(st)S.settings={roles:st.roles||{},jobStart:st.job_start||1,emailOn:!!st.email_on};
+    S.loaded=true; }
+  window.loadWf=loadWf;
+  async function nextNo(key){ const r=await sb().rpc('wf_next_no',{p_org:orgId(),p_key:key}); if(r.error)throw r.error; return Number(r.data); }
+  async function numberFor(formId,data){ const F=FORMS[formId], d=new Date(), yy=String(d.getFullYear()).slice(2);
+    if(formId==='JOBREG'){ const n=await nextNo('JOB'); return String(data.type||'W')[0]+yy+String((Number(S.settings.jobStart)||1)-1+n).padStart(3,'0')+'-01'; }
+    if(!F.num)return '';
+    if(F.num==='Q'){ const k='Q'+yy+String(d.getMonth()+1).padStart(2,'0'); return k+String(await nextNo(k)).padStart(2,'0'); }
+    return F.num+String(await nextNo(F.num)).padStart(F.num==='DN'?5:4,'0'); }
+  /* re-read the job, apply a change, write the header back: several people can work on one job */
+  async function syncJob(jobId,mutate){ const [a,b]=await Promise.all([sb().from('wf_jobs').select('*').eq('id',jobId).single(),sb().from('wf_records').select('*').eq('job_id',jobId).limit(10000)]);
+    if(a.error)throw a.error; const j=fromRow(a.data,b.data||[]); const before=STEPS.filter(s=>isActive(j,s)).map(s=>s.id);
+    mutate(j); const up=await sb().from('wf_jobs').update(toRow(j)).eq('id',jobId); if(up.error)throw up.error;
+    const i=S.jobs.findIndex(x=>x.id===jobId); if(i>=0)S.jobs[i]=j; else S.jobs.unshift(j);
+    notify(j,STEPS.filter(s=>isActive(j,s)&&!before.includes(s.id))); return j; }
+  async function emailsOf(role){ const ids=holders(role); if(!ids.length)return []; try{ const map=await ensureMemberEmails(); return ids.map(id=>map[id]&&map[id].email).filter(Boolean); }catch(e){ return []; } }
+  async function notify(j,steps){ if(!S.settings.emailOn||!steps.length)return; for(const s of steps){ try{ const to=await emailsOf(s.role); for(const e of to){ actuallySendEmail(e,'JBSS Workflow: '+jobName(j)+' step '+s.id+' is now with you','Job '+jobName(j)+' ('+(j.customer||'')+': '+(j.project||'')+') has reached step '+s.id+' '+s.t+'. It is due on '+fd(dueAt(j,s))+'. Open QaSHE Watchman, JBSS Workflow, to complete it.'); } }catch(e){} } }
+  async function raiseInNcModule(j,rec){ try{ const owner=holders(rec.data.resp)[0]||myId(); const r=await sb().from('nonconformances').insert({organisation_id:orgId(),title:('Job '+jobName(j)+': '+rec.data.type).slice(0,180),description:rec.data.desc+(rec.data.corr?'\n\nImmediate correction: '+rec.data.corr:'')+'\n\nRaised from JBSS Workflow, record '+(rec.no||''),discipline:'quality',source:'inspection',severity:'minor',raised_by:myId(),owner_id:owner,target_close_date:rec.data.target}).select().single();
+      if(r.error)throw r.error; rec.data._nc=r.data.id; await sb().from('wf_records').update({data:rec.data}).eq('id',rec.id); try{ if(typeof loadNCs==='function')await loadNCs(); }catch(e){} return true; }catch(e){ say('Saved here, but it could not be added to the Nonconformances module: '+(e.message||e),'error'); return false; } }
+
+  /* ---------- screens ---------- */
+  const ICON={doc:'M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6',ok:'M5 12l5 5 9-10',lock:'M7 11V8a5 5 0 0110 0v3M6 11h12v9H6z',clock:'M12 7v5l3 2M12 21a9 9 0 100-18 9 9 0 000 18z',link:'M10 14a4 4 0 005.5 0l3-3a4 4 0 00-5.5-5.5l-1 1M14 10a4 4 0 00-5.5 0l-3 3a4 4 0 005.5 5.5l1-1',warn:'M12 4l9 16H3zM12 10v4M12 17v.5',plus:'M12 5v14M5 12h14',user:'M12 12a4 4 0 100-8 4 4 0 000 8zM4 21a8 8 0 0116 0',x:'M6 6l12 12M18 6L6 18',flag:'M5 21V4h11l-2 4 2 4H5',pack:'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10',print:'M7 9V4h10v5M7 17H4v-7h16v7h-3M7 14h10v6H7z'};
+  const ic=(n,c)=>`<svg class="ic ${c||''}" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON[n]||n}"/></svg>`;
+  const chip=(txt,cls)=>`<span class="chip ${cls||''}">${txt}</span>`;
+  const stateLbl={done:'Complete',active:'In Progress',soon:'Due Today',late:'Overdue',wait:'Waiting',na:'Not Applicable'};
+  const curJob=()=>S.jobs.find(j=>j.id===S.jobId);
+  function go(view,extra){ S.view=view; Object.assign(S,extra||{}); render(); try{ R.host.scrollIntoView({block:'start'}); }catch(e){} }
+  const TABS=[['board','Job Board'],['tasks','Tasks And Reminders'],['registers','Registers'],['map','Process Map'],['settings','Settings']];
+  function render(){ if(!R)return; const late=allTasks().filter(t=>t.state==='late').length;
+    $('#tabs').innerHTML=TABS.filter(t=>t[0]!=='settings'||isMgr()).map(([k,l])=>`<button class="${(S.view===k||(S.view==='job'&&k==='board'))?'on':''}" data-act="nav" data-v="${k}">${l}${k==='tasks'&&late?`<span class="badge">${late}</span>`:''}</button>`).join('');
+    if(S.broken){ $('#main').innerHTML=`<div class="banner red">${ic('warn')}<span><b>The JBSS Workflow tables are not in the database yet.</b> Run qashe-watchman-schema-r60-jbss-workflow.sql in the Supabase SQL editor, then reload.</span></div>`; return; }
+    $('#main').innerHTML=({board:vBoard,job:vJob,tasks:vTasks,registers:vRegs,map:vMap,settings:vSettings})[S.view](); }
+
+  function vBoard(){ const open=S.jobs.filter(j=>j.status==='Open'); const T_=S.jobs.flatMap(tasks);
+    const k=[['Jobs And Quotes In Progress',open.length,''],['Tasks Overdue',T_.filter(t=>t.state==='late').length,'red'],['Open Nonconformances',S.jobs.reduce((a,j)=>a+openNcr(j).length,0),'amber'],['Variations Awaiting Customer Approval',S.jobs.reduce((a,j)=>a+openVo(j).length,0),'amber'],['Jobs With Hours And No Purchase Order',open.filter(j=>hours(j).noPO).length,'red'],['Open Quotes Above R500 000',open.filter(j=>!j.jobNo&&Number(j.value)>500000).length,'']];
+    return `<div class="head"><div><h1>Job Board</h1><p class="sub">Every enquiry and job, where it stands in the process, and what is holding it.</p></div>${canW()?`<button class="btn pri" data-act="newEnquiry">${ic('plus')}New Enquiry</button>`:''}</div>
+    <div class="kpis">${k.map(([l,v,c])=>`<div class="kpi ${v?c:''}"><b>${v}</b><span>${l}</span></div>`).join('')}</div>
+    <div class="jobs">${S.jobs.map(jobCard).join('')||'<p class="empty">No jobs yet. Start with New Enquiry.</p>'}</div>`; }
+  function stageBar(j){ return `<div class="sbar">${STAGES.map(g=>{const d=g.steps.filter(s=>isDone(j,s)).length,all=d===g.steps.length,act=g.steps.some(s=>isActive(j,s)),late=g.steps.some(s=>stepState(j,s)==='late');return `<i class="${all?'all':act?(late?'late':'act'):''}" style="--c:${g.c}" title="${g.t}: ${d} of ${g.steps.length}"></i>`}).join('')}</div>`; }
+  function jobCard(j){ const ts=tasks(j), late=ts.filter(t=>t.state==='late').length, cur=STEPS.filter(s=>isActive(j,s)), h=hours(j);
+    const flags=[late?chip(late+' Overdue','red'):'',openNcr(j).length?chip(openNcr(j).length+' Nonconformance','amber'):'',openVo(j).length?chip('Variation Awaiting Approval','amber'):'',h.noPO?chip('Hours: No Purchase Order','red'):'',j.status==='Closed'?chip('Closed And Archived','green'):'',j.status==='Lost'?chip('Regret','grey'):''].join('');
+    return `<button class="job" data-act="openJob" data-id="${j.id}"><div class="jtop"><div><b class="jno">${esc(jobName(j))}</b><span class="jc">${esc(j.customer)}</span></div><div class="jv">${j.value?rand(j.value):''}</div></div>
+    <div class="jp">${esc(j.project)} <span class="dim">: ${esc(j.scope)}</span></div>${stageBar(j)}
+    <div class="jbot"><span class="now">${cur.length?cur.slice(0,2).map(s=>`<em style="--c:${s.stage.c}">${s.id}</em> ${esc(s.t)}`).join(' <span class="dim">and</span> '):(j.status==='Open'?'Waiting':'')}</span><span class="flags">${flags}</span></div></button>`; }
+
+  function vJob(){ const j=curJob(); if(!j)return vBoard(); const g=STAGES.find(x=>x.id===S.stage)||STAGES[0]; const pk=packStatus(j), h=hours(j), ts=tasks(j);
+    const pct=Math.round(STEPS.filter(s=>isDone(j,s)).length/STEPS.length*100), w=canW()&&j.status!=='Closed';
+    return `<button class="back" data-act="nav" data-v="board">Job Board</button>
+    <section class="jhead"><div class="ring" style="--p:${pct}"><b>${pct}%</b></div><div class="jh1"><h1>${esc(jobName(j))}</h1><p>${esc(j.customer)} : ${esc(j.project)}</p>
+     <div class="meta">${j.quoteNo?chip('Quote '+esc(j.quoteNo)):''}${j.orderNo?chip('Order '+esc(j.orderNo)):''}${j.engineer?chip(esc(j.engineer)):''}${j.due?chip('Delivery '+fd(j.due)):''}${j.status!=='Open'?chip(j.status==='Lost'?'Regret':'Closed And Archived',j.status==='Lost'?'grey':'green'):''}</div></div>
+     ${w?`<div class="jacts"><button class="btn" data-act="x" data-f="NCR">${ic('warn')}Raise Nonconformance</button><button class="btn" data-act="x" data-f="VO">${ic('flag')}Raise Variation</button><button class="btn" data-act="x" data-f="HRS">${ic('clock')}Log Hours</button><button class="btn" data-act="x" data-f="TASK">${ic('plus')}Add Task</button></div>`:''}</section>
+    ${openVo(j).length?`<div class="banner amber">${ic('lock')}<span><b>Variation Awaiting Customer Approval.</b> No work may start on ${openVo(j).map(r=>esc(r.no)).join(', ')} until the Customer Variation Approval is signed.</span></div>`:''}
+    ${h.noPO?`<div class="banner red">${ic('warn')}<span><b>Hours Booked Without A Purchase Order.</b> Record the purchase order for hours at step 6.2.</span></div>`:''}
+    <div class="ribbon" role="tablist">${STAGES.map(x=>{const d=x.steps.filter(s=>isDone(j,s)).length,op=stageOpen(j,x),late=x.steps.some(s=>stepState(j,s)==='late'),act=x.steps.some(s=>isActive(j,s));return `<button role="tab" class="rb ${x.id===g.id?'on':''} ${d===x.steps.length?'all':''} ${op?'':'shut'}" style="--c:${x.c}" data-act="stage" data-id="${x.id}"><span class="rn">${d===x.steps.length?ic('ok'):x.id}</span><span class="rt">${x.t}</span><span class="rc">${op?d+' of '+x.steps.length:'Locked'}${late?' : Overdue':act?' : Active':''}</span></button>`}).join('')}</div>
+    <div class="cols"><section class="flow" style="--c:${g.c}"><header><svg class="big" viewBox="0 0 24 24"><path d="${g.ic}"/></svg><div><h2>${g.id}. ${g.t}</h2><p>${g.dept} : Process ${g.proc}${stageOpen(j,g)?'':' : Opens after step '+g.un}</p></div></header>
+     <ol class="steps">${g.steps.map(s=>stepCard(j,s)).join('')}</ol></section>
+    <aside class="side">
+     <div class="card"><h3>${ic('clock')}Tasks And Reminders</h3>${ts.length?ts.sort((a,b)=>a.due-b.due).slice(0,7).map(taskRow).join(''):'<p class="empty">Nothing outstanding.</p>'}</div>
+     <div class="card"><h3>${ic('pack')}Document Pack</h3><div class="meter"><i style="width:${pk.pct}%"></i></div><p class="small">${pk.n} of ${pk.items.length} sections of the Data Pack Index JBSS-016 are in place.</p><button class="btn full" data-act="pack">Open Document Pack</button></div>
+     <div class="card"><h3>${ic('user')}Hours Against Allocation</h3>${h.rows.filter(r=>r.alloc||r.used).map(r=>`<div class="hr"><span>${r.d}</span><span class="${r.alloc&&r.used>r.alloc?'bad':''}">${r.used} of ${r.alloc||0} h</span><div class="meter ${r.alloc&&r.used>r.alloc?'bad':''}"><i style="width:${Math.min(100,r.alloc?r.used/r.alloc*100:100)}%"></i></div></div>`).join('')||'<p class="empty">Hours appear once the costing is saved.</p>'}<p class="small">Purchase order for hours: <b class="${h.noPO?'bad':''}">${esc(j.hoursPO||'None recorded')}</b></p></div>
+     <div class="card"><h3>${ic('warn')}Nonconformances And Variations</h3>${j.recs.filter(r=>r.form==='NCR'||r.form==='VO').map(r=>`<button class="li" data-act="view" data-rec="${r.id}"><b>${esc(r.no)}</b> ${esc((r.data.desc||'').slice(0,60))}<br>${r.form==='NCR'?chip(ncClosed(r)?'Closed':'Open',ncClosed(r)?'green':'amber'):chip(esc(r.data.status),r.data.status==='Awaiting Client Approval'?'amber':'green')}</button>`).join('')||'<p class="empty">None raised.</p>'}</div>
+     <div class="card"><h3>Activity</h3><ul class="log">${j.log.slice(0,10).map(l=>`<li><time>${fdt(l.at)}${l.by?' : '+esc(l.by):''}</time>${esc(l.txt)}</li>`).join('')}</ul></div>
+    </aside></div>`; }
+  function stepCard(j,s){ const st=stepState(j,s), bl=st==='wait'?blockers(j,s):[]; const mine=myRoles().includes(s.role);
+    const docs=s.forms.map(f=>{const F=FORMS[f], rs=recsFor(j,s.id,f), r=rs[rs.length-1], can=st!=='wait'&&st!=='na'&&j.status!=='Lost'&&(r||canW());
+      return `<div class="branch"><button class="doc ${r?(r.blocked?'hold':'saved'):''}" ${can?'':'disabled'} data-act="${r&&!(F.multi&&canW()&&j.status==='Open')?'view':'form'}" data-step="${s.id}" data-f="${f}" ${r?`data-rec="${r.id}"`:''}>${ic(r&&!r.blocked?'ok':'doc')}<span><b>${F.doc}</b>${esc(F.t)}<small>${r?(r.blocked?'Saved: waiting on '+esc(r.blocked):'Saved'+(r.no?' : '+esc(r.no):'')+(rs.length>1?' : '+rs.length+' records':'')):'Fill in and save'} : ${F.reg}</small></span></button>${r&&F.multi&&can?`<button class="mini" data-act="view" data-rec="${r.id}">View Last</button>`:''}</div>`}).join('');
+    const itb=s.mod==='Inspection And Testing'&&canAccessModule('it')?`<button class="mini" data-act="openMod" data-m="it">Open Inspection And Testing</button>`:'';
+    return `<li class="step ${st} ${mine?'mine':''}"><div class="node">${st==='done'?ic('ok'):st==='wait'?ic('lock'):s.id.split('.')[1]}</div>
+     <div class="sc"><div class="st"><h4>${s.id} ${s.t}</h4>${chip(stateLbl[st],st)}</div>
+     <div class="sm">${chip(ic('user')+esc(roleLabel(s.role)),'role')}${s.sla?chip(ic('clock')+(s.sla===1?'1 Day':s.sla+' Days'),'plain'):''}${s.gate?chip(ic('lock')+s.gate,'gate'):''}${s.mod?chip(ic('link')+s.mod,'mod'):''}</div>
+     ${s.n?`<p class="note">${s.n}</p>`:''}${st==='wait'&&bl.length?`<p class="waitp">Waiting for: ${bl.map(esc).join('; ')}</p>`:''}
+     ${st==='done'?`<p class="donep">Completed ${fd(j.done[s.id].at)} by ${esc(j.done[s.id].by)}</p>`:(st==='active'||st==='soon'||st==='late')?`<p class="duep ${st}">Due ${fd(dueAt(j,s))}</p>`:''}
+     <div class="docs">${docs}${itb}</div></div></li>`; }
+  function taskRow(t){ return `<button class="task ${t.state}" data-act="task" data-job="${t.job.id}" data-kind="${t.kind}" ${t.step?`data-step="${t.step.id}"`:''} ${t.rec?`data-rec="${t.rec.id}"`:''} ${t.p?`data-rec="${t.p.rec.id}" data-k="${t.p.f.k}" data-i="${t.p.i}"`:''}><i></i><span><b>${esc(t.t)}</b><small>${esc(t.sub||'')}</small></span><span class="tr"><em>${t.state==='late'?'Overdue':t.state==='soon'?'Due Today':'Due'} ${fd(t.due)}</em><small>${esc(roleLabel(t.role))}${t.esc?' : Escalated To Managing Director':''}</small></span></button>`; }
+
+  function vTasks(){ const ts=allTasks(), mine=showMine(); const grp=[['late','Overdue'],['soon','Due Today'],['ok','On Track']];
+    return `<div class="head"><div><h1>${mine?'My Tasks':'All Tasks'}</h1><p class="sub">Tasks come from the workflow itself: the step you own, actions from checklists, punch items, nonconformances and variations. Overdue tasks are marked for escalation after 2 days.</p></div>
+     <div class="jacts"><button class="btn ${mine?'pri':''}" data-act="mine" data-v="1">My Tasks</button><button class="btn ${mine?'':'pri'}" data-act="mine" data-v="0">All Tasks</button>${isMgr()?`<button class="btn" data-act="remind">Email Overdue Reminders</button>`:''}</div></div>
+    ${mine&&!myRoles().length?`<div class="banner amber">${ic('user')}<span>You are not linked to a workflow role yet. An administrator links people to roles under Settings.</span></div>`:''}
+    ${grp.map(([k,l])=>{const x=ts.filter(t=>t.state===k);return `<section class="tg ${k}"><h2>${l} <span>${x.length}</span></h2>${x.map(t=>`<div class="trow"><span class="tj">${esc(jobName(t.job))}</span>${taskRow(t)}</div>`).join('')||'<p class="empty">None.</p>'}</section>`}).join('')}`; }
+
+  function regData(){ const m={}; S.jobs.forEach(j=>j.recs.forEach(r=>{const F=FORMS[r.form];(m[F.reg]=m[F.reg]||[]).push({j,r,F})})); return m; }
+  function summary(r,F){ return F.f.filter(f=>['t','s','d','n'].includes(f.ty)&&r.data[f.k]!==''&&r.data[f.k]!=null).slice(0,3).map(f=>r.data[f.k]).join(' : ').slice(0,90); }
+  function vRegs(){ const m=regData(), names=Object.keys(m).sort(); const cur=S.reg&&m[S.reg]?S.reg:names[0]; const rows=(m[cur]||[]).sort((a,b)=>b.r.at-a.r.at); const prod=cur==='Production Hours Register';
+    return `<div class="head"><div><h1>Registers</h1><p class="sub">Nobody keeps a register by hand. Each one is the list of records saved from the workflow.</p></div>${cur?`<button class="btn" data-act="printReg">${ic('print')}Print Register</button>`:''}</div>
+    ${names.length?`<div class="regs"><div class="rlist">${names.map(n=>`<button class="${n===cur?'on':''}" data-act="reg" data-n="${esc(n)}">${n}<span>${m[n].length}</span></button>`).join('')}</div>
+    <div class="rtab card"><h3>${cur}</h3>${prod?`<div class="scroll"><table><thead><tr><th>Job</th><th>Purchase Order</th><th>Electrical Used</th><th>Allocated</th><th>Difference</th></tr></thead><tbody>${S.jobs.filter(j=>j.wsHrs).map(j=>{const h=hours(j).rows[0];return `<tr><td>${esc(jobName(j))}</td><td class="${j.hoursPO?'':'bad'}">${esc(j.hoursPO||'No Purchase Order')}</td><td>${h.used}</td><td>${h.alloc}</td><td class="${h.alloc-h.used<0?'bad':''}">${h.alloc-h.used}</td></tr>`}).join('')}</tbody></table></div><h3 style="margin-top:18px">Time Sheets</h3>`:''}
+    <div class="scroll"><table><thead><tr><th>Number</th><th>Job</th><th>Document</th><th>Summary</th><th>Saved</th><th>By</th><th>Status</th></tr></thead><tbody>${rows.map(({j,r,F})=>`<tr class="click" data-act="view" data-rec="${r.id}"><td><b>${esc(r.no||'')}</b></td><td>${esc(jobName(j))}</td><td>${F.doc}<br><small>${esc(F.t)}</small></td><td>${esc(summary(r,F))}</td><td>${fd(r.at)}</td><td>${esc(r.by)}</td><td>${r.blocked?chip('Waiting','amber'):r.form==='NCR'?chip(ncClosed(r)?'Closed':'Open',ncClosed(r)?'green':'amber'):chip('Saved','green')}</td></tr>`).join('')}</tbody></table></div></div></div>`:'<p class="empty">Registers fill as records are saved from the workflow.</p>'}`; }
+
+  function vMap(){ return `<div class="head"><div><h1>Process Map</h1><p class="sub">The JB Switchgear Solutions business process from enquiry to archive: 9 stages, ${STEPS.length} steps, ${Object.values(FORMS).filter(f=>!f.x).length} controlled forms.</p></div></div>
+    <div class="map">${STAGES.map((g,i)=>`<div class="mst" style="--c:${g.c}"><div class="mh"><svg viewBox="0 0 24 24"><path d="${g.ic}"/></svg><div><b>${g.id}. ${g.t}</b><span>${g.dept} : ${g.proc}</span></div></div><ol>${g.steps.map(s=>`<li><em>${s.id}</em><span>${s.t}<small>${esc(roleLabel(s.role))}${s.sla?' : '+s.sla+(s.sla===1?' Day':' Days'):''}${s.gate?' : Gate: '+s.gate:''}</small><small class="dl">${s.forms.map(f=>FORMS[f].doc).join(', ')}</small></span></li>`).join('')}</ol>${i<STAGES.length-1?'<div class="arrow"></div>':''}</div>`).join('')}</div>
+    <h2 class="sh">Supporting Processes Linked To Every Stage</h2><div class="sup">${SUPPORT.map(s=>`<div class="card"><h3>${ic('link')}${s.t}</h3><p>${s.d}</p>${chip('Watchman Module: '+s.m,'mod')}</div>`).join('')}</div>`; }
+
+  function vSettings(){ const mem=members(), st=S.settings;
+    return `<div class="head"><div><h1>Settings</h1><p class="sub">Link each workflow role to the people who hold it. Tasks, reminders and signatures follow these links. A role with nobody linked can be signed by any contributor.</p></div><button class="btn pri" data-act="saveSettings">Save Settings</button></div>
+    <div class="card"><h3>Workflow Roles</h3><div class="roles">${ROLES.map((r,i)=>`<div class="rolerow"><b>${r}</b><div class="who">${mem.map(m=>`<label><input type="checkbox" data-role="${i}" value="${m.id}" ${holders(r).includes(m.id)?'checked':''}><span>${esc(m.name)}</span></label>`).join('')||'<span class="empty">No team members loaded.</span>'}</div></div>`).join('')}</div></div>
+    <div class="card" style="margin-top:14px"><h3>Numbering And Email</h3><div class="fgrid" style="padding:0"><div class="fld"><label for="set_start">Job Number Sequence Starts At</label><input id="set_start" type="number" min="1" value="${esc(st.jobStart||1)}"><small class="small">Job numbers are issued as type, year and this sequence, for example W26301-01. Change it before the first job is issued.</small></div>
+     <div class="fld"><label for="set_email">Email The Role Holder When A Step Reaches Them</label><select id="set_email"><option value="0" ${st.emailOn?'':'selected'}>Off</option><option value="1" ${st.emailOn?'selected':''}>On</option></select><small class="small">Quote numbers follow the register: Q, year, month and a two digit sequence.</small></div></div></div>`; }
+
+  /* ---------- form page ---------- */
+  function itInfo(j){ try{ const d=STATE._it; if(!d||!j.jobNo)return null; const nm=x=>String(x||'').replace(/[^a-z0-9]/gi,'').toLowerCase(); const key=nm(j.jobNo).replace(/01$/,''); const ij=(d.jobs||[]).find(x=>nm(x.job_no)===nm(j.jobNo)||(key&&nm(x.job_no).startsWith(key))); if(!ij)return null; const us=(d.units||[]).filter(u=>u.job_id===ij.id); return {job:ij,units:us,certs:us.map(u=>u.cert_no).filter(Boolean),docs:us.map(u=>u.doc_no).filter(Boolean)}; }catch(e){ return null; } }
+  function openForm(j,stepId,formId,rec,ro,isNew){ if(!canW())ro=true; draft={j,stepId,formId,rec,ro:!!ro,isNew:!!isNew}; const F=FORMS[formId]; let data=rec?rec.data:{}; const s=stepId==='X'?null:stepOf(stepId);
+    const auto=!rec&&F.f.some(f=>f.auto)?archAuto(j):null; let extra='';
+    if(formId==='IT-TEST'){ const x=itInfo(j); if(x){ if(!rec)data={boards:x.units.length||'',rtc:x.certs.join(', '),doc:x.docs.join(', ')}; extra=`<p class="fi wide">${ic('link')}<span>Inspection And Testing holds job <b>${esc(x.job.job_no)}</b>: ${x.units.length} boards, ${x.certs.length} certified, status ${esc(x.job.status||'')}${x.job.release_note_no?', release note '+esc(x.job.release_note_no):''}.</span></p>`; } else extra=`<p class="fi wide">${ic('link')}<span>No job with this job number was found in Inspection And Testing. Create it there with the same job number so the results link.</span></p>`; }
+    const body=extra+F.f.map(f=>field(f,data,j,ro,auto,!rec)).join('');
+    $('#page').innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(F.t)}"><header><div><span class="dno">${F.doc}</span><h2>${esc(F.t)}</h2><p>${s?s.id+' '+s.t+' : ':''}Saves to: <b>${F.reg}</b>${rec?' : '+(rec.no?esc(rec.no)+' : ':'')+'saved '+fdt(rec.at)+' by '+esc(rec.by):''}</p></div><button class="xbtn" data-act="closeForm" aria-label="Close">${ic('x')}</button></header>
+     <div class="strip"><span><small>Job</small>${esc(jobName(j))}</span><span><small>Customer</small>${esc(j.customer||'To be captured')}</span><span><small>Project</small>${esc(j.project||'To be captured')}</span><span><small>Order</small>${esc(j.orderNo||'None yet')}</span><button class="ctl" data-act="ctl">${ic('link')}Controlled Document</button></div>
+     <div id="ferr" class="ferr" hidden></div><form id="frm" class="fgrid" novalidate onsubmit="return false">${body}</form>
+     <footer>${ro?`<button class="btn" data-act="closeForm">Close</button>${rec?`<button class="btn" data-act="printRec">${ic('print')}Print</button>`:''}${rec&&canW()&&j.status!=='Closed'?`<button class="btn pri" data-act="edit">Edit Record</button>`:''}`:`<button class="btn" data-act="closeForm">Cancel</button><button class="btn pri" id="savebtn" data-act="saveForm">Save To ${F.reg}</button>`}</footer></div>`;
+    $('#page').classList.add('on'); document.body.style.overflow='hidden'; $('#page').scrollTop=0; }
+  function field(f,data,j,ro,auto,fresh){ const id='f_'+f.k, dis=ro?'disabled':''; let v=data[f.k]; if(v==null&&fresh&&f.job&&j[f.job]!=null)v=j[f.job]; if(v==null)v='';
+    const lab=`<label for="${id}">${f.l}${f.r?'<i>Required</i>':''}</label>`;
+    switch(f.ty){
+     case 'h':return `<h3 class="fh">${f.l}</h3>`; case 'i':return `<p class="fi">${ic('flag')}<span>${f.l}</span></p>`;
+     case 't':{ const dl=f.list==='customers'?`<datalist id="${id}_l">${(STATE.customers||[]).map(c=>`<option value="${esc(c.name||'')}">`).join('')}</datalist>`:''; return `<div class="fld">${lab}<input id="${id}" type="text" value="${esc(v)}" ${dl?`list="${id}_l"`:''} ${dis}>${dl}</div>`; }
+     case 'n':return `<div class="fld">${lab}<input id="${id}" type="number" step="any" value="${esc(v)}" ${dis}></div>`;
+     case 'd':return `<div class="fld">${lab}<input id="${id}" type="date" value="${esc(v)}" ${dis}></div>`;
+     case 'a':return `<div class="fld wide">${lab}<textarea id="${id}" rows="3" ${dis}>${esc(v)}</textarea></div>`;
+     case 's':{ let opts=f.opts==='members'?members().map(m=>m.name):f.opts.slice(); if(v&&!opts.includes(v))opts.unshift(v); return `<div class="fld">${lab}<select id="${id}" ${dis}><option value="">Choose</option>${opts.map(o=>`<option ${o===v?'selected':''}>${esc(o)}</option>`).join('')}</select></div>`; }
+     case 'file':return `<div class="fld">${lab}<div class="filebox">${ro?'':`<input id="${id}" type="file">`}<span id="${id}_n" class="fname">${v&&v.name?`<button type="button" class="mini" data-act="dl" data-p="${esc(v.path||'')}">${esc(v.name)}</button>`:(typeof v==='string'&&v?esc(v):'No file attached')}</span></div></div>`;
+     case 'sig':return `<div class="fld sig">${lab}<div class="sigbox" id="${id}" data-role="${f.role||''}" data-v="${v?esc(JSON.stringify(v)):''}">${v?`<b>${ic('ok')}Signed: ${esc(v.by)}</b><small>${esc(v.role||'')} : ${fdt(v.at)}</small>`:`<button type="button" class="btn" data-act="sign" data-k="${f.k}" ${dis}>Sign${f.role?' As '+f.role:''}</button>`}</div></div>`;
+     case 'yn':{ const arr=Array.isArray(v)?v:[]; return `<div class="fld wide"><div class="ynh"><label>${f.l}${f.r?'<i>Required</i>':''}</label>${ro?'':`<button type="button" class="mini" data-act="allyes" data-k="${f.k}">Mark Remaining As Yes</button>`}</div><div class="yn" id="${id}">${f.items.map((it,i)=>{const a=arr[i]||(auto&&f.auto&&auto[i]?{a:'Yes',r:'Proved by saved record'}:{}); return `<div class="ynr ${a.a==='No'?'no':''}" data-i="${i}"><span class="q"><em>${i+1}</em>${esc(it)}</span><span class="seg">${['Yes','No','N/A'].map(o=>`<label><input type="radio" name="${id}_${i}" value="${o}" ${a.a===o?'checked':''} ${dis}><span>${o}</span></label>`).join('')}</span><input class="rem" type="text" placeholder="Remark" value="${esc(a.r||'')}" ${dis} aria-label="Remark for item ${i+1}">
+       ${f.act?`<div class="actn"><input class="act" type="text" placeholder="Action to be taken" value="${esc(a.act||'')}" ${dis} aria-label="Action"><select class="resp" ${dis} aria-label="Responsible"><option value="">Responsible</option>${ROLES.map(r=>`<option ${a.resp===r?'selected':''}>${r}</option>`).join('')}</select><input class="tgt" type="date" value="${esc(a.target||'')}" ${dis} aria-label="Target date"></div>`:''}${a.closed?'<small class="cl">Closed</small>':''}</div>`}).join('')}</div></div>`; }
+     case 'tbl':{ const rows=Array.isArray(v)&&v.length?v:[f.cols.map(()=> '')]; return `<div class="fld wide"><label>${f.l}${f.r?'<i>Required</i>':''}</label><div class="scroll"><table class="ft" id="${id}"><thead><tr>${f.cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${f.cols.map((c,i)=>`<td><input type="text" value="${esc(r[i]||'')}" ${dis} aria-label="${esc(c)}"></td>`).join('')}</tr>`).join('')}</tbody></table></div>${ro?'':`<button type="button" class="mini" data-act="addrow" data-k="${f.k}">Add Row</button>`}</div>`; }
+    } return ''; }
+  function collect(){ const F=FORMS[draft.formId], d={}, miss=[], files=[]; const old=draft.rec?draft.rec.data:{};
+    F.f.forEach(f=>{ const el=R.getElementById('f_'+f.k); if(!el&&f.ty!=='file')return; let v, empty=false;
+     switch(f.ty){
+      case 'h':case 'i':return;
+      case 'file':{ const fl=el&&el.files&&el.files[0]; if(fl){ if(fl.size>15*1024*1024){miss.push(f.l+': the file is larger than 15 MB');} files.push({k:f.k,file:fl}); v={name:fl.name}; } else v=old[f.k]||''; empty=!v; break; }
+      case 'sig':v=el.dataset.v?JSON.parse(el.dataset.v):''; empty=!v; break;
+      case 'yn':v=f.items.map((_,i)=>{const row=el.querySelector(`[data-i="${i}"]`), c=row.querySelector('input[type=radio]:checked'); const o={a:c?c.value:'',r:row.querySelector('.rem').value.trim()}; if(f.act){o.act=row.querySelector('.act').value.trim();o.resp=row.querySelector('.resp').value;o.target=row.querySelector('.tgt').value} if(old[f.k]&&old[f.k][i]&&old[f.k][i].closed&&o.a==='No')o.closed=true; return o});
+        empty=v.some(o=>!o.a); if(!empty&&!f.act&&!f.punch&&v.some(o=>o.a==='No'))miss.push(f.l+': an item is answered No. Resolve it, or raise a nonconformance, before saving');
+        if(f.act&&v.some(o=>o.a==='No'&&(!o.act||!o.resp||!o.target)))miss.push(f.l+': each No needs an action, a responsible role and a target date'); break;
+      case 'tbl':v=[...el.querySelectorAll('tbody tr')].map(tr=>[...tr.querySelectorAll('input')].map(i=>i.value.trim())).filter(r=>r.some(Boolean)); empty=!v.length; break;
+      default:v=el.value.trim(); empty=v==='';
+     }
+     d[f.k]=v; const wrap=el&&el.closest('.fld'); if(wrap)wrap.classList.toggle('err',!!(f.r&&empty)); if(f.r&&empty)miss.push(f.l+': required'); });
+    if(old._nc)d._nc=old._nc; return {d,miss,files}; }
+  function showErr(miss){ const e=$('#ferr'); e.hidden=false; e.innerHTML='<b>This record cannot be saved yet.</b><ul>'+[...new Set(miss)].slice(0,8).map(m=>'<li>'+esc(m)+'</li>').join('')+'</ul>'; $('#page').scrollTop=0; }
+  async function saveForm(){ if(busy||!draft||draft.ro)return; const {d,miss,files}=collect(); let j=draft.j; const s=draft.stepId==='X'?null:stepOf(draft.stepId), F=FORMS[draft.formId], formId=draft.formId, stepId=draft.stepId, existing=draft.rec, isNew=draft.isNew;
+    if(s&&s.noNcr&&openNcr(j).length)miss.unshift('Open nonconformance on this job: '+openNcr(j).map(r=>r.no).join(', ')+'. Close it, or record an approved concession, first');
+    if(s&&s.noPunch&&punchItems(j).some(p=>!p.it.closed))miss.unshift('Sheetmetal punch items are still open. Close them from Tasks first');
+    if(s&&s.packGate&&packStatus(j).pct<100)miss.unshift('The document pack is incomplete: '+packStatus(j).items.filter(i=>!i.ok).map(i=>i.n+' '+i.t).join(', '));
+    if(formId==='102-02'&&/^3/.test(d.code||'')&&!d.auth)miss.unshift('Requisition code 3 must be authorised by a Director');
+    if(miss.length)return showErr(miss);
+    busy=true; const sbn=$('#savebtn'); if(sbn){sbn.disabled=true;sbn.textContent='Saving';}
+    try{
+      if(isNew){ const ins=await sb().from('wf_jobs').insert({organisation_id:orgId(),status:'Open',head:{},done:{},log:[],created_by:myId()}).select().single(); if(ins.error)throw ins.error; j=fromRow(ins.data,[]); }
+      for(const x of files){ const path=orgId()+'/wf/'+j.id+'/'+Date.now()+'-'+x.file.name.replace(/[^A-Za-z0-9._-]+/g,'_'); const up=await sb().storage.from('evidence').upload(path,x.file,{upsert:false}); if(up.error)throw new Error('The file could not be uploaded: '+up.error.message); d[x.k]={name:x.file.name,path}; }
+      const blocked=blockedOf(F,d); let rec;
+      if(existing){ const up=await sb().from('wf_records').update({data:d,blocked,edited_at:new Date().toISOString(),edited_by:me()}).eq('id',existing.id); if(up.error)throw up.error; rec=Object.assign({},existing,{data:d,blocked}); }
+      else { const no=await numberFor(formId,d); const ins=await sb().from('wf_records').insert({organisation_id:orgId(),job_id:j.id,form:formId,step:stepId,rec_no:no||null,data:d,blocked,by_name:me(),by_user:myId()}).select().single(); if(ins.error)throw ins.error;
+        rec={id:ins.data.id,form:formId,step:stepId,no:no||'',data:d,blocked,by:me(),at:Date.parse(ins.data.created_at)||Date.now()}; }
+      if(formId==='NCR'&&!existing)await raiseInNcModule(j,rec);
+      const nj=await syncJob(j.id,x=>{ const r=x.recs.find(q=>q.id===rec.id); applyRecord(x,r||rec,!!existing); });
+      if(isNew){ S.jobId=nj.id; S.view='job'; S.stage=1; }
+      closeForm(); render(); say(blocked?'Saved. The step stays open: '+blocked:'Saved to '+F.reg+(rec.no?': '+rec.no:''),blocked?'info':'success');
+    }catch(e){ showErr(['Could not save: '+(e.message||e)]); if(sbn){sbn.disabled=false;sbn.textContent='Save To '+F.reg;} }
+    busy=false; }
+  function closeForm(){ if(!R)return; $('#page').classList.remove('on'); $('#page').innerHTML=''; document.body.style.overflow=''; draft=null; }
+
+  function openPack(j){ const pk=packStatus(j), au=archAuto(j);
+    $('#page').innerHTML=`<div class="sheet"><header><div><span class="dno">JBSS-016</span><h2>Document Pack: ${esc(jobName(j))}</h2><p>${esc(j.customer)} : ${esc(j.project)} : ${pk.n} of ${pk.items.length} sections in place</p></div><button class="xbtn" data-act="closeForm" aria-label="Close">${ic('x')}</button></header>
+    <div class="packb"><div class="meter"><i style="width:${pk.pct}%"></i></div>
+    <h3 class="fh">Data Pack Index</h3>${pk.items.map(p=>`<div class="prow ${p.ok?'ok':''}"><span class="pn">${p.ok?ic('ok'):p.n}</span><div><b>${p.n}. ${p.t}</b>${p.fixed?`<small>${p.fixed}</small>`:''}${p.note?`<small>${p.note}</small>`:''}${p.recs.map(r=>`<button class="mini" data-act="view" data-rec="${r.id}">${FORMS[r.form].doc}${r.no?' '+esc(r.no):''}</button>`).join('')}${!p.ok?`<small class="bad">Missing: ${p.src.filter(([st,f])=>!recsFor(j,st,f).some(x=>!x.blocked)).map(([st,f])=>'step '+st+' '+FORMS[f].doc).join(', ')}</small>`:''}</div></div>`).join('')}
+    <h3 class="fh">File Archive Checklist: JBSS-102-07B</h3><div class="agrid">${FORMS['102-07B'].f.find(f=>f.k==='arch').items.map((t,i)=>`<span class="${au[i]?'ok':''}">${au[i]?ic('ok'):ic('doc')}${t}</span>`).join('')}</div></div>
+    <footer><button class="btn" data-act="closeForm">Close</button><button class="btn pri" data-act="printPack">${ic('print')}Print Document Pack</button></footer></div>`; $('#page').classList.add('on'); document.body.style.overflow='hidden'; $('#page').scrollTop=0; }
+  function dialog(title,html){ $('#dlg').innerHTML=`<div class="dbox" role="dialog" aria-modal="true"><h3>${title}</h3><div>${html}</div><div class="dact"><button class="btn pri" data-act="closeDlg">Close</button></div></div>`; $('#dlg').classList.add('on'); }
+
+  /* ---------- printing ---------- */
+  function valHtml(f,v){ if(v==null||v==='')return ''; switch(f.ty){
+     case 'sig':return 'Signed: '+esc(v.by)+(v.role?' ('+esc(v.role)+')':'')+' : '+fdt(v.at);
+     case 'file':return esc(v.name||v);
+     case 'yn':return `<table class="in"><tr><th>Item</th><th>Answer</th><th>Remark Or Action</th></tr>${f.items.map((t,i)=>{const a=(v||[])[i]||{};return `<tr><td>${i+1}. ${esc(t)}</td><td>${esc(a.a||'')}</td><td>${esc([a.r,a.act,a.resp,a.target,a.closed?'Closed':''].filter(Boolean).join(' : '))}</td></tr>`}).join('')}</table>`;
+     case 'tbl':return `<table class="in"><tr>${f.cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr>${(v||[]).map(r=>`<tr>${f.cols.map((c,i)=>`<td>${esc(r[i]||'')}</td>`).join('')}</tr>`).join('')}</table>`;
+     case 'd':return fd(v); default:return esc(v).replace(/\n/g,'<br>'); } }
+  function recHtml(j,r){ const F=FORMS[r.form]; return `<section class="rec"><div class="rh"><span class="dn">${F.doc}</span><h2>${esc(F.t)}${r.no?' : '+esc(r.no):''}</h2><p>Job ${esc(jobName(j))} : ${esc(j.customer||'')} : ${esc(j.project||'')}${j.orderNo?' : Order '+esc(j.orderNo):''}</p><p>Saved ${fdt(r.at)} by ${esc(r.by)}${r.blocked?' : Waiting: '+esc(r.blocked):''}</p></div><table class="ft">${F.f.filter(f=>f.ty!=='i'&&f.k!=='_nc').map(f=>f.ty==='h'?`<tr><th colspan="2" class="sec">${f.l}</th></tr>`:(['yn','tbl'].includes(f.ty)?`<tr><td colspan="2"><b>${f.l}</b>${valHtml(f,r.data[f.k])}</td></tr>`:`<tr><td class="l">${f.l}</td><td>${valHtml(f,r.data[f.k])}</td></tr>`)).join('')}</table></section>`; }
+  function printDoc(title,body){ const w=window.open('','_blank'); if(!w){ say('Allow pop-ups for this site to print.','error'); return; } const org=esc((STATE.org&&STATE.org.name)||'');
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>body{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:12px;margin:24px}h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;margin:2px 0}p{margin:2px 0}.top{border-bottom:3px solid #0f2440;padding-bottom:8px;margin-bottom:14px}.rec{page-break-before:always;margin-top:10px}.rec.first{page-break-before:auto}.dn{display:inline-block;background:#0f2440;color:#fff;font-weight:bold;padding:2px 8px;border-radius:4px;font-size:11px}table{border-collapse:collapse;width:100%;margin-top:8px}td,th{border:1px solid #bbb;padding:5px 7px;text-align:left;vertical-align:top}th{background:#eef2f7}td.l{width:34%;font-weight:bold;background:#f7f9fc}th.sec{background:#0f2440;color:#fff}table.in{margin:4px 0 0}.ok{color:#12803f;font-weight:bold}.no{color:#c8102e;font-weight:bold}@media print{body{margin:10mm}}</style></head><body><div class="top"><h1>${esc(title)}</h1><p>${org} : Printed ${fdt(Date.now())} by ${esc(me())}</p></div>${body}<script>window.onload=function(){setTimeout(function(){window.print()},300)}<\/script></body></html>`); w.document.close(); }
+  function printPack(j){ const pk=packStatus(j); const seen=new Set(), recs=[]; pk.items.forEach(p=>p.recs.forEach(r=>{if(!seen.has(r.id)){seen.add(r.id);recs.push(r)}})); j.recs.filter(r=>!FORMS[r.form].x&&!seen.has(r.id)).forEach(r=>recs.push(r));
+    const idx=`<h2>Data Pack Index: JBSS-016</h2><table><tr><th>Section</th><th>Content</th><th>Evidence</th><th>Status</th></tr>${pk.items.map(p=>`<tr><td>${p.n}</td><td>${p.t}</td><td>${p.fixed?p.fixed:p.recs.map(r=>FORMS[r.form].doc+(r.no?' '+esc(r.no):'')).join(', ')}</td><td class="${p.ok?'ok':'no'}">${p.ok?'In Place':'Missing'}</td></tr>`).join('')}</table><p style="margin-top:10px">Job ${esc(jobName(j))} : ${esc(j.customer||'')} : ${esc(j.project||'')}${j.orderNo?' : Order '+esc(j.orderNo):''}</p>`;
+    printDoc('Document Pack: '+jobName(j),idx+recs.map(r=>recHtml(j,r)).join('')); }
+
+  /* ---------- actions ---------- */
+  function findRec(id){ for(const j of S.jobs){const r=j.recs.find(x=>x.id===id); if(r)return {j,r}} return null; }
+  async function closeItem(jobId,recId,k,i){ if(busy)return; busy=true; try{ const x=findRec(recId); const data=JSON.parse(JSON.stringify(x.r.data)); data[k][i].closed=true; data[k][i].closedBy=me(); data[k][i].closedAt=Date.now(); const up=await sb().from('wf_records').update({data}).eq('id',recId); if(up.error)throw up.error;
+      await syncJob(jobId,q=>log(q,'Closed item on '+FORMS[x.r.form].doc+': '+FORMS[x.r.form].f.find(f=>f.k===k).items[i])); $('#dlg').classList.remove('on'); render(); say('Item closed'); }catch(e){ say('Could not close the item: '+(e.message||e),'error'); } busy=false; }
+  async function saveSettings(){ if(busy)return; busy=true; try{ const roles={}; ROLES.forEach((r,i)=>{roles[r]=[...R.querySelectorAll(`input[data-role="${i}"]:checked`)].map(x=>x.value)}); const row={organisation_id:orgId(),roles,job_start:Math.max(1,parseInt($('#set_start').value,10)||1),email_on:$('#set_email').value==='1',updated_at:new Date().toISOString()};
+      const up=await sb().from('wf_settings').upsert(row,{onConflict:'organisation_id'}); if(up.error)throw up.error; S.settings={roles,jobStart:row.job_start,emailOn:row.email_on}; render(); say('Settings saved'); }catch(e){ say('Could not save settings: '+(e.message||e),'error'); } busy=false; }
+  async function remind(){ if(busy)return; busy=true; let sent=0; try{ const by={}; S.jobs.flatMap(tasks).filter(t=>t.state==='late').forEach(t=>(by[t.role]=by[t.role]||[]).push(t));
+      for(const role of Object.keys(by)){ const to=await emailsOf(role); if(!to.length)continue; const msg='These JBSS Workflow tasks are overdue for the '+role+':\n\n'+by[role].map(t=>'- '+jobName(t.job)+': '+t.t+' (due '+fd(t.due)+')').join('\n')+'\n\nOpen QaSHE Watchman, JBSS Workflow, Tasks And Reminders.'; for(const e of to){ if(await actuallySendEmail(e,'JBSS Workflow: '+by[role].length+' overdue task'+(by[role].length>1?'s':''),msg))sent++; } }
+      say(sent?sent+' reminder email'+(sent>1?'s':'')+' sent':'No reminders sent: no overdue tasks, or the roles have nobody linked under Settings',sent?'success':'info'); }catch(e){ say('Reminders failed: '+(e.message||e),'error'); } busy=false; }
+  function ctlDoc(){ const F=FORMS[draft.formId]; const nm=x=>String(x||'').replace(/[^a-z0-9]/gi,'').toLowerCase(); const hit=(STATE.documents||[]).find(d=>nm(d.doc_number)===nm(F.doc));
+    dialog('Controlled Document: '+F.doc,hit?`<p><b>${esc(hit.title||'')}</b></p><p>Revision ${esc(hit.revision||'not set')}${hit.status?' : '+esc(String(hit.status).replace(/_/g,' ')):''}</p><p><button class="btn" data-act="openMod" data-m="documents">Open Document Management</button></p>`:`<p>${F.doc} is not registered in Document Management for this organisation yet. Register or upload it there so its revision shows here.</p><p><button class="btn" data-act="openMod" data-m="documents">Open Document Management</button></p>`); }
+  function onClick(e){ const b=e.target.closest('[data-act]'); if(!b)return; const a=b.dataset.act, j=curJob();
+    if(a==='nav')return go(b.dataset.v);
+    if(a==='openJob'){ const x=S.jobs.find(q=>q.id===b.dataset.id); const cur=STEPS.find(s=>isActive(x,s)); return go('job',{jobId:x.id,stage:cur?cur.stage.id:(x.status==='Closed'?9:1)}); }
+    if(a==='stage'){ S.stage=+b.dataset.id; return render(); }
+    if(a==='newEnquiry')return openForm({id:null,created:Date.now(),status:'Open',done:{},recs:[],log:[]},'1.1','101-15',null,false,true);
+    if(a==='form')return openForm(j,b.dataset.step,b.dataset.f,null);
+    if(a==='view'){ const x=findRec(b.dataset.rec); if(!x)return; S.jobId=x.j.id; return openForm(x.j,x.r.step,x.r.form,x.r,true); }
+    if(a==='edit'){ const d=draft; return openForm(d.j,d.stepId,d.formId,d.rec,false); }
+    if(a==='x')return openForm(j,'X',b.dataset.f,null);
+    if(a==='saveForm')return saveForm(); if(a==='closeForm')return closeForm(); if(a==='closeDlg')return $('#dlg').classList.remove('on');
+    if(a==='pack')return openPack(j); if(a==='printPack')return printPack(j);
+    if(a==='printRec')return printDoc(FORMS[draft.formId].doc+' '+FORMS[draft.formId].t,recHtml(draft.j,draft.rec).replace('class="rec"','class="rec first"'));
+    if(a==='printReg'){ const m=regData(), names=Object.keys(m).sort(), cur=S.reg&&m[S.reg]?S.reg:names[0]; return printDoc('Register: '+cur,`<table><tr><th>Number</th><th>Job</th><th>Document</th><th>Summary</th><th>Saved</th><th>By</th></tr>${m[cur].sort((x,y)=>y.r.at-x.r.at).map(({j,r,F})=>`<tr><td>${esc(r.no||'')}</td><td>${esc(jobName(j))}</td><td>${F.doc} ${esc(F.t)}</td><td>${esc(summary(r,F))}</td><td>${fd(r.at)}</td><td>${esc(r.by)}</td></tr>`).join('')}</table>`); }
+    if(a==='reg'){ S.reg=b.dataset.n; return render(); }
+    if(a==='mine'){ S.mine=b.dataset.v==='1'; return render(); }
+    if(a==='remind')return remind(); if(a==='saveSettings')return saveSettings();
+    if(a==='ctl')return ctlDoc();
+    if(a==='openMod'){ closeForm(); $('#dlg').classList.remove('on'); return showModule(b.dataset.m); }
+    if(a==='dl'){ if(!b.dataset.p)return; return sb().storage.from('evidence').createSignedUrl(b.dataset.p,300).then(r=>{ if(r.error||!r.data)return say('The file could not be opened.','error'); window.open(r.data.signedUrl,'_blank'); }); }
+    if(a==='sign'){ const box=b.closest('.sigbox'), need=box.dataset.role; if(need&&holders(need).length&&!holders(need).includes(myId())&&!isMgr())return dialog('Signature Not Allowed',`<p>This signature belongs to the <b>${esc(roleLabel(need))}</b>. Save is only possible once they have signed.</p>`);
+      const v={by:me(),role:need||'',at:Date.now()}; box.dataset.v=JSON.stringify(v); box.innerHTML=`<b>${ic('ok')}Signed: ${esc(v.by)}</b><small>${esc(v.role)} : ${fdt(v.at)}</small>`; return; }
+    if(a==='allyes'){ R.querySelectorAll('#f_'+b.dataset.k+' .ynr').forEach(r=>{ if(!r.querySelector('input:checked'))r.querySelector('input[value=Yes]').checked=true }); return; }
+    if(a==='addrow'){ const tb=R.querySelector('#f_'+b.dataset.k+' tbody'); const tr=tb.rows[0].cloneNode(true); tr.querySelectorAll('input').forEach(i=>i.value=''); tb.appendChild(tr); return; }
+    if(a==='task'){ const x=S.jobs.find(q=>q.id===b.dataset.job), k=b.dataset.kind;
+      if(k==='step')return go('job',{jobId:x.id,stage:stepOf(b.dataset.step).stage.id});
+      if(k==='ncr'||k==='vo'||k==='manual'){ const r=x.recs.find(q=>q.id===b.dataset.rec); S.jobId=x.id; return openForm(x,r.step,r.form,r,!canW()); }
+      if(k==='punch'||k==='action'){ const r=x.recs.find(q=>q.id===b.dataset.rec); const it=r.data[b.dataset.k][+b.dataset.i]; return dialog(k==='punch'?'Punch Item':'Action From Checklist',`<p><b>${esc(FORMS[r.form].f.find(f=>f.k===b.dataset.k).items[+b.dataset.i])}</b></p><p>${esc(it.act||it.r||'No remark recorded.')}</p>${canW()?`<p><button class="btn pri" data-act="closeItem" data-job="${x.id}" data-rec="${r.id}" data-k="${b.dataset.k}" data-i="${b.dataset.i}">Mark Rectified And Verified</button></p>`:''}`); }
+      if(k==='flag')return go('job',{jobId:x.id,stage:6}); }
+    if(a==='closeItem')return closeItem(b.dataset.job,b.dataset.rec,b.dataset.k,+b.dataset.i);
+  }
+  function onChange(e){ const t=e.target; if(t.type==='file'&&t.files[0]){ const n=R.getElementById(t.id+'_n'); if(n)n.textContent=t.files[0].name; }
+    if(t.type==='radio'&&t.closest('.ynr'))t.closest('.ynr').classList.toggle('no',t.value==='No'); }
+  document.addEventListener('keydown',e=>{ if(e.key!=='Escape'||!R||!R.host.isConnected)return; if($('#dlg').classList.contains('on'))$('#dlg').classList.remove('on'); else if($('#page').classList.contains('on')&&!busy)closeForm(); });
+
+  async function wfInit(){ const host=document.getElementById('wf-root'); if(!host)return; document.body.style.overflow='';
+    R=host.shadowRoot||host.attachShadow({mode:'open'}); R.innerHTML='<style>'+CSS+'</style><div class="wf"><div id="tabs" class="tabs"></div><div id="main"><p class="empty">Loading the workflow.</p></div></div><div id="page"></div><div id="dlg"></div>';
+    R.addEventListener('click',onClick); R.addEventListener('change',onChange);
+    try{ await loadWf(); }catch(e){ S.broken=true; }
+    if(S.view==='job'&&!curJob())S.view='board'; render(); }
+  window.wfInit=wfInit;
+
+  /* ---------- switch, access and navigation ---------- */
+  async function loadFlag(){
+    if(!STATE.org) return; STATE.org._wfOn = false;
+    try { const r = await STATE.supabase.from('org_modules').select('enabled').eq('organisation_id', STATE.org.id).eq('module_key', 'wf').maybeSingle(); if(r && !r.error && r.data) STATE.org._wfOn = r.data.enabled === true; } catch(e){}
+    STATE.org.wf_module_enabled = STATE.org._wfOn; S.loaded = false; S.jobs = []; S.view = 'board'; S.jobId = null; S.mine = null; S.settings = {roles:{},jobStart:1,emailOn:false};
+    try { applyModuleAccessToNav(); } catch(e){}
+  }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ await loadFlag(); })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
+  ADMIN_CONSOLE_TOGGLES.push({ field:'wf_module_enabled', label:'JBSS Workflow (JB Switchgear Solutions)', note:'Bespoke for JB Switchgear Solutions: the business process from enquiry to archive as a flowchart of 9 stages and 46 steps. Controlled forms open on their own page and save to their registers; gates, tasks and reminders, variations, hours against purchase order, nonconformances and the document pack. Off by default.' });
+  { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
+      if(field !== 'wf_module_enabled') return _t.apply(this, arguments);
+      const { error } = await STATE.supabase.from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:'wf', enabled:!!value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
+      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
+    }; }
+  { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){ if(mod === 'wf') return !off() && _c.apply(this, arguments); return _c.apply(this, arguments); }; }
+  MODULE_META.wf = { title:'JBSS Workflow', sub:() => 'Enquiry to archive: the process flowchart, forms, registers, tasks and the document pack' };
+  RENDERERS.wf = () => '<div id="wf-root"></div>';
+  { const mr = document.querySelector('.nav-item[data-mod="it"]') || document.querySelector('.nav-item[data-mod="wt"]') || document.querySelector('.nav-item[data-mod="management_review"]');
+    if(mr && !document.querySelector('.nav-item[data-mod="wf"]')) mr.insertAdjacentHTML('beforebegin', '<div class="nav-item" data-mod="wf" onclick="showModule(\'wf\')"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="5" rx="1"/><rect x="14" y="16" width="7" height="5" rx="1"/><path d="M6.5 8v4a2 2 0 002 2h7a2 2 0 012 2"/></svg> JBSS Workflow</div>'); }
+  { const _a = applyModuleAccessToNav; applyModuleAccessToNav = window.applyModuleAccessToNav = function(){ const r = _a.apply(this, arguments);
+      const el = document.querySelector('.nav-item[data-mod="wf"]'); if(el) el.style.display = canAccessModule('wf') ? '' : 'none'; return r; }; }
+  { const _s = showModule; showModule = window.showModule = function(mod){ const r = _s.apply(this, arguments); if(mod !== 'wf'){ try{ document.body.style.overflow = ''; }catch(e){} } if(mod === 'wf' && document.getElementById('wf-root')) wfInit(); return r; }; }
+  setTimeout(() => { try{ applyModuleAccessToNav(); }catch(e){} }, 0);
+})();
 </script>
 </body>
 </html>
