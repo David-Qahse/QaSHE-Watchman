@@ -22286,7 +22286,7 @@ function renderBulkDocumentsTable(searchTerm){
         <button class="btn-small" onclick="toggleEditBulkDoc('${d.id}')">Edit</button>
         <button class="btn-small" onclick="downloadFromBucket('documents','${d.storage_path}')">View Document</button>
         <button class="btn-small" onclick="openReviewRequestForm('bulk_document','${d.id}','${d.department_id||''}','${d.document_type_id||''}')">Request update</button>
-        <button class="btn-small" onclick="deleteBulkDocument('${d.id}','${d.storage_path}')">Delete</button>
+        ${wmDocAdmin() ? `<button class="btn-small" onclick="deleteBulkDocument('${d.id}','${d.storage_path}')">Delete</button>` : ''}
       </td>
     </tr>
     <tr id="bulkdoc-edit-row-${d.id}" style="display:none;"><td colspan="6" style="padding:12px 16px; background:var(--grey-tint);">
@@ -22307,6 +22307,7 @@ function renderBulkDocumentsTable(searchTerm){
 // department/type register and the cross-department search results, so a
 // large bulk-upload clean-up (hundreds of mis-sorted or duplicate files)
 // doesn't mean clicking Delete one row at a time.
+function wmDocAdmin(){ return STATE.myRole === 'admin' || !!(STATE.profile && STATE.profile.is_platform_staff) }
 function bulkDocSelectionBarHtml(selectedCount){
   if(!selectedCount) return '';
   return `
@@ -22314,7 +22315,7 @@ function bulkDocSelectionBarHtml(selectedCount){
       <span style="font-size:12.5px; color:#8a6400; font-weight:600;">${selectedCount} document${selectedCount===1?'':'s'} selected</span>
       <div style="display:flex; gap:8px;">
         <button class="btn-small" onclick="clearBulkDocSelection()">Clear selection</button>
-        <button class="btn-small" style="background:var(--red); color:#fff; border-color:var(--red);" onclick="deleteSelectedBulkDocuments()">Delete selected</button>
+        ${wmDocAdmin() ? `<button class="btn-small" style="background:var(--red); color:#fff; border-color:var(--red);" onclick="deleteSelectedBulkDocuments()">Delete selected</button>` : ''}
       </div>
     </div>
   `;
@@ -22350,6 +22351,7 @@ window.clearBulkDocSelection = function(){
 // as the single-document path, just looped, with one confirm and one
 // summary toast instead of one of each per file.
 window.deleteSelectedBulkDocuments = async function(){
+  if(!wmDocAdmin()){ toast('Only an administrator can delete documents.', 'error'); return; }
   const ids = Array.from(STATE._bulkDocSelected || []);
   if(!ids.length) return;
   const docs = STATE.bulkDocuments.filter(d => ids.includes(d.id));
@@ -22430,6 +22432,7 @@ window.uploadBulkDocuments = async function(){
 };
 
 window.deleteBulkDocument = async function(id, storagePath){
+  if(!wmDocAdmin()){ toast('Only an administrator can delete documents.', 'error'); return; }
   if(!confirm('Delete this document? This cannot be undone.')) return;
   await STATE.supabase.storage.from('documents').remove([storagePath]);
   const { error } = await STATE.supabase.from('bulk_documents').delete().eq('id', id);
