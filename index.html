@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R61 2026-11-25"><meta charset="UTF-8">
+<meta name="wm-release" content="R62 2026-11-25"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -3371,7 +3371,7 @@ const RENDERERS = {
       <h3>Recently raised nonconformances</h3>
       <div class="sub">Most recent, across every type</div>
       <table>
-        <tr><th>Ref</th><th>Type</th><th>Owner</th><th>Target close</th><th>Status</th></tr>
+        <tr><th>Ref</th><th>Type (Category)</th><th>Owner</th><th>Target close</th><th>Status</th></tr>
         ${recent.map(n=>`<tr class="clickable" onclick="showModule('nonconformances'); setTimeout(()=>openNCDetail('${n.id}'),0)">
           <td class="mono-cell">${n.ref_code}</td><td class="strong">${n.title}</td><td>${memberName(n.owner_id)}</td><td>${fmtDate(n.target_close_date)}</td><td>${pill(n.status)}</td>
         </tr>`).join('') || '<tr><td colspan="5" style="text-align:center; color:var(--text-faint); padding:24px;">No nonconformances logged yet.</td></tr>'}
@@ -3412,25 +3412,14 @@ const RENDERERS = {
           <option value="closed">Closed</option>
         </select>
         <select id="nc-filter-type" onchange="renderNCTable()">
-          <option value="">All types</option>
+          <option value="">All types (categories)</option>
           ${STATE.ncTypes.map(t=>`<option value="${t.id}">${t.name}</option>`).join('')}
         </select>
       </div>
-      <button class="btn-small" onclick="toggleNCTypesPanel()">Manage Types (Category) List</button>
       <button class="btn-small" onclick="openImportModal('nonconformances')">Import Excel</button>
       <button class="btn-small" onclick="exportModuleExcel('nonconformances')">Export Excel</button>
       <button class="btn-small" onclick="printCurrentRegister('nonconformances','Nonconformances Register')">Print Register</button>
       <button class="btn-primary btn-add" onclick="toggleNCForm()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Raise Nonconformance</button>
-    </div>
-
-    <div class="form-panel" id="nc-types-panel">
-      <h3 style="font-family:Arial,Helvetica,sans-serif; font-size:15.5px; font-weight:600; margin-bottom:6px;">Types (Category) Master List</h3>
-      <p style="font-size:12px; color:var(--text-faint); margin-bottom:14px;">Every client starts with the same standard master list. Keep it, switch off what is not relevant to this client, edit the wording, or add your own categories. These appear in the Type (Category) drop down when raising a nonconformance.</p>
-      <div id="nc-types-list" style="margin-bottom:12px; max-height:260px; overflow-y:auto;"></div>
-      <div class="form-grid">
-        <div class="field span3"><label>New category</label><input id="nc-type-new-name" placeholder="e.g. Housekeeping observation"></div>
-      </div>
-      <button class="btn-small primary" onclick="addNcType()">Add type</button>
     </div>
 
     <div class="form-panel" id="nc-form">
@@ -4578,6 +4567,8 @@ const RENDERERS = {
         <button class="btn-small ${STATE._adminSubtab==='masterregister'?'primary':''}" onclick="switchAdminSubtab('masterregister')">Master Documents Register</button>
         <button class="btn-small" onclick="goToDocAdminTool('requests')">Document Review Requests${(STATE.docReviewRequests||[]).filter(r=>r.status==='pending').length ? ` (${(STATE.docReviewRequests||[]).filter(r=>r.status==='pending').length})` : ''}</button>
         <button class="btn-small" onclick="goToDocAdminTool('setup')">Document Naming Convention</button>
+        ${(STATE.myRole === 'admin' || (STATE.profile && STATE.profile.is_platform_staff)) ? `<button class="btn-small ${STATE._adminSubtab==='nctypes'?'primary':''}" onclick="switchAdminSubtab('nctypes')">Nonconformance Types (Category)</button>
+        <button class="btn-small ${STATE._adminSubtab==='riskcats'?'primary':''}" onclick="switchAdminSubtab('riskcats')">Risk Categories</button>` : ''}
         <button class="btn-small ${STATE._adminSubtab==='orgprofile'?'primary':''}" onclick="switchAdminSubtab('orgprofile')">Organisation Profile</button>
         ${(STATE.profile.is_platform_staff && /[?&]tplstaff=1/.test(location.search)) ? `<button class="btn-small ${STATE._adminSubtab==='templatelibrary'?'primary':''}" onclick="switchAdminSubtab('templatelibrary')">Template Library (staff)</button>` : ''}
       </div>
@@ -4719,7 +4710,7 @@ function renderNCTable(){
     return;
   }
   wrap.innerHTML = `<table>
-    <tr><th>Ref</th><th>Type</th><th>Severity</th><th>Owner</th><th>Target close</th><th>Status</th><th></th></tr>
+    <tr><th>Ref</th><th>Type (Category)</th><th>Severity</th><th>Owner</th><th>Target close</th><th>Status</th><th></th></tr>
     ${rows.map(n=>`<tr class="clickable" onclick="openNCDetail('${n.id}')">
       <td class="mono-cell">${n.ref_code}</td>
       <td class="strong">${n.title}</td>
@@ -6621,7 +6612,7 @@ window.togglePromoteForm = function(findingId, findingType){
     slot.innerHTML = `
       <div class="form-panel open" style="margin-top:10px;">
         <div class="form-grid">
-          <div class="field span3"><label>Type</label><select id="pf-type-${findingId}">${STATE.ncTypes.filter(t=>t.is_active).map(t=>`<option value="${t.id}" ${auditTypeMatch && t.id===auditTypeMatch.id?'selected':''}>${t.name}</option>`).join('')}</select></div>
+          <div class="field span3"><label>Type (Category)</label><select id="pf-type-${findingId}">${STATE.ncTypes.filter(t=>t.is_active).map(t=>`<option value="${t.id}" ${auditTypeMatch && t.id===auditTypeMatch.id?'selected':''}>${t.name}</option>`).join('')}</select></div>
           <div class="field"><label>Severity</label><select id="pf-severity-${findingId}">
             <option value="minor" ${defaultSev==='minor'?'selected':''}>Minor</option>
             <option value="major" ${defaultSev==='major'?'selected':''}>Major</option>
@@ -11555,7 +11546,7 @@ const IMPORT_SPECS = {
     label: 'Nonconformances',
     table: 'nonconformances',
     columns: [
-      {key:'type', label:'Type (exact name from Manage Types)', required:true, type:'nc_type', example:'Customer complaint'},
+      {key:'type', label:'Type (Category) (exact name from the Administration list)', required:true, type:'nc_type', example:'Customer complaint'},
       {key:'description', label:'Description', required:false, type:'text', example:'Pressure gauge certificate expired'},
       {key:'immediate_action_taken', label:'Immediate Action Taken', required:false, type:'text', example:'Gauge removed from service pending recalibration'},
       {key:'contact_details', label:'Contact Details of Involved Parties', required:false, type:'text', example:'J Smith, Line Supervisor, 082 555 1234'},
@@ -11908,7 +11899,7 @@ function validateImportValue(col, rawValue, ctx){
   }
   if(col.type === 'nc_type'){
     const t = impFind((STATE.ncTypes||[]).filter(x=>x.is_active), val, ['name']);
-    if(!t) return { ok:false, error:`${L}: no active type named "${val}". Add it under Manage Types first` };
+    if(!t) return { ok:false, error:`${L}: no active type named "${val}". Ask an administrator to add it under Administration, Nonconformance Types (Category)` };
     return { ok:true, value:val, resolved:t.id };
   }
   if(col.type === 'position'){
@@ -54723,7 +54714,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   window.wmAskNcType = function(suggest){
     return new Promise(res => {
       const types = (STATE.ncTypes || []).filter(t => t.is_active);
-      if(!types.length){ toast('Add at least one type under Nonconformances, Manage Types (Category) List first.', 'error'); return res(null); }
+      if(!types.length){ toast('Ask an administrator to add at least one Type (Category) under Administration first.', 'error'); return res(null); }
       const guess = types.find(t => suggest && new RegExp(suggest, 'i').test(t.name));
       const el = document.createElement('div'); el.style.cssText = 'position:fixed;inset:0;background:rgba(30,28,27,.5);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px;';
       el.innerHTML = `<div class="detail-card" style="max-width:460px;width:100%;margin:0;">
@@ -54856,7 +54847,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   ['buildAndPrintNC','buildAndPrintRaga'].forEach(n => busyWrap(n, 'Preparing the preview…', 250));
 
   /* ---------------- helpers ---------------- */
-  const isAdm = () => ['admin','manager'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const isAdm = () => STATE.myRole === 'admin' || !!(STATE.profile && STATE.profile.is_platform_staff); /* R62: only an administrator deletes records */
   const IAN = ['incident','accident','near_miss'];
   const MODS = {
     nc:   { label:'Nonconformances', table:'nonconformances', voidKey:'nonconformances' },
@@ -55095,7 +55086,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   function addBulkButtons(){
     const put = (anchor, mod) => { if(!anchor || anchor.parentNode.querySelector('.r52-bulkbtn[data-m="' + mod + '"]')) return;
       const b = document.createElement('button'); b.className = 'btn-small r52-bulkbtn'; b.dataset.m = mod; b.type = 'button'; b.textContent = 'Bulk tools'; b.title = 'Bulk delete, restart numbering, choose which number leads'; b.onclick = () => wmBulk(mod); anchor.parentNode.insertBefore(b, anchor); };
-    put(document.querySelector('button[onclick="toggleNCTypesPanel()"]'), 'nc');
+    put(document.querySelector('button[onclick="openImportModal(\'nonconformances\')"]'), 'nc');
     put(document.querySelector('button[onclick*="openImportModal(\'raga\')"]'), 'raga');
     put(document.querySelector('#ian-root button[onclick="ianToggleForm()"]'), 'ian');
     put(document.querySelector('#isi-root button[onclick="isiNew()"]'), 'isi');
@@ -56372,6 +56363,243 @@ window.showRatingGuide = function(){
 
   /* members who log in elsewhere are picked up when the page is shown again */
   document.addEventListener('visibilitychange', () => { if(!document.hidden && STATE.org && document.getElementById('pers-table-wrap')){ (async () => { try{ await reloadAdminMembers(); STATE._emailMap = null; await loadInvites(); }catch(e){} refresh(); })(); } });
+})();
+
+/* ===== R62: administrator-only deletes; Nonconformance My / Department / All views; Nonconformance Types and Risk Categories under Administration; risk register grouped by category ===== */
+(function(){
+  const E = s => escapeHtml(String(s == null ? '' : s));
+  const lc = s => String(s || '').trim().toLowerCase();
+  const isAdminOnly = () => STATE.myRole === 'admin' || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const isMgr = () => isAdminOnly() || STATE.myRole === 'manager';
+
+  /* ---------- 1. only an administrator deletes records ---------- */
+  const GUARDED = ['deleteDivision','deletePosition','removeCompetence','deletePerson','assetDeleteMaintenance','deleteInspectionCertificate','deleteAssetInspection','deleteLegalCert','deleteLeaveType','awDeleteSealReplacement','awDeleteComponent','deleteAdminInvite','deleteSelectedBulkDocuments','deleteBulkDocument','sfDeleteFile','supDeleteContract','deleteProgramme','deleteRiskControl','supQItemDelete','cleanupDelete','wmDeleteLegal','secIncRemove','iaDelete','tiDelete','govDelete','audDelete','oaDelete','oaDocDel','oaQualDel','wdDelete','attDeleteException','crmOppDelete','crmContactDelete','custContactDelete','qiDelTax','pmDelete','pmDelPhase','pmDelCost','pmDelLink','pmDelMember','daDelete','bpDelPlan','bpDelGoal','bpDelCont','eduDel','itPunchDel','itJobDel','itTimeDel','ohsDel','envMetDel','psQDel','mrDeleteDoc','wtDelDefect','crmDelete'];
+  /* editing aids stay open to everyone who can edit: attachments and photos, document sections, checklist items, process steps, readings */
+  const KEEP = ['deleteEvidence','deleteSectionImage','deleteReferenceUpload','deleteDocumentSection','deleteDocumentTable','deleteDocumentAddendum','deleteDocumentLink','deleteAuditChecklistItem','deleteAssetChecklistItem','wtDelPhoto','itPhotoDel','kpiDeleteReading','deleteFlowchartStepConfirm','deleteKpiSample','pgStepDelete','pgKpiDelete','awDeleteReading','removeRCAParticipant'];
+  function guardAll(){
+    GUARDED.forEach(n => { const o = window[n]; if(typeof o !== 'function' || o.__wmg) return;
+      const g = function(){ if(!isAdminOnly()){ toast('Only an administrator can delete records.', 'error'); return; } return o.apply(this, arguments); };
+      g.__wmg = true; window[n] = g; });
+  }
+  { const st = document.createElement('style'); st.id = 'wm-na-css';
+    st.textContent = GUARDED.map(n => `body.wm-na button[onclick*="${n}("], body.wm-na a[onclick*="${n}("]`).join(',') + '{display:none!important}';
+    document.head.appendChild(st); }
+  const KEEP_RE = new RegExp('(' + KEEP.join('|') + ')\\(');
+  function sweep(){
+    document.body.classList.toggle('wm-na', !isAdminOnly());
+    if(isAdminOnly()) return;
+    document.querySelectorAll('button').forEach(b => {
+      if(b.dataset.wmNa) return; const t = (b.textContent || '').trim();
+      if(/^(delete|delete selected|delete permanently)$/i.test(t) && !KEEP_RE.test(b.getAttribute('onclick') || '')){ b.style.display = 'none'; b.dataset.wmNa = '1'; }
+    });
+  }
+  let swT = null; const sweepSoon = () => { clearTimeout(swT); swT = setTimeout(() => { try{ guardAll(); sweep(); }catch(e){} }, 150); };
+  try{ new MutationObserver(sweepSoon).observe(document.body, { childList:true, subtree:true }); }catch(e){}
+  guardAll();
+
+  /* ---------- 2. Nonconformances: My / My department / All ---------- */
+  function myPerson(){ return (STATE.personnel || []).find(p => p.linked_profile_id === STATE.user.id) || null; }
+  function myDeptSets(){
+    const me = myPerson(); const divs = me ? (STATE.personnelDivisions || []).filter(d => d.personnel_id === me.id).map(d => d.division_id) : [];
+    const ppl = new Set(), users = new Set();
+    (STATE.personnelDivisions || []).filter(d => divs.includes(d.division_id)).forEach(d => { ppl.add(d.personnel_id); const p = (STATE.personnel || []).find(x => x.id === d.personnel_id); if(p && p.linked_profile_id) users.add(p.linked_profile_id); });
+    const names = new Set((STATE.divisions || []).filter(d => divs.includes(d.id)).map(d => lc(d.name)));
+    return { divs, ppl, users, names };
+  }
+  function isMine(n){
+    const me = STATE.user.id, p = myPerson();
+    if(n.owner_id === me || n.raised_by === me) return true;
+    if(p && n.personnel_id === p.id) return true;
+    return (STATE.tasks || []).some(t => t.linked_type === 'nonconformance' && t.linked_id === n.id && t.assignee_id === me);
+  }
+  function inMyDept(n, S){
+    if(isMine(n)) return true;
+    if(S.users.has(n.owner_id) || S.users.has(n.raised_by) || (n.personnel_id && S.ppl.has(n.personnel_id))) return true;
+    if(n.department_id){ const d = (STATE.docDepartments || []).find(x => x.id === n.department_id); if(d && S.names.has(lc(d.name))) return true; }
+    return false;
+  }
+  const scope = () => STATE._ncScope || (isAdminOnly() ? 'all' : 'mine');
+  window.ncSetScope = function(v){ STATE._ncScope = v; try{ renderNCTable(); }catch(e){} };
+  { const _r = renderNCTable;
+    renderNCTable = window.renderNCTable = function(){
+      const all = STATE.ncs, sc = scope();
+      const f = document.querySelector('#nc-table-wrap')?.closest('.panel')?.parentElement?.querySelector('.toolbar .filters');
+      if(f && !document.getElementById('nc-scope')){
+        f.insertAdjacentHTML('afterbegin', `<select id="nc-scope" onchange="ncSetScope(this.value)" title="Which nonconformances to list"><option value="mine">My nonconformances</option>${isMgr() ? '<option value="dept">My department</option>' : ''}<option value="all">All nonconformances in the organisation</option></select>`);
+      }
+      const sel = document.getElementById('nc-scope'); if(sel) sel.value = sc;
+      if(sc === 'mine') STATE.ncs = all.filter(isMine); else if(sc === 'dept'){ const S = myDeptSets(); STATE.ncs = all.filter(n => inMyDept(n, S)); }
+      let r; try{ r = _r.apply(this, arguments); } finally { STATE.ncs = all; }
+      const w = document.getElementById('nc-table-wrap');
+      if(w && sc !== 'all'){ const es = w.querySelector('.empty-state p'); if(es) es.textContent = sc === 'mine' ? 'No nonconformances are linked to you. Choose "All nonconformances in the organisation" above to see everything.' : 'No nonconformances are linked to your department. Choose "All nonconformances in the organisation" above to see everything.'; }
+      return r; }; }
+
+  /* ---------- 3. Nonconformance Types (Category) under Administration ---------- */
+  window.toggleNCTypesPanel = toggleNCTypesPanel = function(){
+    if(!isAdminOnly()){ toast('Ask an administrator to add or change a Type (Category). It is managed under Administration.', 'info'); return; }
+    STATE._adminSubtab = 'nctypes'; showModule('administration'); setTimeout(() => { try{ switchAdminSubtab('nctypes'); }catch(e){} }, 80);
+  };
+  const adminBox = () => document.getElementById('admin-subtab-content');
+  const used = id => (STATE.ncs || []).filter(n => n.nc_type_id === id).length;
+  function renderNcTypesAdmin(){
+    const box = adminBox(); if(!box) return;
+    if(!isAdminOnly()){ box.innerHTML = '<div class="panel"><p style="padding:16px;">Only an administrator can manage the Nonconformance Types (Category) list.</p></div>'; return; }
+    const rows = (STATE.ncTypes || []).slice().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    box.innerHTML = `<div class="panel" style="padding:16px 18px;">
+      <h3 style="font-size:15.5px;margin-bottom:4px;">Nonconformance Types (Category)</h3>
+      <p style="font-size:12.5px;color:var(--text-faint);margin-bottom:12px;">The list people choose from when they raise a nonconformance. Edit the wording, switch a category off for this organisation, or add your own. <b>Reset to standard list</b> puts back the standard master list: standard categories are restored and switched on, and any extra category you added is removed (or switched off if records already use it, so no record loses its category).</p>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;"><input id="nca-new" placeholder="New Type (Category), e.g. Housekeeping observation" style="flex:1;min-width:240px;border:1px solid var(--border);border-radius:6px;padding:7px 9px;"><button class="btn-small primary" onclick="ncaAdd()">Add Type (Category)</button><button class="btn-small" style="color:#b21616;border-color:#b21616;" onclick="ncaReset()">Reset to standard list</button></div>
+      <table><tr><th>Type (Category)</th><th>Used by</th><th>Status</th><th style="text-align:right;"></th></tr>
+      ${rows.map(t => `<tr style="${t.is_active ? '' : 'opacity:.55;'}"><td id="nca-n-${t.id}">${E(t.name)}</td><td>${used(t.id)} record(s)</td><td>${t.is_active ? 'Active' : 'Switched off'}</td>
+        <td style="text-align:right;white-space:nowrap;"><button class="btn-small" onclick="ncaEdit('${t.id}')">Edit</button> <button class="btn-small" onclick="ncaToggle('${t.id}',${!t.is_active})">${t.is_active ? 'Switch off' : 'Switch on'}</button></td></tr>`).join('') || '<tr><td colspan="4" style="padding:12px;">No Types (Categories) yet. Use Reset to standard list.</td></tr>'}</table></div>`;
+  }
+  window.ncaEdit = function(id){ const t = STATE.ncTypes.find(x => x.id === id); if(!t) return; const v = prompt('Type (Category) wording:', t.name); if(v == null) return; const n = v.trim(); if(!n) return; STATE.supabase.from('nc_types').update({ name:n }).eq('id', id).then(async r => { if(r.error){ toast('Could not save: ' + r.error.message, 'error'); return; } await loadNCTypes(); renderNcTypesAdmin(); toast('Updated.', 'success'); }); };
+  window.ncaToggle = async function(id, on){ const r = await STATE.supabase.from('nc_types').update({ is_active:!!on }).eq('id', id); if(r.error){ toast('Could not update: ' + r.error.message, 'error'); return; } await loadNCTypes(); renderNcTypesAdmin(); };
+  window.ncaAdd = async function(){
+    const el = document.getElementById('nca-new'); const name = (el.value || '').trim(); if(!name){ toast('Enter the new Type (Category).', 'error'); return; }
+    if((STATE.ncTypes || []).some(t => lc(t.name) === lc(name))){ toast('That Type (Category) already exists.', 'error'); return; }
+    const mx = Math.max(0, ...(STATE.ncTypes || []).map(t => t.sort_order || 0));
+    const r = await STATE.supabase.from('nc_types').insert({ organisation_id:STATE.org.id, name, sort_order:mx + 10, created_by:STATE.user.id });
+    if(r.error){ toast('Could not add: ' + r.error.message, 'error'); return; }
+    await loadNCTypes(); renderNcTypesAdmin(); toast('Type (Category) added.', 'success');
+  };
+  window.ncaReset = async function(){
+    if(!isAdminOnly()) return;
+    const std = window.WM_DEFAULT_NC_TYPES || []; if(!std.length){ toast('The standard list is not available.', 'error'); return; }
+    if(!confirm('Reset the Nonconformance Types (Category) to the standard list of ' + std.length + '?\n\nStandard categories are restored and switched on. Extra categories you added are removed, or switched off if records already use them. Existing records keep their category.')) return;
+    const sb = STATE.supabase, org = STATE.org.id; let added = 0, restored = 0, removed = 0, off = 0;
+    const kept = new Set(), byName = new Map();
+    (STATE.ncTypes || []).forEach(t => { if(!byName.has(lc(t.name))) byName.set(lc(t.name), t); });
+    for(let i = 0; i < std.length; i++){
+      const ex = byName.get(lc(std[i]));
+      if(ex){ kept.add(ex.id); const r = await sb.from('nc_types').update({ name:std[i], is_active:true, sort_order:(i + 1) * 10 }).eq('id', ex.id); if(!r.error) restored++; }
+      else { const r = await sb.from('nc_types').insert({ organisation_id:org, name:std[i], sort_order:(i + 1) * 10, created_by:STATE.user.id }); if(!r.error) added++; }
+    }
+    for(const t of (STATE.ncTypes || [])){
+      if(kept.has(t.id)) continue;
+      if(!used(t.id)){ const r = await sb.from('nc_types').delete().eq('id', t.id); if(!r.error){ removed++; continue; } }
+      const r2 = await sb.from('nc_types').update({ is_active:false, sort_order:1000 + (t.sort_order || 0) }).eq('id', t.id); if(!r2.error) off++;
+    }
+    await loadNCTypes(); renderNcTypesAdmin();
+    toast(`Standard list restored: ${added} added, ${restored} restored, ${removed} extra removed, ${off} extra switched off.`, 'success');
+  };
+
+  /* ---------- 4. Risk categories ---------- */
+  const LEGACY = new Set(RISK_CATEGORIES.slice());
+  const RC_STD = [['pestel_political','PESTEL: Political',10],['pestel_economic','PESTEL: Economic',20],['pestel_social','PESTEL: Social',30],['pestel_technological','PESTEL: Technological',40],['pestel_environmental','PESTEL: Environmental',50],['pestel_legal','PESTEL: Legal',60],['health_safety','Health and Safety',70],['environmental_aspects_impacts','Environment',80],['information_security','Information Security',90],['quality_assurance','Quality Assurance',100],['quality_control','Quality Control',110],['business','Business',120]];
+  const stdRows = () => RC_STD.map(([key, label, so]) => ({ id:null, key, label, sort_order:so, is_active:true, is_standard:true }));
+  function applyCats(){
+    const rows = (STATE.riskCats || []).slice().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    rows.forEach(c => { RISK_CATEGORY_LABELS[c.key] = c.label; });
+    RISK_CATEGORIES.length = 0; rows.filter(c => c.is_active).forEach(c => RISK_CATEGORIES.push(c.key));
+  }
+  async function loadRiskCats(){
+    try{
+      const r = await STATE.supabase.from('risk_categories').select('*').eq('organisation_id', STATE.org.id).order('sort_order', { ascending:true });
+      if(r.error) throw r.error;
+      STATE._rcOn = true; STATE.riskCats = (r.data && r.data.length) ? r.data : stdRows();
+    }catch(e){ STATE._rcOn = false; STATE.riskCats = stdRows().filter(c => LEGACY.has(c.key)); }
+    applyCats();
+  }
+  function mapPayload(p){
+    const one = x => { if(x && typeof x === 'object' && x.category){ const k = x.category; return Object.assign({}, x, { category_key:k, category: LEGACY.has(k) ? k : 'business' }); } return x; };
+    return Array.isArray(p) ? p.map(one) : one(p);
+  }
+  window.wmRiskCatPayload = mapPayload;
+  function hookRiskWrites(){
+    const sb = STATE.supabase; if(!sb || sb.__rcHook) return; const of = sb.from.bind(sb);
+    sb.from = function(t){ const q = of(t); if(t === 'risk_register' && STATE._rcOn){ ['insert','update','upsert'].forEach(m => { const om = q[m]; if(typeof om === 'function') q[m] = function(p){ const a = Array.prototype.slice.call(arguments); a[0] = mapPayload(p); return om.apply(q, a); }; }); } return q; };
+    sb.__rcHook = true;
+  }
+  { const _l = loadRisks; loadRisks = window.loadRisks = async function(){
+      await loadRiskCats(); hookRiskWrites();
+      const r = await _l.apply(this, arguments);
+      [STATE.risks, STATE.risksExcluded].forEach(a => (a || []).forEach(x => { if(x.category_key) x.category = x.category_key; }));
+      return r; }; }
+
+  /* register grouped by category: the categories first, the risks and opportunities of each below it */
+  function catOrder(){
+    const rows = (STATE.riskCats && STATE.riskCats.length ? STATE.riskCats : stdRows()).slice().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    return rows;
+  }
+  renderRisksTable = window.renderRisksTable = function(){
+    const wrap = document.getElementById('risk-table-wrap'); if(!wrap) return;
+    const fType = document.getElementById('risk-filter-type').value, fStatus = document.getElementById('risk-filter-status').value, fCat = document.getElementById('risk-filter-category').value;
+    const rows = STATE.risks.filter(r => (!fType || r.entry_type === fType) && (!fStatus || r.status === fStatus) && (!fCat || r.category === fCat));
+    if(!rows.length){ wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><path d="M3 12h4l2 6 4-12 2 6h6"/></svg><p>No entries match this filter.</p></div>`; return; }
+    const cats = catOrder(); const known = new Set(cats.map(c => c.key));
+    const groups = cats.filter(c => c.is_active || rows.some(r => r.category === c.key)).map(c => ({ key:c.key, label:c.label, items:rows.filter(r => r.category === c.key) }));
+    const other = rows.filter(r => !known.has(r.category)); if(other.length) groups.push({ key:'__other', label:'Other', items:other });
+    const shown = groups.filter(g => g.items.length || !fCat);
+    const rowHtml = r => `<tr class="clickable" onclick="openRiskDetail('${r.id}')"><td class="mono-cell">${r.ref_code}</td><td class="strong">${r.title}</td><td>${entryTypeBadge(r.entry_type)}</td><td>${scoreBadge(r.inherent_score)}</td><td>${scoreBadge(r.residual_score)}</td><td>${typeof hocStrip === 'function' ? hocStrip(r.id) : ''}</td><td>${memberName(r.owner_id)}</td><td>${dateStatusBadge(r.review_date, r.status === 'closed')}</td><td>${pill(r.status)}</td></tr>`;
+    wrap.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 12px;border-bottom:1px solid var(--border);">${shown.map(g => `<a href="#" onclick="event.preventDefault();document.getElementById('rc-g-${g.key}').scrollIntoView({behavior:'smooth',block:'start'})" style="text-decoration:none;font-size:12px;border:1px solid var(--border);border-radius:14px;padding:3px 10px;color:${g.items.length ? 'var(--text)' : 'var(--text-faint)'};background:#fff;">${E(g.label)} <b>${g.items.length}</b></a>`).join('')}</div>
+      <table><tr><th>Ref</th><th>Title</th><th>Type</th><th>Inherent</th><th>Residual</th><th>Controls</th><th>Owner</th><th>Review</th><th>Status</th></tr>
+      ${shown.map(g => `<tr id="rc-g-${g.key}" style="cursor:default;"><td colspan="9" style="background:#2b2b2b;color:#fff;font-weight:700;font-size:13px;padding:8px 12px;">${E(g.label)} <span style="font-weight:400;opacity:.8;font-size:12px;">(${g.items.length} ${g.items.length === 1 ? 'entry' : 'entries'})</span></td></tr>${g.items.length ? g.items.map(rowHtml).join('') : '<tr style="cursor:default;"><td colspan="9" style="color:var(--text-faint);font-size:12.5px;padding:8px 12px;">No risks or opportunities recorded in this category.</td></tr>'}`).join('')}</table>`;
+  };
+
+  /* Administration: Risk Categories */
+  async function seedIfNeeded(){
+    if(!STATE._rcOn) return false;
+    if((STATE.riskCats || []).every(c => c.id)) return true;
+    let r = await STATE.supabase.rpc('seed_default_risk_categories', { p_org: STATE.org.id });
+    if(r.error){ const x = await STATE.supabase.from('risk_categories').insert(stdRows().map(c => ({ organisation_id:STATE.org.id, key:c.key, label:c.label, sort_order:c.sort_order, is_standard:true }))); if(x.error){ toast('Could not set up the category list: ' + x.error.message, 'error'); return false; } }
+    await loadRiskCats(); return true;
+  }
+  const rUsed = key => (STATE.risks || []).concat(STATE.risksExcluded || []).filter(r => r.category === key).length;
+  function renderRiskCatsAdmin(){
+    const box = adminBox(); if(!box) return;
+    if(!isAdminOnly()){ box.innerHTML = '<div class="panel"><p style="padding:16px;">Only an administrator can manage the Risk Categories.</p></div>'; return; }
+    const rows = catOrder();
+    box.innerHTML = `<div class="panel" style="padding:16px 18px;">
+      <h3 style="font-size:15.5px;margin-bottom:4px;">Risk Categories</h3>
+      <p style="font-size:12.5px;color:var(--text-faint);margin-bottom:12px;">The risk and opportunity register is split into these categories, in this order, each with its risks and opportunities listed below it. Rename a category, change the order, switch one off, or add your own. <b>Reset to standard list</b> restores PESTEL (Political, Economic, Social, Technological, Environmental, Legal), then Health and Safety, Environment and Information Security, and removes your extra categories (or switches them off where risks already use them).</p>
+      ${STATE._rcOn ? '' : '<div style="background:#fff4e5;border:1px solid #f0c27b;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:12.5px;">The category list is not set up in the database yet. Run <b>qashe-watchman-schema-r62-risk-categories-admin-delete.sql</b> in Supabase, then reload. Until then the register uses the original six categories.</div>'}
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;"><input id="rca-new" placeholder="New category, e.g. Supply chain" style="flex:1;min-width:240px;border:1px solid var(--border);border-radius:6px;padding:7px 9px;"><button class="btn-small primary" onclick="rcaAdd()" ${STATE._rcOn ? '' : 'disabled'}>Add category</button><button class="btn-small" style="color:#b21616;border-color:#b21616;" onclick="rcaReset()" ${STATE._rcOn ? '' : 'disabled'}>Reset to standard list</button></div>
+      <table><tr><th>Order</th><th>Category</th><th>Used by</th><th>Status</th><th style="text-align:right;"></th></tr>
+      ${rows.map((c, i) => `<tr style="${c.is_active ? '' : 'opacity:.55;'}"><td style="white-space:nowrap;"><button class="btn-small" onclick="rcaMove('${c.key}',-1)" ${i === 0 || !STATE._rcOn ? 'disabled' : ''}>↑</button> <button class="btn-small" onclick="rcaMove('${c.key}',1)" ${i === rows.length - 1 || !STATE._rcOn ? 'disabled' : ''}>↓</button></td><td>${E(c.label)}${c.is_standard ? '' : ' <span style="font-size:11px;color:var(--text-faint);">(added)</span>'}</td><td>${rUsed(c.key)} entr${rUsed(c.key) === 1 ? 'y' : 'ies'}</td><td>${c.is_active ? 'Active' : 'Switched off'}</td>
+        <td style="text-align:right;white-space:nowrap;"><button class="btn-small" onclick="rcaEdit('${c.key}')" ${STATE._rcOn ? '' : 'disabled'}>Rename</button> <button class="btn-small" onclick="rcaToggle('${c.key}',${!c.is_active})" ${STATE._rcOn ? '' : 'disabled'}>${c.is_active ? 'Switch off' : 'Switch on'}</button></td></tr>`).join('')}</table></div>`;
+  }
+  const rcRow = key => (STATE.riskCats || []).find(c => c.key === key);
+  const rcDone = async msg => { await loadRiskCats(); renderRiskCatsAdmin(); if(msg) toast(msg, 'success'); };
+  window.rcaEdit = async function(key){ if(!await seedIfNeeded()) return; const c = rcRow(key); if(!c) return; const v = prompt('Category name:', c.label); if(v == null || !v.trim()) return; const r = await STATE.supabase.from('risk_categories').update({ label:v.trim() }).eq('id', c.id); if(r.error){ toast('Could not save: ' + r.error.message, 'error'); return; } await rcDone('Category renamed.'); };
+  window.rcaToggle = async function(key, on){ if(!await seedIfNeeded()) return; const c = rcRow(key); if(!c) return; const r = await STATE.supabase.from('risk_categories').update({ is_active:!!on }).eq('id', c.id); if(r.error){ toast('Could not update: ' + r.error.message, 'error'); return; } await rcDone(); };
+  window.rcaMove = async function(key, d){
+    if(!await seedIfNeeded()) return; const rows = catOrder(); const i = rows.findIndex(c => c.key === key), j = i + d; if(i < 0 || j < 0 || j >= rows.length) return;
+    const a = rcRow(rows[i].key), b = rcRow(rows[j].key); if(!a || !b) return;
+    const r1 = await STATE.supabase.from('risk_categories').update({ sort_order:b.sort_order }).eq('id', a.id);
+    const r2 = await STATE.supabase.from('risk_categories').update({ sort_order:a.sort_order }).eq('id', b.id);
+    if(r1.error || r2.error){ toast('Could not reorder.', 'error'); return; } await rcDone();
+  };
+  window.rcaAdd = async function(){
+    const el = document.getElementById('rca-new'); const label = (el.value || '').trim(); if(!label){ toast('Enter the new category name.', 'error'); return; }
+    if(!await seedIfNeeded()) return;
+    if(STATE.riskCats.some(c => lc(c.label) === lc(label))){ toast('That category already exists.', 'error'); return; }
+    const key = 'c_' + label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 30) + '_' + Math.random().toString(36).slice(2, 5);
+    const mx = Math.max(0, ...STATE.riskCats.map(c => c.sort_order || 0));
+    const r = await STATE.supabase.from('risk_categories').insert({ organisation_id:STATE.org.id, key, label, sort_order:mx + 10, is_standard:false });
+    if(r.error){ toast('Could not add: ' + r.error.message, 'error'); return; } await rcDone('Category added.');
+  };
+  window.rcaReset = async function(){
+    if(!isAdminOnly() || !STATE._rcOn) return;
+    if(!confirm('Reset the Risk Categories to the standard list?\n\nPESTEL (Political, Economic, Social, Technological, Environmental, Legal), then Health and Safety, Environment, Information Security, Quality Assurance, Quality Control and Business are restored, in that order, and switched on. Extra categories you added are removed, or switched off if risks already use them. Risks keep their category.')) return;
+    if(!await seedIfNeeded()) return;
+    const sb = STATE.supabase; let off = 0, removed = 0;
+    for(const [key, label, so] of RC_STD){ const c = rcRow(key); if(c) await sb.from('risk_categories').update({ label, sort_order:so, is_active:true, is_standard:true }).eq('id', c.id); }
+    const std = new Set(RC_STD.map(x => x[0]));
+    for(const c of (STATE.riskCats || [])){ if(std.has(c.key) || !c.id) continue;
+      if(!rUsed(c.key)){ const r = await sb.from('risk_categories').delete().eq('id', c.id); if(!r.error){ removed++; continue; } }
+      const r2 = await sb.from('risk_categories').update({ is_active:false, sort_order:1000 + (c.sort_order || 0) }).eq('id', c.id); if(!r2.error) off++; }
+    await rcDone(`Standard categories restored. ${removed} extra removed, ${off} extra switched off.`);
+  };
+
+  /* ---------- wiring ---------- */
+  { const _a = renderAdminSubtabContent; renderAdminSubtabContent = window.renderAdminSubtabContent = function(tab){
+      if(tab === 'nctypes') return renderNcTypesAdmin();
+      if(tab === 'riskcats') return renderRiskCatsAdmin();
+      return _a.apply(this, arguments); }; }
+  { const _s = showModule; showModule = window.showModule = function(mod){ const r = _s.apply(this, arguments); sweepSoon(); return r; }; }
+  /* categories are already loaded for this session when the script runs after sign-in */
+  setTimeout(() => { try{ if(STATE.org && STATE.org.id && STATE.supabase){ loadRiskCats().then(() => { hookRiskWrites(); }); } }catch(e){} sweepSoon(); }, 0);
 })();
 </script>
 </body>
