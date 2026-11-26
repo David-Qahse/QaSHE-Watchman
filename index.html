@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R63 2026-11-25"><meta charset="UTF-8">
+<meta name="wm-release" content="R65 2026-11-26"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -1105,7 +1105,7 @@
     </div>
     <div class="land-nav-links">
       <span>PART OF YOUR TEAM</span>
-      <button class="btn-ghost" onclick="WMTutorial.open({narrate:true})" style="padding:9px 18px;margin-right:10px">Tutorial</button>
+      <button class="btn-ghost" onclick="WMTutorial.open({narrate:true})" style="padding:9px 18px;margin-right:10px">Training Video</button>
       <button class="btn-primary" onclick="goTo('dashboard')">Enter Watchman</button>
     </div>
   </nav>
@@ -1116,9 +1116,9 @@
     <div class="hero-ctas">
       <button class="btn-primary" onclick="goTo('dashboard')">Enter Watchman</button>
       <button class="btn-ghost" onclick="document.getElementById('modules-anchor').scrollIntoView({behavior:'smooth'})">View Modules</button>
-      <button class="btn-ghost wm-tutvoice" onclick="WMTutorial.open({narrate:true})"><span class="wm-tv-ic" aria-hidden="true">&#9654;</span> Watch the tutorial</button>
+      <button class="btn-ghost wm-tutvoice" onclick="WMTutorial.open({narrate:true})"><span class="wm-tv-ic" aria-hidden="true">&#9654;</span> Watch the training video</button>
     </div>
-    <p class="wm-tutnote">The tutorial runs for about 30 minutes and plays like a short film. Pause or stop at any time, go back or forward, or open the Index to choose particular modules for a shorter presentation.</p>
+    <p class="wm-tutnote">The training video runs for about 30 minutes and plays like a short film. Pause or stop at any time, go back or forward, or open the Index to choose particular modules for a shorter presentation.</p>
 
     <div class="watch-wrap">
       <div class="watch">
@@ -36733,16 +36733,6 @@ function fmtRev(rev){
         else if(!GATED_MODULES.includes(k) && el.style.display === 'none') el.style.display = ''; /* switched back on */ });
             return r; }; }
   SW.forEach(([k, label, note]) => ADMIN_CONSOLE_TOGGLES.push({ field: KEY(k), label, note: note + ' Switching off hides it; nothing recorded is deleted.' }));
-  { const _t = toggleOrgModule;
-    toggleOrgModule = window.toggleOrgModule = async function(field, value){
-      const sw = SW.find(([k]) => KEY(k) === field);
-      if(!sw) return _t.apply(this, arguments);
-      const row = { organisation_id: STATE.org.id, module_key: sw[0], enabled: value, updated_at: new Date().toISOString() };
-      const { error } = await STATE.supabase.from('org_modules').upsert(row, { onConflict:'organisation_id,module_key' });
-      if(error){ toast('Could not update: ' + error.message + ' (has the naming and modules SQL been run?)', 'error'); return; }
-      toast('Saved: reloading to apply…', 'success');
-      await reloadOrgAfterAdminConsoleChange();
-    }; }
   /* group them in the console */
   { const _r = renderAdminConsole;
     renderAdminConsole = window.renderAdminConsole = function(){
@@ -38958,13 +38948,6 @@ async function renderNcResponsePage(token){
   /* ---------- registration: switch, navigation, access ---------- */
   ADMIN_CONSOLE_TOGGLES.push({ field:'incidents_module_enabled', label:'Incidents, Accidents and Near Miss', note:'Runs on the same register as Nonconformances, with permanent categories and its own statistics and reports. Switching off hides it; nothing recorded is deleted.' });
   { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ if(STATE.org) STATE.org.incidents_module_enabled = !off(); await loadCats(); })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
-  { const _t = toggleOrgModule;
-    toggleOrgModule = window.toggleOrgModule = async function(field, value){
-      if(field !== 'incidents_module_enabled') return _t.apply(this, arguments);
-      const { error } = await STATE.supabase.from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:'incidents', enabled:value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
-      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
-      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
-    }; }
   { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){
       if(mod === 'incidents'){ if(off()) return false; if(STATE.myRole === 'admin' || (STATE.profile && STATE.profile.is_platform_staff)) return true; const all = STATE.myModuleAccess; if(Array.isArray(all) && all.includes(WM_CAL)) return all.includes('incidents'); return _c('nonconformances'); }
       return _c.apply(this, arguments); }; }
@@ -40070,13 +40053,6 @@ async function renderNcResponsePage(token){
   /* ---------- 2. switch, navigation, access ---------- */
   ADMIN_CONSOLE_TOGGLES.push({ field:'crm_module_enabled', label:'Customer Relationship Management', note:'Pipeline, activities and scheduling, account plans, sales targets, reports and customer satisfaction. Switching off hides it and returns nothing to Customers; nothing recorded is deleted.' });
   { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ if(STATE.org) STATE.org.crm_module_enabled = !off(); })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
-  { const _t = toggleOrgModule;
-    toggleOrgModule = window.toggleOrgModule = async function(field, value){
-      if(field !== 'crm_module_enabled') return _t.apply(this, arguments);
-      const { error } = await STATE.supabase.from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:'crm', enabled:value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
-      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
-      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
-    }; }
   { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){
       if(mod === 'crm'){ if(off()) return false; return _c('customers') || STATE.myRole === 'admin' || !!(STATE.profile && STATE.profile.is_platform_staff); }
       return _c.apply(this, arguments); }; }
@@ -40857,7 +40833,7 @@ const CHAPTERS = [
  ['scs','Suppliers, Customers and Sites','Control the supply chain and grow the account'],
  ['leg','Legal and Governance','Stay compliant and above reproach'],
  ['sec','Information Security','Protect the information that runs the business'],
- ['ops','Assets and Specialist Modules','Equipment, condition, welding, water treatment, schools, permits, occupational health, environmental data and confidential reporting'],
+ ['ops','Assets and Specialist Modules','Equipment, condition, welding, schools, permits, occupational health, environmental data and confidential reporting'],
  ['adm','Administration and Trust','Access, audit trail and set-up']
 ];
 const MODS = [
@@ -41134,7 +41110,11 @@ const IC = {
 const ico = n => `<span class="ico"><svg viewBox="0 0 24 24">${IC[n] || IC.check}</svg></span>`;
 const FACE = k => (window.wmAndroidSvg ? window.wmAndroidSvg(k || 'help') : '');
 const RING = `<svg viewBox="0 0 40 40" fill="none" stroke-width="2.6"><circle cx="20" cy="20" r="17" stroke="#545454"/><circle cx="20" cy="20" r="17" stroke="#A6A6A6" stroke-dasharray="60 46" transform="rotate(-40 20 20)"/><circle cx="20" cy="20" r="17" stroke="#B21616" stroke-dasharray="80 46" transform="rotate(140 20 20)"/></svg>`;
+window.WM_MODS = MODS;
 const byId = id => MODS.find(m => m.id === id);
+/* bespoke modules (built for one client) are not part of the main training video: each has its own */
+const BESPOKE_MODS = ['wt','it','wf','asset_watchman','edu'];
+const MAINMODS = () => MODS.filter(m => !BESPOKE_MODS.includes(m.id));
 const MSTYLE = i => `style="--i:${i}"`;
 
 /* ---------- mock application and demo archetypes ---------- */
@@ -41273,11 +41253,11 @@ function modSlides(m){
   return [s1, s2];
 }
 function chapterSlide(c){
-  const mods = MODS.filter(m => m.ch === c[0]); const num = CHAPTERS.findIndex(x => x[0] === c[0]) + 1;
-  return { id:'ch_' + c[0], ch:c[0], t:'Chapter ' + num + ': ' + c[1], steps:0, narr:['Chapter ' + num + ': ' + c[1] + '. ' + c[2] + '.', 'In this chapter: ' + mods.map(m => m.n).join(', ') + '.'], html: () => `
+  const mods = MAINMODS().filter(m => m.ch === c[0]); const num = CHAPTERS.findIndex(x => x[0] === c[0]) + 1;
+  return { id:'ch_' + c[0], ch:c[0], t:'Chapter ' + num + ': ' + c[1], steps:0, narr:['Chapter ' + num + ': ' + c[1] + '. ' + c[2] + '.', 'In this chapter: ' + mods.map(m => m.n).join(', ') + '.'].concat(c[0] === 'ops' ? ['Some clients also have a bespoke module built for their own business. Each bespoke module has its own training video.'] : []), html: () => `
     <div style="display:flex;height:100%;flex-direction:column;justify-content:center">
     <div class="kick" data-i="0">Chapter ${num} of ${CHAPTERS.length}</div><h1 data-i="1" style="font-size:56px">${E(c[1])}</h1><p class="lede" data-i="2">${E(c[2])}</p>
-    <div style="margin-top:34px" data-i="3">${mods.map((m, i) => `<span class="chip go" style="font-size:15px;padding:9px 16px" data-act="mod" data-m="${m.id}">${E(m.n)}</span>`).join('')}</div></div>` };
+    <div style="margin-top:34px" data-i="3">${mods.map((m, i) => `<span class="chip go" style="font-size:15px;padding:9px 16px" data-act="mod" data-m="${m.id}">${E(m.n)}</span>`).join('')}</div>${c[0] === 'ops' ? '<p data-i="4" style="margin-top:26px;max-width:760px;color:#A9B0BE;font-size:16px">Some clients also have a bespoke module built for their own business. Each bespoke module has its own training video.</p>' : ''}</div>` };
 }
 
 /* ---------- module lessons (bespoke, narrated, with sample pictures) ---------- */
@@ -41334,13 +41314,13 @@ function lessonList(id){
   const ch = chapterOf(m.ch), pre = 'L_' + id + '_', n = L.steps.length, out = [];
   const nums = ['One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven'];
   out.push({ id:pre + 'intro', ch:m.ch, t:m.n + ': start here', steps:0,
-    narr:['Welcome to the ' + m.n + ' lesson.', m.tag, L.why, L.who, 'In this lesson you will learn ' + n + ' steps: ' + L.steps.map(s => s[0]).join(', then ') + '.'],
-    html: () => `<div style="display:flex;gap:18px;align-items:center" data-i="0">${ico(m.ic)}<div class="kick" style="margin:0">Module lesson · ${E(ch[1])}</div></div>
+    narr:['Welcome to the ' + m.n + ' training video.', m.tag, L.why, L.who, 'In this training video you will learn ' + n + ' steps: ' + L.steps.map(s => s[0]).join(', then ') + '.'],
+    html: () => `<div style="display:flex;gap:18px;align-items:center" data-i="0">${ico(m.ic)}<div class="kick" style="margin:0">Training video · ${E(ch[1])}</div></div>
     <h1 data-i="1" style="font-size:56px;margin-top:14px">${E(m.n)}</h1><p class="lede" data-i="2" style="font-size:23px;margin-top:8px;color:#fff">${E(m.tag)}</p>
     <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:40px;margin-top:30px">
       <div data-i="3"><div class="card"><h3 style="color:#FF8A80;font-size:13px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:8px">Why it matters</h3><p style="font-size:18px;color:#fff;line-height:1.45">${E(L.why)}</p></div>
       <div class="card" style="margin-top:14px"><h3 style="color:#FF8A80;font-size:13px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:8px">Who uses it</h3><p style="font-size:16px">${E(L.who)}</p></div></div>
-      <div data-i="4"><h3 style="color:#FF8A80;font-size:13px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:12px">In this lesson</h3>${L.steps.map((s, i) => `<div style="display:flex;gap:12px;align-items:center;margin-bottom:10px"><span class="les-n" style="width:34px;height:34px;font-size:17px;border-radius:10px">${i + 1}</span><span style="font-size:17px;color:#E6E9F0;font-weight:600">${E(s[0])}</span></div>`).join('')}</div>
+      <div data-i="4"><h3 style="color:#FF8A80;font-size:13px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:12px">In this training video</h3>${L.steps.map((s, i) => `<div style="display:flex;gap:12px;align-items:center;margin-bottom:10px"><span class="les-n" style="width:34px;height:34px;font-size:17px;border-radius:10px">${i + 1}</span><span style="font-size:17px;color:#E6E9F0;font-weight:600">${E(s[0])}</span></div>`).join('')}</div>
     </div>` });
   out.push({ id:pre + 'tour', ch:m.ch, t:'Tour of the screen', steps:3,
     narr:['First, a quick tour of what you will see.', ...L.tour.map((t, i) => ['Number ' + (i + 1) + '. ', '', ''][0] + t[0] + '. ' + t[1])],
@@ -41368,18 +41348,18 @@ const FRAMEWORKS = [
  ['Governance and legal','Law and ethics','OHS Act, COIDA, POPIA, resolutions, delegations, conflicts and gifts, and certificates that never silently expire.',['legal','legal_certs','governance','privacy']]
 ];
 function introSlides(){
-  const nm = MODS.length;
+  const nm = MAINMODS().length;
   const title = { id:'title', ch:'intro', t:'Welcome', steps:0, html: () => `
     <div style="position:absolute;right:90px;top:120px;width:380px;height:380px" data-i="1"><div style="position:absolute;inset:0;animation:wmzSpin 22s linear infinite">${RING.replace('stroke-width="2.6"','stroke-width="1.4"')}</div><div style="position:absolute;inset:78px">${FACE('help')}</div></div>
-    <div style="margin-top:96px;max-width:660px"><div class="kick" data-i="0">Product tutorial</div><h1 data-i="1">QaSHE <span class="hl">Watchman</span></h1>
+    <div style="margin-top:96px;max-width:660px"><div class="kick" data-i="0">Training video</div><h1 data-i="1">QaSHE <span class="hl">Watchman</span></h1>
     <p class="lede" data-i="2" style="font-size:26px;color:#fff;margin-top:20px">One system, always watching.</p>
     <p class="lede" data-i="3">How Watchman turns quality, safety, environment, information security and governance into one live, audit-ready system.</p>
-    <div style="margin-top:34px;display:flex;gap:14px" data-i="4"><button class="btn p" data-act="next">Start the tutorial</button><button class="btn g" data-act="index">Choose what to watch</button></div>
+    <div style="margin-top:34px;display:flex;gap:14px" data-i="4"><button class="btn p" data-act="next">Start the training video</button><button class="btn g" data-act="index">Choose what to watch</button></div>
     <p data-i="5" style="margin-top:22px;font-size:13px;color:#8B93A3">Use the arrow keys or click Next. Press I for the index, F for full screen, A for auto-play.</p></div>` };
   const index = { id:'index', ch:'intro', t:'Index: choose what to watch', steps:0, html: () => `
     <div class="kick" data-i="0">Index</div><h2 data-i="1" style="font-size:32px">Watch it all, or choose the modules that matter to you</h2>
-    <div style="display:flex;gap:10px;margin:12px 0 10px" data-i="2"><button class="btn p" data-act="all-play" style="padding:10px 20px">Play the full tutorial</button><button class="btn g" data-act="sel-play" id="selbtn" style="padding:10px 20px">Play my selection</button><button class="btn g" data-act="sel-all" style="padding:10px 16px">Select all</button><button class="btn g" data-act="sel-none" style="padding:10px 16px">Clear</button></div>
-    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px 26px;height:488px;overflow:auto;padding-right:6px" data-i="3" id="idxgrid">${CHAPTERS.map((c, ci) => `<div><h3 style="font-size:13px;color:#FF8A80;letter-spacing:.12em;text-transform:uppercase;margin:6px 0 6px;display:flex;justify-content:space-between"><span>${ci + 1}. ${E(c[1])}</span><span style="cursor:pointer;color:#C9CFDB;text-transform:none;letter-spacing:0" data-act="chap" data-c="${c[0]}">play chapter ▸</span></h3>${MODS.filter(m => m.ch === c[0]).map(m => `<span class="chip go${SEL.has(m.id) ? ' red' : ''}" data-act="pick" data-m="${m.id}" style="font-size:12px;padding:4px 9px;margin-bottom:5px">${SEL.has(m.id) ? '✓ ' : ''}${E(m.n)}</span>`).join('')}</div>`).join('')}</div>` };
+    <div style="display:flex;gap:10px;margin:12px 0 10px" data-i="2"><button class="btn p" data-act="all-play" style="padding:10px 20px">Play the full training video</button><button class="btn g" data-act="sel-play" id="selbtn" style="padding:10px 20px">Play my selection</button><button class="btn g" data-act="sel-all" style="padding:10px 16px">Select all</button><button class="btn g" data-act="sel-none" style="padding:10px 16px">Clear</button></div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px 26px;height:488px;overflow:auto;padding-right:6px" data-i="3" id="idxgrid">${CHAPTERS.map((c, ci) => `<div><h3 style="font-size:13px;color:#FF8A80;letter-spacing:.12em;text-transform:uppercase;margin:6px 0 6px;display:flex;justify-content:space-between"><span>${ci + 1}. ${E(c[1])}</span><span style="cursor:pointer;color:#C9CFDB;text-transform:none;letter-spacing:0" data-act="chap" data-c="${c[0]}">play chapter ▸</span></h3>${MAINMODS().filter(m => m.ch === c[0]).map(m => `<span class="chip go${SEL.has(m.id) ? ' red' : ''}" data-act="pick" data-m="${m.id}" style="font-size:12px;padding:4px 9px;margin-bottom:5px">${SEL.has(m.id) ? '✓ ' : ''}${E(m.n)}</span>`).join('')}</div>`).join('')}</div>` };
   const what = { id:'what', ch:'intro', t:'What is Watchman', steps:3, html: () => `
     ${H('Introduction', 'One platform for every <span class="hl">SHERQ</span> requirement', 'Quality, health and safety, environment, risk, legal and information security, managed in one place, evidenced as you work.')}
     <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-top:34px">
@@ -41410,7 +41390,7 @@ function introSlides(){
     <p data-i="3" style="text-align:center;margin-top:22px;color:#A9B0BE;font-size:15px">What is found while you Check becomes an Opportunity for Improvement, and the improvement is reviewed at the top.</p>`; } };
   const overview = { id:'overview_map', ch:'intro', t:'Platform overview', steps:0, html: () => `
     ${H('Platform overview', `${nm} modules in ${CHAPTERS.length} chapters`, 'Click any module to jump straight to it.')}
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px 16px;margin-top:10px">${CHAPTERS.map((c, ci) => `<div data-i="${3 + ci}"><h3 style="font-size:11.5px;color:#FF8A80;letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px">${c[1]}</h3>${MODS.filter(m => m.ch === c[0]).map(m => `<div class="card go" data-act="mod" data-m="${m.id}" style="padding:6px 10px;margin-bottom:5px;font-size:12px;cursor:pointer;color:#E6E9F0;font-weight:700">${E(m.n)}</div>`).join('')}</div>`).join('')}</div>` };
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px 16px;margin-top:10px">${CHAPTERS.map((c, ci) => `<div data-i="${3 + ci}"><h3 style="font-size:11.5px;color:#FF8A80;letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px">${c[1]}</h3>${MAINMODS().filter(m => m.ch === c[0]).map(m => `<div class="card go" data-act="mod" data-m="${m.id}" style="padding:6px 10px;margin-bottom:5px;font-size:12px;cursor:pointer;color:#E6E9F0;font-weight:700">${E(m.n)}</div>`).join('')}</div>`).join('')}</div>` };
   const conn = { id:'connect', ch:'intro', t:'How the modules connect', steps:0, dur:16000, html: () => {
     const N = [['Incidents',120,70,'incidents'],['RAGA',120,200,'raga'],['Audits',120,330,'audits'],['Suppliers',120,460,'suppliers'],['Nonconformances',470,265,'nonconformances'],['Tasks',790,130,'tasks'],['Risks',790,265,'risks'],['Objectives',790,400,'objectives'],['Management Review',1060,265,'management_review']];
     const L = [[0,4],[1,4],[2,4],[3,4],[4,5],[4,6],[6,7],[5,8],[6,8],[7,8]];
@@ -41438,9 +41418,9 @@ function introSlides(){
 }
 const SEL = new Set();
 const NARR = {
- title:['Welcome to the QaSHE Watchman tutorial. One system, always watching.','In the next few minutes you will see how Watchman turns quality, safety, environment, information security and governance into one live, audit ready system.','You can watch everything from start to finish, or use the index to choose only the modules that matter to you.'],
- index:['This is the index. You can play the full tutorial, play a single chapter, or tick the modules you are interested in and play only those.','Open the index at any time, using the button at the top, to jump to a different part of the tutorial.'],
- what:['Watchman is one platform for every SHERQ requirement: quality, health and safety, environment, risk, legal and information security.','It brings together dozens of modules that talk to each other.','More than five hundred ready made templates, each with a reference number, so you never start from a blank page.','And one source of truth for management, staff, clients and auditors.'],
+ title:['Welcome to the QaSHE Watchman training video. One system, always watching.','In the next few minutes you will see how Watchman turns quality, safety, environment, information security and governance into one live, audit ready system.','You can watch everything from start to finish, or use the index to choose only the modules that matter to you.'],
+ index:['This is the index. You can play the full training video, play a single chapter, or tick the modules you are interested in and play only those.','Open the index at any time, using the button at the top, to jump to a different part of the training video.'],
+ what:['Watchman is one platform for every SHERQ requirement: quality, health and safety, environment, risk, legal and information security.','It brings together dozens of modules that talk to each other. Some clients also have a bespoke module built for their own business, and each bespoke module has its own training video.','More than five hundred ready made templates, each with a reference number, so you never start from a blank page.','And one source of truth for management, staff, clients and auditors.'],
  value:['What does this mean for the business?','Control. Every requirement, owner and due date in one place.','Visibility. A live health score instead of a year end surprise.','Time saved. Templates, reminders and email links remove repeat admin.','Accountability. Every action has an owner, a date and a source.','Audit readiness. Evidence, traceability and an append only audit trail.','And culture. Green alerts, toolbox talks and participation build ownership.'],
  before:['The difference is simple.','Without a system, you have spreadsheets nobody trusts, evidence in email and on desks, certificates that lapse unnoticed, audits that start with a scramble, and repeat incidents with unseen trends.','With Watchman, every register is linked, evidence is attached where the work happens, reminders arrive thirty days before expiry, audit packs take a few clicks, and category trends prevent repeats.'],
  iso:['Watchman supports your certification. It does not replace your certification body or competent assessment.','ISO 9001, quality. Context, leadership, risk and opportunity, objectives, competence, documented information, supplier and customer control, audit, management review and improvement.','ISO 14001, environment. Aspects and impacts, legal requirements, operational control, emergency preparedness, monitoring and internal audit.','ISO 45001, health and safety. Hazards and risks, worker participation, competence, contractor control, incident investigation, legal compliance and Section 19 reviews.','ISO IEC 27001, information security. The Statement of Applicability, information assets, threat intelligence, incident response, records retention and the audit trail.','ISO 3834, welding quality. Procedures, welder qualification, equipment, consumables, jobs and inspection.','And governance and legal. The OHS Act, COIDA, POPIA, resolutions, delegations, conflicts and gifts, and certificates that never silently expire.'],
@@ -41456,11 +41436,11 @@ function playlist(mode){
   const I = introSlides(); let L;
   if(mode === 'full'){
     L = [I.title, I.index, I.what, I.value, I.before, I.iso, I.pdca, I.overview, I.conn];
-    CHAPTERS.forEach(c => { L.push(chapterSlide(c)); MODS.filter(m => m.ch === c[0]).forEach(m => L.push(...modSlides(m))); });
+    CHAPTERS.forEach(c => { L.push(chapterSlide(c)); MAINMODS().filter(m => m.ch === c[0]).forEach(m => L.push(...modSlides(m))); });
     L.push(I.roles, I.helpers, I.start, I.close);
   } else {
     L = [I.title, I.index, I.what, I.iso];
-    CHAPTERS.forEach(c => { const ms = MODS.filter(m => m.ch === c[0] && (mode.has(m.id))); if(!ms.length) return; L.push(chapterSlide(c)); ms.forEach(m => L.push(...modSlides(m))); });
+    CHAPTERS.forEach(c => { const ms = MAINMODS().filter(m => m.ch === c[0] && (mode.has(m.id))); if(!ms.length) return; L.push(chapterSlide(c)); ms.forEach(m => L.push(...modSlides(m))); });
     L.push(I.start, I.close);
   }
   L.forEach(s => { if(!s.narr && NARR[s.id]) s.narr = NARR[s.id]; if(s.id === 'index') s.hold = true; });
@@ -41495,8 +41475,8 @@ window.WMVoices = (function(){
 let T = null;
 function open(o){
   o = o || {}; if(T) T.close();
-  const emb = !!o.embedded, root = document.createElement('div'); root.className = 'wmt' + (emb ? ' emb' : ''); root.setAttribute('role', 'dialog'); root.setAttribute('aria-label', 'QaSHE Watchman tutorial');
-  root.innerHTML = `<div class="wmt-top"><span style="width:26px;height:26px;display:inline-block">${RING}</span><span class="ttl"><b>QaSHE Watchman</b> · Tutorial · <span id="wmt-ch"></span></span><span class="sp"></span><button class="wmt-ib" id="wmt-ix" title="Index (I)">☰ Index</button><button class="wmt-ib" id="wmt-nr" title="Pause or play (Space)">⏸ Pause</button><button class="wmt-ib" id="wmt-vb" title="Voice and captions settings">⚙ Voice</button><button class="wmt-ib" id="wmt-ap" title="Auto-play (A)">▶ Auto-play</button><button class="wmt-ib" id="wmt-fs" title="Full screen (F)">⛶ Present</button>${emb ? '' : '<button class="wmt-ib" id="wmt-x" title="Close (Esc)">✕ Close</button>'}</div>
+  const emb = !!o.embedded, root = document.createElement('div'); root.className = 'wmt' + (emb ? ' emb' : ''); root.setAttribute('role', 'dialog'); root.setAttribute('aria-label', 'QaSHE Watchman training video');
+  root.innerHTML = `<div class="wmt-top"><span style="width:26px;height:26px;display:inline-block">${RING}</span><span class="ttl"><b>QaSHE Watchman</b> · Training Video · <span id="wmt-ch"></span></span><span class="sp"></span><button class="wmt-ib" id="wmt-ix" title="Index (I)">☰ Index</button><button class="wmt-ib" id="wmt-nr" title="Pause or play (Space)">⏸ Pause</button><button class="wmt-ib" id="wmt-vb" title="Voice and captions settings">⚙ Voice</button><button class="wmt-ib" id="wmt-ap" title="Auto-play (A)">▶ Auto-play</button><button class="wmt-ib" id="wmt-fs" title="Full screen (F)">⛶ Present</button>${emb ? '' : '<button class="wmt-ib" id="wmt-x" title="Close (Esc)">✕ Close</button>'}</div>
   <div class="wmt-view" id="wmt-view"><div class="wmt-stage" id="wmt-stage"></div></div><div class="wmt-drawer" id="wmt-dr"></div><div class="wmt-vp" id="wmt-vp"><b>Voiceover</b><label>Voice<select id="wmt-vs"></select></label><small id="wmt-vn" style="margin:-4px 0 10px"></small><label>Speed<input type="range" id="wmt-vr" min="0.7" max="1.3" step="0.05"></label><label class="ck"><input type="checkbox" id="wmt-vc"> Show captions</label><button class="wmt-ib" id="wmt-vt">Test voice</button><small>Voices come from your device. Windows and Android include South African English voices; if one is missing, the closest English voice is used.</small></div><div class="wmt-cap" id="wmt-cap"></div>
   <div class="wmt-bot"><button class="wmt-ib" id="wmt-pv">◀ Back</button><div class="wmt-prog" id="wmt-pg"><i></i></div><span class="wmt-cnt" id="wmt-ct"></span><button class="wmt-ib on" id="wmt-nx">Next ▶</button></div>`;
   (o.host || document.body).appendChild(root);
@@ -41588,7 +41568,7 @@ function open(o){
   $('#wmt-vb').onclick = () => $('#wmt-vp').classList.toggle('open');
   $('#wmt-vr').value = NS.rate; $('#wmt-vr').oninput = e => { NS.rate = +e.target.value; };
   $('#wmt-vc').checked = NS.caps; $('#wmt-vc').onchange = e => { NS.caps = e.target.checked; if(!NS.caps) showCap(''); };
-  $('#wmt-vt').onclick = () => { if(!SS) return; if(NS.on) setNarrate(false); SS.cancel(); const r = WMVoices.pick(WMVoices.get()), u = new SpeechSynthesisUtterance('This is the voice for your QaSHE Watchman tutorial.'); if(r.voice){ u.voice = r.voice; u.lang = r.voice.lang; } u.rate = NS.rate; SS.speak(u); };
+  $('#wmt-vt').onclick = () => { if(!SS) return; if(NS.on) setNarrate(false); SS.cancel(); const r = WMVoices.pick(WMVoices.get()), u = new SpeechSynthesisUtterance('This is the voice for your QaSHE Watchman training video.'); if(r.voice){ u.voice = r.voice; u.lang = r.voice.lang; } u.rate = NS.rate; SS.speak(u); };
   if(SS && SS.addEventListener) SS.addEventListener('voiceschanged', vnote);
   vfill();
   $('#wmt-ix').onclick = () => { if(o.lesson){ $('#wmt-dr').classList.toggle('open'); return; } NS.on = false; refreshNS(); jumpTo('index'); };
@@ -41602,9 +41582,9 @@ function open(o){
     else if(act === 'close'){ close(); }
     else if(act === 'all-play'){ resume(); setList('full'); jumpTo('what'); }
     else if(act === 'pick'){ const id = a.dataset.m; SEL.has(id) ? SEL.delete(id) : SEL.add(id); const sc = stage.querySelector('[data-i="3"]').scrollTop; go(cur); stage.querySelector('[data-i="3"]').scrollTop = sc; }
-    else if(act === 'sel-all'){ MODS.forEach(m => SEL.add(m.id)); go(cur); } else if(act === 'sel-none'){ SEL.clear(); go(cur); }
+    else if(act === 'sel-all'){ MAINMODS().forEach(m => SEL.add(m.id)); go(cur); } else if(act === 'sel-none'){ SEL.clear(); go(cur); }
     else if(act === 'sel-play'){ if(!SEL.size){ SEL.add('nonconformances'); } resume(); setList(new Set(SEL)); jumpTo('what'); }
-    else if(act === 'chap'){ const c = a.dataset.c; resume(); setList(new Set(MODS.filter(m => m.ch === c).map(m => m.id))); jumpTo('ch_' + c); }
+    else if(act === 'chap'){ const c = a.dataset.c; resume(); setList(new Set(MAINMODS().filter(m => m.ch === c).map(m => m.id))); jumpTo('ch_' + c); }
   });
   let tx = null; stage.addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive:true }); stage.addEventListener('touchend', e => { if(tx == null) return; const dx = e.changedTouches[0].clientX - tx; tx = null; if(Math.abs(dx) > 50){ dx < 0 ? next() : prev(); } }, { passive:true });
   drawer(); let start = 0;
@@ -41612,14 +41592,14 @@ function open(o){
   go(start);
   if(o.narrate !== false && !NS.video){
     const ua = navigator.userActivation;
-    if(ua && !ua.hasBeenActive){ const st = document.createElement('div'); st.className = 'wmt-start'; st.innerHTML = '<div><div class="m">QaSHE Watchman</div><h2>'+(o.lesson?E((byId(o.lesson)||{}).n||'Lesson'):'Tutorial')+'</h2><p>'+(o.lesson?'A short narrated lesson, about four minutes. Pause at any time, go back or forward.':'About 30 minutes, narrated like a short film. Pause at any time, go back or forward, or open the Index to choose particular modules.')+'</p><button class="wmt-ib on" id="wmt-go">▶ Start</button></div>'; root.appendChild(st); st.querySelector('#wmt-go').onclick = () => { st.remove(); setNarrate(true); }; }
+    if(ua && !ua.hasBeenActive){ const st = document.createElement('div'); st.className = 'wmt-start'; st.innerHTML = '<div><div class="m">QaSHE Watchman</div><h2>'+(o.lesson?E((byId(o.lesson)||{}).n||'Lesson'):'Training Video')+'</h2><p>'+(o.lesson?'A short narrated lesson, about four minutes. Pause at any time, go back or forward.':'About 30 minutes, narrated like a short film. Pause at any time, go back or forward, or open the Index to choose particular modules.')+'</p><button class="wmt-ib on" id="wmt-go">▶ Start</button></div>'; root.appendChild(st); st.querySelector('#wmt-go').onclick = () => { st.remove(); setNarrate(true); }; }
     else setTimeout(() => setNarrate(true), 300);
   }
   if(NS.video){ root.classList.add('vid'); setNarrate(true); }
   T = { close, go, next, prev, jumpTo, el: root, narrate:setNarrate };
   return T;
 }
-window.WMTutorial = { open, lessons: () => Object.keys(window.WMLESSONS || {}), lessonScript: id => (lessonList(id) || []).map(s => ({ id:s.id, t:s.t, narr:s.narr || [], beats:s.beats || [] })), script: () => playlist('full').map(s => ({ id:s.id, t:s.t, ch:s.ch, narr:s.narr || [], beats:s.beats || [] })), current: () => T, modules: () => MODS.map(m => m.id) };
+window.WMTutorial = { open, lessons: () => Object.keys(window.WMLESSONS || {}), lessonScript: id => (lessonList(id) || []).map(s => ({ id:s.id, t:s.t, narr:s.narr || [], beats:s.beats || [] })), script: () => playlist('full').map(s => ({ id:s.id, t:s.t, ch:s.ch, narr:s.narr || [], beats:s.beats || [] })), current: () => T, modules: () => MAINMODS().map(m => m.id) };
 })();
 
 (function(){
@@ -41628,8 +41608,8 @@ window.WMTutorial = { open, lessons: () => Object.keys(window.WMLESSONS || {}), 
     let b = document.getElementById('wm-tut-btn');
     if(!anchor && !b) return;
     if(!b){
-      b = document.createElement('button'); b.id = 'wm-tut-btn'; b.className = 'wm-tut-btn'; b.title = 'Watch the QaSHE Watchman tutorial';
-      b.innerHTML = '<span class="ico" data-wmx="tut"></span><span class="lbl">Tutorial</span>';
+      b = document.createElement('button'); b.id = 'wm-tut-btn'; b.className = 'wm-tut-btn'; b.title = 'Watch the QaSHE Watchman training video';
+      b.innerHTML = '<span class="ico" data-wmx="tut"></span><span class="lbl">Training Video</span>';
       b.onclick = () => WMTutorial.open();
       anchor.parentNode.insertBefore(b, anchor);
     }
@@ -43219,8 +43199,8 @@ window.WMTutorial = { open, lessons: () => Object.keys(window.WMLESSONS || {}), 
   function ensure(){
     let b = document.getElementById('mod-les-btn'); if(b) return b;
     const h = document.getElementById('mod-title'); if(!h || !h.parentNode) return null;
-    b = document.createElement('button'); b.id = 'mod-les-btn'; b.className = 'btn-small'; b.innerHTML = '<span aria-hidden="true">&#9654;</span> <span class="lb-long">Module Tutorial</span><span class="lb-short">Lesson</span>';
-    b.title = 'A short narrated lesson on this module';
+    b = document.createElement('button'); b.id = 'mod-les-btn'; b.className = 'btn-small'; b.innerHTML = '<span aria-hidden="true">&#9654;</span> <span class="lb-long">Training Video</span><span class="lb-short">Video</span>';
+    b.title = 'A short narrated training video on this module';
     const holder = h.parentNode.parentNode, tpl = document.getElementById('mod-tpl-btn');
     if(tpl && tpl.parentNode === holder) holder.insertBefore(b, tpl); else holder.appendChild(b);
     b.onclick = () => { const id = b.dataset.lesson; if(id && window.WMTutorial) WMTutorial.open({ lesson:id, narrate:true }); };
@@ -44596,12 +44576,6 @@ ask:'How do you control who has access to what?'};
   }
   { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ await loadFlag();  })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
   ADMIN_CONSOLE_TOGGLES.push({ field:'quotes_module_enabled', label:'Quotations and Invoicing', note:'Quotations, client purchase orders, invoices and payments, with a price book, tax codes, surcharges, currencies and AI assistance. Admins and managers only. Off by default.' });
-  { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
-      if(field !== 'quotes_module_enabled') return _t.apply(this, arguments);
-      const { error } = await STATE.supabase.from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:'quotes', enabled:!!value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
-      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
-      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
-    }; }
   { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){ if(mod === 'quotes') return canQi(); return _c.apply(this, arguments); }; }
   MODULE_META.quotes = { title:'Quotations and Invoicing', sub:() => 'Quotations, client purchase orders and invoices, with a price book that learns from the work you quote' };
   RENDERERS.quotes = () => '<div id="qi-root"></div>';
@@ -45243,12 +45217,6 @@ Prices must be in ${doc.currency}. If you are unsure of a price, set it to your 
   /* ---------- switch, navigation, access ---------- */
   ADMIN_CONSOLE_TOGGLES.push({ field:'projects_module_enabled', label:'Project Management', note:'Projects of any kind: plan, phases, tasks (shared with Task Management), risks and issues, budget, linked records and status reports. Can be started from nonconformances, RAGA alerts, audits, management reviews, quotations and orders. On by default.' });
   { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ if(STATE.org) STATE.org.projects_module_enabled = !off(); try{ if(!off()) await loadPm(); }catch(e){} })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
-  { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
-      if(field !== 'projects_module_enabled') return _t.apply(this, arguments);
-      const { error } = await STATE.supabase.from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:'projects', enabled:!!value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
-      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
-      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
-    }; }
   { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){
       if(mod === 'projects'){ if(off()) return false; return _c('tasks') || STATE.myRole === 'admin' || !!(STATE.profile && STATE.profile.is_platform_staff); }
       return _c.apply(this, arguments); }; }
@@ -45890,12 +45858,6 @@ Prices must be in ${doc.currency}. If you are unsure of a price, set it to your 
   /* ---------------- 3. Deficiency Control ---------------- */
   ADMIN_CONSOLE_TOGGLES.push({ field:'auto_deficiency_enabled', label:'Automatic raising of deficiencies', note:'When an inspection, audit finding or checklist records a failure, a nonconformance (or RAGA alert where nonconformances are switched off) and a follow-up task are raised automatically. On by default.' });
   { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ if(STATE.org) STATE.org.auto_deficiency_enabled = !dfOff(); })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
-  { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
-      if(field !== 'auto_deficiency_enabled') return _t.apply(this, arguments);
-      const { error } = await STATE.supabase.from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:'auto_deficiency', enabled:!!value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
-      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
-      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
-    }; }
   function dfOff(){ return !!(STATE.org && STATE.org._modOff && STATE.org._modOff.has('auto_deficiency')); }
   const usesNc = () => STATE.org.nc_enabled !== false;
   const canRaise = () => ['admin','manager','contributor'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
@@ -46059,12 +46021,6 @@ Prices must be in ${doc.currency}. If you are unsure of a price, set it to your 
   { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{
       if(STATE.org){ STATE.org.bplan_module_enabled = !mOff('bplan'); STATE.org.disciplinary_module_enabled = !mOff('disciplinary'); }
       try{ await loadGov(); }catch(e){ console.warn('b84 loadGov', e); } })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
-  { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
-      if(!SW[field]) return _t.apply(this, arguments);
-      const { error } = await STATE.supabase.from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:SW[field], enabled:!!value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
-      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
-      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
-    }; }
   { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){
       if(mod === 'bplan'){ if(mOff('bplan')) return false; return _c('management_review') || isMgr(); }
       if(mod === 'disciplinary'){ if(mOff('disciplinary')) return false; return isMgr() && (_c('personnel') || STATE.myRole === 'admin'); }
@@ -46261,7 +46217,7 @@ Prices must be in ${doc.currency}. If you are unsure of a price, set it to your 
       <div style="background:rgba(255,255,255,.12);border-radius:10px;padding:10px 14px;font-size:13px;">${E(s.n)}</div></div>
       <div style="display:flex;gap:6px;align-items:center;margin-top:12px;flex-wrap:wrap;"><button class="btn-small" ${slide ? '' : 'disabled'} onclick="daSlide(-1)">Previous</button><button class="btn-small primary" ${slide < SLIDES.length - 1 ? '' : 'disabled'} onclick="daSlide(1)">Next</button>
       <span style="margin-left:8px;">${SLIDES.map((_, i) => `<span onclick="daSlide(0,${i})" style="display:inline-block;width:9px;height:9px;border-radius:50%;margin:0 3px;cursor:pointer;background:${i === slide ? '#D50000' : '#d6d2cf'};"></span>`).join('')}</span>
-      <button class="btn-small" style="margin-left:auto;" onclick="WMTutorial&&WMTutorial.open({lesson:'disciplinary',narrate:true})">Play narrated lesson</button></div>
+      <button class="btn-small" style="margin-left:auto;" onclick="WMTutorial&&WMTutorial.open({lesson:'disciplinary',narrate:true})">Play training video</button></div>
       <p style="font-size:11.5px;color:#888;margin-top:10px;">General guidance for managers, not legal advice. Follow your own disciplinary code and take legal advice on serious cases.</p></div>`; }
   window.daSlide = function(d, to){ slide = to != null ? to : Math.max(0, Math.min(SLIDES.length - 1, slide + d)); const b = document.getElementById('da-body'); if(b) b.innerHTML = slidesHtml(); };
 
@@ -46977,13 +46933,13 @@ add('personnel', 'tips', ['Aim for 100% onboarding before a new person works uns
       <div class="gb-step"><b>2</b><h3>See what needs you</h3><p>The Overview and reminders list what is overdue or due, module by module.</p></div>
       <div class="gb-step"><b>3</b><h3>Work the records</h3><p>Raise, fix and close with owners, dates, evidence and notifications.</p></div>
       <div class="gb-step"><b>4</b><h3>Review and evidence</h3><p>The dashboard and Management Review turn the records into decisions and proof.</p></div></div>
-      <div class="gb-tut"><div><h3>Watch the tutorial</h3><p>A narrated tutorial of about 30 minutes plays like a short film. Pause at any time, or open the index to choose particular modules for a shorter presentation.</p></div><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="gb-btn" onclick="WMTutorial.open({narrate:true})">&#9654; Watch the tutorial</button><button class="gb-btn" style="background:transparent;color:#fff;border:1.5px solid rgba(255,255,255,.5)" onclick="window.scrollTo({top:0,behavior:'smooth'})">Sign in</button></div></div>
+      <div class="gb-tut"><div><h3>Watch the training video</h3><p>A narrated training video of about 30 minutes plays like a short film. Pause at any time, or open the index to choose particular modules for a shorter presentation.</p></div><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="gb-btn" onclick="WMTutorial.open({narrate:true})">&#9654; Watch the training video</button><button class="gb-btn" style="background:transparent;color:#fff;border:1.5px solid rgba(255,255,255,.5)" onclick="window.scrollTo({top:0,behavior:'smooth'})">Sign in</button></div></div>
       <p style="margin:34px 0 0;font-size:14px;color:#555;text-align:center">New to Watchman? Ask your organisation administrator for an invitation, or email <a href="mailto:info@groupqashecg.com" style="color:#B21616;font-weight:700">info@groupqashecg.com</a>.</p></div></section>`;
   function build(){
     const g = document.getElementById('gate-auth'); if(!g || document.getElementById('gate-below')) return;
     if(!g.querySelector('.gate-main')){ setTimeout(build, 50); return; }   // wait for the split layout to be applied
     const nv = g.querySelector('.ga-nav'); if(!nv){ setTimeout(build, 80); return; }
-    nv.insertAdjacentHTML('afterbegin', '<a class="gt keep" onclick="WMTutorial.open({narrate:true})">Tutorial</a><a class="gt" onclick="document.getElementById(\'gb-features\').scrollIntoView({behavior:\'smooth\'})">Features</a><a class="gt" onclick="document.getElementById(\'gb-standards\').scrollIntoView({behavior:\'smooth\'})">Standards</a>');
+    nv.insertAdjacentHTML('afterbegin', '<a class="gt keep" onclick="WMTutorial.open({narrate:true})">Training Video</a><a class="gt" onclick="document.getElementById(\'gb-features\').scrollIntoView({behavior:\'smooth\'})">Features</a><a class="gt" onclick="document.getElementById(\'gb-standards\').scrollIntoView({behavior:\'smooth\'})">Standards</a>');
     const web = nv.querySelector('a[href*="groupqashecg.com"]:not(.cta)'); if(web) nv.insertBefore(web, nv.firstChild), web.classList.add('keep');
     g.insertAdjacentHTML('beforeend', below());
     const foot = document.querySelector('#view-landing .land-footer');
@@ -47301,12 +47257,6 @@ add('personnel', 'tips', ['Aim for 100% onboarding before a new person works uns
   }
   { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ await loadFlag();  })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
   ADMIN_CONSOLE_TOGGLES.push({ field:'edu_module_enabled', label:'Educational Institution Compliance (Umalusi)', note:'For schools and other educational institutions: accreditation readiness against the four Umalusi criteria, staff establishment (SACE), assessment moderation and irregularities, results analysis and a printable Portfolio of Evidence. Off by default; use the School IMS preset to switch on the modules a school needs.' });
-  { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
-      if(field !== 'edu_module_enabled') return _t.apply(this, arguments);
-      const { error } = await STATE.supabase.from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:'edu', enabled:!!value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
-      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
-      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
-    }; }
   { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){ if(mod === 'edu'){ if(off()) return false; return mgr() || _c('management_review'); } return _c.apply(this, arguments); }; }
   MODULE_META.edu = { title:'Educational Institution Compliance', sub:() => 'Umalusi accreditation readiness, staff establishment, assessment integrity, results analysis and the Portfolio of Evidence' };
   RENDERERS.edu = () => '<div id="edu-root"></div>';
@@ -47841,12 +47791,6 @@ var WT = (function(){
   }
   { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ await loadFlag();  })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
   ADMIN_CONSOLE_TOGGLES.push({ field:'wt_module_enabled', label:'Water Treatment Service Reports (Allmech)', note:'Bespoke for water treatment service providers: plants (boiler and cooling systems) with photo and QR label, service reports with required limits, chemicals, meter readings, photos, signatures, a printable report, notification to the customer\'s operations manager and quotation requests for defects. Off by default.' });
-  { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
-      if(field !== 'wt_module_enabled') return _t.apply(this, arguments);
-      const { error } = await STATE.supabase.from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:'wt', enabled:!!value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
-      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
-      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
-    }; }
   { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){ if(mod === 'wt') return !off(); return _c.apply(this, arguments); }; }
   MODULE_META.wt = { title:'Water Treatment', sub:() => 'Plants, service reports against required limits, chemicals, photos, defects and quotation requests' };
   RENDERERS.wt = () => '<div id="wt-root"></div>';
@@ -48735,9 +48679,17 @@ ${STATE.org.name}${s.tel ? '\nTel: ' + s.tel : ''}`;
   const pendingFor = email => email && (STATE.invites || []).find(i => i.status === 'pending' && String(i.email).toLowerCase() === String(email).toLowerCase());
 
   /* clients can no longer switch modules on or off: that stays in the Group QaSHE CG Admin Console */
-  { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = function(){
-      if(!(STATE.profile && STATE.profile.is_platform_staff)){ toast('Module switches are managed by Group QaSHE CG. Please contact us to change the modules on your system.', 'error'); return Promise.resolve(); }
-      return _t.apply(this, arguments); }; }
+  /* R65: ONE module-switch function. Staff-only guard, then: organisations columns, welding, infosec and the bug button keep their own
+     stores (the older wrappers above); every other switch is an org_modules row keyed by the field name. */
+  window.WM_SWITCH_STORES = { orgCols: ['administration_enabled','all_documents_enabled','asset_watchman_enabled','document_control_enabled','hr_enabled','legal_certs_enabled','process_flowcharts_enabled','site_files_enabled'], own: ['welding_enabled','infosec_enabled','bug_button_module_enabled'], keyAlias: { auto_deficiency_enabled:'auto_deficiency' } };
+  window.wmSwitchKey = function(field){ const S = WM_SWITCH_STORES; return S.keyAlias[field] || String(field).replace(/_module_enabled$/, ''); };
+  { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
+      if(!(STATE.profile && STATE.profile.is_platform_staff)){ toast('Module switches are managed by Group QaSHE CG. Please contact us to change the modules on your system.', 'error'); return; }
+      const S = WM_SWITCH_STORES; if(S.orgCols.includes(field) || S.own.includes(field)) return _t.apply(this, arguments);
+      const { error } = await STATE.supabase.from('org_modules').upsert({ organisation_id: STATE.org.id, module_key: wmSwitchKey(field), enabled: !!value, updated_at: new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
+      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
+      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
+    }; }
 
   window.wpInviteBtn = function(id){
     const row = document.getElementById('pd-linked-user'); if(!row || !isAdm()) return; const host = row.closest('.status-row'); if(!host || host.querySelector('.wp-inv')) return;
@@ -49068,12 +49020,6 @@ ask:'How can an employee or supplier report wrongdoing confidentially, and what 
   }
   { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ await loadFlag();  })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
   ADMIN_CONSOLE_TOGGLES.push({ field:'it_module_enabled', label:'Inspection and Testing (JB Switchgear Solutions)', note:'Bespoke for switchgear and control gear manufacturers: jobs and boards by product type, inspection checklists, measured tests against limits, busbar and torque records, punch lists, routine test certificates and declarations of conformity (IEC 61439, SANS 1973), release notes, handover, client acceptance and a Managing Director dashboard. Off by default.' });
-  { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
-      if(field !== 'it_module_enabled') return _t.apply(this, arguments);
-      const { error } = await STATE.supabase.from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:'it', enabled:!!value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
-      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
-      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
-    }; }
   { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){ if(mod === 'it') return !off() && _c.apply(this, arguments); return _c.apply(this, arguments); }; }
   MODULE_META.it = { title:'Inspection and Testing', sub:() => 'Jobs and boards, inspection checklists, measured tests, punch lists, certificates and release' };
   RENDERERS.it = () => '<div id="it-root"></div>';
@@ -50110,12 +50056,6 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   }
   { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const a = arguments, t = this; const p = _lc.apply(t, a); const q = loadFlags(); const r = await Promise.all([p, q]); return r[0]; }; }
   KEYS.forEach(k => ADMIN_CONSOLE_TOGGLES.push({ field: MODS[k].field, label: MODS[k].label, note: MODS[k].note }));
-  { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
-      const k = KEYS.find(x => MODS[x].field === field); if(!k) return _t.apply(this, arguments);
-      const { error } = await sb().from('org_modules').upsert({ organisation_id: STATE.org.id, module_key: k, enabled: !!value, updated_at: new Date().toISOString() }, { onConflict: 'organisation_id,module_key' });
-      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
-      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
-    }; }
   { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){
       if(!KEYS.includes(mod)) return _c.apply(this, arguments);
       if(!(STATE.org && STATE.org['_' + mod + 'On'])) return false;
@@ -50834,13 +50774,6 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   MODULE_META[KEY] = { title:'SHERQ Committee', sub:() => 'Quarterly safety, health, environment, risk and quality committee: agenda from your live data, minutes, actions and signatures' };
   RENDERERS[KEY] = () => '<div id="sherq_committee-root"></div>';
   ADMIN_CONSOLE_TOGGLES.push({ field:'sherq_committee_module_enabled', label:'SHERQ Committee', note:'Quarterly SHERQ committee meetings and minutes, as required by the OHS Act. Switching off hides it; nothing recorded is deleted.' });
-  { const _t = toggleOrgModule;
-    toggleOrgModule = window.toggleOrgModule = async function(field, value){
-      if(field !== 'sherq_committee_module_enabled') return _t.apply(this, arguments);
-      const { error } = await sb().from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:KEY, enabled:value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
-      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
-      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
-    }; }
   { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const r = await _lc.apply(this, arguments); try{ if(STATE.org) STATE.org.sherq_committee_module_enabled = !(STATE.org._modOff && STATE.org._modOff.has(KEY)); }catch(e){} return r; }; }
   { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){
       if(mod !== KEY) return _c.apply(this, arguments);
@@ -51990,12 +51923,6 @@ Likelihood and impact are whole numbers from 1 to 5.`;
 
   /* ---------------- switch, navigation, access ---------------- */
   ADMIN_CONSOLE_TOGGLES.push({ field:'staff_survey_module_enabled', label:'Personnel Satisfaction Survey', note:'Send a confidential satisfaction survey to all personnel by emailed link, print it for people without email or internet, and analyse the results. Administrators and permitted HR leads run it; line managers record paper responses for their own people. On by default.' });
-  { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
-      if(field !== 'staff_survey_module_enabled') return _t.apply(this, arguments);
-      const { error } = await sb().from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:KEYM, enabled:!!value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
-      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
-      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
-    }; }
   { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __in = _lc.apply(this, arguments);
       const r = await __in; if(STATE.org) STATE.org.staff_survey_module_enabled = !mOff(); return r; }; }
   { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){
@@ -56196,12 +56123,6 @@ window.showRatingGuide = function(){
   }
   { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const __a=arguments, __t=this; const __in=_lc.apply(__t,__a); const __rs=(async()=>{ await loadFlag(); })(); const __r=await Promise.all([__in,__rs]); return __r[0]; }; }
   ADMIN_CONSOLE_TOGGLES.push({ field:'wf_module_enabled', label:'JBSS Workflow (JB Switchgear Solutions)', note:'Bespoke for JB Switchgear Solutions: the business process from enquiry to archive as a flowchart of 9 stages and 46 steps. Controlled forms open on their own page and save to their registers; gates, tasks and reminders, variations, hours against purchase order, nonconformances and the document pack. Off by default.' });
-  { const _t = toggleOrgModule; toggleOrgModule = window.toggleOrgModule = async function(field, value){
-      if(field !== 'wf_module_enabled') return _t.apply(this, arguments);
-      const { error } = await STATE.supabase.from('org_modules').upsert({ organisation_id:STATE.org.id, module_key:'wf', enabled:!!value, updated_at:new Date().toISOString() }, { onConflict:'organisation_id,module_key' });
-      if(error){ toast('Could not update: ' + error.message, 'error'); return; }
-      toast('Saved: reloading to apply…', 'success'); await reloadOrgAfterAdminConsoleChange();
-    }; }
   { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){ if(mod === 'wf') return !off() && _c.apply(this, arguments); return _c.apply(this, arguments); }; }
   MODULE_META.wf = { title:'JBSS Workflow', sub:() => 'Enquiry to archive: the process flowchart, forms, registers, tasks and the document pack' };
   RENDERERS.wf = () => '<div id="wf-root"></div>';
@@ -56649,6 +56570,112 @@ window.showRatingGuide = function(){
   { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const r = await _lc.apply(this, arguments); try{ await wmLoadSwitches(true); }catch(e){} return r; }; }
   setTimeout(() => { try{ wmLoadSwitches(true); }catch(e){} }, 0);
 })();
+
+/* catalogue entries for the two new lessons */
+WM_MODS.push({id:'sherq_committee',ch:'ctl',n:'SHERQ Committee',ic:'users',tag:'Quarterly committee meetings with the agenda built from your live data, minutes, actions and signatures.',
+ feat:['Agenda built from the modules your organisation uses','Open actions from earlier meetings carry forward','Minutes, attendance and decisions recorded against each item','Actions become tasks with an owner and a date','Signed minutes kept as a record'],
+ iso:['OHS Act 85 of 1993 s19 and s20','ISO 45001 cl 5.4','ISO 14001 cl 9.3'],link:['nonconformances','tasks','risks','legal'],
+ steps:['Create the meeting','Read the agenda','Record minutes','Add actions','Hold and sign'],
+ d:{a:'flow',st:[['Schedule','date + chair'],['Agenda','live figures'],['Minutes','decisions'],['Actions','tasks'],['Sign','minutes signed']]}});
+WM_MODS.push({id:'wf',ch:'ops',n:'JBSS Workflow',ic:'gauge',tag:'Enquiry to archive for switchgear jobs: one record, nine stages, forty-six steps, enforced gates.',
+ feat:['One job record through 9 stages and 46 steps','Controlled forms open on their own page and save to registers','Gates hold a step until the earlier one is done','Nonconformances raised on a job also appear in the Nonconformances module','Tasks and reminders derived from the job, and a document pack at close-out'],
+ iso:['ISO 9001 cl 8.1, 8.5, 8.6','SANS 1973-1'],link:['customers','nonconformances','it','documents'],
+ steps:['Open the job','Fill the forms on each step','Pass the gates','Raise a nonconformance or variation','Hand over testing and close out'],
+ d:{a:'flow',st:[['Enquiry','quote'],['Engineering','design'],['Workshop','build'],['Testing','certify'],['Delivery','close-out']]}});
+
+/* ===== Release 64: training video corrections and new lessons ===== */
+(function(W){
+/* ---- Water Treatment (bespoke): customers, sites, report email, quotation desk ---- */
+W.wt.who = 'Water treatment technicians, the service manager, the customer\'s operations manager who receives the completed report, and anyone on the report copy address.';
+W.wt.tour = [['Customers and sites','Each customer has sites. A site holds its address, contact and operations manager, and the plants installed there.',['table','Customers',['Customer','Sites','Plants'],[['Delta Foods','2','5'],['Apex Plastics','1','3']]]],
+ ['Plants and service reports','Each boiler or cooling system has its photo, required limits and QR label. Every visit is a report with readings flagged against the limits, chemicals, photographs and signatures.',['stats','This month',[['Reports','38'],['Out of limit','4','red'],['Signed','35','grn']],'Out-of-limit readings are flagged as you type']],
+ ['Defects and quotations','Defects found on site, with a quotation request emailed to your quotation desk.',['cards','Open defects',[['Feed pump seal leaking','Boiler B-01','Open'],['Blowdown valve passing','Tower C-02','Quotation requested']]]]];
+W.wt.steps[0] = ['Set up the customer, site and plant','Add the customer, then its site with address, contact and operations manager. Add each plant to the site with its type and required limits, then print the QR label and fix it to the plant.',['form','New plant',[['Customer','Delta Foods'],['Site','Delta Foods, Germiston'],['Plant','Boiler B-01'],['*Type','Boiler']],'Save and print QR']];
+W.wt.steps[1] = ['Scan and start','On site, scan the QR with your phone. The inspection opens at once; an unfinished inspection of that plant is reopened rather than started again. Your name and email are compulsory and print on the report.',W.wt.steps[1][2]];
+W.wt.steps[3] = ['Sign off and send','The customer signs on your phone or tablet. If nobody is on site, send a sign-off link by email and the customer approves from any laptop. The completed report is emailed to the client, to you, and to the report copy address set in Settings.',W.wt.steps[3][2]];
+W.wt.steps[4] = ['Raise defects','Record each defect found. Request a quotation and the request is emailed to the quotation desk address set in Settings. Track it from Not requested to Quoted and Accepted.',['chain','Defect',['Found','Photographed','Quotation requested','Quoted','Accepted']]];
+W.wt.tips[0] = 'Scan the QR on the plant itself so the right plant is always opened. Set the quotation desk and report copy emails in Settings first.';
+
+/* ---- Nonconformances: Type (Category), views, admin-only delete ---- */
+W.nonconformances.tour[0][1] = 'Every record with its number, severity, owner and status. You see your own records first; managers can open My department, and anyone can open All.';
+W.nonconformances.tour[1][0] = 'Type (Category) first';
+W.nonconformances.tour[1][1] = 'Choose the Type (Category) first, and only then do the details open. This keeps every record countable. Administrators keep the list under Administration.';
+W.nonconformances.steps[0][1] = 'Click New, choose the Type (Category) first, then describe what happened and the severity.';
+W.nonconformances.tips[0] = 'Pick the Type (Category) carefully: it drives your trend reports. Only an administrator can delete a record.';
+
+/* ---- Risks: grouped by category, how ratings work ---- */
+W.risks.tour[0][1] = 'The register is grouped by category (for example PESTEL, Health and Safety, Environment, Information Security), with each risk\'s score, owner and treatment status beneath its category. Administrators keep the categories under Administration.';
+W.risks.tour[1][1] = 'Likelihood times impact gives the score. High scores need treatment first. The How ratings work pop-up shows the scale and the ALARP controls.';
+W.risks.steps[0][1] = 'Describe it, choose its category and say what could go wrong or right.';
+W.risks.tips[2] = 'Review high scores monthly, and use the How ratings work pop-up to choose controls, starting with elimination.';
+
+/* ---- Document registers: admin delete and Word ---- */
+W.master_register.tour[1] = ['Actions on a row','View Document and Request update on an approved row. A Word download is also offered, and administrators alone can delete a row. There is no Open button once a document is approved.',['cards','Row actions',[['View Document','Approved','Read'],['Request update','Approved','Ask'],['Word','Approved','Download']]]];
+W.all_documents.tips[2] = 'The upload button only shows if All Documents (external uploads) is switched on for your organisation. Only an administrator can delete an upload.';
+
+/* ---- Personnel: Watchman login status ---- */
+W.personnel.tour.push(['Watchman login','Each person\'s record shows whether they have a Watchman login, their user level and the modules they can open. The register has a Watchman access column.',['table','Watchman access',['Name','Login','Level'],[['P. Naidoo','Linked','Manager'],['S. Dlamini','Not linked','']]]]);
+W.personnel.tips[3] = 'Aim for 100% onboarding before a new person works unsupervised. Invite them to Watchman from their record and tick only the modules they need.';
+
+/* ---- Administration ---- */
+W.administration.who = 'Administrators only.';
+W.administration.tour = [['Document Architecture and Naming','Departments, document types and the Document Naming Convention that numbers every controlled document.',['table','Document Architecture',['Department','Code'],[['Operations','OPS'],['Quality','QMS']]]],
+ ['Team and Access','Invite people, set a role and tick the modules each person sees. Only modules activated for your organisation are listed.',['table','Team',['Name','Role','Modules'],[['A. Botha','Manager','All'],['T. Mokoena','Contributor','5']]]],
+ ['Lists and profile','Nonconformance Types (Category), Risk Categories, Organisation Profile with logo and colours, and Print and Download Style.',['check','Administration',['Nonconformance Types (Category)','Risk Categories','Organisation Profile','-Print and Download Style']]]];
+W.administration.steps = [['Set up the document architecture','Add departments and document types, and check the Document Naming Convention.',['form','Department',[['Name','Operations'],['*Code','OPS']]]],
+ ['Invite people and set roles','Open Team and Access, enter the email, choose Admin, Manager, Contributor or Viewer and send the invite.',['form','Invite',[['Email','anna@company.co.za'],['*Role','Manager']],'Send']],
+ ['Choose modules per person','Tick what each person sees. Admins see every module. Change it later with Edit access.',['check','Access',['Nonconformances','Tasks','-Administration']]],
+ ['Set your lists','Keep the Nonconformance Types (Category) and Risk Categories lists. Each can be reset to the standard list.',['check','Lists',['Standard types restored','Risk categories ordered','-Custom type added']]],
+ ['Apply your profile and style','Add your logo and colours in Organisation Profile, and choose Plain or Modern for printed documents.',['form','Organisation Profile',[['Logo','company.png'],['*Colour','Red']]]]];
+W.administration.tips = ['Admin has full access; manager has everything but Administration.','Modules are switched on for your organisation by Group QaSHE CG. Ask your consultant if one is missing.','Review access every quarter. Only an administrator can delete records.'];
+W.administration.ask = 'How do you control who has access to what, and who is allowed to delete records?';
+
+/* ---- SHERQ Committee (new lesson) ---- */
+W.sherq_committee = {
+why:'The OHS Act expects the committee to meet at least every three months, with minutes and actions that are followed up. This module builds the agenda from your live data, so the meeting starts from facts instead of from memory.',
+who:'The committee chair, the SHE representatives, managers and the secretary who takes the minutes.',
+tour:[['The meetings list','Every committee meeting with its date and status, from planned to held and signed.',['table','Meetings',['Date','Status'],[['12 Mar','Signed'],['11 Jun','Held'],['10 Sep','Planned']]]],
+ ['The standard agenda','Items such as incidents, risk, legal, training and audits, each filled from this organisation\'s own records.',['cards','Agenda',[['Incidents and nonconformances','4 open, 1 overdue'],['Training and competence','2 expiring']]]],
+ ['Minutes and actions','Record decisions and add an action that becomes a task with an owner and a date.',['chain','Action',['Decided','Task created','Done','Reviewed next meeting']]]],
+steps:[['Create the meeting','Choose New meeting and set the date, venue, chair and secretary. Open actions from earlier meetings carry forward automatically.',['form','New meeting',[['Meeting date','10 Sep 2026'],['Venue','Boardroom'],['*Chair','Plant manager']],'Create meeting']],
+ ['Read the agenda','Open the meeting. Each agenda item shows the figures from your own registers.',['check','Agenda',['Previous actions','Incidents and nonconformances','-Legal certificates']]],
+ ['Record minutes','Type the discussion and decisions against each item.',['form','Minutes',[['Item','Incidents'],['*Decision','Install guard on press 2']],'Save']],
+ ['Add actions','Choose Add action and create a task. The owner is reminded until it is closed.',['cards','Actions',[['Install guard on press 2','Maintenance · 30 Sep','Open']]]],
+ ['Hold and sign','Mark the meeting as held, then sign the minutes.',['flow','Meeting',['Planned','Held','Signed'],2]]],
+tips:['Hold the meeting at least every three months.','Add every decision as an action with an owner and a date.','Open the previous actions first at the next meeting.'],
+ask:'How do you show that your safety committee meets regularly and that its decisions are followed up?'};
+
+/* ---- JBSS Workflow (bespoke, new lesson) ---- */
+W.wf = {
+why:'A switchgear job passes through enquiry, engineering, purchasing, quality, workshop, testing and delivery. This module holds the whole job as one record, so every form is on the file, every gate is enforced and nothing is signed off by hand.',
+who:'Estimators, engineers, buyers, stores, the workshop, quality, the test bay, dispatch and the Managing Director. This module is built for JB Switchgear Solutions.',
+tour:[['The job board','Every job and the stage it has reached, with overdue steps highlighted.',['table','Job board',['Job','Customer','Stage'],[['W2611-01','Client A','3 Engineering'],['S2612-01','Client B','6 Workshop']]]],
+ ['The job flowchart','One job moves through 9 stages and 46 steps. Each step lists the controlled forms it needs.',['flow','Stages',['Enquiry','Order','Engineering','Purchasing','Quality','Workshop','Testing','Delivery','Close-out'],2]],
+ ['Registers and tasks','Every saved form appears in its register, and your open steps appear in Tasks And Reminders.',['cards','My tasks',[['Release sheetmetal','Quality · due today','Due'],['Store requisition','Stores · 2 days','Overdue']]]]],
+steps:[['Open the job','Start from the enquiry and quote, or open the job from the order. Quote and job numbers are issued when you save.',['form','New enquiry',[['Customer','Client A'],['*Description','MCC panel']],'Save']],
+ ['Fill the forms on each step','Each form opens on its own page and saves to its register. A step completes when its forms are saved; nobody ticks it by hand.',['check','Step 3.2',['Design review form','Drawings issued','-Client approval']]],
+ ['Pass the gates','Gates hold a step until the earlier one is done, for example no sheetmetal release while punch items are open.',['flow','Gate',['Order','Handover','Engineering','Release'],1]],
+ ['Raise a nonconformance or variation','Raise it from any step. A nonconformance is also recorded in the Nonconformances module and holds release until it is closed or conceded.',['chain','NCR',['Raised','Investigated','Concession or fix','Closed']]],
+ ['Hand over testing and close out','Step 7.1 reads the Inspection and Testing module for the same job number. At close-out the data pack and file archive checklist are filled from the saved records.',['check','Close-out',['All boards certified','Data pack index complete','-Delivery note signed']]]],
+tips:['Link the people to the workflow roles in Settings so only the right person can sign for each role.','Check Tasks And Reminders each morning: red is overdue, orange is due today.','Close every nonconformance, or approve a concession, before release for dispatch.'],
+ask:'Can you show the complete record of this job, from the enquiry to the signed delivery note, with who signed each step and when?'};
+})(window.WMLESSONS);
+
+
+/* ===== Release 65: bespoke lessons (Asset Watchman) ===== */
+(function(W){
+W.asset_watchman.who = 'Service engineers and account managers of the service provider, for their clients\' equipment. This module is built for Mechanical Rotating Solutions.';
+W.asset_watchman.tour = [['Asset register','Each client\'s assets with their components, a photo and a QR label.',['table','Assets',['Client','Asset','Health'],[['Client A','Pump P-12','Green'],['Client A','Gearbox G-3','Amber']]]],
+ ['Readings and health','Readings are compared with the thresholds set for each reading type, which gives every component and asset a health status.',['cards','Latest readings',[['Vibration 6.1 mm/s','Pump P-12','Amber'],['Seal leak 0','Pump P-12','Green']]]],
+ ['Performance and report','Leak-free days, mean time between failures, a performance rating and the committed saving for each client.',['stats','Performance',[['Leak-free days','212'],['MTBF hours','5 080'],['Rating','Good','grn']],'Printed or exported for the client']]];
+W.asset_watchman.steps = [['Register the asset','Choose the client, add the asset with its photo, then add its components. Print the QR label and fix it to the asset.',['form','New asset',[['Client','Client A'],['*Asset','Pump P-12']],'Save and print QR']],
+ ['Set reading types and thresholds','On the Client Register, open Reading Types and Thresholds and set the limits that turn a reading amber or red.',['check','Reading types',['Vibration','Temperature','-Seal leakage']]],
+ ['Record readings','Scan the QR on site and enter the readings. The health status of the component and the asset updates from the thresholds.',['flow','Reading',['Scan QR','Enter reading','Status updates'],1]],
+ ['Keep the data current','Each asset shows whether its data is up to date, due soon or needs an update, based on its review interval.',['chain','Data status',['Not yet captured','Up to date','Update due soon','Needs update']]],
+ ['Report to the client','Use the performance rating, leak-free days, MTBF and committed saving in the client report. Print the register or export it to Excel.',['cards','Report',[['Performance rating','Good'],['Committed saving','Recorded']]]]];
+W.asset_watchman.tips = ['Set the thresholds before recording readings, or every reading shows as unrated.','Review data status monthly so clients always see current figures.','Use the QR label so the right asset opens every time.'];
+W.asset_watchman.ask = 'Can you show a client how the condition of their equipment has moved over the last year?';
+})(window.WMLESSONS);
 </script>
 </body>
 </html>
