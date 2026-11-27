@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R67 2026-11-27"><meta charset="UTF-8">
+<meta name="wm-release" content="R68 2026-11-27"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -2977,6 +2977,27 @@ function orgHasModule(mod, org){
 function wmCap(n){ if(n==null) return n; const t=String(n); if(!/(^|[\s\-'’.(])[a-z]/.test(t)) return t;
   return t.replace(/(^|[\s\-'’.(])([a-z])/g,(m,a,b)=>a+b.toUpperCase()); }
 window.wmCap=wmCap;
+
+/* R68: one rule for a person's first name everywhere (greetings, notices, pop-ups, emails). Never a surname initial from an email address. */
+function wmFirstOf(raw){
+  let t = String(raw == null ? '' : raw).trim(); if(!t) return '';
+  if(t.indexOf('@') > -1) t = t.split('@')[0];
+  t = t.replace(/[._\-]+/g, ' ').replace(/[0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const parts = t.split(' ').filter(Boolean); if(!parts.length) return '';
+  const first = parts[0].length > 1 ? parts[0] : '';
+  if(!first) return '';
+  return (first === first.toLowerCase() || first === first.toUpperCase()) ? first.charAt(0).toUpperCase() + first.slice(1).toLowerCase() : first;
+}
+window.wmFirstOf = wmFirstOf;
+function wmFirstName(){
+  try{
+    const em = ((STATE.user && STATE.user.email) || '').toLowerCase();
+    const p = em && Array.isArray(STATE.personnel) ? STATE.personnel.find(x => x.email && String(x.email).toLowerCase() === em && x.full_name) : null;
+    const fromPerson = p ? wmFirstOf(p.full_name) : '';
+    return fromPerson || wmFirstOf(STATE.profile && STATE.profile.name) || wmFirstOf(em) || '';
+  }catch(e){ return ''; }
+}
+window.wmFirstName = wmFirstName;
 const WM_CAL='cal_v1';
 function wmCal(list){ return [...new Set([...(list||[]), WM_CAL])]; }
 function wmModCount(m){ return (m.module_access||[]).filter(k=>k!==WM_CAL).length; }
@@ -14167,7 +14188,7 @@ window.sendSelfAssessment = async function(appraisalId){
     const emailSent = await sendEmailToAddress(
       person.email,
       `Your self-assessment: ${STATE.org.name}`,
-      `Hello ${person.full_name},\n\nPlease complete your self-assessment for your upcoming appraisal by clicking the link below:\n\n${link}\n\nThank you,\n${STATE.org.name}`
+      `Hello ${wmFirstOf(person.full_name)},\n\nPlease complete your self-assessment for your upcoming appraisal by clicking the link below:\n\n${link}\n\nThank you,\n${STATE.org.name}`
     );
     emailStatusHtml = `<div style="font-size:12px; ${emailSent?'color:var(--green);':'color:var(--red);'} font-weight:600; margin-bottom:8px;">${emailSent ? `✓ Emailed to ${person.email}` : `Could not send automatically: use the link below instead`}</div>`;
   } else {
@@ -14963,7 +14984,7 @@ function assetReminderBody(list){
 window.assetSendReminder = async function(id){
   const a = assetById(id), p = a && a.responsible_person_id ? personById(a.responsible_person_id) : null;
   if(!p || !p.email){ toast('Choose a responsible person with an email address first (Edit details, and People).', 'error'); return; }
-  const ok = await sendEmailToAddress(p.email, `Inspection due: ${a.ref_code} ${a.description}`, `Hello ${p.full_name},\n\nThis inspection is due in QaSHE Watchman:\n\n${assetReminderBody([a])}\n\nThank you.`);
+  const ok = await sendEmailToAddress(p.email, `Inspection due: ${a.ref_code} ${a.description}`, `Hello ${wmFirstOf(p.full_name)},\n\nThis inspection is due in QaSHE Watchman:\n\n${assetReminderBody([a])}\n\nThank you.`);
   if(ok) await STATE.supabase.from('assets').update({ last_reminder_sent_at: new Date().toISOString() }).eq('id', id);
   toast(ok ? `Reminder emailed to ${p.email}.` : 'The email could not be sent.', ok ? 'success' : 'error');
 };
@@ -14980,7 +15001,7 @@ window.assetEmailAllDue = async function(){
   if(!entries.length){ toast(due.length ? `${due.length} due, but none has a responsible person with an email.` : 'Nothing is due.', due.length ? 'error' : 'success'); return; }
   if(!confirm(`Email ${entries.length} responsible person${entries.length===1?'':'s'} about ${due.length - skipped} asset${due.length - skipped===1?'':'s'} due or overdue?`)) return;
   for(const { p, list } of entries){
-    const ok = await sendEmailToAddress(p.email, `Inspections due: ${list.length} asset${list.length===1?'':'s'}`, `Hello ${p.full_name},\n\nThese inspections are due or overdue in QaSHE Watchman:\n\n${assetReminderBody(list)}\n\nThank you.`);
+    const ok = await sendEmailToAddress(p.email, `Inspections due: ${list.length} asset${list.length===1?'':'s'}`, `Hello ${wmFirstOf(p.full_name)},\n\nThese inspections are due or overdue in QaSHE Watchman:\n\n${assetReminderBody(list)}\n\nThank you.`);
     if(ok) await STATE.supabase.from('assets').update({ last_reminder_sent_at: new Date().toISOString() }).in('id', list.map(x=>x.id));
   }
   toast(`Reminders sent to ${entries.length} person${entries.length===1?'':'s'}${skipped ? `; ${skipped} asset${skipped===1?'':'s'} had nobody to email` : ''}.`, 'success');
@@ -17236,7 +17257,7 @@ function renderKpiMonitor(root, dueKpis){
 }
 window.kpiEmailReminders = async function(){
   const due = (STATE.orgKpis||[]).filter(k=>k.is_active && k.owner_id && kpiInfo(k).overdue);
-  if(!due.length){ toast('Nothing is overdue.', 'success'); return; }
+  if(!due.length){ toast('All clear' + (wmFirstName() ? ', ' + wmFirstName() : '') + ': nothing is overdue.', 'success'); return; }
   const byOwner = {}; due.forEach(k => (byOwner[k.owner_id] = byOwner[k.owner_id] || []).push(k));
   for(const [owner, list] of Object.entries(byOwner)){
     await notifyDocumentUsers([owner], `KPI readings due: ${list.length} overdue`,
@@ -28564,7 +28585,7 @@ async function notifyPerson(opts){
   const mgr = per && per.line_manager_id ? personById(per.line_manager_id) : null;
   const mc = mgr ? commsPerson({ personnelId: mgr.id }) : null;
   if(mc && mc.email){
-    const msg = `Hello ${mgr.full_name},\n\n${name} has no email address on file, so as their line manager please inform them or act on their behalf.\n\n${opts.message}`;
+    const msg = `Hello ${wmFirstOf(mgr.full_name)},\n\n${name} has no email address on file, so as their line manager please inform them or act on their behalf.\n\n${opts.message}`;
     const ok = await actuallySendEmail(mc.email, `For ${name}: ${opts.subject}`, msg);
     await logNotification({ ...base, recipient_email: mc.email, escalated_to_name: mgr.full_name, status: ok ? 'escalated' : 'escalated_failed', detail: ok ? null : STATE._lastEmailError });
     if(ok) STATE._esc.push(`${name} has no email, so ${mgr.full_name} (line manager) was emailed`);
@@ -28620,7 +28641,7 @@ async function flushAssignment(key){
   const url = `${window.location.origin}${window.location.pathname}`;
   const name = commsPerson(q).name || 'there';
   const subject = q.lines.length === 1 ? `Assigned to you: ${q.lines[0].replace(/ \(date:.*\)$/,'').slice(0,90)}` : `Assigned to you: ${q.lines.length} items`;
-  const message = `Hello ${name},\n\n${STATE.profile.name} has assigned you the following in QaSHE Watchman:\n\n${q.lines.map(l=>'  '+l).join('\n')}\n\nOpen QaSHE Watchman to action it: ${url}`;
+  const message = `Hello ${wmFirstOf(name)},\n\n${STATE.profile.name} has assigned you the following in QaSHE Watchman:\n\n${q.lines.map(l=>'  '+l).join('\n')}\n\nOpen QaSHE Watchman to action it: ${url}`;
   try{
     await ensureMemberEmails();
     const r = await notifyPerson({ userId: q.userId, personnelId: q.personnelId, subject, message, kind: 'assignment' });
@@ -28802,7 +28823,7 @@ window.sendRemindersNow = async function(){
   const cutoff = Date.now() - 3*86400000;
   const recentlyKeys = new Set((STATE.notificationLog||[]).filter(l=>l.kind==='reminder' && new Date(l.created_at).getTime()>cutoff).map(l=> l.recipient_user_id ? 'u:'+l.recipient_user_id : 'p:'+l.recipient_personnel_id));
   const todo = Object.entries(groups).filter(([k]) => !recentlyKeys.has(k));
-  if(!todo.length){ toast(Object.keys(groups).length ? 'Everyone with items due has already been reminded in the last 3 days.' : 'Nothing is overdue or due this week.', 'success'); return; }
+  if(!todo.length){ toast(Object.keys(groups).length ? 'Everyone with items due has already been reminded in the last 3 days.' : 'All clear' + (wmFirstName() ? ', ' + wmFirstName() : '') + ': nothing is overdue or due this week.', 'success'); return; }
   if(!confirm(`Send a reminder digest to ${todo.length} ${todo.length===1?'person':'people'} covering ${todo.reduce((s,[,g])=>s+g.lines.length,0)} items?`)) return;
   showLoader('Sending reminders…');
   let ok = 0, esc = 0, bad = 0, skip = 0;
@@ -28812,7 +28833,7 @@ window.sendRemindersNow = async function(){
       const name = commsPerson(g).name || 'there';
       const r = await notifyPerson({ userId:g.userId, personnelId:g.personnelId, kind:'reminder',
         subject:`Reminder: ${g.lines.length} item${g.lines.length===1?'':'s'} need your attention`,
-        message:`Hello ${name},\n\nThese items in QaSHE Watchman are overdue or due within 7 days:\n\n${g.lines.map(l=>'  '+l).join('\n')}\n\nOpen QaSHE Watchman: ${window.location.origin}${window.location.pathname}` });
+        message:`Hello ${wmFirstOf(name)},\n\nThese items in QaSHE Watchman are overdue or due within 7 days:\n\n${g.lines.map(l=>'  '+l).join('\n')}\n\nOpen QaSHE Watchman: ${window.location.origin}${window.location.pathname}` });
       if(r.status==='sent') ok++; else if(r.status==='escalated') esc++; else bad++;
     }
   } finally { hideLoader(); }
@@ -28935,7 +28956,7 @@ window.showHeadsUp = async function(mod){
       </div>
     </div>
     <div class="rm-body">
-      ${att.rows.length ? `<div class="ro-h" style="margin-top:0;">Needs attention first</div>` + att.rows.slice(0,5).map(({n,m,x}) => `<div class="ro-top" onclick="roClose(); showModule('${m.key}')"><div class="ro-main"><div class="ro-title">${ROH(m.titleField ? (x[m.titleField]||'Untitled') : (x.ref_code||''))}</div><div class="ro-meta">${ROH(m.label)} · ${ROH(m.getPerson(x))} · ${fmtDate(x[m.dateField])}</div></div><div class="ro-bub" style="background:${n<0?'#D50000':'#EF6C00'};"><b style="font-size:22px;">${Math.abs(n)}</b><small>${n<0?'days late':'days left'}</small></div></div>`).join('') : `<p style="font-size:14px; color:#1B8E3E; font-weight:600; margin:0 0 6px;">Nothing is overdue or due in the next 30 days.</p>`}
+      ${att.rows.length ? `<div class="ro-h" style="margin-top:0;">Needs attention first</div>` + att.rows.slice(0,5).map(({n,m,x}) => `<div class="ro-top" onclick="roClose(); showModule('${m.key}')"><div class="ro-main"><div class="ro-title">${ROH(m.titleField ? (x[m.titleField]||'Untitled') : (x.ref_code||''))}</div><div class="ro-meta">${ROH(m.label)} · ${ROH(m.getPerson(x))} · ${fmtDate(x[m.dateField])}</div></div><div class="ro-bub" style="background:${n<0?'#D50000':'#EF6C00'};"><b style="font-size:22px;">${Math.abs(n)}</b><small>${n<0?'days late':'days left'}</small></div></div>`).join('') : `<p style="font-size:14px; color:#1B8E3E; font-weight:600; margin:0 0 6px;">Nothing is overdue or due in the next 30 days${wmFirstName() ? ', ' + wmFirstName() : ''}.</p>`}
       ${sync || (hasScore ? '' : `<p style="font-size:13px; color:#666; margin-top:14px;">This module is not scored on the Compliance Dashboard or reported as a Management Review agenda item, so there are no synced figures to show.</p>`)}
       <div class="ro-foot">
         <button class="ro-act red" onclick="roClose()">Continue to ${ROH(title)}</button>
@@ -30672,7 +30693,7 @@ RENDERERS.overview = () => {
   const recent = [...(STATE.ncs||[])].sort((a,b)=> new Date(b.raised_date)-new Date(a.raised_date)).slice(0,5);
   const latestBulletins = (STATE.bulletins||[]).filter(b=>b.is_published).slice(0,3);
   const hour = new Date().getHours(), greet = hour<12 ? 'Good morning' : hour<18 ? 'Good afternoon' : 'Good evening';
-  const first = wmCap(((STATE.profile && STATE.profile.name) || '').split(' ')[0]);
+  const first = wmFirstName();
   const tile = (n,l,cls,mod) => `<div class="ovx-tile ${cls}" onclick="showModule('${mod}')"><b>${n}</b><span>${l}</span></div>`;
   const att = (n,t,sub,c,mod) => n ? `<div class="ovx-att" onclick="showModule('${mod}')"><div class="n" style="background:${c}">${n}</div><div class="t">${t}<i>${sub}</i></div><div class="go">›</div></div>` : '';
   const items = [
@@ -30685,7 +30706,7 @@ RENDERERS.overview = () => {
   return `<div class="ovx">
     <div class="ovx-hero"><div style="flex:1;min-width:240px;position:relative;z-index:1;"><div class="ovx-eye">${escapeHtml(STATE.org.name)} · ${fmtDate(today)}</div>
       <h2>${greet}${first?', '+escapeHtml(first):''}</h2>
-      <div class="ovx-sub">${overdueNC.length+overdueTasks.length ? `${overdueNC.length+overdueTasks.length} item${overdueNC.length+overdueTasks.length===1?'':'s'} need your attention today.` : 'Nothing is overdue. Keep the momentum going.'} ${hs.score!=null ? 'Your live compliance average is shown on the right.' : 'Start using the registers to build your live compliance health score.'}</div></div>
+      <div class="ovx-sub">${overdueNC.length+overdueTasks.length ? `${overdueNC.length+overdueTasks.length} item${overdueNC.length+overdueTasks.length===1?'':'s'} need your attention today.` : 'Nothing is overdue' + (first ? ', ' + first : '') + '. Keep the momentum going.'} ${hs.score!=null ? 'Your live compliance average is shown on the right.' : 'Start using the registers to build your live compliance health score.'}</div></div>
       <div class="ovx-ring" style="background:conic-gradient(${col} ${hs.score==null?0:hs.score*3.6}deg,rgba(255,255,255,.15) 0);cursor:pointer;" onclick="showModule('compliance')"><div><b>${hs.score==null?'—':hs.score}</b><span>Compliance average</span></div></div></div>
     <div class="ovx-tiles">${tile(openNC.length,'Open nonconformances','k','nonconformances')}${tile(overdueNC.length,'Overdue nonconformances',overdueNC.length?'r':'g','nonconformances')}${tile(openTasks.length,'Open tasks','o','tasks')}${tile(overdueTasks.length,'Overdue tasks',overdueTasks.length?'r':'g','tasks')}${tile(hiRisks.length,'High risks',hiRisks.length?'o':'g','risks')}</div>
     <div class="ovx-grid">
@@ -33470,7 +33491,7 @@ window.brandFromLogo = function(){
 (function(){
   const $=id=>document.getElementById(id);
   const val=id=>{const e=$(id);return e?String(e.value||'').trim():'';};
-  const firstName=()=>{ const n=(STATE.profile&&STATE.profile.name)||''; return (n.trim().split(/\s+/)[0])||'there'; };
+  const firstName=()=>wmFirstName()||'there';
   const uid=()=>(STATE.user&&STATE.user.id)||'x';
   const muteKey=()=>'wm_guide_off_'+uid();
   const isMuted=()=>{ try{ return localStorage.getItem(muteKey())==='1'; }catch(e){ return false; } };
@@ -42735,7 +42756,7 @@ window.WMTutorial = { open, lessons: () => Object.keys(window.WMLESSONS || {}), 
         if(r.data && r.data.token){ link=`${appUrl()}?nr=${r.data.token}`; extra=`\n\nYou do not need to sign in. Use this private link to give your response (root cause, corrective action and preventive action). Please keep it to yourself:\n${link}`; } }catch(e){}
     }
     if(!link) extra=`\n\nSign in to QaSHE Watchman at ${appUrl()} and open ${i.kind}s, ${i.ref}, to do this. If you cannot sign in, reply to the person who sent this email.`;
-    const body=`Hello ${p.person_name},\n\n${me} has asked for your input on a ${i.kind.toLowerCase()} at ${STATE.org.name}.\n\nReference: ${i.ref}\nSubject: ${i.title}${i.severity?'\nSeverity: '+String(i.severity).replace(/_/g,' '):''}${i.target?'\nTarget close date: '+fmtDate(i.target):''}\n\nWe need you to:\n${asks||'  · Take part'}${p.request_text?'\n\nMessage from '+me+':\n'+p.request_text:''}${extra}\n\nThank you.`;
+    const body=`Hello ${wmFirstOf(p.person_name)},\n\n${me} has asked for your input on a ${i.kind.toLowerCase()} at ${STATE.org.name}.\n\nReference: ${i.ref}\nSubject: ${i.title}${i.severity?'\nSeverity: '+String(i.severity).replace(/_/g,' '):''}${i.target?'\nTarget close date: '+fmtDate(i.target):''}\n\nWe need you to:\n${asks||'  · Take part'}${p.request_text?'\n\nMessage from '+me+':\n'+p.request_text:''}${extra}\n\nThank you.`;
     return await sendEmailToAddress(p.person_email,`Your input is requested: ${i.ref}, ${i.title}`,body);
   }
   function cardHtml(rt,rid,rows,broken,people){
@@ -42782,7 +42803,7 @@ window.WMTutorial = { open, lessons: () => Object.keys(window.WMLESSONS || {}), 
   window.pplRemove=async function(id,rt,rid){ if(!confirm('Remove this person from the record?')) return; await STATE.supabase.from('record_people').delete().eq('id',id); refresh(rt,rid); };
   window.pplAll=async function(rt,rid){
     const rows=(STATE._ppl&&STATE._ppl.rows||[]).filter(r=>r.person_email); const i=recInfo(rt,rid); let n=0;
-    for(const r of rows){ const body=`Hello ${r.person_name},\n\nThis is an update on ${i.ref}, ${i.title}, at ${STATE.org.name}.\n\nPlease sign in to QaSHE Watchman at ${appUrl()} and check whether anything is still needed from you: ${arr(r.purposes).map(k=>PURP[k]||k).join(', ')}.\n\nThank you.`;
+    for(const r of rows){ const body=`Hello ${wmFirstOf(r.person_name)},\n\nThis is an update on ${i.ref}, ${i.title}, at ${STATE.org.name}.\n\nPlease sign in to QaSHE Watchman at ${appUrl()} and check whether anything is still needed from you: ${arr(r.purposes).map(k=>PURP[k]||k).join(', ')}.\n\nThank you.`;
       if(await sendEmailToAddress(r.person_email,`Update: ${i.ref}, ${i.title}`,body)){ n++; await STATE.supabase.from('record_people').update({notified_at:new Date().toISOString(),notified_by:STATE.user.id}).eq('id',r.id); } }
     toast(n+' of '+rows.length+' emailed.',n?'success':'error'); refresh(rt,rid); };
   function refresh(rt,rid){ if(rt==='audit'){ openAuditDetail(rid); return; } const a=rt==='raga'?document.getElementById('raga-detail-slot'):document.getElementById('nc-verify-warning'); if(rt==='raga'){ const t=document.querySelector('#raga-detail-slot .form-grid'); render(rt,rid,t&&t.parentNode?t:null); } else render(rt,rid,a); }
@@ -43132,7 +43153,7 @@ window.WMTutorial = { open, lessons: () => Object.keys(window.WMLESSONS || {}), 
     let msg='Saved.';
     if(send && who!=='self'){ if(!to) msg='Saved, but this person has no email address.'; else {
         const cl=chk?(tpl=>tpl?tpl.title:'')(arr(STATE.auditChecklistTemplates).find(t=>t.id===chk)):'';
-        const body=`Hello ${toName},\n\n${(STATE.profile&&STATE.profile.name)||'A colleague'} has asked you to carry out an audit at ${STATE.org.name}.\n\nReference: ${a.audit_ref}\nAudit: ${a.title}\nScheduled for: ${fmtDate(a.planned_date)}\n${(a.standards||[]).length?'Standard(s): '+a.standards.join(', ')+'\n':''}${a.scope?'Scope: '+a.scope+'\n':''}${cl?'Checklist: '+cl+'\n':''}${(document.getElementById('arw-msg').value||'').trim()?'\nMessage:\n'+document.getElementById('arw-msg').value.trim()+'\n':''}\n${patch.auditor_id?`Sign in to QaSHE Watchman at ${location.origin}${location.pathname} and open Audits, ${a.audit_ref}, to complete the checklist and record your findings.`:'Please reply to this email to confirm. You will be given access to record the findings.'}\n\nThank you.`;
+        const body=`Hello ${wmFirstOf(toName)},\n\n${(STATE.profile&&STATE.profile.name)||'A colleague'} has asked you to carry out an audit at ${STATE.org.name}.\n\nReference: ${a.audit_ref}\nAudit: ${a.title}\nScheduled for: ${fmtDate(a.planned_date)}\n${(a.standards||[]).length?'Standard(s): '+a.standards.join(', ')+'\n':''}${a.scope?'Scope: '+a.scope+'\n':''}${cl?'Checklist: '+cl+'\n':''}${(document.getElementById('arw-msg').value||'').trim()?'\nMessage:\n'+document.getElementById('arw-msg').value.trim()+'\n':''}\n${patch.auditor_id?`Sign in to QaSHE Watchman at ${location.origin}${location.pathname} and open Audits, ${a.audit_ref}, to complete the checklist and record your findings.`:'Please reply to this email to confirm. You will be given access to record the findings.'}\n\nThank you.`;
         const ok=await sendEmailToAddress(to,`Audit assigned to you: ${a.audit_ref}, ${a.title}`,body);
         if(ok){ await sb().from('audits').update({invite_sent_at:new Date().toISOString()}).eq('id',id); msg='Saved and emailed '+toName+'.'; } else msg='Saved, but the email could not be sent: '+(STATE._lastEmailError||'unknown reason'); } }
     await loadAudits(); try{ await loadTasks(); }catch(e){} toast(msg,'success'); openAuditDetail(id);
@@ -43162,7 +43183,7 @@ window.WMTutorial = { open, lessons: () => Object.keys(window.WMLESSONS || {}), 
       const body=`The audit report for ${a.audit_ref}, ${a.title}, at ${STATE.org.name} has been published.\n\nSummary:\n${es.slice(0,1200)}\n\nSign in to QaSHE Watchman at ${location.origin}${location.pathname} and open Audits, ${a.audit_ref}, to read the report, the findings and your actions.`;
       for(const u of uids){ if(u===STATE.user.id) continue; tot++; if(em[u]&&em[u].email&&await sendEmailToAddress(em[u].email,`Audit report published: ${a.audit_ref}, ${a.title}`,body)) sent++; }
       const pr=await sb().from('record_people').select('*').eq('record_type','audit').eq('record_id',id);
-      for(const p of arr(pr.data)){ if(!p.person_email) continue; tot++; if(await sendEmailToAddress(p.person_email,`Audit report published: ${a.audit_ref}, ${a.title}`,`Hello ${p.person_name},\n\n`+body)){ sent++; await sb().from('record_people').update({notified_at:new Date().toISOString(),notified_by:STATE.user.id}).eq('id',p.id); } } }catch(e){ console.warn(e); }
+      for(const p of arr(pr.data)){ if(!p.person_email) continue; tot++; if(await sendEmailToAddress(p.person_email,`Audit report published: ${a.audit_ref}, ${a.title}`,`Hello ${wmFirstOf(p.person_name)},\n\n`+body)){ sent++; await sb().from('record_people').update({notified_at:new Date().toISOString(),notified_by:STATE.user.id}).eq('id',p.id); } } }catch(e){ console.warn(e); }
     await loadAudits(); toast('Published. '+sent+' of '+tot+' people emailed. Now raise the nonconformances for the findings.','success'); openAuditDetail(id);
   };
   /* wrap the audit page */
@@ -50964,8 +50985,8 @@ Likelihood and impact are whole numbers from 1 to 5.`;
         }
         _s.apply(this, arguments);
         const sub = document.querySelector('#reminder-modal-content .rm-sub');
-        const nm = ((STATE.profile && STATE.profile.name) || '').split(' ')[0];
-        if(sub) sub.innerHTML = STATE._remScope === 'all' && isMgr() ? 'Everything due across the organisation' : 'Items assigned to you' + (nm ? ', ' + E(wmCap(nm)) : '');
+        const nm = wmFirstName();
+        if(sub) sub.innerHTML = STATE._remScope === 'all' && isMgr() ? 'Everything due across the organisation' : 'Items assigned to you' + (nm ? ', ' + E(nm) : '');
         if(isMgr()){ const hero = document.querySelector('#reminder-modal-content .rm-hero'); if(hero) hero.insertAdjacentHTML('beforeend', `<div style="margin-top:8px;"><a style="cursor:pointer;font-size:12px;text-decoration:underline;color:inherit;" onclick="remScope('${STATE._remScope === 'all' ? 'mine' : 'all'}')">${STATE._remScope === 'all' ? 'Show only my items' : 'Show the whole organisation'}</a></div>`); }
       } finally { STATE._remFilter = false; }
     }; }
@@ -52508,7 +52529,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
 
   /* ---------------- the email ---------------- */
   function mailBody(a, person){
-    return `Hello ${person.full_name.split(' ')[0]},\n\nYour performance appraisal for ${day(a.period_start)} to ${day(a.period_end)} (${a.ref_code}) has been started.\n\nPlease open your private link, read your job description and KPI and Appraisal document, rate yourself against each KPI and submit. You do not need to sign in. The link is personal to you, so please keep it to yourself:\n\n${linkOf(a)}\n\nYour line manager will then complete their assessment, preferably together with you, and finalise the result.\n\nThank you,\n${STATE.org.name}`;
+    return `Hello ${wmFirstOf(person.full_name.split(' ')[0])},\n\nYour performance appraisal for ${day(a.period_start)} to ${day(a.period_end)} (${a.ref_code}) has been started.\n\nPlease open your private link, read your job description and KPI and Appraisal document, rate yourself against each KPI and submit. You do not need to sign in. The link is personal to you, so please keep it to yourself:\n\n${linkOf(a)}\n\nYour line manager will then complete their assessment, preferably together with you, and finalise the result.\n\nThank you,\n${STATE.org.name}`;
   }
   async function emailPerson(a){
     const person = personById(a.personnel_id);
@@ -52620,7 +52641,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     const r = await _f.apply(this, arguments);
     try{ await loadAppraisals(); const a = appraisalById(id), p = a && personById(a.personnel_id);
       if(false){ a._r40Told = true;
-        sendEmailToAddress(p.email, `Your appraisal is finalised: ${STATE.org.name}`, `Hello ${p.full_name.split(' ')[0]},\n\nYour performance appraisal ${a.ref_code} (${day(a.period_start)} to ${day(a.period_end)}) has been finalised by your line manager. Your manager will share the outcome and the agreed objectives for the next period with you.\n\nThank you,\n${STATE.org.name}`); } }catch(e){}
+        sendEmailToAddress(p.email, `Your appraisal is finalised: ${STATE.org.name}`, `Hello ${wmFirstOf(p.full_name.split(' ')[0])},\n\nYour performance appraisal ${a.ref_code} (${day(a.period_start)} to ${day(a.period_end)}) has been finalised by your line manager. Your manager will share the outcome and the agreed objectives for the next period with you.\n\nThank you,\n${STATE.org.name}`); } }catch(e){}
     return r; }; }catch(e){}
 
   /* ---------------- the public self-assessment page (?ap=) ---------------- */
@@ -52934,7 +52955,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     try{
       if(!a || !a.manager_token) return { sent:false };
       const m = await mgrEmail(a); const p = personById(a.personnel_id); if(!m || !m.email || !p) return { sent:false };
-      const ok = await sendEmailToAddress(m.email, `Appraisal for ${p.full_name}: ${STATE.org.name}`, `Hello ${(m.name || '').split(' ')[0] || ''},\n\nThe appraisal for ${p.full_name} (${a.ref_code}, ${day(a.period_start)} to ${day(a.period_end)}) has been started and ${p.full_name.split(' ')[0]} has been sent a private link to complete the self-assessment.\n\nWhen ${p.full_name.split(' ')[0]} has submitted, open your own private link to complete your assessment, preferably together with ${p.full_name.split(' ')[0]}. If they have not submitted yet, the page will tell you and you can open it again later. You do not need to sign in. Please keep the link to yourself:\n\n${mLink(a)}\n\nThank you,\n${STATE.org.name}`);
+      const ok = await sendEmailToAddress(m.email, `Appraisal for ${p.full_name}: ${STATE.org.name}`, `Hello ${wmFirstOf((m.name || '').split(' ')[0] || '')},\n\nThe appraisal for ${p.full_name} (${a.ref_code}, ${day(a.period_start)} to ${day(a.period_end)}) has been started and ${p.full_name.split(' ')[0]} has been sent a private link to complete the self-assessment.\n\nWhen ${p.full_name.split(' ')[0]} has submitted, open your own private link to complete your assessment, preferably together with ${p.full_name.split(' ')[0]}. If they have not submitted yet, the page will tell you and you can open it again later. You do not need to sign in. Please keep the link to yourself:\n\n${mLink(a)}\n\nThank you,\n${STATE.org.name}`);
       return { sent: ok, to: m.email };
     }catch(e){ return { sent:false }; }
   };
@@ -52943,8 +52964,8 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     const p = personById(a.personnel_id), m = await mgrEmail(a), c = catOf(a.overall_achievement_pct || 0);
     const sum = `Overall result: ${Number(a.overall_achievement_pct || 0).toFixed(1)}% (${c.name}, average rating ${c.rating.toFixed(1)} out of 5).`;
     const sent = [];
-    if(p && p.email && await sendEmailToAddress(p.email, `Your appraisal report: ${STATE.org.name}`, `Hello ${p.full_name.split(' ')[0]},\n\nYour appraisal ${a.ref_code} (${day(a.period_start)} to ${day(a.period_end)}) is complete.\n\n${sum}\n\nOpen your private link to see the full report, including your manager's comments and the agreed objectives. You can print it or save it as a PDF there:\n${pLink(a)}\n\nThank you,\n${STATE.org.name}`)) sent.push(p.email);
-    if(m && m.email && a.manager_token && await sendEmailToAddress(m.email, `Appraisal report for ${p ? p.full_name : ''}: ${STATE.org.name}`, `Hello ${(m.name || '').split(' ')[0] || ''},\n\nThe appraisal ${a.ref_code} for ${p ? p.full_name : 'the employee'} is complete.\n\n${sum}\n\nOpen your private link for the full report:\n${mLink(a)}\n\nThank you,\n${STATE.org.name}`)) sent.push(m.email);
+    if(p && p.email && await sendEmailToAddress(p.email, `Your appraisal report: ${STATE.org.name}`, `Hello ${wmFirstOf(p.full_name.split(' ')[0])},\n\nYour appraisal ${a.ref_code} (${day(a.period_start)} to ${day(a.period_end)}) is complete.\n\n${sum}\n\nOpen your private link to see the full report, including your manager's comments and the agreed objectives. You can print it or save it as a PDF there:\n${pLink(a)}\n\nThank you,\n${STATE.org.name}`)) sent.push(p.email);
+    if(m && m.email && a.manager_token && await sendEmailToAddress(m.email, `Appraisal report for ${p ? p.full_name : ''}: ${STATE.org.name}`, `Hello ${wmFirstOf((m.name || '').split(' ')[0] || '')},\n\nThe appraisal ${a.ref_code} for ${p ? p.full_name : 'the employee'} is complete.\n\n${sum}\n\nOpen your private link for the full report:\n${mLink(a)}\n\nThank you,\n${STATE.org.name}`)) sent.push(m.email);
     if(sent.length){ try{ await sb().from('appraisals').update({ report_sent_at: new Date().toISOString() }).eq('id', id); }catch(e){} toast('Report emailed to ' + sent.join(' and ') + '.', 'success'); }
     else toast('No email address was found. Copy the links from the appraisal instead.', 'info');
     try{ await loadAppraisals(); openAppraisalDetail(id); }catch(e){}
@@ -54149,7 +54170,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   function emailBody(i, d, others){
     const first = String(i.recipient_name || '').split(' ')[0] || 'Hello';
     const list = [{ i, d }].concat(others || []).map(x => `${x.d.doc_number}: ${x.d.title} (revision ${fmtRev(x.i.revision)})\n${link(x.i.token)}`).join('\n\n');
-    return `Hello ${first},\n\n${i.issuer_name || 'Your line manager'} has issued ${others && others.length ? 'the following documents' : 'the following document'} to you at ${STATE.org.name}. Please read ${others && others.length ? 'each one' : 'it'} and confirm that you have read, understood and accept it. No sign-in is needed.\n\n${list}\n\nYour acceptance is recorded with the date and time. If you cannot accept, you can say why on the same page.\n\nQaSHE Watchman`;
+    return `Hello ${wmFirstOf(first)},\n\n${i.issuer_name || 'Your line manager'} has issued ${others && others.length ? 'the following documents' : 'the following document'} to you at ${STATE.org.name}. Please read ${others && others.length ? 'each one' : 'it'} and confirm that you have read, understood and accept it. No sign-in is needed.\n\n${list}\n\nYour acceptance is recorded with the date and time. If you cannot accept, you can say why on the same page.\n\nQaSHE Watchman`;
   }
   async function sendIssue(i, d, others){
     if(!i.recipient_email) return false;
@@ -56684,7 +56705,7 @@ W.asset_watchman.ask = 'Can you show a client how the condition of their equipme
    ============================================================================ */
 (function(){
   const st=document.createElement('style'); st.textContent='.wm-allclear{display:flex;gap:12px;align-items:flex-start;background:#E8F5E9;border:1px solid #A5D6A7;border-radius:10px;padding:14px 18px;margin:14px 0;color:#1B5E20}.wm-allclear .wm-ac-tick{flex:0 0 26px;height:26px;border-radius:50%;background:#1B8E3E;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:15px}.wm-allclear b{display:block;font-size:14px;color:#1B8E3E}.wm-allclear span{font-size:12.5px;color:#2E5E34}'; document.head.appendChild(st);
-  window.wmAllClear=function(msg,hint){ return '<div class="wm-allclear" role="status"><div class="wm-ac-tick">✓</div><div><b>All clear: '+msg+'</b>'+(hint?'<span>'+hint+'</span>':'')+'</div></div>'; };
+  window.wmAllClear=function(msg,hint){ const n = (typeof wmFirstName === 'function') ? wmFirstName() : ''; return '<div class="wm-allclear" role="status"><div class="wm-ac-tick">✓</div><div><b>All clear'+(n?', '+n:'')+': '+msg+'</b>'+(hint?'<span>'+hint+'</span>':'')+'</div></div>'; };
   { const _r=renderTaskTable; renderTaskTable=window.renderTaskTable=function(){
       const r=_r.apply(this,arguments);
       try{ const a=document.getElementById('task-filter-assignee'), w=document.getElementById('task-table-wrap'), es=w&&w.querySelector('.empty-state');
@@ -56937,7 +56958,8 @@ W.asset_watchman.ask = 'Can you show a client how the condition of their equipme
     ['R64','2026-11-26','Training Video audit','Training Video naming; lessons corrected; new lessons.',['training'],REC],
     ['R65','2026-11-26','Module switches','One module-switch function; Admin Console lists from one registry.',['administration'],REC],
     ['R66','2026-11-27','Document identity','Green All clear on personal views; numbered digital documents; footer stamp; revision history pop-up on every document.',['all'],LIVE],
-    ['R67','2026-11-27','Live document control','Revision fixed at 0 at tenant inception; print date and platform release on every print; Platform Change Register and Live Document Control Report.',['all'],LIVE]
+    ['R67','2026-11-27','Live document control','Revision fixed at 0 at tenant inception; print date and platform release on every print; Platform Change Register and Live Document Control Report.',['all'],LIVE],
+    ['R68','2026-11-27','Personalised notices','RAGA personal banner; first name used in the dashboard, notices, pop-ups and emails; green All clear notices carry the person\'s first name.',['raga','all'],LIVE]
   ];
   const has = m => { try{ return m === 'all' || (typeof orgHasModule === 'function' ? orgHasModule(m) !== false : true); }catch(e){ return true; } };
   function relevant(){ const inc = wmInception(); return WM_PLATFORM_CHANGES.filter(c => c[1] >= inc && c[4].some(has)); }
@@ -56977,6 +56999,28 @@ W.asset_watchman.ask = 'Can you show a client how the condition of their equipme
   window.wmEnsureDigBtns = ensureBtns;
   { const _m = window.renderMasterRegisterPage; window.renderMasterRegisterPage = renderMasterRegisterPage = function(){ const r = _m.apply(this, arguments); setTimeout(ensureBtns, 0); return r; }; }
   { const _r = window.mr2Render; if(_r) window.mr2Render = function(){ const r = _r.apply(this, arguments); try{ ensureBtns(); }catch(e){} return r; }; }
+})();
+
+/* ============================================================================
+   R68: RAGA personal banner (All clear / what is on your name), first name everywhere
+   ============================================================================ */
+(function(){
+  const E = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+  function mine(){
+    const me = STATE.user && STATE.user.id; const today = new Date().toISOString().slice(0, 10);
+    const open = (STATE.ragaAlerts || []).filter(r => r.status !== 'closed' && r.alert_type !== 'green' && (r.owner_id === me || r.raised_by === me));
+    return { open, overdue: open.filter(r => r.target_close_date && r.target_close_date < today) };
+  }
+  { const _r = renderRagaTable; renderRagaTable = window.renderRagaTable = function(){
+      const r = _r.apply(this, arguments);
+      try{
+        const wrap = document.getElementById('raga-table-wrap'); if(!wrap) return r;
+        let b = document.getElementById('raga-me-banner'); if(!b){ wrap.insertAdjacentHTML('beforebegin', '<div id="raga-me-banner"></div>'); b = document.getElementById('raga-me-banner'); }
+        const m = mine(), n = wmFirstName();
+        b.innerHTML = !m.open.length ? wmAllClear('no RAGA alerts are on your name or due.', 'Alerts you own or raised, and that are still open, appear here.')
+          : `<div class="wm-allclear" style="background:#FFF3E0;border-color:#FFCC80;color:#8A5D14;"><div class="wm-ac-tick" style="background:#EF6C00;">${m.open.length}</div><div><b style="color:#B45309;">${E(n ? n + ', ' : '')}${m.open.length} open RAGA alert${m.open.length === 1 ? ' is' : 's are'} on your name${m.overdue.length ? ', ' + m.overdue.length + ' overdue' : ''}.</b><span style="color:#8A5D14;">Open the alert to update it or close it out.</span></div></div>`;
+      }catch(e){}
+      return r; }; }
 })();
 </script>
 </body>
