@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R65 2026-11-26"><meta charset="UTF-8">
+<meta name="wm-release" content="R67 2026-11-27"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -23566,6 +23566,7 @@ async function printRecord(docTitle, refLine, metaPairs, bodyHtml, extraHtml, mo
     <div class="print-closing-note">This is a point-in-time snapshot from QaSHE Watchman: ${STATE.org.name}. A printed or saved copy is valid only at the time of printing and may not reflect the current record. Personnel must always refer to QaSHE Watchman for the latest information.</div>
     <div class="print-footer-fixed">
       <span><b>Doc No:</b> ${refLine}</span>
+      <span><b>Printed:</b> ${new Date().toLocaleString('en-GB')} · Platform ${(document.querySelector('meta[name="wm-release"]')||{}).content ? document.querySelector('meta[name="wm-release"]').content.split(' ')[0] : ''}</span>
       ${formId ? `<span><b>Form Ref:</b> ${formId.line}${formId.date ? ` (Rev. date ${formId.date})` : ''}</span>` : ''}
       <span>${STATE.org.name}</span>
     </div>
@@ -45305,7 +45306,7 @@ Prices must be in ${doc.currency}. If you are unsure of a price, set it to your 
       ${rows.map(p => { const s = stats(p); return `<tr class="clickable" onclick="pmOpen('${p.id}')"><td class="mono-cell">${E(p.ref_code)}</td><td class="strong">${E(p.title)}</td><td>${E(TYPES[p.project_type] || p.project_type)}</td><td>${E(memberName(p.owner_id) || '—')}</td><td>${pill(STATUS, p.status)}</td><td>${pill(HEALTH, s.health)}</td>
         <td><div style="background:#E8E6E3;border-radius:6px;height:8px;"><div style="background:#2E7D4F;height:8px;border-radius:6px;width:${s.pct}%;"></div></div><span style="font-size:11px;color:var(--text-faint);">${s.pct}% · ${s.done}/${s.ts.length} tasks${s.overdue ? ' · <b style="color:#B3261E;">' + s.overdue + ' overdue</b>' : ''}</span></td>
         <td>${fmtDate(p.target_end_date)} ${p.target_end_date && !['completed','cancelled'].includes(p.status) ? dateStatusBadge(p.target_end_date, false) : ''}</td><td>${p.source_label ? E(p.source_label) : '—'}</td></tr>`; }).join('')}</table>`
-      : '<div class="empty-state"><p>No projects match. Start a project from here, or from a nonconformance, RAGA alert, audit, management review or accepted quotation.</p></div>'}`;
+      : (f.mine && !f.type && f.status === 'open' ? wmAllClear('No open projects are linked to you right now.', 'Untick My projects to see every project.') : '<div class="empty-state"><p>No projects match. Start a project from here, or from a nonconformance, RAGA alert, audit, management review or accepted quotation.</p></div>')}`;
   }
 
   /* ---------- create ---------- */
@@ -54480,11 +54481,12 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   const viewBtn = r => r.kind === 'c' ? `<button class="btn-small" onclick="event.stopPropagation(); downloadDocumentPdf('${r.id}')">View Document</button> <button class="btn-small" onclick="event.stopPropagation(); printDocumentContent('${r.id}')" title="Download an editable Word (.docx) copy">Word</button>`
     : r.kind === 'p' ? `<button class="btn-small" onclick="event.stopPropagation(); processDocumentPdf('${r.id}')">View Document</button>`
     : r.kind === 'r' ? `<button class="btn-small" onclick="event.stopPropagation(); perfReportPdf('${r.id}')">View Document</button>`
+    : r.kind === 'd' ? `<button class="btn-small" onclick="event.stopPropagation(); wmDigitalDocPdf('${r.id}')">View Document</button>`
     : (r.path ? `<button class="btn-small" onclick="event.stopPropagation(); downloadFromBucket('documents','${r.path}')">View Document</button>` : '');
-  const reqBtn = r => r.kind === 'r' ? '' : `<button class="btn-small" onclick="event.stopPropagation(); ${r.kind === 'p' ? "processRequestUpdate('" + r.id + "')" : "mrRequestUpdate('" + r.kind + "','" + r.id + "')"}">Request update</button>`;
+  const reqBtn = r => (r.kind === 'r' || r.kind === 'd') ? '' : `<button class="btn-small" onclick="event.stopPropagation(); ${r.kind === 'p' ? "processRequestUpdate('" + r.id + "')" : "mrRequestUpdate('" + r.kind + "','" + r.id + "')"}">Request update</button>`;
   const delBtn = r => ((r.kind === 'c' || r.kind === 'b') && (STATE.myRole === 'admin' || (STATE.profile && STATE.profile.is_platform_staff))) ? `<button class="btn-small" style="color:#b21616;border-color:#b21616;" title="Delete this document permanently (administrators only)" onclick="event.stopPropagation(); mrDeleteDoc('${r.kind}','${r.id}')">Delete</button>` : '';
-  const tableA = rows => rows.length ? `<table><tr><th>Document Number</th><th>Title</th><th>Department</th><th>Type</th><th>Rev / date</th><th>Status</th><th>Source</th><th></th></tr>${rows.map(r => `<tr class="clickable" onclick="mr2Open('${r.kind}','${r.id}')" title="Click to view the document as PDF"><td class="mono-cell">${E(r.num)}</td><td class="strong">${E(r.title)}</td><td>${E(r.dept)}</td><td>${E(r.type)}</td><td style="text-align:center;">${E(r.rev)}${r.revDate ? `<div style="font-size:10.5px;color:var(--text-faint);white-space:nowrap;">${E(fmtDate(r.revDate))}</div>` : ''}</td><td>${badge(r)}</td><td>${E(r.src)}</td><td style="text-align:right;white-space:nowrap;">${viewBtn(r)} ${reqBtn(r)} ${delBtn(r)}</td></tr>`).join('')}</table>` : '<div class="empty-state"><p>No documents match.</p></div>';
-  const tableB = rows => rows.length ? `<table><tr><th>Document Number</th><th>File / title</th><th>Department</th><th>Type</th><th>Uploaded</th><th>Status</th><th></th></tr>${rows.map(r => `<tr class="clickable" onclick="mr2Open('b','${r.id}')" title="Click to open the uploaded file"><td class="mono-cell">${E(r.num)}</td><td class="strong">${E(r.title)}</td><td>${E(r.dept)}</td><td>${E(r.type)}</td><td>${r.uploaded ? E(fmtDate(r.uploaded)) : ''}</td><td>${badge(r)}</td><td style="text-align:right;white-space:nowrap;">${viewBtn(r)} ${reqBtn(r)} ${delBtn(r)}</td></tr>`).join('')}</table>` : '<div class="empty-state"><p>No uploaded historical documents match. Use <b>Bulk upload historical documents</b> above to add them.</p></div>';
+  const tableA = rows => rows.length ? `<table><tr><th>Document Number</th><th>Title</th><th>Department</th><th>Type</th><th>Rev / date</th><th>Status</th><th>Source</th><th></th></tr>${rows.map(r => `<tr class="clickable" onclick="mr2Open('${r.kind}','${r.id}')" title="Click to view the document as PDF"><td class="mono-cell">${E(r.num)}</td><td class="strong">${E(r.title)}</td><td>${E(r.dept)}</td><td>${E(r.type)}</td><td style="text-align:center;">${E(r.rev)}${r.revDate ? `<div style="font-size:10.5px;color:var(--text-faint);white-space:nowrap;">${E(fmtDate(r.revDate))}</div>` : ''}</td><td>${badge(r)}</td><td>${E(r.src)}</td><td style="text-align:right;white-space:nowrap;">${viewBtn(r)} ${wmHistBtn(r)} ${reqBtn(r)} ${delBtn(r)}</td></tr>`).join('')}</table>` : '<div class="empty-state"><p>No documents match.</p></div>';
+  const tableB = rows => rows.length ? `<table><tr><th>Document Number</th><th>File / title</th><th>Department</th><th>Type</th><th>Uploaded</th><th>Status</th><th></th></tr>${rows.map(r => `<tr class="clickable" onclick="mr2Open('b','${r.id}')" title="Click to open the uploaded file"><td class="mono-cell">${E(r.num)}</td><td class="strong">${E(r.title)}</td><td>${E(r.dept)}</td><td>${E(r.type)}</td><td>${r.uploaded ? E(fmtDate(r.uploaded)) : ''}</td><td>${badge(r)}</td><td style="text-align:right;white-space:nowrap;">${viewBtn(r)} ${wmHistBtn(r)} ${reqBtn(r)} ${delBtn(r)}</td></tr>`).join('')}</table>` : '<div class="empty-state"><p>No uploaded historical documents match. Use <b>Bulk upload historical documents</b> above to add them.</p></div>';
 
   window.mr2Render = function(){
     const wa = document.getElementById('mr2-table-a'), wb = document.getElementById('mr2-table-b'); if(!wa || !wb) return;
@@ -54506,7 +54508,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
       <p style="font-size:12.5px;color:var(--text-faint);margin:0;">Every document in the system. <b>Section A</b> holds documents created and controlled in Watchman. <b>Section B</b> holds uploaded historical documents: ask for an update and the uploaded file is loaded automatically, the new document is drafted and moves to Section A once approved.</p></div>
     <div class="toolbar"><div class="filters"><input id="mr2-q" placeholder="Search number or title…" oninput="mr2Render()" style="min-width:260px;" value="${E(keep.q || '')}">
       <select id="mr2-dept" onchange="mr2Render()"><option value="">All departments</option>${depts.map(d => `<option ${keep.d === d ? 'selected' : ''}>${E(d)}</option>`).join('')}</select>
-      <select id="mr2-src" onchange="mr2Render()"><option value="">All sources</option>${['Document Management', 'Processes & KPIs', 'Company Performance Report', 'Uploaded historical documents'].map(s => `<option ${keep.s === s ? 'selected' : ''}>${E(s)}</option>`).join('')}</select>
+      <select id="mr2-src" onchange="mr2Render()"><option value="">All sources</option>${['Document Management', 'Processes & KPIs', 'Company Performance Report', 'Digital registers, forms and videos', 'Uploaded historical documents'].map(s => `<option ${keep.s === s ? 'selected' : ''}>${E(s)}</option>`).join('')}</select>
       <select id="mr2-st" onchange="mr2Render()"><option value="">All statuses</option>${sts.map(x => `<option ${keep.st === x ? 'selected' : ''}>${E(x)}</option>`).join('')}</select></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">${canUp ? '<button class="btn-small" onclick="document.getElementById(\'mr-bulk\').classList.toggle(\'open\')">Bulk upload historical documents</button>' : ''}${H.ctl ? '<button class="btn-small" onclick="dhNewDoc()">Create new document</button>' : ''}<button class="btn-small" onclick="exportMasterRegister()">Export Excel</button><button class="btn-small" onclick="printMasterRegister()">Print Register</button></div></div>
     <div class="form-panel" id="mr-bulk">
@@ -54530,7 +54532,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     draw(keepOf());
     loadBulk().then(() => { if(document.getElementById('mr2-root') && (STATE.bulkDocuments || []).length !== had){ draw(keepOf()); } const b = document.querySelector('.doc-hub .dh-stat b'); if(b){ const a = rows50(); b.textContent = a.a.length + a.b.length; } }).catch(() => {});
   };
-  window.mr2Open = function(kind, id){ if(kind === 'p') return processDocumentPdf(id); if(kind === 'r') return perfReportPdf(id); const r = rows50(); const x = r.a.concat(r.b).find(z => z.kind === kind && String(z.id) === String(id)); if(!x) return; if(x.kind === 'c') return downloadDocumentPdf(x.id); if(x.path) return downloadFromBucket('documents', x.path); toast('This entry has no file to view.', 'info'); };
+  window.mr2Open = function(kind, id){ if(kind === 'd') return wmDigitalDocPdf(id); if(kind === 'p') return processDocumentPdf(id); if(kind === 'r') return perfReportPdf(id); const r = rows50(); const x = r.a.concat(r.b).find(z => z.kind === kind && String(z.id) === String(id)); if(!x) return; if(x.kind === 'c') return downloadDocumentPdf(x.id); if(x.path) return downloadFromBucket('documents', x.path); toast('This entry has no file to view.', 'info'); };
   window.exportMasterRegister = async function(){
     try{ const XLSX = await ensureXLSX(); const f = filtered(); const m = r => ({ 'Section':r.sec === 'A' ? 'A: Created in Watchman' : 'B: Uploaded historical', 'Document Number':r.num, 'Title':r.title, 'Department':r.dept, 'Type':r.type, 'Revision':r.rev, 'Revision date':r.revDate || '', 'Status':r.status, 'Source':r.src });
       const ws = XLSX.utils.json_to_sheet(f.a.concat(f.b).map(m)); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Master Register'); XLSX.writeFile(wb, 'master-documents-register.xlsx'); }catch(e){ toast('Export is not available right now.', 'error'); }
@@ -56352,7 +56354,7 @@ window.showRatingGuide = function(){
       if(sc === 'mine') STATE.ncs = all.filter(isMine); else if(sc === 'dept'){ const S = myDeptSets(); STATE.ncs = all.filter(n => inMyDept(n, S)); }
       let r; try{ r = _r.apply(this, arguments); } finally { STATE.ncs = all; }
       const w = document.getElementById('nc-table-wrap');
-      if(w && sc !== 'all'){ const es = w.querySelector('.empty-state p'); if(es) es.textContent = sc === 'mine' ? 'No nonconformances are linked to you. Choose "All nonconformances in the organisation" above to see everything.' : 'No nonconformances are linked to your department. Choose "All nonconformances in the organisation" above to see everything.'; }
+      if(w && sc !== 'all'){ const es = w.querySelector('.empty-state'); if(es) es.outerHTML = wmAllClear(sc === 'mine' ? 'No nonconformances are linked to you right now.' : 'No nonconformances are linked to your department right now.', 'Choose "All nonconformances in the organisation" above to see everything.'); }
       return r; }; }
 
   /* ---------- 3. Nonconformance Types (Category) under Administration ---------- */
@@ -56676,6 +56678,306 @@ W.asset_watchman.steps = [['Register the asset','Choose the client, add the asse
 W.asset_watchman.tips = ['Set the thresholds before recording readings, or every reading shows as unrated.','Review data status monthly so clients always see current figures.','Use the QR label so the right asset opens every time.'];
 W.asset_watchman.ask = 'Can you show a client how the condition of their equipment has moved over the last year?';
 })(window.WMLESSONS);
+
+/* ============================================================================
+   R66 (27 Nov 2026): green "nothing for you" notice on personal views
+   ============================================================================ */
+(function(){
+  const st=document.createElement('style'); st.textContent='.wm-allclear{display:flex;gap:12px;align-items:flex-start;background:#E8F5E9;border:1px solid #A5D6A7;border-radius:10px;padding:14px 18px;margin:14px 0;color:#1B5E20}.wm-allclear .wm-ac-tick{flex:0 0 26px;height:26px;border-radius:50%;background:#1B8E3E;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:15px}.wm-allclear b{display:block;font-size:14px;color:#1B8E3E}.wm-allclear span{font-size:12.5px;color:#2E5E34}'; document.head.appendChild(st);
+  window.wmAllClear=function(msg,hint){ return '<div class="wm-allclear" role="status"><div class="wm-ac-tick">✓</div><div><b>All clear: '+msg+'</b>'+(hint?'<span>'+hint+'</span>':'')+'</div></div>'; };
+  { const _r=renderTaskTable; renderTaskTable=window.renderTaskTable=function(){
+      const r=_r.apply(this,arguments);
+      try{ const a=document.getElementById('task-filter-assignee'), w=document.getElementById('task-table-wrap'), es=w&&w.querySelector('.empty-state');
+        if(es && a && a.value===STATE.user.id) es.outerHTML=wmAllClear('no tasks are assigned to you'+((document.getElementById('task-filter-status')||{}).value?' with this status':'')+' right now.','Choose "All assignees" above to see everyone\'s tasks.'); }catch(e){}
+      return r; }; }
+})();
+
+/* ============================================================================
+   R66: DOCUMENT IDENTITY ON EVERYTHING. Numbered, revision-controlled catalogue of every digital register, form, checklist,
+   presentation and training video (table digital_documents, SQL r66), listed in the Master Documents Register; footer stamp on
+   every live module page; revision history pop-up and print for every kind of document; sample PDF pack.
+   ============================================================================ */
+(function(){
+  const E = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+  const SRC = 'Digital registers, forms and videos';
+  const SKIP = ['overview','compliance','administration','change_log','account_security','master_register'];
+  const FORMS = [
+    ['nc_form','Nonconformance Report Form','Form','nonconformances'],['incident_form','Incident, Accident and Near Miss Report Form','Form','incidents'],
+    ['action_form','Corrective and Preventive Action Form','Form','nonconformances'],['audit_checklist','Internal Audit Checklist','Checklist','audits'],
+    ['audit_report','Audit Report','Form','audits'],['risk_form','Risk and Opportunity Assessment Form','Form','risks'],
+    ['supplier_eval','Supplier Evaluation Form','Form','suppliers'],['five_s_form','5S Inspection Checklist','Checklist','five_s'],
+    ['mgmt_review_minutes','Management Review Minutes','Form','management_review'],['training_attendance','Training Attendance Record','Form','training'],
+    ['toolbox_talk','Toolbox Talk Record','Form','bulletins'],['appraisal_form','KPI and Appraisal Form','Form','appraisals'],
+    ['leave_form','Leave Request Form','Form','hr'],['ptw_form','Permit to Work','Form','ptw'],['it_record','Inspection and Test Record','Checklist','it'],
+    ['wt_report','Water Treatment Service Report','Form','wt'],['survey_form','Personnel Satisfaction Survey','Form','staff_survey'],
+    ['legal_register','Legal Compliance Register Extract','Form','legal'],['watchman_induction','QaSHE Watchman Induction Presentation','Presentation',null],
+    ['management_pack','Management Review Presentation','Presentation','management_review']
+  ];
+  function catalogue(){
+    const out = [];
+    out.push({ key:'tv:video', kind:'Training Video', title:'QaSHE Watchman Training Video (main)', module:null });
+    Object.keys(window.WMLESSONS || {}).forEach(id => { if(id === '__main') return; const m = (window.WM_MODS || []).find(x => x.id === id); out.push({ key:'tv:' + id, kind:'Training Video', title:'Training Video: ' + ((m && m.n) || (MODULE_META[id] && MODULE_META[id].title) || id), module:id }); });
+    Object.entries(MODULE_META).forEach(([k, v]) => { if(SKIP.includes(k)) return; out.push({ key:'reg:' + k, kind:'Register', title:v.title + (/register|checklist|policies/i.test(v.title) ? '' : ' Register'), module:k }); });
+    FORMS.forEach(f => out.push({ key:'frm:' + f[0], kind:f[2], title:f[1], module:f[3] }));
+    return out;
+  }
+  window.wmDigitalCatalogue = catalogue;
+  const D = () => STATE.digitalDocs || (STATE.digitalDocs = []), R = () => STATE.digitalRevs || (STATE.digitalRevs = []);
+  const row = key => D().find(x => x.doc_key === key);
+  window.wmInception = () => ((STATE.org && STATE.org.created_at) || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
+  window.wmRelease = () => ((document.querySelector('meta[name="wm-release"]') || {}).content || '').split(' ')[0] || '';
+  function info(key){ const r = row(key); return r ? { num:r.doc_number, rev:r.revision, status:r.status, date:r.effective_date, by:r.approved_by || '', numbered:true } : { num:'Not yet numbered', rev:0, status:'Awaiting number', date:wmInception(), by:'', numbered:false }; }
+  window.wmDigitalInfo = info;
+  window.wmLoadDigital = async function(){
+    try{
+      const a = await STATE.supabase.from('digital_documents').select('*').eq('organisation_id', STATE.org.id);
+      const b = await STATE.supabase.from('digital_document_revisions').select('*').eq('organisation_id', STATE.org.id).order('revision', { ascending:true });
+      STATE.digitalDocs = a.error ? [] : (a.data || []); STATE.digitalRevs = b.error ? [] : (b.data || []); STATE._digitalSql = !a.error;
+    }catch(e){ STATE.digitalDocs = STATE.digitalDocs || []; STATE.digitalRevs = STATE.digitalRevs || []; }
+  };
+  const mname = () => (STATE.profile && STATE.profile.name) || (STATE.user && STATE.user.email) || '';
+  const isAdm = () => STATE.myRole === 'admin' || (STATE.profile && STATE.profile.is_platform_staff);
+
+  /* ---- Master Register source ---- */
+  window.WM_PDF_SOURCES = window.WM_PDF_SOURCES || [];
+  WM_PDF_SOURCES.push({ key:'digital', src:SRC, rows(){
+    return catalogue().map(c => { const i = info(c.key); return { src:SRC, kind:'d', id:c.key, num:i.num, title:c.title, dept:'Digital documents', deptId:'', type:c.kind, rev:i.numbered ? fmtRev(i.rev) : '', revDate:i.date || '', status:i.status, color:i.numbered ? '#2E7D4F' : '#B26A16' }; });
+  }});
+
+  /* ---- History ---- */
+  function overlay(html){
+    let o = document.getElementById('wm-hist-ov'); if(o) o.remove();
+    o = document.createElement('div'); o.id = 'wm-hist-ov'; o.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:18px;';
+    o.innerHTML = '<div style="background:#fff;border-radius:12px;max-width:980px;width:100%;max-height:90vh;overflow:auto;padding:20px 22px;box-shadow:0 10px 40px rgba(0,0,0,.3);">' + html + '</div>';
+    o.addEventListener('click', e => { if(e.target === o) o.remove(); }); document.body.appendChild(o); return o;
+  }
+  const pdfBtn = p => p ? `<button class="btn-small" onclick="downloadFromBucket('documents','${E(p)}')">View PDF</button>` : '<span style="color:var(--text-faint);font-size:11.5px;">No stored file</span>';
+  async function historyFor(kind, id){
+    if(kind === 'd'){
+      const c = catalogue().find(x => x.key === id) || { title:id, kind:'' }, i = info(id);
+      const revs = R().filter(r => r.doc_key === id);
+      return { title:c.title, num:i.num, rev:i.numbered ? 'Rev ' + i.rev : '', status:i.status, date:i.date, note:i.numbered ? 'Live digital document: revision 0 from the date this organisation was created. Printed copies show the date printed and the platform release in force.' : 'This document has not been numbered yet. An administrator numbers every digital document from the Master Documents Register.',
+        head:['Rev','Date','Change description','Prepared by','Approved by','Record'], rows:revs.map(r => [r.revision, fmtDate(r.revision_date), r.description || '', r.prepared_by || '', r.approved_by || '', `<button class="btn-small" onclick="wmDigitalDocPdf('${E(id)}',${r.revision})">Print revision record</button>`]) };
+    }
+    if(kind === 'c'){
+      const d = (STATE.documents || []).find(x => String(x.id) === String(id)) || {};
+      const { data } = await STATE.supabase.from('document_revisions').select('*').eq('document_id', id).order('revision_code', { ascending:false });
+      return { title:d.title || '', num:d.doc_number || '', rev:'Rev ' + (d.current_revision == null ? '' : d.current_revision), status:d.approval_status === 'approved' ? 'Approved' : (d.status || ''), date:d.current_revision_date || '', note:'Every earlier revision is kept. Use View PDF to open the revision exactly as it was issued.',
+        head:['Rev','Date issued','Change description','Approval','Revision as issued'], rows:(data || []).map(r => [r.revision_code, fmtDate(r.issued_date), r.change_description || '', r.approval_status === 'approved' ? 'Approved ' + fmtDate(r.approved_date) : 'Pending', pdfBtn(r.storage_path)]) };
+    }
+    if(kind === 'b'){
+      const d = (STATE.bulkDocuments || []).find(x => String(x.id) === String(id)) || {};
+      const sib = (STATE.bulkDocuments || []).filter(x => d.doc_number && x.doc_number === d.doc_number).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+      return { title:d.file_name || '', num:d.doc_number || 'Not numbered', rev:'', status:d.archived ? 'Archived' : (d.approved_status ? 'Approved' : 'Filed'), date:(d.created_at || '').slice(0, 10), note:'Uploaded documents are held as filed. Where the same number was uploaded more than once, every upload is listed here.',
+        head:['Uploaded','File','Status','Stored file'], rows:(sib.length ? sib : [d]).map(x => [fmtDate((x.created_at || '').slice(0, 10)), x.file_name || '', x.archived ? 'Archived (superseded)' : (x.approved_status ? 'Approved' : 'Filed'), pdfBtn(x.storage_path || x.file_path || x.path)]) };
+    }
+    if(kind === 'p'){
+      const p = (STATE.processes || []).find(x => String(x.id) === String(id)) || {};
+      return { title:p.name || '', num:p.doc_number || p.ref_code || '', rev:'Rev ' + (p.revision == null ? 0 : p.revision), status:p.status || '', date:(p.updated_at || '').slice(0, 10), note:'The process document carries its revision tier in its number. Open View Document for the controlled PDF of the current revision.',
+        head:['Rev','Date','Record'], rows:[[p.revision == null ? 0 : p.revision, fmtDate((p.updated_at || '').slice(0, 10)), `<button class="btn-small" onclick="processDocumentPdf('${E(id)}')">View current PDF</button>`]] };
+    }
+    return { title:'Company Performance Report', num:'', rev:'', status:'', date:'', note:'', head:['Record'], rows:[['Open View Document for the controlled PDF.']] };
+  }
+  window.wmDocHistory = async function(kind, id){
+    let h; try{ h = await historyFor(kind, id); }catch(e){ toast('Could not load the revision history.', 'error'); return; }
+    window._wmHist = h;
+    overlay(`<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;"><div><h3 style="margin:0 0 4px;">Revision history</h3><div style="font-size:15px;font-weight:700;">${E(h.title)}</div>
+      <div style="font-size:12.5px;color:var(--text-dim);margin-top:3px;"><b>${E(h.num)}</b> ${h.rev ? '· ' + E(h.rev) : ''} ${h.status ? '· ' + E(h.status) : ''} ${h.date ? '· ' + E(fmtDate(h.date)) : ''}</div></div>
+      <div style="display:flex;gap:8px;"><button class="btn-small primary" onclick="wmHistPrint()">Print history</button><button class="btn-small" onclick="document.getElementById('wm-hist-ov').remove()">Close</button></div></div>
+      ${h.note ? `<p style="font-size:12px;color:var(--text-faint);margin:10px 0;">${E(h.note)}</p>` : ''}
+      ${h.rows.length ? `<table style="margin-top:8px;"><tr>${h.head.map(x => `<th>${E(x)}</th>`).join('')}</tr>${h.rows.map(r => `<tr>${r.map(c => `<td>${/^<button|^<span/.test(String(c)) ? c : E(c)}</td>`).join('')}</tr>`).join('')}</table>` : '<p style="padding:14px 0;color:var(--text-faint);">No revisions recorded yet.</p>'}
+      ${kind === 'd' ? `<div style="margin-top:14px;font-size:12px;color:var(--text-dim);line-height:1.5;">This is a live digital document. Its revision stays at 0 and its revision date is the date this organisation was created. Changes to the platform are recorded in the Platform Change Register and listed in the Live Document Control Report. <button class="btn-small" onclick="wmLiveDocReport()">Live Document Control Report</button></div>` : ''}`);
+  };
+  window.wmHistPrint = function(){
+    const h = window._wmHist; if(!h) return;
+    const plain = c => String(c).replace(/<[^>]+>/g, '').trim() || '—';
+    printRecord('Revision History', `${h.num}${h.rev ? '-' + h.rev.replace(/\s/g, '') : ''}${h.status ? ' · ' + h.status : ''}`, [['Document', E(h.title)], ['Document number', E(h.num)], ['Current revision', E(h.rev || '—')], ['Status', E(h.status || '—')]], printSectionTitle('Revision history') + printTable(h.head.filter(x => !/^(Record|Stored file|Revision as issued)$/.test(x)), h.rows.map(r => r.filter((c, i) => !/^(Record|Stored file|Revision as issued)$/.test(h.head[i])).map(c => E(plain(c))))), null, null);
+  };
+
+  /* ---- numbering and revisions ---- */
+  function pickDeptType(c){
+    const depts = (STATE.docDepartments || []).filter(d => d.is_active), types = (STATE.docTypes || []).filter(t => t.is_active);
+    const kw = { Register:/regist/i, Form:/form|record/i, Checklist:/check/i, Presentation:/present|slide/i, 'Training Video':/train|video/i }[c.kind];
+    const t = types.find(x => kw && kw.test(x.name)) || types.find(x => /regist|form/i.test(x.name)) || types[0];
+    const dk = { audits:/quality|audit/i, nonconformances:/quality/i, incidents:/health|safe/i, ptw:/health|safe/i, ohs:/health|safe/i, hr:/human|hr|people/i, personnel:/human|hr|people/i, training:/human|hr|people/i }[c.module];
+    const d = (dk && depts.find(x => dk.test(x.name))) || depts.find(x => /govern|manage|general|admin/i.test(x.name)) || depts[0];
+    return { d, t };
+  }
+  window.wmDigitalNumberAll = async function(){
+    if(!isAdm()){ toast('Only an administrator can number the digital documents.', 'error'); return; }
+    await wmLoadDigital(); if(STATE._digitalSql === false){ toast('Run the r66 SQL first (digital_documents table).', 'error'); return; }
+    const todo = catalogue().filter(c => !row(c.key)); if(!todo.length){ toast('Every digital document is already numbered.', 'success'); return; }
+    if(!confirm('Number and issue ' + todo.length + ' digital documents at Revision 0 under document control?')) return;
+    showLoader('Numbering digital documents…'); let n = 0, fail = '';
+    for(const c of todo){
+      const { d, t } = pickDeptType(c); if(!d || !t){ fail = 'Add at least one active department and document type first.'; break; }
+      const r = await STATE.supabase.rpc('assign_form_doc_number', { p_org_id:STATE.org.id, p_department_id:d.id, p_type_id:t.id });
+      if(r.error){ fail = r.error.message; break; }
+      const today = new Date().toISOString().slice(0, 10), inc = wmInception();
+      const a = await STATE.supabase.from('digital_documents').insert({ organisation_id:STATE.org.id, doc_key:c.key, kind:c.kind, title:c.title, module_key:c.module, doc_number:r.data, revision:0, status:'Approved', effective_date:inc, approved_by:mname() });
+      if(a.error){ fail = a.error.message; break; }
+      await STATE.supabase.from('digital_document_revisions').insert({ organisation_id:STATE.org.id, doc_key:c.key, revision:0, revision_date:inc, description:'Initial issue as a live digital document. Revision is fixed at 0 and the revision date is the tenant inception date. Document number allocated on ' + fmtDate(today) + '.', prepared_by:mname(), approved_by:mname() });
+      n++;
+    }
+    hideLoader(); await wmLoadDigital(); try{ renderMasterRegisterPage(); }catch(e){}
+    toast(fail ? ('Numbered ' + n + '. Stopped: ' + fail) : ('Numbered ' + n + ' digital documents at Revision 0, dated at tenant inception.'), fail ? 'error' : 'success');
+  };
+  window.wmDigitalIssueRev = async function(key){
+    if(!isAdm()) return; const r = row(key); if(!r) return;
+    const why = prompt('Describe the change in this new revision:'); if(!why || !why.trim()) return;
+    const rev = (r.revision || 0) + 1, today = new Date().toISOString().slice(0, 10);
+    const a = await STATE.supabase.from('digital_documents').update({ revision:rev, effective_date:today, approved_by:mname(), updated_at:new Date().toISOString() }).eq('id', r.id);
+    if(a.error){ toast('Could not update: ' + a.error.message, 'error'); return; }
+    await STATE.supabase.from('digital_document_revisions').insert({ organisation_id:STATE.org.id, doc_key:key, revision:rev, revision_date:today, description:why.trim(), prepared_by:mname(), approved_by:mname() });
+    await wmLoadDigital(); toast('Revision ' + rev + ' issued.', 'success'); try{ renderMasterRegisterPage(); }catch(e){} wmDocHistory('d', key);
+  };
+
+  /* ---- printable document for a digital register / form / video ---- */
+  function describe(c){
+    const lz = (window.WMLESSONS || {})[c.module]; const cfg = c.module && typeof getModuleExportConfig === 'function' ? (function(){ try{ return getModuleExportConfig(c.module); }catch(e){ return null; } })() : null;
+    const cols = cfg ? cfg.columns.map(x => x.header) : [];
+    const purpose = (lz && lz.why) || (c.kind === 'Training Video' ? 'A narrated lesson on how to use the module.' : 'A controlled ' + c.kind.toLowerCase() + ' held in QaSHE Watchman.');
+    return { purpose, cols, who:(lz && lz.who) || '' };
+  }
+  window.wmDigitalDocHtml = function(key, rev, sample){
+    const c = catalogue().find(x => x.key === key); if(!c) return '';
+    let i = info(key); const org = (STATE.org && STATE.org.name) || '';
+    if(!i.numbered && sample){ const n = String(catalogue().findIndex(x => x.key === key) + 1).padStart(3, '0'); i = { num:'SAMPLE-' + (c.kind === 'Register' ? 'REG' : c.kind === 'Form' ? 'FRM' : c.kind === 'Checklist' ? 'CHK' : c.kind === 'Presentation' ? 'PRS' : 'TRN') + '-' + n, rev:0, status:'Approved (sample)', date:wmInception(), by:mname() || 'Document Controller', numbered:true }; }
+    const revs = R().filter(r => r.doc_key === key); const shown = rev != null ? revs.filter(r => r.revision <= rev) : revs;
+    const hist = shown.length ? shown : [{ revision:0, revision_date:i.date, description:'Initial issue under document control.', prepared_by:i.by, approved_by:i.by }];
+    const d = describe(c);
+    return `<section style="page-break-after:always;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#111;min-height:250mm;position:relative;padding-bottom:30px;">
+      <div style="display:flex;justify-content:space-between;border-bottom:3px solid #1B3A57;padding-bottom:8px;"><div><div style="font-size:11px;color:#555;">${E(org)}</div><div style="font-size:19px;font-weight:700;color:#1B3A57;">${E(c.title)}</div><div style="font-size:11px;color:#555;">${E(c.kind)}</div></div>
+        <table style="border-collapse:collapse;font-size:11px;"><tr><td style="border:1px solid #999;padding:3px 8px;"><b>Doc No</b></td><td style="border:1px solid #999;padding:3px 8px;">${E(i.num)}</td></tr><tr><td style="border:1px solid #999;padding:3px 8px;"><b>Revision</b></td><td style="border:1px solid #999;padding:3px 8px;">${rev != null ? rev : i.rev}</td></tr><tr><td style="border:1px solid #999;padding:3px 8px;"><b>Date</b></td><td style="border:1px solid #999;padding:3px 8px;">${E(fmtDate(i.date))}</td></tr><tr><td style="border:1px solid #999;padding:3px 8px;"><b>Status</b></td><td style="border:1px solid #999;padding:3px 8px;">${E(i.status)}</td></tr></table></div>
+      <h4 style="margin:14px 0 4px;">Purpose</h4><p style="margin:0;line-height:1.5;">${E(d.purpose)}</p>
+      ${d.who ? `<h4 style="margin:12px 0 4px;">Who uses it</h4><p style="margin:0;line-height:1.5;">${E(d.who)}</p>` : ''}
+      ${d.cols.length ? `<h4 style="margin:12px 0 4px;">Fields held in this ${E(c.kind.toLowerCase())}</h4><p style="margin:0;line-height:1.6;">${d.cols.map(E).join(' · ')}</p>` : ''}
+      <h4 style="margin:12px 0 4px;">Approval</h4><table style="border-collapse:collapse;width:100%;"><tr><td style="border:1px solid #999;padding:6px;width:50%;">Prepared by: ${E((hist[hist.length - 1] || {}).prepared_by || '')}</td><td style="border:1px solid #999;padding:6px;">Approved by: ${E(i.by)} &nbsp; Date: ${E(fmtDate(i.date))}</td></tr></table>
+      <h4 style="margin:12px 0 4px;">Revision history</h4><table style="border-collapse:collapse;width:100%;font-size:11px;"><tr style="background:#eef2f6;"><th style="border:1px solid #999;padding:4px;">Rev</th><th style="border:1px solid #999;padding:4px;">Date</th><th style="border:1px solid #999;padding:4px;">Change description</th><th style="border:1px solid #999;padding:4px;">Prepared</th><th style="border:1px solid #999;padding:4px;">Approved</th></tr>
+      ${hist.map(r => `<tr><td style="border:1px solid #999;padding:4px;">${r.revision}</td><td style="border:1px solid #999;padding:4px;">${E(fmtDate(r.revision_date))}</td><td style="border:1px solid #999;padding:4px;">${E(r.description || '')}</td><td style="border:1px solid #999;padding:4px;">${E(r.prepared_by || '')}</td><td style="border:1px solid #999;padding:4px;">${E(r.approved_by || '')}</td></tr>`).join('')}</table>
+      <div style="position:absolute;left:0;right:0;bottom:0;border-top:1px solid #999;padding-top:4px;font-size:9.5px;color:#444;display:flex;justify-content:space-between;gap:10px;"><span><b>${E(i.num)}</b> · Rev ${rev != null ? rev : i.rev} · ${E(fmtDate(i.date))}</span><span>${E(i.status)}</span><span>Printed ${E(new Date().toLocaleString('en-GB'))} by ${E(mname())} · Platform release ${E(wmRelease())}</span><span>Uncontrolled when printed.</span></div></section>`;
+  };
+  window.wmDigitalDocPdf = function(key, rev){
+    const w = window.open('', '_blank'); if(!w){ toast('Allow pop-ups to print.', 'error'); return; }
+    w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>' + E(key) + '</title><style>@page{size:A4;margin:12mm}body{margin:0}</style></head><body>' + wmDigitalDocHtml(key, rev, false) + '<script>window.onload=function(){setTimeout(function(){window.print()},300)}<\/script></body></html>'); w.document.close();
+  };
+  window.wmDigitalPackHtml = function(sample){ return catalogue().map(c => wmDigitalDocHtml(c.key, null, sample)).join(''); };
+  window.wmDigitalPack = function(){
+    const w = window.open('', '_blank'); if(!w){ toast('Allow pop-ups to print.', 'error'); return; }
+    w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Digital document pack</title><style>@page{size:A4;margin:12mm}body{margin:0}</style></head><body>' + wmDigitalPackHtml(true) + '<script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script></body></html>'); w.document.close();
+  };
+
+  /* ---- Master Register: buttons, history on every row, source filter ---- */
+  window.wmHistBtn = r => `<button class="btn-small" title="Revision history and previous versions" onclick="event.stopPropagation(); wmDocHistory('${r.kind}','${r.id}')">History</button>`;
+
+  /* ---- footer stamp on every live module page ---- */
+  function stamp(){
+    const root = document.getElementById('content-root'); if(!root) return;
+    const mod = STATE._wmMod || ''; const key = 'reg:' + mod;
+    let bar = document.getElementById('wm-docbar');
+    if(!mod || SKIP.includes(mod) || !MODULE_META[mod]){ if(bar) bar.remove(); return; }
+    const i = info(key);
+    const html = `<span><b>Doc No:</b> ${E(i.num)}</span><span><b>Rev:</b> ${i.numbered ? E(i.rev) : '—'}</span><span><b>Status:</b> ${E(i.status)}</span>${i.date ? `<span><b>Effective:</b> ${E(fmtDate(i.date))}</span>` : ''}<a href="#" onclick="event.preventDefault(); wmDocHistory('d','${E(key)}')">Revision history</a>`;
+    if(!bar){ bar = document.createElement('div'); bar.id = 'wm-docbar'; root.appendChild(bar); }
+    else if(bar.parentNode !== root || root.lastElementChild !== bar){ root.appendChild(bar); }
+    if(bar.dataset.k !== html){ bar.dataset.k = html; bar.innerHTML = html; }
+  }
+  const st = document.createElement('style'); st.textContent = '#wm-docbar{display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin-top:22px;padding:7px 12px;border-top:1px solid #D9D5D1;font-size:11px;color:#615C59;background:#FAF9F8}#wm-docbar a{margin-left:auto;color:#2E5AA8;font-weight:600}@media print{#wm-docbar{display:none}}'; document.head.appendChild(st);
+  { const _s = showModule; showModule = window.showModule = function(mod){ STATE._wmMod = mod; const r = _s.apply(this, arguments); setTimeout(() => { try{ stamp(); }catch(e){} }, 60); return r; }; }
+  { const root = document.getElementById('content-root'); if(root){ let t; new MutationObserver(() => { clearTimeout(t); t = setTimeout(() => { try{ stamp(); }catch(e){} }, 120); }).observe(root, { childList:true }); } }
+
+  /* print footer on every register print: fall back to the digital document number */
+  { const _f = formIdWithDate; formIdWithDate = window.formIdWithDate = function(moduleKey){
+      const r = _f.apply(this, arguments); if(r) return r;
+      const x = row('reg:' + moduleKey); return x ? { line:`${x.doc_number}-Rev${x.revision} · ${x.status}`, date:fmtDate(x.effective_date) } : null; }; }
+
+  /* load with the organisation, refresh the register */
+  { const _m = window.renderMasterRegisterPage; window.renderMasterRegisterPage = renderMasterRegisterPage = function(){ const r = _m.apply(this, arguments);
+      if(STATE._digitalLoaded !== (STATE.org && STATE.org.id)){ STATE._digitalLoaded = STATE.org && STATE.org.id; wmLoadDigital().then(() => { try{ _m.apply(window, []); }catch(e){} }); }
+      return r; }; }
+})();
+
+/* ============================================================================
+   R67: PLATFORM CHANGE REGISTER and LIVE DOCUMENT CONTROL REPORT.
+   Live digital documents stay at Revision 0, dated at tenant inception. What changes over time is the platform, and every
+   platform release is recorded here (owner-maintained, append one entry per release). The report lists, for one tenant, the
+   changes since its inception that touched modules it uses. 'all' = affects every tenant.
+   ============================================================================ */
+(function(){
+  const E = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+  const REC = 'reconstructed from release notes', LIVE = 'recorded at release';
+  window.WM_PLATFORM_CHANGES = [
+    ['R37','2026-11-15','Personal records','Personal records for each person.',['personnel'],REC],
+    ['R38','2026-11-15','Personnel Satisfaction Survey','Survey module added; people marker.',['staff_survey','personnel'],REC],
+    ['R39','2026-11-15','Streamlined HR','HR attendance and leave streamlined.',['hr','personnel'],REC],
+    ['R40','2026-11-15','Appraisal link','Appraisals linked to personal records.',['appraisals','personnel'],REC],
+    ['R41','2026-11-16','Personal documents report','Report of each person\'s documents.',['personnel'],REC],
+    ['R42','2026-11-16','Company performance report','Company Performance Report and appraisal report notification.',['appraisals','master_register'],REC],
+    ['R43','2026-11-16','Document Management layout','Document Management layout reorganised.',['documents'],REC],
+    ['R44','2026-11-16','Document Management layout','Layout and wording of the All Documents switch.',['documents','all_documents'],REC],
+    ['R45','2026-11-16','Training and helper','Training lessons, catalogue and helper brief updated.',['training'],REC],
+    ['R46','2026-11-17','Process lock and tidy documents','Process locking; tidy controlled-document, process and report PDFs.',['documents','process_flowcharts'],REC],
+    ['R47','2026-11-17','Document standard','Document standard; Processes and KPIs merged.',['documents','process_flowcharts'],REC],
+    ['R48','2026-11-17','Issue and acceptance','Document issue and acceptance; swim-lane PDF; evidence uploads.',['documents','appraisals'],REC],
+    ['R49','2026-11-17','Master Register shows all documents','Master Documents Register lists every document; Workflow renamed work in progress.',['master_register','documents'],REC],
+    ['R50','2026-11-17','Master Register sections and print','Sections A and B, print and Excel everywhere, update from uploaded file, process numbers with revision tier.',['master_register','documents','process_flowcharts','all_documents'],REC],
+    ['R51','2026-11-18','Template Library and Type (Category)','Template Library by activation; Type (Category) chooser on every nonconformance; audit register print.',['nonconformances','audits'],REC],
+    ['R52','2026-11-19','Issue management','Records open on their own page; bulk tools; own numbering; people pickers.',['nonconformances','raga','incidents'],REC],
+    ['R53','2026-11-19','Output style','Plain or Modern magazine style for PDF, Word and Excel.',['all'],REC],
+    ['R54','2026-11-20','Style pop-up','Style pop-up before document PDFs and asset prints.',['all'],REC],
+    ['R55','2026-11-20','Print style consistency','Style pop-up on every print and PDF button.',['all'],REC],
+    ['R56','2026-11-21','Mobile and sign-in speed','Faster sign-in; phone layout.',['all'],REC],
+    ['R57','2026-11-23','Water Treatment','Raw/Feed remembered; report emailed to client, technician and copy address.',['wt'],REC],
+    ['R58','2026-11-23','Water Treatment customers and sites','Customers register, sites and plants.',['wt','customers'],REC],
+    ['R59','2026-11-25','Guide Me, deletes, Word','Guide Me tab; administrator Delete on registers; Word copy; How ratings work.',['master_register','all_documents','risks'],REC],
+    ['R60','2026-11-25','JBSS Workflow','JBSS Workflow module (bespoke).',['wf'],REC],
+    ['R61','2026-11-25','Personnel Watchman login','Personnel records show each person\'s Watchman login.',['personnel'],REC],
+    ['R62','2026-11-25','Nonconformance views and Risk categories','Administrator-only deletes; My / My department / All; Types moved to Administration; Risk categories.',['nonconformances','risks'],REC],
+    ['R63','2026-11-25','Module ticks','One rule for module ticks in invitations and access.',['administration'],REC],
+    ['R64','2026-11-26','Training Video audit','Training Video naming; lessons corrected; new lessons.',['training'],REC],
+    ['R65','2026-11-26','Module switches','One module-switch function; Admin Console lists from one registry.',['administration'],REC],
+    ['R66','2026-11-27','Document identity','Green All clear on personal views; numbered digital documents; footer stamp; revision history pop-up on every document.',['all'],LIVE],
+    ['R67','2026-11-27','Live document control','Revision fixed at 0 at tenant inception; print date and platform release on every print; Platform Change Register and Live Document Control Report.',['all'],LIVE]
+  ];
+  const has = m => { try{ return m === 'all' || (typeof orgHasModule === 'function' ? orgHasModule(m) !== false : true); }catch(e){ return true; } };
+  function relevant(){ const inc = wmInception(); return WM_PLATFORM_CHANGES.filter(c => c[1] >= inc && c[4].some(has)); }
+  const tbl = (head, rows) => `<table style="border-collapse:collapse;width:100%;font-size:11px;"><tr style="background:#eef2f6;">${head.map(h => `<th style="border:1px solid #999;padding:4px;text-align:left;">${h}</th>`).join('')}</tr>${rows.map(r => `<tr>${r.map(c => `<td style="border:1px solid #999;padding:4px;vertical-align:top;">${c}</td>`).join('')}</tr>`).join('')}</table>`;
+  window.wmChangeRegisterHtml = function(all){
+    const list = all ? WM_PLATFORM_CHANGES : relevant();
+    return tbl(['Release', 'Date', 'Change', 'Applies to', 'Record'], list.slice().reverse().map(c => [E(c[0]), E(fmtDate(c[1])), '<b>' + E(c[2]) + '</b><br>' + E(c[3]), E(c[4].join(', ')), E(c[5])]));
+  };
+  window.wmLiveDocReport = function(){
+    const org = (STATE.org && STATE.org.name) || '', inc = wmInception(), cat = wmDigitalCatalogue();
+    const docs = cat.map(c => { const i = wmDigitalInfo(c.key); return [E(i.num), E(c.title), E(c.kind), '0', E(fmtDate(inc))]; });
+    const byKind = {}; cat.forEach(c => byKind[c.kind] = (byKind[c.kind] || 0) + 1);
+    const body = `<div style="font-size:12px;line-height:1.55;">
+      <h3 style="margin:6px 0;">1. Control of live digital documents</h3>
+      <p>Registers, forms, checklists, presentations and training videos in QaSHE Watchman are <b>live digital documents</b>: there is one controlled copy, the system itself, and no issued copies to supersede. Each is identified by a document number and held at <b>Revision 0</b>, dated <b>${E(fmtDate(inc))}</b>, the date this organisation was created in QaSHE Watchman. The revision and its date do not change. Any printed or exported copy shows the date and time it was printed, who printed it and the platform release in force, and is uncontrolled when printed.</p>
+      <p>What changes over time is the platform. Every release is recorded in the Platform Change Register (section 3) with its date, what changed and which modules it affected. Changes made by this organisation to its own records are held in the append-only Change Log module (administrators).</p>
+      <h3 style="margin:14px 0 6px;">2. Live digital documents for ${E(org)} (${cat.length}: ${Object.entries(byKind).map(([k, v]) => v + ' ' + E(k.toLowerCase()) + (v > 1 ? 's' : '')).join(', ')})</h3>${tbl(['Document number', 'Title', 'Type', 'Rev', 'Revision date'], docs)}
+      <h3 style="margin:14px 0 6px;">3. Platform changes since inception (${E(fmtDate(inc))}) affecting modules in use</h3>${wmChangeRegisterHtml(false)}
+      <p style="margin-top:10px;color:#555;">Platform release in force: <b>${E(wmRelease())}</b>. Entries marked "${REC}" were compiled from the platform owner's release records; entries marked "${LIVE}" were entered on the day of the release.</p></div>`;
+    printRecord('Live Document Control Report', `${org} · Platform ${wmRelease()}`, [['Organisation', E(org)], ['Inception date (Revision 0)', E(fmtDate(inc))], ['Platform release in force', E(wmRelease())], ['Documents covered', String(cat.length)]], body, null, null);
+  };
+  window.wmPlatformChangeRegister = function(){
+    printRecord('Platform Change Register', `QaSHE Watchman · ${WM_PLATFORM_CHANGES.length} releases · Platform ${wmRelease()}`, [['Owner', 'Group QaSHE CG'], ['Platform release in force', E(wmRelease())]], `<div style="font-size:12px;">${wmChangeRegisterHtml(true)}</div>`, null, null);
+  };
+  /* buttons in the Master Register header (re-checked after every draw) */
+  function ensureBtns(){
+    const ph = document.querySelector('#mr2-root .panel-head'); if(!ph) return;
+    const adm = STATE.myRole === 'admin' || (STATE.profile && STATE.profile.is_platform_staff);
+    let b = document.getElementById('wm-dig-btns');
+    if(!b){ ph.insertAdjacentHTML('beforeend', '<span id="wm-dig-btns" style="display:flex;gap:8px;flex-wrap:wrap;"></span>'); b = document.getElementById('wm-dig-btns'); }
+    if(b.dataset.done) return; b.dataset.done = '1';
+    b.innerHTML = (adm ? '<button class="btn-small primary" onclick="wmDigitalNumberAll()" title="Give every digital register, form, checklist, presentation and training video a controlled number at Revision 0">Number all digital documents</button>' : '')
+      + '<button class="btn-small" onclick="wmDigitalPack()" title="One printable PDF with a page for every digital document">Document pack (PDF)</button>'
+      + '<button class="btn-small" onclick="wmLiveDocReport()" title="Revision history of the live digital documents for this organisation">Live Document Control Report</button>'
+      + ((STATE.profile && STATE.profile.is_platform_staff) ? '<button class="btn-small" onclick="wmPlatformChangeRegister()" title="Every platform release (Group QaSHE CG)">Platform Change Register</button>' : '');
+  }
+  window.wmEnsureDigBtns = ensureBtns;
+  { const _m = window.renderMasterRegisterPage; window.renderMasterRegisterPage = renderMasterRegisterPage = function(){ const r = _m.apply(this, arguments); setTimeout(ensureBtns, 0); return r; }; }
+  { const _r = window.mr2Render; if(_r) window.mr2Render = function(){ const r = _r.apply(this, arguments); try{ ensureBtns(); }catch(e){} return r; }; }
+})();
 </script>
 </body>
 </html>
