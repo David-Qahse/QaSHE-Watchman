@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R70 2026-11-27"><meta charset="UTF-8">
+<meta name="wm-release" content="R71 2026-11-27"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -41135,7 +41135,7 @@ const RING = `<svg viewBox="0 0 40 40" fill="none" stroke-width="2.6"><circle cx
 window.WM_MODS = MODS;
 const byId = id => MODS.find(m => m.id === id);
 /* bespoke modules (built for one client) are not part of the main training video: each has its own */
-const BESPOKE_MODS = ['wt','it','wf','asset_watchman','edu'];
+const BESPOKE_MODS = ['wt','it','wf','asset_watchman','edu','sales'];
 const MAINMODS = () => MODS.filter(m => !BESPOKE_MODS.includes(m.id));
 const MSTYLE = i => `style="--i:${i}"`;
 
@@ -48760,8 +48760,8 @@ ${STATE.org.name}${s.tel ? '\nTel: ' + s.tel : ''}`;
 
 /* Release 24: the invite and access lists include every module, including Water Treatment, Project Management and the Education module; and those modules honour the ticks */
 (function(){
-  const EXTRA=['wt','projects','edu','it','wf'];
-  const offFor=k=> k==='wt' ? !(STATE.org&&STATE.org._wtOn) : k==='it' ? !(STATE.org&&STATE.org._itOn) : k==='wf' ? !(STATE.org&&STATE.org._wfOn) : k==='edu' ? !(STATE.org&&STATE.org._eduOn) : !!(STATE.org && STATE.org._modOff && STATE.org._modOff.has(k));
+  const EXTRA=['wt','projects','edu','it','wf','sales'];
+  const offFor=k=> k==='wt' ? !(STATE.org&&STATE.org._wtOn) : k==='it' ? !(STATE.org&&STATE.org._itOn) : k==='wf' ? !(STATE.org&&STATE.org._wfOn) : k==='edu' ? !(STATE.org&&STATE.org._eduOn) : k==='sales' ? !(STATE.org&&STATE.org._salesOn) : !!(STATE.org && STATE.org._modOff && STATE.org._modOff.has(k));
   { const _a=adminInviteModules; adminInviteModules=window.adminInviteModules=function(){
       const out=_a.apply(this,arguments); const have=new Set(out.map(x=>x.key));
       EXTRA.forEach(k=>{ if(have.has(k)||!MODULE_META[k]) return; if(offFor(k)) return;
@@ -48769,7 +48769,7 @@ ${STATE.org.name}${s.tel ? '\nTel: ' + s.tel : ''}`;
       return out; }; }
   { const _c=canAccessModule; canAccessModule=window.canAccessModule=function(mod){
       const base=_c.apply(this,arguments);
-      if(mod!=='wt' && mod!=='projects' && mod!=='edu' && mod!=='it' && mod!=='wf') return base;
+      if(mod!=='wt' && mod!=='projects' && mod!=='edu' && mod!=='it' && mod!=='wf' && mod!=='sales') return base;
       if(!base) return base;
       const staff=!!(STATE.profile&&STATE.profile.is_platform_staff);
       if(staff||STATE.myRole==='admin') return base;
@@ -56552,7 +56552,7 @@ window.showRatingGuide = function(){
    - The switches are read in one place, with a fallback, and the lists refresh once they have loaded. */
 (function(){
   const arr = a => Array.isArray(a) ? a : [];
-  const BESPOKE = { wt:'Water Treatment', it:'Inspection and Testing', wf:'JBSS Workflow' };
+  const BESPOKE = { wt:'Water Treatment', it:'Inspection and Testing', wf:'JBSS Workflow', sales:'Sales Management' };
   async function wmLoadSwitches(force){
     const o = STATE.org; if(!o || !STATE.supabase) return false;
     if(o._swTried && !force) return !!o._swLoaded;
@@ -56962,6 +56962,7 @@ W.asset_watchman.ask = 'Can you show a client how the condition of their equipme
     ['R68','2026-11-27','Personalised notices','RAGA personal banner; first name used in the dashboard, notices, pop-ups and emails; green All clear notices carry the person\'s first name.',['raga','all'],LIVE],
     ['R69','2026-11-27','My / My department / Everyone bar and All clear notice','One highly visible My / My department / Everyone bar and a green All clear (or open-items) notice across incidents, information security incidents, audits, inspections, checklists, risks, objectives, training, appraisals, assets, permits, RAGA and others.',['all'],LIVE],
     ['R70','2026-11-27','Internal and External Training, training sessions and attendance certificates','Training is split into Internal and External. Internal training carries material (file, link or Module Training Presentation), is assigned to many people, opens on its own page with start time, finish time and a comment confirming understanding, and issues an attendance certificate. External training holds the provider proof and a company certificate. The Show bar sits first and overview tiles and navigation sit behind an arrow. Button names corrected.',['training'],LIVE]
+    ['R71','2026-11-27','Sales Management for Mechanical Rotating Solutions','New bespoke module: weekly call plans, A/B/C customer coverage, pipeline, budgets against results by product line, a weighted scorecard dashboard, Friday reports and an accountability log. Off by default; needs the R71 SQL.',['sales'],LIVE],
   ];
   const has = m => { try{ return m === 'all' || (typeof orgHasModule === 'function' ? orgHasModule(m) !== false : true); }catch(e){ return true; } };
   function relevant(){ const inc = wmInception(); return WM_PLATFORM_CHANGES.filter(c => c[1] >= inc && c[4].some(has)); }
@@ -57460,6 +57461,490 @@ W.asset_watchman.ask = 'Can you show a client how the condition of their equipme
   window.wmTrCertPrint = function(){ document.body.classList.add('wm-cert-print'); const done = () => { document.body.classList.remove('wm-cert-print'); window.removeEventListener('afterprint', done); }; window.addEventListener('afterprint', done); setTimeout(() => window.print(), 150); };
 
 })();
+
+
+/* ===== Release 71: Sales Management (bespoke for Mechanical Rotating Solutions) =====
+   Weekly call plans, A/B/C account coverage, pipeline, budgets against actuals, a weighted scorecard, Friday reports and a progressive accountability log. */
+(function(){
+  const E = s => escapeHtml(s == null ? '' : String(s));
+  const arr = x => Array.isArray(x) ? x : [];
+  const num = x => { const n = Number(x); return isFinite(n) ? n : 0; };
+  const isMgr = () => ['admin','manager'].includes(STATE.myRole) || !!(STATE.profile && STATE.profile.is_platform_staff);
+  const myP = () => arr(STATE.personnel).find(p => p.linked_profile_id === (STATE.user && STATE.user.id)) || null;
+  const pById = id => arr(STATE.personnel).find(p => p.id === id) || null;
+  const pName = id => { const p = pById(id); return p ? p.full_name : 'Unassigned'; };
+  const off = () => !(STATE.org && STATE.org._salesOn);
+  const T = () => todayISO();
+  const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const monday = iso => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - (d.getUTCDay() + 6) % 7); return d.toISOString().slice(0, 10); };
+  const mStart = iso => iso.slice(0, 7) + '-01';
+  const addMonths = (p, n) => { const d = new Date(p + 'T00:00:00Z'); d.setUTCMonth(d.getUTCMonth() + n); return d.toISOString().slice(0, 10); };
+  const mEnd = p => addDays(addMonths(p, 1), -1);
+  const mLabel = p => new Date(p + 'T00:00:00Z').toLocaleDateString('en-GB', { month:'long', year:'numeric', timeZone:'UTC' });
+  const dLabel = iso => new Date(iso + 'T00:00:00Z').toLocaleDateString('en-GB', { weekday:'short', day:'2-digit', month:'short', timeZone:'UTC' });
+  const money = n => 'R ' + Math.round(num(n)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const rat = (a, b) => b > 0 ? a / b : null;
+  const P = r => r == null ? '—' : Math.round(r * 100) + '%';
+  const workdays = (from, to) => { let n = 0; for(let d = from; d <= to; d = addDays(d, 1)){ const w = new Date(d + 'T00:00:00Z').getUTCDay(); if(w > 0 && w < 6) n++; } return n; };
+  const mondaysIn = (p) => { const out = []; for(let d = mStart(p) === monday(mStart(p)) ? mStart(p) : addDays(monday(mStart(p)), 7); d <= mEnd(p); d = addDays(d, 7)) out.push(d); return out; };
+  const stCol = r => r == null ? '#9AA5B8' : r >= 0.9 ? '#1B8E3E' : r >= 0.7 ? '#EF6C00' : '#D50000';
+
+  const DEF = { reps:[], gpTarget:42, visitsWeek:25, prospectVisitsWeek:3, quotesWeek:5, oppsWeek:4, prospectsMonth:20, prospectVisitsMonth:12, newAccountsMonth:2, newBusinessPct:10,
+    freq:{ A:7, B:30, C:56, P:56 }, tierShare:{ A:20, B:30 }, weights:{ sales:40, gp:15, coverage:15, nbd:15, mix:10, crm:5 }, rep:{} };
+  const MRS_LINES = [['AESSEAL mechanical seals and support systems','AESSEAL'],['Labtecta bearing protection','Labtecta'],['STRAUB pipe couplings','STRAUB'],['Belzona protective coatings','Belzona'],['MRS gaskets','MRS'],['Pumps and valves','MRS'],['Pump and valve refurbishment','MRS']];
+  const STAGES = [['lead','Lead'],['qualified','Qualified'],['quoted','Quoted'],['negotiation','Negotiation'],['won','Won'],['lost','Lost']];
+  const KINDS = [['visit','Customer visit'],['prospect','Prospect visit'],['phone','Phone call'],['quote','Quotation work'],['admin','Admin, CRM and planning']];
+  const REASONS = ['Customer cancelled','Customer site breakdown or closed','Customer not available','Travel or time ran out','Rep on leave or sick','Reprioritised to a bigger account','Other'];
+  const SLOTS = [['08:00','09:00'],['09:30','10:30'],['11:00','12:00'],['13:00','14:00'],['15:00','16:00'],['16:00','17:00']];
+  const TABLES = { products:'sm_products', accounts:'sm_accounts', calls:'sm_calls', plans:'sm_call_plans', opps:'sm_opportunities', budgets:'sm_budgets', actuals:'sm_actuals', reviews:'sm_reviews' };
+  const S = window.__SM = { loaded:false, broken:null, tab:'dash', rep:'all', period:mStart(todayISO()), week:monday(todayISO()), cfgRow:null, products:[], accounts:[], plans:[], calls:[], opps:[], budgets:[], actuals:[], reviews:[] };
+
+  const cfg = () => { const c = (S.cfgRow && S.cfgRow.config) || {}; return Object.assign({}, DEF, c, { freq:Object.assign({}, DEF.freq, c.freq), tierShare:Object.assign({}, DEF.tierShare, c.tierShare), weights:Object.assign({}, DEF.weights, c.weights), rep:c.rep || {} }); };
+  const tg = rep => Object.assign({}, cfg(), (cfg().rep || {})[rep] || {});
+  const reps = () => { const ids = arr(cfg().reps).filter(id => pById(id)); return ids; };
+  const scopeReps = () => !isMgr() ? (myP() ? [myP().id] : []) : (S.rep === 'all' ? reps() : [S.rep]);
+  const oneRep = () => { const r = scopeReps(); return r.length === 1 ? r[0] : null; };
+  const prodName = id => { const p = S.products.find(x => x.id === id); return p ? p.name : 'No product'; };
+  const acctName = a => a ? a.customer_name : '';
+
+  /* ---------- data ---------- */
+  async function loadAll(){
+    const o = STATE.org.id; S.broken = null;
+    const get = async t => { const r = await STATE.supabase.from(t).select('*').eq('organisation_id', o); if(r.error) throw r.error; return arr(r.data); };
+    try{
+      const [st, ...rest] = await Promise.all(['sm_settings', ...Object.values(TABLES)].map(get));
+      S.cfgRow = st[0] || null; Object.keys(TABLES).forEach((k, i) => { S[k] = rest[i]; }); S.loaded = true;
+    }catch(e){ S.broken = (e && e.message) || 'unknown'; S.loaded = false; }
+  }
+  async function save(key, row){
+    const t = TABLES[key]; const rec = Object.assign({}, row); let r;
+    if(rec.id){ const id = rec.id; delete rec.id; r = await STATE.supabase.from(t).update(rec).eq('id', id).select().single(); }
+    else { rec.organisation_id = STATE.org.id; r = await STATE.supabase.from(t).insert(rec).select().single(); }
+    if(r.error){ toast('Could not save: ' + r.error.message + (/relation|does not exist|schema cache/i.test(r.error.message) ? ' (run the Release 71 SQL first)' : ''), 'error'); return null; }
+    const d = r.data; const i = S[key].findIndex(x => x.id === d.id); if(i >= 0) S[key][i] = d; else S[key].push(d); return d;
+  }
+  async function del(key, id){ const r = await STATE.supabase.from(TABLES[key]).delete().eq('id', id); if(r.error){ toast('Could not delete: ' + r.error.message, 'error'); return false; } S[key] = S[key].filter(x => x.id !== id); return true; }
+  async function saveCfg(c){
+    const r = await STATE.supabase.from('sm_settings').upsert({ organisation_id:STATE.org.id, config:c, updated_at:new Date().toISOString() }).select().single();
+    if(r.error){ toast('Could not save settings: ' + r.error.message, 'error'); return false; } S.cfgRow = r.data || { organisation_id:STATE.org.id, config:c }; return true;
+  }
+  async function ensurePlan(rep, week){
+    let p = S.plans.find(x => x.rep_id === rep && x.week_start === week); if(p) return p;
+    return await save('plans', { rep_id:rep, week_start:week, status:'draft' });
+  }
+
+  /* ---------- measurement ---------- */
+  function fin(rows, rep, period, f){
+    const mine = rows.filter(r => r.rep_id === rep && String(r.period).slice(0, 10) === period);
+    const tot = mine.filter(r => !r.product_id); const use = tot.length ? tot : mine; return use.reduce((s, r) => s + num(r[f]), 0);
+  }
+  function lastVisit(accId){ const d = S.calls.filter(c => c.account_id === accId && c.status === 'done' && ['visit','prospect'].includes(c.kind)).map(c => c.day).sort(); return d.length ? d[d.length - 1] : null; }
+  function metrics(repIds, period){
+    const c = cfg(), end = mEnd(period), today = T(), upto = end < today ? end : today, R = new Set(repIds);
+    const inP = d => d && String(d).slice(0, 10) >= period && String(d).slice(0, 10) <= end;
+    const wdFull = workdays(period, end), wdEl = upto >= period ? workdays(period, upto) : 0;
+    const M = { period, kpis:[], comp:{} };
+    let bud = 0, act = 0, gp = 0, gpT = 0;
+    repIds.forEach(r => { bud += fin(S.budgets, r, period, 'sales_budget'); act += fin(S.actuals, r, period, 'sales_actual'); gp += fin(S.actuals, r, period, 'gp_amount'); gpT += tg(r).gpTarget; });
+    gpT = repIds.length ? gpT / repIds.length : c.gpTarget; const gpA = act > 0 ? gp / act * 100 : null;
+    const calls = S.calls.filter(x => R.has(x.rep_id) && inP(x.day));
+    const visits = calls.filter(x => x.status === 'done' && ['visit','prospect'].includes(x.kind)).length;
+    const visitsT = repIds.reduce((s, r) => s + Math.round(tg(r).visitsWeek * wdFull / 5), 0);
+    const plannedSoFar = calls.filter(x => x.planned && x.day <= today), plannedDone = plannedSoFar.filter(x => x.status === 'done').length;
+    const accts = S.accounts.filter(a => R.has(a.rep_id));
+    let aReq = 0, aDone = 0; const daysEl = upto >= period ? Math.max(1, Math.round((new Date(upto) - new Date(period)) / 864e5) + 1) : 0;
+    accts.filter(a => a.tier === 'A' && a.status === 'active').forEach(a => { const req = Math.max(1, Math.floor(daysEl / (c.freq.A || 7))); const n = S.calls.filter(x => x.account_id === a.id && x.status === 'done' && ['visit','prospect'].includes(x.kind) && inP(x.day)).length; aReq += req; aDone += Math.min(n, req); });
+    const prospects = accts.filter(a => a.status === 'prospect' && inP(a.added_date)).length + accts.filter(a => a.status !== 'prospect' && a.opened_date && inP(a.added_date) && inP(a.opened_date)).length;
+    const prospectsT = repIds.reduce((s, r) => s + tg(r).prospectsMonth, 0);
+    const pVisits = calls.filter(x => x.status === 'done' && x.kind === 'prospect').length, pVisitsT = repIds.reduce((s, r) => s + tg(r).prospectVisitsMonth, 0);
+    const newAcc = accts.filter(a => inP(a.opened_date)).length, newAccT = repIds.reduce((s, r) => s + tg(r).newAccountsMonth, 0);
+    const opps = S.opps.filter(o => R.has(o.rep_id));
+    const quotes = opps.filter(o => inP(o.quoted_date)).length, quotesT = repIds.reduce((s, r) => s + Math.round(tg(r).quotesWeek * 52 / 12), 0);
+    const oppsNew = opps.filter(o => inP(o.created_date)).length, oppsT = repIds.reduce((s, r) => s + Math.round(tg(r).oppsWeek * 52 / 12), 0);
+    const won = opps.filter(o => o.stage === 'won' && inP(o.closed_date)), wonN = won.length, newBizVal = won.filter(o => o.is_new).reduce((s, o) => s + num(o.value), 0);
+    let plansReq = 0, plansOK = 0; repIds.forEach(r => mondaysIn(period).filter(m => m <= today).forEach(m => { plansReq++; const p = S.plans.find(x => x.rep_id === r && x.week_start === m); if(p && p.status === 'submitted' && p.submitted_at && String(p.submitted_at).slice(0, 10) <= m) plansOK++; }));
+    let crmReq = 0, crmOK = 0; repIds.forEach(r => { crmReq += wdEl; const days = new Set(S.calls.filter(x => x.rep_id === r && x.logged_at && inP(x.logged_at)).map(x => String(x.logged_at).slice(0, 10))); crmOK += Math.min(days.size, wdEl); });
+    const prodRows = S.products.filter(p => p.active !== false).map(p => { let b = 0, a = 0; repIds.forEach(r => { b += S.budgets.filter(x => x.rep_id === r && String(x.period).slice(0, 10) === period && x.product_id === p.id).reduce((s, x) => s + num(x.sales_budget), 0); a += S.actuals.filter(x => x.rep_id === r && String(x.period).slice(0, 10) === period && x.product_id === p.id).reduce((s, x) => s + num(x.sales_actual), 0); }); return { id:p.id, name:p.name, bud:b, act:a }; }).filter(x => x.bud > 0 || x.act > 0);
+    const mixList = prodRows.filter(x => x.bud > 0).map(x => Math.min(1, x.act / x.bud)); const mix = mixList.length ? mixList.reduce((a, b) => a + b, 0) / mixList.length : null;
+    const K = (k, l, actual, target, fmt, score) => ({ k, l, actual, target, fmt, ratio:target > 0 ? actual / target : null });
+    M.kpis = [
+      K('sales', 'Monthly sales', act, bud, 'money'), K('gp', 'Gross profit %', gpA == null ? 0 : gpA, gpT, 'pct1'), K('visits', 'Customer visits', visits, visitsT, 'n'),
+      K('avis', 'A-account visits', aDone, aReq, 'n'), K('prospects', 'New prospects identified', prospects, prospectsT, 'n'), K('pvis', 'Prospect visits', pVisits, pVisitsT, 'n'),
+      K('quotes', 'Quotations submitted', quotes, quotesT, 'n'), K('opps', 'Opportunities created', oppsNew, oppsT, 'n'), K('plans', 'Call plans submitted on time', plansOK, plansReq, 'n'),
+      K('crm', 'Days with CRM updated', crmOK, crmReq, 'n'), K('newacc', 'New accounts opened', newAcc, newAccT, 'n') ];
+    const mn = (...a) => { const v = a.filter(x => x != null); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; };
+    const cp = x => x == null ? null : Math.min(1, x);
+    M.comp = { sales:cp(rat(act, bud)), gp:act > 0 ? cp(rat(gpA, gpT)) : null,
+      coverage:mn(cp(rat(visits, visitsT)), aReq ? aDone / aReq : null), nbd:mn(cp(rat(prospects, prospectsT)), cp(rat(pVisits, pVisitsT)), cp(rat(newAcc, newAccT))),
+      mix, crm:mn(plansReq ? plansOK / plansReq : null, crmReq ? crmOK / crmReq : null) };
+    const w = c.weights; let ws = 0, tot = 0; Object.keys(M.comp).forEach(k => { if(M.comp[k] != null){ ws += w[k]; tot += w[k] * M.comp[k]; } });
+    M.score = ws ? tot / ws : null; M.prod = prodRows; M.act = act; M.bud = bud; M.gpA = gpA; M.gpT = gpT; M.plannedDone = plannedDone; M.plannedN = plannedSoFar.length; M.wonN = wonN; M.newBizVal = newBizVal;
+    return M;
+  }
+  const fmtV = (k, v) => k.fmt === 'money' ? money(v) : k.fmt === 'pct1' ? (Math.round(v * 10) / 10) + '%' : String(Math.round(v));
+  const dot = r => `<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${stCol(r)};vertical-align:middle;"></span>`;
+  function spark(repIds, key){
+    const pts = []; for(let i = 5; i >= 0; i--){ const m = metrics(repIds, addMonths(S.period, -i)), k = m.kpis.find(x => x.k === key); pts.push(k && k.ratio != null ? Math.min(1.3, k.ratio) : null); }
+    const ok = pts.filter(x => x != null); if(ok.length < 2) return '<span style="color:#bbb;">—</span>';
+    const xs = pts.map((p, i) => p == null ? null : [i * 14 + 2, 22 - p / 1.3 * 20]).filter(Boolean);
+    return `<svg width="80" height="24" viewBox="0 0 80 24"><polyline fill="none" stroke="#2E5AA8" stroke-width="1.6" points="${xs.map(p => p.join(',')).join(' ')}"/><circle cx="${xs[xs.length - 1][0]}" cy="${xs[xs.length - 1][1]}" r="2.4" fill="#2E5AA8"/></svg>`;
+  }
+
+  /* ---------- styles and shell ---------- */
+  const css = document.createElement('style');
+  css.textContent = '#sm-root{font-family:Arial,Helvetica,sans-serif;color:#1B2A41}#sm-root .sm-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}#sm-root .sm-tab{border:2px solid #2E5AA8;background:#fff;color:#2E5AA8;font-weight:700;font-size:13px;padding:7px 15px;border-radius:999px;cursor:pointer}#sm-root .sm-tab.on{background:#2E5AA8;color:#fff}'
+    + '#sm-root .sm-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 12px}#sm-root .sm-card{background:#fff;border:1px solid #DDD;border-radius:12px;padding:16px;margin-bottom:14px}#sm-root .sm-card h3{margin:0 0 10px;font-size:15px}#sm-root .sm-grid{display:grid;gap:14px}#sm-root .sm-g2{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)}@media(max-width:900px){#sm-root .sm-g2{grid-template-columns:1fr}}'
+    + '#sm-root table{width:100%;border-collapse:collapse;font-size:13px}#sm-root th{text-align:left;color:#7A8499;font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:6px 8px;border-bottom:2px solid #E4E8EF}#sm-root td{padding:7px 8px;border-bottom:1px solid #EEF1F5;vertical-align:middle}'
+    + '#sm-root .sm-tile{flex:1;min-width:150px;background:#F4F7FB;border-radius:12px;padding:12px 14px}#sm-root .sm-tile b{display:block;font-size:26px}#sm-root .sm-tile span{font-size:11px;color:#7A8499;text-transform:uppercase;letter-spacing:.05em}'
+    + '#sm-root .sm-bw{background:#E9EDF3;border-radius:5px;height:9px;position:relative;min-width:90px}#sm-root .sm-bw i{position:absolute;left:0;top:0;bottom:0;border-radius:5px;display:block}'
+    + '#sm-root .sm-pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;color:#fff}#sm-root .sm-day{border:1px solid #DDD;border-radius:10px;padding:10px;background:#fff;min-width:0}#sm-root .sm-call{border-left:4px solid #2E5AA8;background:#F7F9FC;border-radius:6px;padding:6px 8px;margin:6px 0;font-size:12.5px}#sm-root .sm-call.done{border-color:#1B8E3E}#sm-root .sm-call.not_done{border-color:#D50000;background:#FDF3F3}'
+    + '#sm-root .sm-donut{width:92px;height:92px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;position:relative}#sm-root .sm-donut:before{content:"";position:absolute;inset:11px;background:#fff;border-radius:50%}#sm-root .sm-donut span{position:relative}#sm-root input,#sm-root select,#sm-root textarea{font:inherit}'
+    + '@media print{#sm-root .sm-tabs,#sm-root .sm-bar{display:none}}';
+  document.head.appendChild(css);
+
+  const root = () => document.getElementById('sm-root');
+  function shell(){
+    const r = root(); if(!r) return;
+    if(off()){ r.innerHTML = '<div class="sm-card">Sales Management is not switched on for this organisation.</div>'; return; }
+    if(S.broken){ r.innerHTML = `<div class="sm-card"><h3>Sales Management needs its database tables</h3><p style="font-size:13px;">The tables could not be read (${E(S.broken)}). Run <b>qashe-watchman-schema-r71-sales-management.sql</b> in the Supabase SQL editor, then reopen this page.</p></div>`; return; }
+    if(!S.loaded){ r.innerHTML = '<p style="color:#777;">Loading sales data…</p>'; return; }
+    const me = myP(), mgr = isMgr();
+    if(!mgr && !(me && reps().includes(me.id))){ r.innerHTML = '<div class="sm-card"><h3>You are not set up as a sales representative</h3><p style="font-size:13px;">Ask your sales manager to add you under Sales Management, Settings. You will then see your own week, accounts, pipeline and scorecard.</p></div>'; return; }
+    const tabs = [['dash','Dashboard'],['week','My Week'],['acc','Accounts'],['pipe','Pipeline'],['bud','Budgets and Results'],['rep','Weekly Report'],['acct','Accountability']].concat(mgr ? [['set','Settings']] : []);
+    const repOpts = mgr ? `<label style="font-size:12px;font-weight:700;color:#1F3F73;text-transform:uppercase;">Representative</label><select onchange="smSet('rep',this.value)" style="padding:7px 12px;border:2px solid #2E5AA8;border-radius:999px;font-weight:700;background:#EAF1FB;color:#1F3F73;"><option value="all" ${S.rep === 'all' ? 'selected' : ''}>All representatives</option>${reps().map(id => `<option value="${id}" ${S.rep === id ? 'selected' : ''}>${E(pName(id))}</option>`).join('')}</select>` : `<b style="color:#1F3F73;">${E(wmFirstName() || (me && me.full_name) || '')}</b>`;
+    const per = ['dash','bud','acct'].includes(S.tab) ? `<button class="btn-small" onclick="smMonth(-1)">&larr;</button><b style="min-width:130px;text-align:center;">${E(mLabel(S.period))}</b><button class="btn-small" onclick="smMonth(1)">&rarr;</button>` : '';
+    r.innerHTML = `<div class="sm-bar">${repOpts}<span style="flex:1"></span>${per}</div><div class="sm-tabs">${tabs.map(([k, l]) => `<button class="sm-tab ${S.tab === k ? 'on' : ''}" onclick="smSet('tab','${k}')">${l}</button>`).join('')}</div><div id="sm-body"></div>`;
+    const b = document.getElementById('sm-body'); const f = { dash:vDash, week:vWeek, acc:vAcc, pipe:vPipe, bud:vBud, rep:vRep, acct:vAcct, set:vSet }[S.tab] || vDash; b.innerHTML = f();
+  }
+  window.smSet = (k, v) => { S[k] = v; shell(); };
+  window.smMonth = n => { S.period = addMonths(S.period, n); shell(); };
+  window.smInit = async function(){ if(off()){ shell(); return; } shell(); if(!S.loaded){ await loadAll(); } shell(); };
+  const noRep = () => '<div class="sm-card"><h3>Choose a representative</h3><p style="font-size:13px;">Pick one representative at the top to work on their week.</p></div>';
+
+  /* ---------- dashboard ---------- */
+  const barRow = k => { const r = k.ratio; const w = r == null ? 0 : Math.min(130, r * 100); return `<div class="sm-bw"><i style="width:${Math.min(100, w) * 0.77}%;background:${stCol(r)};"></i><i style="left:77%;width:2px;background:#1B2A41;"></i></div>`; };
+  function vDash(){
+    const rs = scopeReps(); if(!rs.length) return '<div class="sm-card">No sales representatives have been set up yet. Open Settings and tick the people who are sales representatives.</div>';
+    const M = metrics(rs, S.period); const sales = M.kpis[0], aKpi = M.kpis[3];
+    const donut = (r, col) => `<div class="sm-donut" style="background:conic-gradient(${col} ${Math.min(100, (r || 0) * 100)}%, #E9EDF3 0)"><span>${P(r)}</span></div>`;
+    const open = S.opps.filter(o => rs.includes(o.rep_id) && !['won','lost'].includes(o.stage)); const openVal = open.reduce((s, o) => s + num(o.value), 0);
+    const tiles = `<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px;"><div class="sm-card" style="flex:1;min-width:200px;display:flex;gap:14px;align-items:center;margin:0;">${donut(M.score, stCol(M.score))}<div><b>Scorecard</b><div style="font-size:12px;color:#7A8499;">Weighted result for ${E(mLabel(S.period))}</div></div></div>
+      <div class="sm-card" style="flex:1;min-width:200px;display:flex;gap:14px;align-items:center;margin:0;">${donut(sales.ratio, stCol(sales.ratio))}<div><b>Sales against budget</b><div style="font-size:12px;color:#7A8499;">${money(sales.actual)} of ${money(sales.target)}</div></div></div>
+      <div class="sm-card" style="flex:1;min-width:200px;display:flex;gap:14px;align-items:center;margin:0;">${donut(aKpi.ratio, stCol(aKpi.ratio))}<div><b>A-accounts visited</b><div style="font-size:12px;color:#7A8499;">${aKpi.actual} of ${aKpi.target} required visits</div></div></div>
+      <div class="sm-card" style="flex:1;min-width:200px;margin:0;"><span style="font-size:11px;color:#7A8499;text-transform:uppercase;">Open pipeline</span><div style="font-size:26px;font-weight:700;">${money(openVal)}</div><div style="font-size:12px;color:#7A8499;">${open.length} opportunities</div></div></div>`;
+    const tbl = `<div class="sm-card"><h3>Results and activity against target</h3><table><tr><th>Trend</th><th>Measure</th><th style="width:26%">Actual against target</th><th>Actual</th><th>Target</th><th>%</th><th></th></tr>${M.kpis.map(k => `<tr><td>${spark(rs, k.k)}</td><td><b>${k.l}</b></td><td>${barRow(k)}</td><td>${fmtV(k, k.actual)}</td><td>${k.target ? fmtV(k, k.target) : '—'}</td><td>${P(k.ratio)}</td><td>${dot(k.ratio)}</td></tr>`).join('')}</table>
+      <p style="font-size:11.5px;color:#7A8499;margin:8px 0 0;">The dark mark is the target. Green is 90% or more, orange 70 to 89%, red below 70%. Activity measures are the things a representative controls every day.</p></div>`;
+    const maxP = Math.max(1, ...M.prod.map(p => Math.max(p.bud, p.act)));
+    const prod = `<div class="sm-card"><h3>Product lines: budget and actual</h3>${M.prod.length ? M.prod.map(p => `<div style="margin:8px 0;"><div style="display:flex;justify-content:space-between;font-size:12.5px;"><b>${E(p.name)}</b><span>${money(p.act)} / ${money(p.bud)} · ${P(rat(p.act, p.bud))}</span></div><div class="sm-bw" style="height:8px;margin-top:3px;"><i style="width:${p.bud / maxP * 100}%;background:#C9D3E3;"></i></div><div class="sm-bw" style="height:8px;margin-top:2px;"><i style="width:${p.act / maxP * 100}%;background:${stCol(rat(p.act, p.bud))};"></i></div></div>`).join('') : '<p style="color:#777;font-size:13px;">No product budgets or results are entered for this month yet. Use Budgets and Results.</p>'}</div>`;
+    const accts = S.accounts.filter(a => rs.includes(a.rep_id) && a.status !== 'lost').sort((a, b) => num(b.monthly_value) - num(a.monthly_value)).slice(0, 10), maxA = Math.max(1, ...accts.map(a => num(a.monthly_value)));
+    const top = `<div class="sm-card"><h3>Top 10 customers by monthly value</h3>${accts.length ? accts.map(a => `<div style="display:flex;gap:8px;align-items:center;font-size:12.5px;margin:5px 0;"><span style="width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${E(a.customer_name)}</span><div class="sm-bw" style="flex:1;"><i style="width:${num(a.monthly_value) / maxA * 100}%;background:#2E5AA8;"></i></div><span style="width:80px;text-align:right;">${money(a.monthly_value)}</span></div>`).join('') : '<p style="color:#777;font-size:13px;">No accounts yet.</p>'}</div>`;
+    const fun = `<div class="sm-card"><h3>Pipeline by stage</h3>${STAGES.filter(s => s[0] !== 'lost').map(([k, l]) => { const o = S.opps.filter(x => rs.includes(x.rep_id) && x.stage === k); return `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #EEF1F5;font-size:13px;"><span>${l}</span><b>${o.length} · ${money(o.reduce((s, x) => s + num(x.value), 0))}</b></div>`; }).join('')}</div>`;
+    let league = '';
+    if(isMgr() && S.rep === 'all' && rs.length > 1) league = `<div class="sm-card"><h3>Representatives this month</h3><table><tr><th>Representative</th><th>Scorecard</th><th>Sales against budget</th><th>Coverage</th><th>New business</th><th>Reporting</th></tr>${rs.map(r => { const m = metrics([r], S.period); return `<tr><td><b>${E(pName(r))}</b></td><td>${dot(m.score)} ${P(m.score)}</td><td>${dot(m.comp.sales)} ${P(m.comp.sales)}</td><td>${dot(m.comp.coverage)} ${P(m.comp.coverage)}</td><td>${dot(m.comp.nbd)} ${P(m.comp.nbd)}</td><td>${dot(m.comp.crm)} ${P(m.comp.crm)}</td></tr>`; }).join('')}</table></div>`;
+    return `<div class="sm-card" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;"><div><h3 style="margin:0;">Sales dashboard: ${S.rep === 'all' && isMgr() ? 'all representatives' : E(pName(rs[0]))}</h3><div style="font-size:12px;color:#7A8499;">Last updated ${E(new Date().toLocaleString('en-GB'))}</div></div><button class="btn-small" onclick="window.print()">Print</button></div>${tiles}${league}<div class="sm-grid sm-g2">${tbl}<div>${prod}${fun}</div></div>${top}`;
+  }
+
+  /* ---------- my week ---------- */
+  const callHtml = c => { const a = S.accounts.find(x => x.id === c.account_id); const nm = c.customer_name || acctName(a) || '—'; const k = (KINDS.find(x => x[0] === c.kind) || [0, c.kind])[1];
+    return `<div class="sm-call ${c.status}"><div style="display:flex;justify-content:space-between;gap:6px;"><b>${E(c.time_from || '')}${c.time_to ? '–' + E(c.time_to) : ''} ${E(nm)}</b><span style="color:#7A8499;">${E(k)}</span></div><div>${E(c.purpose || '')}</div>${c.status === 'not_done' ? `<div style="color:#B21616;">Not done: ${E(c.reason || '')}${c.note ? ' · ' + E(c.note) : ''}</div>` : c.status === 'done' && c.note ? `<div style="color:#44546E;">${E(c.note)}</div>` : ''}
+      <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;"><button class="btn-small" onclick="smCallOutcome('${c.id}','done')">Done</button><button class="btn-small" onclick="smCallOutcome('${c.id}','not_done')">Not done</button><button class="btn-small" onclick="smCallEdit('${c.id}')">Edit</button><button class="btn-small" onclick="smCallDel('${c.id}')">Remove</button></div></div>`; };
+  function vWeek(){
+    const rep = oneRep(); if(!rep) return noRep();
+    const days = [0, 1, 2, 3, 4].map(i => addDays(S.week, i)), cs = S.calls.filter(c => c.rep_id === rep && c.day >= days[0] && c.day <= days[4]), plan = S.plans.find(p => p.rep_id === rep && p.week_start === S.week);
+    const tgt = tg(rep), mine = rep === (myP() && myP().id) || isMgr();
+    const vis = d => cs.filter(c => c.day === d && ['visit','prospect'].includes(c.kind));
+    const varTbl = `<table><tr><th>Day</th><th>Planned visits</th><th>Actual visits</th><th>Variance</th></tr>${days.map(d => { const p = vis(d).filter(c => c.planned).length, a = vis(d).filter(c => c.status === 'done').length; return `<tr><td>${dLabel(d)}</td><td>${p}</td><td>${a}</td><td style="color:${a - p < 0 ? '#D50000' : '#1B8E3E'};font-weight:700;">${a - p}</td></tr>`; }).join('')}</table>`;
+    const nextMonday = addDays(S.week, 0), deadlineNote = `Plan for this week should be submitted by Friday afternoon the week before.`;
+    return `<div class="sm-bar"><button class="btn-small" onclick="smWeek(-1)">&larr; Previous week</button><b>Week of ${E(dLabel(S.week))}</b><button class="btn-small" onclick="smWeek(1)">Next week &rarr;</button><button class="btn-small" onclick="smWeek(0)">This week</button><span style="flex:1"></span>
+      <span class="sm-pill" style="background:${plan && plan.status === 'submitted' ? '#1B8E3E' : '#EF6C00'};">${plan && plan.status === 'submitted' ? 'Plan submitted ' + E(fmtDate(String(plan.submitted_at).slice(0, 10))) : 'Plan not submitted'}</span>
+      ${mine ? `<button class="btn-small" onclick="smSuggest()">Suggest my week</button><button class="btn-small primary" onclick="smSubmitPlan()">Submit plan</button>` : ''}</div>
+      <p style="font-size:12px;color:#7A8499;margin:0 0 10px;">Target ${tgt.visitsWeek} customer visits a week: about ${Math.ceil(tgt.visitsWeek / 5)} a day. ${deadlineNote} Mark every call Done or Not done with the real reason, so the report tells the truth.</p>
+      <div class="sm-grid" style="grid-template-columns:repeat(auto-fit,minmax(210px,1fr));">${days.map(d => `<div class="sm-day"><div style="display:flex;justify-content:space-between;align-items:center;"><b>${dLabel(d)}</b><button class="btn-small" onclick="smCallNew('${d}')">+ Call</button></div>${cs.filter(c => c.day === d).sort((a, b) => String(a.time_from).localeCompare(String(b.time_from))).map(callHtml).join('') || '<p style="color:#aaa;font-size:12px;">Nothing planned.</p>'}</div>`).join('')}</div>
+      <div class="sm-card" style="margin-top:14px;"><h3>Planned against actual visits</h3>${varTbl}</div>`;
+  }
+  window.smWeek = n => { S.week = n === 0 ? monday(T()) : addDays(S.week, n * 7); shell(); };
+  const acctOpts = (rep, sel) => `<option value="">Prospect or other (type the name)</option>` + S.accounts.filter(a => a.rep_id === rep && a.status !== 'lost').sort((a, b) => a.customer_name.localeCompare(b.customer_name)).map(a => `<option value="${a.id}" ${a.id === sel ? 'selected' : ''}>${E(a.tier)} · ${E(a.customer_name)}</option>`).join('');
+  window.smCallNew = (day, id) => {
+    const rep = oneRep(); if(!rep) return; const c = id ? S.calls.find(x => x.id === id) : { day, kind:'visit', time_from:'08:00', time_to:'09:00', planned:true };
+    kpiOverlay(`<h3 style="font-family:Arial,Helvetica,sans-serif;margin:0 0 10px;">${id ? 'Edit call' : 'Plan a call'} · ${E(dLabel(c.day))}</h3><div class="form-grid">
+      <div class="field span3"><label>Customer</label><select id="sm-c-acc" onchange="smPick()">${acctOpts(rep, c.account_id)}</select></div>
+      <div class="field span3"><label>Name (prospects and other)</label><input id="sm-c-name" value="${E(c.customer_name || '')}"></div>
+      <div class="field"><label>Type</label><select id="sm-c-kind">${KINDS.map(([k, l]) => `<option value="${k}" ${c.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div class="field"><label>From</label><input id="sm-c-from" type="time" value="${E(c.time_from || '')}"></div><div class="field"><label>To</label><input id="sm-c-to" type="time" value="${E(c.time_to || '')}"></div>
+      <div class="field span3"><label>Purpose</label><input id="sm-c-pur" value="${E(c.purpose || '')}" placeholder="e.g. Quote follow-up, product presentation, site assessment"></div></div>
+      <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" onclick="smCallSave('${c.day}','${id || ''}')">Save</button></div>`);
+  };
+  window.smPick = () => { const a = S.accounts.find(x => x.id === document.getElementById('sm-c-acc').value); if(a) document.getElementById('sm-c-name').value = a.customer_name; };
+  window.smCallEdit = id => { const c = S.calls.find(x => x.id === id); if(c) smCallNew(c.day, id); };
+  window.smCallSave = async (day, id) => {
+    const rep = oneRep(), g = k => document.getElementById('sm-c-' + k).value, plan = await ensurePlan(rep, monday(day)); if(!plan) return;
+    const row = { rep_id:rep, plan_id:plan.id, account_id:g('acc') || null, customer_name:g('name').trim() || null, day, time_from:g('from') || null, time_to:g('to') || null, kind:g('kind'), purpose:g('pur').trim() || null };
+    if(!row.account_id && !row.customer_name && row.kind !== 'admin'){ toast('Choose the customer or type a name.', 'error'); return; }
+    if(id) row.id = id; else { row.planned = day >= T() || true; row.status = 'planned'; }
+    if(await save('calls', row)){ kpiCloseOverlay(); shell(); }
+  };
+  window.smCallDel = async id => { if(confirm('Remove this call from the plan?') && await del('calls', id)) shell(); };
+  window.smCallOutcome = (id, st) => {
+    const c = S.calls.find(x => x.id === id); if(!c) return;
+    kpiOverlay(`<h3 style="font-family:Arial,Helvetica,sans-serif;margin:0 0 10px;">${st === 'done' ? 'Call done' : 'Call not done'}</h3><div class="form-grid">${st === 'not_done' ? `<div class="field span3"><label>Why? Be specific and honest</label><select id="sm-o-r">${REASONS.map(r => `<option>${r}</option>`).join('')}</select></div>` : ''}
+      <div class="field span3"><label>${st === 'done' ? 'Outcome, next step, anything the manager should know' : 'What will you do to recover this call?'}</label><textarea id="sm-o-n" style="min-height:80px;">${E(c.note || '')}</textarea></div></div>
+      <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" onclick="smOutcomeSave('${id}','${st}')">Save</button></div>`);
+  };
+  window.smOutcomeSave = async (id, st) => { const r = document.getElementById('sm-o-r'); if(await save('calls', { id, status:st, reason:r ? r.value : null, note:document.getElementById('sm-o-n').value.trim() || null, logged_at:new Date().toISOString() })){ kpiCloseOverlay(); shell(); } };
+  window.smSubmitPlan = async () => {
+    const rep = oneRep(); const plan = await ensurePlan(rep, S.week); if(!plan) return;
+    const n = S.calls.filter(c => c.rep_id === rep && c.day >= S.week && c.day <= addDays(S.week, 4) && ['visit','prospect'].includes(c.kind)).length;
+    if(!n){ toast('Plan at least one customer visit first.', 'error'); return; }
+    if(await save('plans', { id:plan.id, status:'submitted', submitted_at:new Date().toISOString() })){ toast('Plan submitted: ' + n + ' visits for the week.', 'success'); shell(); }
+  };
+  window.smSuggest = async () => {
+    const rep = oneRep(), c = tg(rep), today = T(); const plan = await ensurePlan(rep, S.week); if(!plan) return;
+    const days = [0, 1, 2, 3, 4].map(i => addDays(S.week, i)), have = new Set(S.calls.filter(x => x.rep_id === rep && x.day >= days[0] && x.day <= days[4]).map(x => x.account_id).filter(Boolean));
+    const ref = S.week > today ? S.week : today;
+    const due = S.accounts.filter(a => a.rep_id === rep && ['active','dormant','prospect'].includes(a.status) && !have.has(a.id)).map(a => { const lv = lastVisit(a.id), ds = lv ? Math.round((new Date(ref) - new Date(lv)) / 864e5) : 9999, f = c.freq[a.tier] || c.freq.C; return { a, score:ds / f }; }).filter(x => x.score >= 0.7).sort((x, y) => y.score - x.score || String(x.a.tier).localeCompare(String(y.a.tier)));
+    const cap = Math.ceil(c.visitsWeek / 5); let made = 0;
+    const slotUse = {}; S.calls.filter(x => x.rep_id === rep && x.day >= days[0] && x.day <= days[4]).forEach(x => { slotUse[x.day] = (slotUse[x.day] || 0) + 1; });
+    for(const x of due){ if(made >= c.visitsWeek) break; const d = days.find(d => (slotUse[d] || 0) < Math.min(cap, SLOTS.length)); if(!d) break; const s = SLOTS[slotUse[d] || 0];
+      await save('calls', { rep_id:rep, plan_id:plan.id, account_id:x.a.id, customer_name:x.a.customer_name, day:d, time_from:s[0], time_to:s[1], kind:x.a.tier === 'P' || x.a.status === 'prospect' ? 'prospect' : 'visit', purpose:x.a.tier + ' account, ' + (lastVisit(x.a.id) ? 'last visit ' + fmtDate(lastVisit(x.a.id)) : 'not yet visited'), planned:true, status:'planned' }); slotUse[d] = (slotUse[d] || 0) + 1; made++; }
+    toast(made ? made + ' calls suggested from the accounts that are due. Adjust them as needed.' : 'Every account is up to date for this week.', 'success'); shell();
+  };
+
+  /* ---------- accounts ---------- */
+  function accStatus(a){ const c = cfg(), lv = lastVisit(a.id), f = c.freq[a.tier] || c.freq.C, ds = lv ? Math.round((new Date(T()) - new Date(lv)) / 864e5) : null; const r = ds == null ? 9 : ds / f; return { lv, ds, f, r, label:r >= 1 ? 'Overdue' : r >= 0.7 ? 'Due' : 'OK', col:r >= 1 ? '#D50000' : r >= 0.7 ? '#EF6C00' : '#1B8E3E' }; }
+  function vAcc(){
+    const rs = scopeReps(); const list = S.accounts.filter(a => rs.includes(a.rep_id) || (isMgr() && S.rep === 'all' && !a.rep_id)).sort((a, b) => 'ABCP'.indexOf(a.tier) - 'ABCP'.indexOf(b.tier) || num(b.monthly_value) - num(a.monthly_value));
+    const total = list.reduce((s, a) => s + num(a.monthly_value), 0), c = cfg();
+    const sum = ['A','B','C','P'].map(t => { const l = list.filter(a => a.tier === t); return `<div class="sm-tile"><span>${t === 'P' ? 'Prospects' : t + ' accounts'}</span><b>${l.length}</b><span style="text-transform:none;">${t === 'P' ? 'Visit every ' + c.freq.P + ' days' : P(rat(l.reduce((s, a) => s + num(a.monthly_value), 0), total)) + ' of sales · every ' + c.freq[t] + ' days'}</span></div>`; }).join('');
+    return `<div class="sm-bar"><button class="btn-primary" onclick="smAccEdit()">+ Add account</button><button class="btn-small" onclick="smClassify()">Classify A / B / C from values</button><span style="font-size:12px;color:#7A8499;">A is the top ${c.tierShare.A}% of customers, B the next ${c.tierShare.B}%, C the rest. Customers with no sales yet are prospects.</span></div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">${sum}</div>
+      <div class="sm-card" style="padding:0;overflow:auto;"><table><tr><th>Tier</th><th>Customer</th>${isMgr() ? '<th>Representative</th>' : ''}<th>Monthly value</th><th>Share</th><th>Last visit</th><th>Visit status</th><th>Open pipeline</th><th></th></tr>${list.map(a => { const s = accStatus(a), op = S.opps.filter(o => o.account_id === a.id && !['won','lost'].includes(o.stage)).reduce((x, o) => x + num(o.value), 0); return `<tr><td><b style="color:#2E5AA8;">${E(a.tier)}</b></td><td><b>${E(a.customer_name)}</b>${a.status !== 'active' ? ` <span style="color:#999;">(${E(a.status)})</span>` : ''}</td>${isMgr() ? `<td>${E(pName(a.rep_id))}</td>` : ''}<td>${money(a.monthly_value)}</td><td>${P(rat(num(a.monthly_value), total))}</td><td>${s.lv ? fmtDate(s.lv) + ' · ' + s.ds + ' days' : 'Never'}</td><td><span class="sm-pill" style="background:${s.col};">${s.label}</span></td><td>${op ? money(op) : '—'}</td><td style="text-align:right;"><button class="btn-small" onclick="smAccEdit('${a.id}')">Edit</button></td></tr>`; }).join('') || '<tr><td colspan="9" style="color:#777;padding:14px;">No accounts yet. Add the customers each representative looks after.</td></tr>'}</table></div>`;
+  }
+  window.smAccEdit = id => {
+    const a = id ? S.accounts.find(x => x.id === id) : { tier:'C', status:'active', monthly_value:0, rep_id:oneRep() || (myP() && myP().id) };
+    kpiOverlay(`<h3 style="font-family:Arial,Helvetica,sans-serif;margin:0 0 10px;">${id ? 'Edit account' : 'Add account'}</h3><div class="form-grid">
+      <div class="field span3"><label>From the Customers register (optional)</label><select id="sm-a-cust" onchange="smAccPick()"><option value="">Not in the register</option>${arr(STATE.customers).map(c => `<option value="${c.id}" data-n="${E(c.name || c.company_name || c.customer_name || '')}" ${c.id === a.customer_id ? 'selected' : ''}>${E(c.name || c.company_name || c.customer_name || c.id)}</option>`).join('')}</select></div>
+      <div class="field span3"><label>Customer name</label><input id="sm-a-name" value="${E(a.customer_name || '')}"></div>
+      <div class="field"><label>Representative</label><select id="sm-a-rep">${reps().map(r => `<option value="${r}" ${r === a.rep_id ? 'selected' : ''}>${E(pName(r))}</option>`).join('')}</select></div>
+      <div class="field"><label>Tier</label><select id="sm-a-tier">${[['A','A (weekly)'],['B','B (monthly)'],['C','C (every 6 to 8 weeks)'],['P','Prospect']].map(([k, l]) => `<option value="${k}" ${a.tier === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div class="field"><label>Status</label><select id="sm-a-st">${['active','dormant','prospect','lost'].map(s => `<option ${a.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
+      <div class="field"><label>Average monthly sales (Rand)</label><input id="sm-a-val" type="number" min="0" value="${num(a.monthly_value)}"></div>
+      <div class="field"><label>Account opened</label><input id="sm-a-open" type="date" value="${E(a.opened_date || '')}"></div>
+      <div class="field span3"><label>Notes</label><textarea id="sm-a-notes">${E(a.notes || '')}</textarea></div></div>
+      <div class="form-actions">${id ? `<button class="btn-small" onclick="smAccDel('${id}')">Delete</button>` : ''}<button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" onclick="smAccSave('${id || ''}')">Save</button></div>`);
+  };
+  window.smAccPick = () => { const s = document.getElementById('sm-a-cust'), o = s.options[s.selectedIndex]; if(o && o.dataset.n) document.getElementById('sm-a-name').value = o.dataset.n; };
+  window.smAccSave = async id => {
+    const g = k => document.getElementById('sm-a-' + k).value; if(!g('name').trim()){ toast('Enter the customer name.', 'error'); return; }
+    const row = { customer_id:g('cust') || null, customer_name:g('name').trim(), rep_id:g('rep') || null, tier:g('tier'), status:g('st'), monthly_value:num(g('val')), opened_date:g('open') || null, notes:g('notes').trim() || null };
+    if(id) row.id = id; else row.added_date = T();
+    if(await save('accounts', row)){ kpiCloseOverlay(); shell(); }
+  };
+  window.smAccDel = async id => { if(confirm('Delete this account? Calls already logged keep their customer name.') && await del('accounts', id)){ kpiCloseOverlay(); shell(); } };
+  window.smClassify = async () => {
+    if(!isMgr() && !confirm('Reclassify your accounts from their monthly values?')) return;
+    const c = cfg(), rs = scopeReps(); let n = 0;
+    for(const r of rs){ const l = S.accounts.filter(a => a.rep_id === r && ['active','dormant'].includes(a.status) && num(a.monthly_value) > 0).sort((a, b) => num(b.monthly_value) - num(a.monthly_value)), N = l.length;
+      for(let i = 0; i < N; i++){ const t = i < Math.ceil(N * c.tierShare.A / 100) ? 'A' : i < Math.ceil(N * (c.tierShare.A + c.tierShare.B) / 100) ? 'B' : 'C'; if(l[i].tier !== t){ await save('accounts', { id:l[i].id, tier:t }); n++; } } }
+    toast(n + ' accounts reclassified.', 'success'); shell();
+  };
+
+  /* ---------- pipeline ---------- */
+  function vPipe(){
+    const rs = scopeReps(), l = S.opps.filter(o => rs.includes(o.rep_id));
+    const col = ([k, lab]) => { const o = l.filter(x => x.stage === k).sort((a, b) => num(b.value) - num(a.value)); return `<div class="sm-day" style="background:#F7F9FC;"><div style="display:flex;justify-content:space-between;"><b>${lab}</b><span style="color:#7A8499;font-size:12px;">${o.length} · ${money(o.reduce((s, x) => s + num(x.value), 0))}</span></div>${o.map(x => `<div class="sm-call" style="cursor:pointer;border-color:${x.is_new ? '#EF6C00' : '#2E5AA8'};" onclick="smOppEdit('${x.id}')"><b>${E(x.title)}</b><div>${E(x.customer_name || '')} · ${money(x.value)}</div><div style="color:#7A8499;">${E(prodName(x.product_id))}${x.is_new ? ' · new business' : ''}${isMgr() ? ' · ' + E(pName(x.rep_id)) : ''}</div></div>`).join('')}</div>`; };
+    return `<div class="sm-bar"><button class="btn-primary" onclick="smOppEdit()">+ New opportunity</button><span style="font-size:12px;color:#7A8499;">Orange edge means new business. Moving a card to Quoted records the quotation date; Won and Lost record the close date.</span></div><div class="sm-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));">${STAGES.map(col).join('')}</div>`;
+  }
+  window.smOppEdit = id => {
+    const rep = oneRep() || (id && S.opps.find(x => x.id === id).rep_id) || (myP() && myP().id); if(!rep){ toast('Choose a representative first.', 'error'); return; }
+    const o = id ? S.opps.find(x => x.id === id) : { stage:'lead', value:0, rep_id:rep };
+    kpiOverlay(`<h3 style="font-family:Arial,Helvetica,sans-serif;margin:0 0 10px;">${id ? 'Edit opportunity' : 'New opportunity'} · ${E(pName(o.rep_id))}</h3><div class="form-grid">
+      <div class="field span3"><label>What is the opportunity</label><input id="sm-o-title" value="${E(o.title || '')}" placeholder="e.g. Seal upgrade, two pumps"></div>
+      <div class="field span3"><label>Customer</label><select id="sm-o-acc" onchange="smOppPick()">${acctOpts(o.rep_id, o.account_id)}</select></div>
+      <div class="field span3"><label>Customer name (prospects and other)</label><input id="sm-o-name" value="${E(o.customer_name || '')}"></div>
+      <div class="field"><label>Product line</label><select id="sm-o-prod"><option value="">—</option>${S.products.map(p => `<option value="${p.id}" ${p.id === o.product_id ? 'selected' : ''}>${E(p.name)}</option>`).join('')}</select></div>
+      <div class="field"><label>Value (Rand)</label><input id="sm-o-val" type="number" min="0" value="${num(o.value)}"></div>
+      <div class="field"><label>Expected GP %</label><input id="sm-o-gp" type="number" min="0" max="100" value="${o.gp_pct == null ? '' : o.gp_pct}"></div>
+      <div class="field"><label>Stage</label><select id="sm-o-stage">${STAGES.map(([k, l]) => `<option value="${k}" ${o.stage === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div class="field"><label>Expected close</label><input id="sm-o-exp" type="date" value="${E(o.expected_close || '')}"></div>
+      <div class="field"><label>Quote number</label><input id="sm-o-qn" value="${E(o.quote_no || '')}"></div>
+      <div class="field"><label>New business?</label><select id="sm-o-new"><option value="no">No, existing customer work</option><option value="yes" ${o.is_new ? 'selected' : ''}>Yes, new customer or new product</option></select></div>
+      <div class="field span3"><label>Reason if lost, or notes</label><textarea id="sm-o-notes">${E(o.lost_reason || o.notes || '')}</textarea></div></div>
+      <div class="form-actions">${id ? `<button class="btn-small" onclick="smOppDel('${id}')">Delete</button>` : ''}<button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" onclick="smOppSave('${id || ''}','${o.rep_id}')">Save</button></div>`);
+  };
+  window.smOppPick = () => { const a = S.accounts.find(x => x.id === document.getElementById('sm-o-acc').value); if(a) document.getElementById('sm-o-name').value = a.customer_name; };
+  window.smOppSave = async (id, rep) => {
+    const g = k => document.getElementById('sm-o-' + k).value; if(!g('title').trim()){ toast('Describe the opportunity.', 'error'); return; }
+    const old = id ? S.opps.find(x => x.id === id) : null, st = g('stage'), t = T();
+    const row = { rep_id:rep, account_id:g('acc') || null, customer_name:g('name').trim() || null, title:g('title').trim(), product_id:g('prod') || null, value:num(g('val')), gp_pct:g('gp') === '' ? null : num(g('gp')), stage:st, expected_close:g('exp') || null, quote_no:g('qn').trim() || null, is_new:g('new') === 'yes', lost_reason:st === 'lost' ? g('notes').trim() : null, notes:st === 'lost' ? null : g('notes').trim() || null };
+    if(['quoted','negotiation','won'].includes(st) && !(old && old.quoted_date)) row.quoted_date = t;
+    if(['won','lost'].includes(st) && !(old && old.closed_date && ['won','lost'].includes(old.stage))) row.closed_date = t;
+    if(!['won','lost'].includes(st)) row.closed_date = null;
+    if(id) row.id = id; else row.created_date = t;
+    if(await save('opps', row)){ if(st === 'won' && row.account_id){ const a = S.accounts.find(x => x.id === row.account_id); if(a && !a.opened_date && row.is_new) await save('accounts', { id:a.id, opened_date:t, status:'active' }); } kpiCloseOverlay(); shell(); }
+  };
+  window.smOppDel = async id => { if(confirm('Delete this opportunity?') && await del('opps', id)){ kpiCloseOverlay(); shell(); } };
+
+  /* ---------- budgets and results ---------- */
+  function vBud(){
+    const rep = oneRep(); if(!rep) return noRep(); const mgr = isMgr(), p = S.period;
+    const row = pid => { const b = S.budgets.find(x => x.rep_id === rep && String(x.period).slice(0, 10) === p && (x.product_id || '') === (pid || '')), a = S.actuals.find(x => x.rep_id === rep && String(x.period).slice(0, 10) === p && (x.product_id || '') === (pid || ''));
+      const bud = b ? num(b.sales_budget) : 0, act = a ? num(a.sales_actual) : 0, gp = a ? num(a.gp_amount) : 0; return `<tr><td><b>${pid ? E(prodName(pid)) : 'Total (if not split by product)'}</b></td>
+        <td><input type="number" min="0" class="sm-b" data-p="${pid || ''}" value="${bud || ''}" ${mgr ? '' : 'disabled'} style="width:120px;"></td><td><input type="number" min="0" class="sm-a" data-p="${pid || ''}" value="${act || ''}" style="width:120px;"></td><td><input type="number" min="0" class="sm-g" data-p="${pid || ''}" value="${gp || ''}" style="width:120px;"></td><td>${act ? (Math.round(gp / act * 1000) / 10) + '%' : '—'}</td><td>${dot(rat(act, bud))} ${P(rat(act, bud))}</td></tr>`; };
+    return `<div class="sm-card"><h3>${E(pName(rep))}: ${E(mLabel(p))}</h3><p style="font-size:12.5px;color:#7A8499;margin:0 0 10px;">${mgr ? 'Budgets are set by the manager. ' : ''}Enter the invoiced sales and gross profit in Rand for each product line at month end. Leave the total row empty when you enter by product.</p><div style="overflow:auto;"><table><tr><th>Product line</th><th>Sales budget</th><th>Sales actual</th><th>Gross profit (Rand)</th><th>GP %</th><th>Achieved</th></tr>${S.products.filter(x => x.active !== false).map(x => row(x.id)).join('')}${row(null)}</table></div>
+      <div class="sm-bar" style="margin-top:12px;"><button class="btn-primary" onclick="smBudSave()">Save this month</button>${mgr ? `<button class="btn-small" onclick="smBudCopy()">Copy these budgets to the next 11 months</button>` : ''}</div>${S.products.length ? '' : '<p style="color:#B21616;font-size:12.5px;">No product lines yet. Add them in Settings (the MRS lines can be loaded with one button).</p>'}</div>`;
+  }
+  window.smBudSave = async () => {
+    const rep = oneRep(), p = S.period; let n = 0; const ids = [...new Set([...document.querySelectorAll('.sm-b,.sm-a')].map(e => e.dataset.p))];
+    for(const pid of ids){ const g = c => num((document.querySelector('.sm-' + c + '[data-p="' + pid + '"]') || {}).value);
+      if(isMgr()){ const old = S.budgets.find(x => x.rep_id === rep && String(x.period).slice(0, 10) === p && (x.product_id || '') === pid), v = g('b'); if(old || v){ await save('budgets', Object.assign(old ? { id:old.id } : {}, { rep_id:rep, period:p, product_id:pid || null, sales_budget:v })); n++; } }
+      const oa = S.actuals.find(x => x.rep_id === rep && String(x.period).slice(0, 10) === p && (x.product_id || '') === pid), av = g('a'), gv = g('g'); if(oa || av || gv){ await save('actuals', Object.assign(oa ? { id:oa.id } : {}, { rep_id:rep, period:p, product_id:pid || null, sales_actual:av, gp_amount:gv, entered_by:STATE.user.id })); n++; } }
+    toast('Saved.', 'success'); shell();
+  };
+  window.smBudCopy = async () => {
+    const rep = oneRep(), p = S.period, src = S.budgets.filter(x => x.rep_id === rep && String(x.period).slice(0, 10) === p); if(!src.length){ toast('Save this month\'s budget first.', 'error'); return; }
+    if(!confirm('Copy this month\'s budgets to the next 11 months? Months that already have a budget for a product line are left alone.')) return;
+    for(let i = 1; i <= 11; i++){ const pp = addMonths(p, i); for(const b of src){ if(S.budgets.some(x => x.rep_id === rep && String(x.period).slice(0, 10) === pp && (x.product_id || '') === (b.product_id || ''))) continue; await save('budgets', { rep_id:rep, period:pp, product_id:b.product_id, sales_budget:b.sales_budget, gp_target_pct:b.gp_target_pct }); } }
+    toast('Budgets copied.', 'success'); shell();
+  };
+
+  /* ---------- weekly report ---------- */
+  const RF = [['achieved','What I achieved this week'],['short','Where I fell short, and the honest reason'],['missed','Customers I did not see, and why'],['pipeline','Opportunities: created, moved forward, lost'],['next','What I will do next week, and the three customers or products that matter most']];
+  function weekFigures(rep, week){
+    const d = [0, 1, 2, 3, 4].map(i => addDays(week, i)), cs = S.calls.filter(c => c.rep_id === rep && c.day >= d[0] && c.day <= d[4]), v = cs.filter(c => ['visit','prospect'].includes(c.kind));
+    const planned = v.filter(c => c.planned).length, done = v.filter(c => c.status === 'done').length, nd = cs.filter(c => c.status === 'not_done');
+    const aAcc = S.accounts.filter(a => a.rep_id === rep && a.tier === 'A' && a.status === 'active'), aSeen = aAcc.filter(a => cs.some(c => c.account_id === a.id && c.status === 'done'));
+    const inW = x => x && String(x).slice(0, 10) >= d[0] && String(x).slice(0, 10) <= d[4], o = S.opps.filter(x => x.rep_id === rep);
+    return { planned, done, nd, aReq:aAcc.length, aSeen:aSeen.length, aMissed:aAcc.filter(a => !aSeen.includes(a)), prospects:cs.filter(c => c.kind === 'prospect' && c.status === 'done').length, quotes:o.filter(x => inW(x.quoted_date)).length, created:o.filter(x => inW(x.created_date)).length, won:o.filter(x => x.stage === 'won' && inW(x.closed_date)).length, lost:o.filter(x => x.stage === 'lost' && inW(x.closed_date)).length, logged:cs.filter(c => c.logged_at).length, total:cs.length };
+  }
+  function vRep(){
+    const rep = oneRep(); if(!rep) return noRep(); const plan = S.plans.find(p => p.rep_id === rep && p.week_start === S.week), f = weekFigures(rep, S.week), rp = (plan && plan.report) || {}, mine = rep === (myP() && myP().id) || isMgr();
+    const fig = [['Visits planned', f.planned], ['Visits done', f.done], ['A accounts seen', f.aSeen + ' of ' + f.aReq], ['Prospect visits', f.prospects], ['Quotations submitted', f.quotes], ['Opportunities created', f.created], ['Orders won', f.won], ['Calls logged', f.logged + ' of ' + f.total]];
+    return `<div class="sm-bar"><button class="btn-small" onclick="smWeek(-1)">&larr; Previous week</button><b>Report for the week of ${E(dLabel(S.week))}</b><button class="btn-small" onclick="smWeek(1)">Next week &rarr;</button><span style="flex:1"></span><span class="sm-pill" style="background:${plan && plan.report_status === 'submitted' ? '#1B8E3E' : '#EF6C00'};">${plan && plan.report_status === 'submitted' ? 'Report submitted' : 'Report not submitted'}</span></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">${fig.map(([l, v]) => `<div class="sm-tile"><span>${l}</span><b>${v}</b></div>`).join('')}</div>
+      <div class="sm-card"><h3>Calls not done</h3>${f.nd.length ? `<table><tr><th>Day</th><th>Customer</th><th>Reason</th><th>Recovery</th></tr>${f.nd.map(c => `<tr><td>${dLabel(c.day)}</td><td>${E(c.customer_name || '')}</td><td>${E(c.reason || '')}</td><td>${E(c.note || '')}</td></tr>`).join('')}</table>` : '<p style="color:#777;font-size:13px;margin:0;">None recorded.</p>'}${f.aMissed.length ? `<p style="font-size:13px;color:#B21616;margin:10px 0 0;"><b>A accounts not visited this week:</b> ${f.aMissed.map(a => E(a.customer_name)).join(', ')}</p>` : ''}</div>
+      <div class="sm-card"><h3>My review of the week</h3><p style="font-size:12.5px;color:#7A8499;margin:0 0 10px;">The figures above come from your calls. Write your own honest view. The manager reads both.</p>${RF.map(([k, l]) => `<div class="field" style="margin-bottom:10px;"><label style="font-weight:700;font-size:13px;">${l}</label><textarea class="sm-rf" data-k="${k}" style="width:100%;min-height:64px;" ${mine ? '' : 'disabled'}>${E(rp[k] || '')}</textarea></div>`).join('')}
+        ${isMgr() ? `<div class="field"><label style="font-weight:700;font-size:13px;">Manager comment</label><textarea id="sm-mc" style="width:100%;min-height:50px;">${E((plan && plan.manager_comment) || '')}</textarea></div>` : (plan && plan.manager_comment ? `<p style="font-size:13px;"><b>Manager comment:</b> ${E(plan.manager_comment)}</p>` : '')}
+        <div class="sm-bar" style="margin-top:8px;">${mine ? `<button class="btn-small" onclick="smRepSave(false)">Save draft</button><button class="btn-primary" onclick="smRepSave(true)">Submit report</button>` : ''}${isMgr() ? `<button class="btn-small" onclick="smRepComment()">Save manager comment</button>` : ''}<button class="btn-small" onclick="smRepPrint()">Print or save as PDF</button></div></div>`;
+  }
+  const readRF = () => { const o = {}; document.querySelectorAll('.sm-rf').forEach(e => { o[e.dataset.k] = e.value.trim(); }); return o; };
+  window.smRepSave = async submit => {
+    const rep = oneRep(), plan = await ensurePlan(rep, S.week); if(!plan) return; const rf = readRF();
+    if(submit && (!rf.achieved || !rf.short)){ toast('Complete at least what you achieved and where you fell short, honestly.', 'error'); return; }
+    const row = { id:plan.id, report:rf }; if(submit){ row.report_status = 'submitted'; row.report_submitted_at = new Date().toISOString(); }
+    if(await save('plans', row)){ toast(submit ? 'Report submitted.' : 'Draft saved.', 'success'); shell(); }
+  };
+  window.smRepComment = async () => { const rep = oneRep(), plan = await ensurePlan(rep, S.week); if(plan && await save('plans', { id:plan.id, manager_comment:document.getElementById('sm-mc').value.trim() })){ toast('Comment saved.', 'success'); shell(); } };
+  window.smRepPrint = () => {
+    const rep = oneRep(), plan = S.plans.find(p => p.rep_id === rep && p.week_start === S.week), f = weekFigures(rep, S.week), rp = readRF(); const R = Object.keys(rp).some(k => rp[k]) ? rp : ((plan && plan.report) || {});
+    const body = `<div class="print-section-title">Figures</div>` + printTable(['Measure','Result'], [['Visits planned', f.planned], ['Visits done', f.done], ['Variance', f.done - f.planned], ['A accounts seen', f.aSeen + ' of ' + f.aReq], ['Prospect visits', f.prospects], ['Quotations submitted', f.quotes], ['Opportunities created', f.created], ['Orders won', f.won]])
+      + (f.nd.length ? `<div class="print-section-title">Calls not done</div>` + printTable(['Day','Customer','Reason','Recovery'], f.nd.map(c => [dLabel(c.day), E(c.customer_name || ''), E(c.reason || ''), E(c.note || '')])) : '')
+      + RF.map(([k, l]) => `<p><b>${l}</b><br>${E(R[k] || '—').replace(/\n/g, '<br>')}</p>`).join('') + (plan && plan.manager_comment ? `<p><b>Manager comment</b><br>${E(plan.manager_comment)}</p>` : '');
+    printRecord('Weekly Sales Report', 'SALES-WR-' + S.week, [['Representative', E(pName(rep))], ['Week of', fmtDate(S.week)], ['Plan submitted', plan && plan.status === 'submitted' ? 'Yes' : 'No'], ['Report submitted', plan && plan.report_status === 'submitted' ? 'Yes' : 'No']], body, null, 'sales');
+  };
+
+  /* ---------- accountability ---------- */
+  function flagsFor(rep){
+    const c = tg(rep), today = T(), out = [], thisMon = monday(today), lastMon = addDays(thisMon, -7);
+    const nm = pName(rep), dow = (new Date(today + 'T00:00:00Z').getUTCDay() + 6) % 7;
+    const nextPlan = S.plans.find(p => p.rep_id === rep && p.week_start === addDays(thisMon, 7)), curPlan = S.plans.find(p => p.rep_id === rep && p.week_start === thisMon);
+    if(!(curPlan && curPlan.status === 'submitted' && String(curPlan.submitted_at).slice(0, 10) <= thisMon) && dow >= 0) out.push(['red', 'This week\'s call plan was not submitted before the week started.']);
+    if(dow >= 4 && !(nextPlan && nextPlan.status === 'submitted')) out.push(['orange', 'Next week\'s call plan is not submitted (due Friday afternoon).']);
+    const lf = weekFigures(rep, lastMon); if(lf.planned && lf.done / lf.planned < 0.7) out.push(['red', `Last week only ${lf.done} of ${lf.planned} planned visits were done (${Math.round(lf.done / lf.planned * 100)}%).`]);
+    if(!lf.planned) out.push(['red', 'Nothing was planned for last week.']);
+    const lp = S.plans.find(p => p.rep_id === rep && p.week_start === lastMon); if(!(lp && lp.report_status === 'submitted') && dow >= 0 && lf.total) out.push(['orange', 'Last week\'s report was not submitted.']);
+    const over = S.accounts.filter(a => a.rep_id === rep && a.tier === 'A' && a.status === 'active' && accStatus(a).r >= 1); if(over.length) out.push(['red', `${over.length} A account${over.length === 1 ? '' : 's'} overdue for a visit: ${over.slice(0, 4).map(a => E(a.customer_name)).join(', ')}${over.length > 4 ? '…' : ''}.`]);
+    const recent = S.opps.filter(o => o.rep_id === rep && o.created_date >= addDays(today, -14)).length; if(!recent) out.push(['orange', 'No new opportunities entered in the last 14 days.']);
+    const m = metrics([rep], S.period); m.prod.forEach(p => { if(p.bud > 0 && rat(p.act, p.bud) < 0.6 && T() >= addDays(S.period, 15)) out.push(['orange', `${E(p.name)} is at ${P(rat(p.act, p.bud))} of its budget.`]); });
+    return out;
+  }
+  function vAcct(){
+    const rs = scopeReps(); const mgr = isMgr();
+    const flags = rs.map(r => ({ r, f:flagsFor(r) }));
+    const fh = flags.map(x => `<div class="sm-card"><h3>${E(pName(x.r))}</h3>${x.f.length ? x.f.map(([c, t]) => `<div style="display:flex;gap:8px;align-items:flex-start;margin:5px 0;font-size:13px;"><span style="width:11px;height:11px;border-radius:50%;background:${c === 'red' ? '#D50000' : '#EF6C00'};flex:none;margin-top:4px;"></span><span>${t}</span></div>`).join('') : '<p style="margin:0;color:#1B8E3E;font-size:13px;"><b>No flags.</b> Planning and execution are on track.</p>'}${mgr ? `<div style="margin-top:8px;"><button class="btn-small" onclick="smReviewEdit('${x.r}')">Record a review</button></div>` : ''}</div>`).join('');
+    const rv = S.reviews.filter(x => rs.includes(x.rep_id)).sort((a, b) => String(b.review_date).localeCompare(String(a.review_date)));
+    const STEP = ['', 'Coaching discussion', 'Written performance improvement plan', 'Formal performance management process'];
+    return `<p style="font-size:12.5px;color:#7A8499;margin:0 0 10px;">Measures behaviour as well as results: if the right activities are done and the budget is still missed, look at territory, price, product or market. If the activities are not done, the result is within the representative's control. Every review records what was expected, what was measured, the gap and the agreed action.</p>${fh}
+      <div class="sm-card"><h3>Review log</h3>${rv.length ? `<table><tr><th>Date</th><th>Representative</th><th>Step</th><th>Expected</th><th>Measured</th><th>Gap</th><th>Agreed action</th><th>Status</th><th></th></tr>${rv.map(x => `<tr><td>${fmtDate(x.review_date)}</td><td>${E(pName(x.rep_id))}</td><td>${E(STEP[x.step])}</td><td>${E(x.expected || '')}</td><td>${E(x.measured || '')}</td><td>${E(x.gap || '')}</td><td>${E(x.agreed_action || '')}${x.due_date ? '<br><small>Due ' + fmtDate(x.due_date) + '</small>' : ''}</td><td>${E(x.status)}</td><td>${mgr ? `<button class="btn-small" onclick="smReviewEdit('${x.rep_id}','${x.id}')">Edit</button>` : ''}</td></tr>`).join('')}</table>` : '<p style="color:#777;font-size:13px;margin:0;">No reviews recorded.</p>'}</div>`;
+  }
+  window.smReviewEdit = (rep, id) => {
+    const prev = S.reviews.filter(x => x.rep_id === rep).length, x = id ? S.reviews.find(y => y.id === id) : { step:Math.min(3, prev + 1), status:'open', review_date:T() };
+    const f = flagsFor(rep).map(a => a[1].replace(/<[^>]+>/g, '')).join(' ');
+    kpiOverlay(`<h3 style="font-family:Arial,Helvetica,sans-serif;margin:0 0 4px;">Accountability review · ${E(pName(rep))}</h3><p style="font-size:12px;color:#7A8499;margin:0 0 10px;">Occurrence ${id ? '' : (prev + 1)}: the first is a coaching discussion, the second a written improvement plan, the third the formal process.</p><div class="form-grid">
+      <div class="field"><label>Date</label><input id="sm-r-date" type="date" value="${E(x.review_date)}"></div><div class="field"><label>Step</label><select id="sm-r-step">${[1, 2, 3].map(n => `<option value="${n}" ${x.step === n ? 'selected' : ''}>${n}: ${['', 'Coaching discussion', 'Written improvement plan', 'Formal process'][n]}</option>`).join('')}</select></div><div class="field"><label>Follow up by</label><input id="sm-r-due" type="date" value="${E(x.due_date || '')}"></div>
+      <div class="field span3"><label>What was expected</label><textarea id="sm-r-exp">${E(x.expected || '')}</textarea></div>
+      <div class="field span3"><label>What was measured</label><textarea id="sm-r-mea">${E(x.measured || (id ? '' : f))}</textarea></div>
+      <div class="field span3"><label>The gap</label><textarea id="sm-r-gap">${E(x.gap || '')}</textarea></div>
+      <div class="field span3"><label>Agreed corrective action</label><textarea id="sm-r-act">${E(x.agreed_action || '')}</textarea></div>
+      <div class="field"><label>Status</label><select id="sm-r-st"><option ${x.status === 'open' ? 'selected' : ''}>open</option><option ${x.status === 'closed' ? 'selected' : ''}>closed</option></select></div></div>
+      <div class="form-actions"><button class="btn-cancel" onclick="kpiCloseOverlay()">Cancel</button><button class="btn-primary" onclick="smReviewSave('${rep}','${id || ''}')">Save</button></div>`);
+  };
+  window.smReviewSave = async (rep, id) => {
+    const g = k => document.getElementById('sm-r-' + k).value; const row = { rep_id:rep, review_date:g('date'), step:+g('step'), due_date:g('due') || null, expected:g('exp').trim(), measured:g('mea').trim(), gap:g('gap').trim(), agreed_action:g('act').trim(), status:g('st') };
+    if(id) row.id = id; else row.created_by = STATE.user.id; if(await save('reviews', row)){ kpiCloseOverlay(); shell(); }
+  };
+
+  /* ---------- settings ---------- */
+  function vSet(){
+    const c = cfg(), mgr = isMgr(); if(!mgr) return '';
+    const people = arr(STATE.personnel).filter(p => p.status !== 'inactive' && p.status !== 'terminated').sort((a, b) => String(a.full_name).localeCompare(String(b.full_name)));
+    const n = (k, l, v) => `<div class="field"><label>${l}</label><input type="number" class="sm-s" data-k="${k}" value="${v}" step="any"></div>`;
+    return `<div class="sm-card"><h3>Sales representatives</h3><p style="font-size:12.5px;color:#7A8499;margin:0 0 8px;">Tick the people who are sales representatives. Each sees only their own week, accounts and scorecard. They also need the Sales Management access tick.</p><div style="columns:2 240px;">${people.map(p => `<label style="display:flex;gap:8px;align-items:center;padding:3px 0;font-size:13px;"><input type="checkbox" class="sm-rp" value="${p.id}" ${c.reps.includes(p.id) ? 'checked' : ''} style="width:auto"> ${E(p.full_name)}</label>`).join('')}</div></div>
+      <div class="sm-card"><h3>Targets for every representative</h3><div class="form-grid">${n('visitsWeek', 'Customer visits a week', c.visitsWeek)}${n('prospectVisitsWeek', 'Prospect visits a week', c.prospectVisitsWeek)}${n('quotesWeek', 'Quotations a week', c.quotesWeek)}${n('oppsWeek', 'Opportunities created a week', c.oppsWeek)}${n('prospectsMonth', 'New prospects a month', c.prospectsMonth)}${n('prospectVisitsMonth', 'Prospect visits a month', c.prospectVisitsMonth)}${n('newAccountsMonth', 'New accounts a month', c.newAccountsMonth)}${n('gpTarget', 'Gross profit target %', c.gpTarget)}</div></div>
+      <div class="sm-card"><h3>Visit frequency and tiers</h3><div class="form-grid">${n('f.A', 'A accounts: visit every (days)', c.freq.A)}${n('f.B', 'B accounts: every (days)', c.freq.B)}${n('f.C', 'C accounts: every (days)', c.freq.C)}${n('f.P', 'Prospects: every (days)', c.freq.P)}${n('t.A', 'A = top share of customers %', c.tierShare.A)}${n('t.B', 'B = next share of customers %', c.tierShare.B)}</div></div>
+      <div class="sm-card"><h3>Scorecard weights (should total 100)</h3><div class="form-grid">${n('w.sales', 'Sales against budget', c.weights.sales)}${n('w.gp', 'Gross profit', c.weights.gp)}${n('w.coverage', 'Customer coverage', c.weights.coverage)}${n('w.nbd', 'New business development', c.weights.nbd)}${n('w.mix', 'Product mix', c.weights.mix)}${n('w.crm', 'Plans, CRM and reporting', c.weights.crm)}</div></div>
+      <div class="sm-bar"><button class="btn-primary" onclick="smCfgSave()">Save settings</button></div>
+      <div class="sm-card"><h3>Product lines</h3>${S.products.length ? `<table><tr><th>Product line</th><th>Principal</th><th></th></tr>${S.products.sort((a, b) => a.sort_order - b.sort_order).map(p => `<tr><td>${E(p.name)}${p.active === false ? ' (hidden)' : ''}</td><td>${E(p.supplier || '')}</td><td style="text-align:right;"><button class="btn-small" onclick="smProdToggle('${p.id}')">${p.active === false ? 'Show' : 'Hide'}</button></td></tr>`).join('')}</table>` : '<p style="color:#777;font-size:13px;">No product lines yet.</p>'}
+        <div class="sm-bar" style="margin-top:10px;"><input id="sm-pn" placeholder="New product line" style="padding:7px 10px;border:1px solid #CCC;border-radius:6px;"><input id="sm-ps" placeholder="Principal (optional)" style="padding:7px 10px;border:1px solid #CCC;border-radius:6px;"><button class="btn-small" onclick="smProdAdd()">Add</button><button class="btn-small" onclick="smProdMrs()">Load the 7 MRS product lines</button></div></div>`;
+  }
+  window.smCfgSave = async () => {
+    const c = JSON.parse(JSON.stringify((S.cfgRow && S.cfgRow.config) || {})); c.reps = [...document.querySelectorAll('.sm-rp:checked')].map(e => e.value); c.freq = c.freq || {}; c.tierShare = c.tierShare || {}; c.weights = c.weights || {};
+    document.querySelectorAll('.sm-s').forEach(e => { const k = e.dataset.k, v = num(e.value); if(k.startsWith('f.')) c.freq[k.slice(2)] = v; else if(k.startsWith('t.')) c.tierShare[k.slice(2)] = v; else if(k.startsWith('w.')) c.weights[k.slice(2)] = v; else c[k] = v; });
+    const w = Object.values(c.weights).reduce((a, b) => a + num(b), 0); if(Math.abs(w - 100) > 0.5 && !confirm('The weights total ' + w + ', not 100. Save anyway? The scorecard is scaled to the weights used.')) return;
+    if(await saveCfg(c)){ toast('Settings saved.', 'success'); shell(); }
+  };
+  window.smProdAdd = async () => { const n = document.getElementById('sm-pn').value.trim(); if(!n) return; if(await save('products', { name:n, supplier:document.getElementById('sm-ps').value.trim() || null, sort_order:S.products.length, active:true })) shell(); };
+  window.smProdToggle = async id => { const p = S.products.find(x => x.id === id); if(await save('products', { id, active:p.active === false })) shell(); };
+  window.smProdMrs = async () => { const have = new Set(S.products.map(p => p.name)); let i = S.products.length; for(const [n, s] of MRS_LINES){ if(!have.has(n)) await save('products', { name:n, supplier:s, sort_order:i++, active:true }); } toast('MRS product lines loaded.', 'success'); shell(); };
+
+  /* ---------- switch, access, navigation ---------- */
+  async function loadFlag(){
+    if(!STATE.org) return; STATE.org._salesOn = false;
+    try{ const r = await STATE.supabase.from('org_modules').select('enabled').eq('organisation_id', STATE.org.id).eq('module_key', 'sales').maybeSingle(); if(r && !r.error && r.data) STATE.org._salesOn = r.data.enabled === true; }catch(e){}
+    STATE.org.sales_module_enabled = STATE.org._salesOn; S.loaded = false;
+    try{ applyModuleAccessToNav(); }catch(e){}
+  }
+  { const _lc = loadCompetence; loadCompetence = window.loadCompetence = async function(){ const a = arguments, t = this; const p = _lc.apply(t, a); const f = loadFlag(); const r = await Promise.all([p, f]); return r[0]; }; }
+  ADMIN_CONSOLE_TOGGLES.push({ field:'sales_module_enabled', label:'Sales Management (Mechanical Rotating Solutions)', note:'Bespoke for Mechanical Rotating Solutions: weekly call plans, A/B/C customer coverage, pipeline, budgets against actuals, a weighted scorecard, Friday reports and an accountability log. Needs the R71 SQL run first. Off by default.' });
+  { const _c = canAccessModule; canAccessModule = window.canAccessModule = function(mod){ if(mod === 'sales') return !off() && _c.apply(this, arguments); return _c.apply(this, arguments); }; }
+  MODULE_META.sales = { title:'Sales Management', sub:() => 'Weekly call plans, customer coverage, pipeline, budgets and results, scorecard and accountability' };
+  RENDERERS.sales = () => '<div id="sm-root"></div>';
+  { const nc = document.querySelector('.nav-item[data-mod="customers"]');
+    if(nc && !document.querySelector('.nav-item[data-mod="sales"]')) nc.insertAdjacentHTML('afterend', '<div class="nav-item" data-mod="sales" onclick="showModule(\'sales\')"><svg viewBox="0 0 24 24"><path d="M3 20h18"/><rect x="5" y="11" width="3" height="7"/><rect x="10.5" y="7" width="3" height="11"/><rect x="16" y="4" width="3" height="14"/></svg> Sales Management</div>'); }
+  { const _a = applyModuleAccessToNav; applyModuleAccessToNav = window.applyModuleAccessToNav = function(){ const r = _a.apply(this, arguments); const el = document.querySelector('.nav-item[data-mod="sales"]'); if(el) el.style.display = canAccessModule('sales') ? '' : 'none'; return r; }; }
+  { const _s = showModule; showModule = window.showModule = function(mod){ const r = _s.apply(this, arguments); if(mod === 'sales' && document.getElementById('sm-root')) smInit(); return r; }; }
+
+  window.WMLESSONS = window.WMLESSONS || {};
+  window.WMLESSONS.sales = {
+    why:'A sales team that is not measured on what it does every day can only be judged on what it hands in at month end, which is too late. This module puts the week, the customers, the pipeline and the budget in one place, and asks every representative to report the same way.',
+    who:'Sales representatives, the sales manager and the Managing Director. This module is built for Mechanical Rotating Solutions.',
+    tour:[['Dashboard','Sales against budget, gross profit, visits, new business and reporting discipline, each with a trend, a target and a red, orange or green status.',['stats','This month',[['Scorecard','82%','grn'],['Sales vs budget','91%','grn'],['A accounts seen','60%','red']]]],
+      ['My Week','A Monday to Friday call sheet. Plan the week, mark every call done or not done with the real reason, and see planned against actual visits.',['table','Monday',['Time','Customer','Type'],[['08:00','Customer A','Visit'],['09:30','Prospect B','Prospect']]]],
+      ['Accounts and Pipeline','Customers ranked A, B and C with how long since each was visited. Opportunities move from lead to won or lost.',['table','Accounts',['Tier','Customer','Visit status'],[['A','Customer A','Overdue'],['B','Customer C','OK']]]]],
+    steps:[['Set up (manager)','In Settings tick the sales representatives, check the targets and weights, and load the product lines. Add each representative\'s accounts and enter the monthly budget by product line.',['form','Settings',[['Representatives','Ticked'],['Visits a week','25'],['GP target','42%']]]],
+      ['Plan the week','Before the week starts use Suggest my week, adjust it, and Submit plan. The system records when it was submitted.',['chain','Week',['Suggest','Adjust','Submit','Run']]],
+      ['Run the calls','After each call mark it Done or Not done. A reason is compulsory when it was not done.',['form','Call outcome',[['Result','Not done'],['Reason','Customer not available']]]],
+      ['Keep the pipeline current','Enter each opportunity and move it forward. Quoted, Won and Lost dates are recorded for you.',['chain','Opportunity',['Lead','Qualified','Quoted','Negotiation','Won']]],
+      ['Enter results and report','At month end enter sales and gross profit by product line. Each Friday complete and submit the weekly report.',['form','Month end',[['Sales actual','R 1 200 000'],['Gross profit','R 520 000']]]],
+      ['Manager follow-up','Read the Accountability tab. Record a coaching discussion, a written plan or a formal process, with what was expected, measured, the gap and the agreed action.',['chain','Accountability',['Coaching','Written plan','Formal process']]]],
+    tips:['Honest reasons matter more than perfect numbers: the report is only useful if it is true.','Visits to A accounts come first, then B, then C and prospects.','Submit next week\'s plan before Friday afternoon so it counts as on time.'],
+    ask:'How do you know whether a missed target was caused by the market or by what the representative did?' };
+  setTimeout(() => { try{ applyModuleAccessToNav(); }catch(e){} }, 0);
+  try{ if(typeof WM_MODS !== 'undefined') WM_MODS.push({ id:'sales', ch:'ops', n:'Sales Management', ic:'gauge', tag:'Plan the week, cover the right customers, build the pipeline and measure results against budget.',
+    feat:['A weekly call plan with planned against actual visits','Customers ranked A, B and C with a visit frequency for each','A pipeline from lead to won or lost','Budgets and results by product line','A weighted scorecard and a Friday report','An accountability log that records expected, measured, gap and action'],
+    iso:['ISO 9001 cl 8.2, 9.1.2','ISO 9001 cl 5.1.2 customer focus'], link:['customers','objectives','personnel'],
+    steps:['Plan the week','Run the calls and log the outcome','Keep the pipeline current','Enter results at month end','Report on Friday'], d:{ a:'flow', st:[['Plan','week'],['Call','visit'],['Pipeline','quote'],['Results','month end'],['Report','Friday']] } }); }catch(e){}
+})();
+
 </script>
 </body>
 </html>
