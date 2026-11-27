@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R68 2026-11-27"><meta charset="UTF-8">
+<meta name="wm-release" content="R69 2026-11-27"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -56959,7 +56959,8 @@ W.asset_watchman.ask = 'Can you show a client how the condition of their equipme
     ['R65','2026-11-26','Module switches','One module-switch function; Admin Console lists from one registry.',['administration'],REC],
     ['R66','2026-11-27','Document identity','Green All clear on personal views; numbered digital documents; footer stamp; revision history pop-up on every document.',['all'],LIVE],
     ['R67','2026-11-27','Live document control','Revision fixed at 0 at tenant inception; print date and platform release on every print; Platform Change Register and Live Document Control Report.',['all'],LIVE],
-    ['R68','2026-11-27','Personalised notices','RAGA personal banner; first name used in the dashboard, notices, pop-ups and emails; green All clear notices carry the person\'s first name.',['raga','all'],LIVE]
+    ['R68','2026-11-27','Personalised notices','RAGA personal banner; first name used in the dashboard, notices, pop-ups and emails; green All clear notices carry the person\'s first name.',['raga','all'],LIVE],
+    ['R69','2026-11-27','My / My department / Everyone bar and All clear notice','One highly visible My / My department / Everyone bar and a green All clear (or open-items) notice across incidents, information security incidents, audits, inspections, checklists, risks, objectives, training, appraisals, assets, permits, RAGA and others.',['all'],LIVE]
   ];
   const has = m => { try{ return m === 'all' || (typeof orgHasModule === 'function' ? orgHasModule(m) !== false : true); }catch(e){ return true; } };
   function relevant(){ const inc = wmInception(); return WM_PLATFORM_CHANGES.filter(c => c[1] >= inc && c[4].some(has)); }
@@ -57021,6 +57022,118 @@ W.asset_watchman.ask = 'Can you show a client how the condition of their equipme
           : `<div class="wm-allclear" style="background:#FFF3E0;border-color:#FFCC80;color:#8A5D14;"><div class="wm-ac-tick" style="background:#EF6C00;">${m.open.length}</div><div><b style="color:#B45309;">${E(n ? n + ', ' : '')}${m.open.length} open RAGA alert${m.open.length === 1 ? ' is' : 's are'} on your name${m.overdue.length ? ', ' + m.overdue.length + ' overdue' : ''}.</b><span style="color:#8A5D14;">Open the alert to update it or close it out.</span></div></div>`;
       }catch(e){}
       return r; }; }
+})();
+
+/* ============================================================================
+   R69: ONE "My / My department / Everyone" bar and green All clear notice across the registers where a person works
+   (incidents, information security incidents, audits, inspections, checklists, risks, objectives, training, appraisals,
+   assets, permits, health surveillance, RAGA). Works from the rendered rows: each row's record id is found in its onclick
+   and looked up across STATE, so no register needs its own code.
+   ============================================================================ */
+(function(){
+  const E = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+  // key: [singular/plural noun, default scope for non-administrators, show the banner]
+  const CFG = {
+    incidents:['incidents, accidents and near misses','mine',true], infosec_incidents:['information security incidents','mine',true],
+    audits:['audits','mine',true], ptw:['permits to work','mine',true], raga:['RAGA alerts','mine',false],
+    five_s:['5S inspections','all',true], checklists:['checklists','all',true], assets:['assets and inspections','all',true],
+    risks:['risks and opportunities','all',true], objectives:['objectives and targets','all',true], training:['training records','all',true],
+    appraisals:['appraisals','all',true], ohs:['health surveillance records','all',true], sherq_committee:['SHERQ Committee items','all',true],
+    legal:['legal compliance items','all',true], envdata:['environmental records','all',true]
+  };
+  const CLOSED = /^(closed|completed?|done|archived|cancelled|canceled|resolved|finali[sz]ed|passed|approved|inactive|removed)$/i;
+  const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/ig;
+  const lc = s => String(s || '').toLowerCase();
+  const isAdm = () => { try{ return typeof isAdmin === 'function' ? !!isAdmin() : STATE.myRole === 'admin'; }catch(e){ return false; } };
+  const isMg = () => { try{ return typeof isMgr === 'function' ? !!isMgr() : isAdm(); }catch(e){ return isAdm(); } };
+  const myPerson = () => (STATE.personnel || []).find(p => p.linked_profile_id === (STATE.user && STATE.user.id)) || null;
+  function deptSets(){
+    const me = myPerson(); const divs = me ? (STATE.personnelDivisions || []).filter(d => d.personnel_id === me.id).map(d => d.division_id) : [];
+    const ppl = new Set(), users = new Set();
+    (STATE.personnelDivisions || []).filter(d => divs.includes(d.division_id)).forEach(d => { ppl.add(d.personnel_id); const p = (STATE.personnel || []).find(x => x.id === d.personnel_id); if(p && p.linked_profile_id) users.add(p.linked_profile_id); });
+    const names = new Set((STATE.divisions || []).filter(d => divs.includes(d.id)).map(d => lc(d.name)));
+    return { divs, ppl, users, names };
+  }
+  let INDEX = null;
+  function index(){
+    const m = new Map();
+    Object.keys(STATE).forEach(k => { const v = STATE[k]; if(Array.isArray(v) && v.length && v[0] && typeof v[0] === 'object') v.forEach(r => { if(r && typeof r.id === 'string' && !m.has(r.id)) m.set(r.id, r); }); });
+    return m;
+  }
+  const SKIPK = new Set(['id', 'organisation_id', 'updated_by', 'approved_by', 'validated_by']);
+  function isMine(r){
+    const me = STATE.user && STATE.user.id, p = myPerson(); if(!me) return false;
+    for(const k in r){ if(SKIPK.has(k)) continue; const v = r[k]; if(typeof v !== 'string') continue;
+      if(v === me) return true; if(p && v === p.id && (/personnel_id$|^person_id$|^employee_id$|^inspector_id$|^auditor_id$/.test(k))) return true; }
+    return false;
+  }
+  function inDept(r, S){
+    if(isMine(r)) return true;
+    for(const k in r){ const v = r[k]; if(typeof v !== 'string') continue;
+      if(S.users.has(v)) return true; if(S.ppl.has(v) && /personnel_id$|^person_id$|^employee_id$/.test(k)) return true;
+      if(/^department_id$|^division_id$/.test(k)){ if(S.divs.includes(v)) return true; const d = (STATE.docDepartments || []).find(x => x.id === v); if(d && S.names.has(lc(d.name))) return true; } }
+    return false;
+  }
+  const isOpen = r => !r.status || !CLOSED.test(String(r.status));
+  const scopeOf = mod => { STATE._scopes = STATE._scopes || {}; return STATE._scopes[mod] || ((CFG[mod][1] === 'mine' && !isAdm()) ? 'mine' : 'all'); };
+
+  window.wmSetScope = function(mod, v){ STATE._scopes = STATE._scopes || {}; STATE._scopes[mod] = v; run(true); };
+  const css = document.createElement('style');
+  css.textContent = '#wm-scopebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px;padding:10px 14px;background:#EAF1FB;border:1px solid #B9CFEF;border-radius:10px}#wm-scopebar .sb-l{font-size:12px;font-weight:700;color:#1F3F73;text-transform:uppercase;letter-spacing:.04em}#wm-scopebar .sb-seg{display:inline-flex;border:2px solid #2E5AA8;border-radius:999px;overflow:hidden;background:#fff}#wm-scopebar button{border:0;background:#fff;color:#2E5AA8;font-weight:700;font-size:13px;padding:7px 16px;cursor:pointer}#wm-scopebar button+button{border-left:1px solid #B9CFEF}#wm-scopebar button.on{background:#2E5AA8;color:#fff}#wm-scopebar .sb-h{font-size:12px;color:#44546E}'
+    + '#nc-scope{border:2px solid #2E5AA8!important;background:#EAF1FB!important;color:#1F3F73!important;font-weight:700!important;border-radius:999px!important;padding:7px 14px!important;font-size:13px!important}.wm-scope-lab{font-size:12px;font-weight:700;color:#1F3F73;text-transform:uppercase;letter-spacing:.04em;margin-right:6px}@media print{#wm-scopebar,.wm-scope-clear,#wm-scope-banner{display:none}}';
+  document.head.appendChild(css);
+
+  let obs = null, busy = false, timer = null;
+  function run(force){
+    if(busy) return; const mod = STATE._wmMod, c = CFG[mod], root = document.getElementById('content-root'); if(!c || !root || !STATE.user) return;
+    busy = true; if(obs) obs.disconnect();
+    try{
+      const sc = scopeOf(mod); INDEX = index(); const S = sc === 'dept' ? deptSets() : null;
+      // reset earlier hiding
+      root.querySelectorAll('[data-wmhide]').forEach(e => { e.style.display = ''; e.removeAttribute('data-wmhide'); });
+      root.querySelectorAll('.wm-scope-clear').forEach(e => e.remove());
+      // bar
+      let bar = document.getElementById('wm-scopebar');
+      if(!bar){ root.insertAdjacentHTML('afterbegin', '<div id="wm-scopebar"></div>'); bar = document.getElementById('wm-scopebar'); }
+      const seg = (v, t) => `<button class="${sc === v ? 'on' : ''}" onclick="wmSetScope('${mod}','${v}')">${t}</button>`;
+      bar.innerHTML = `<span class="sb-l">Show</span><span class="sb-seg">${seg('mine', 'My items')}${isMg() ? seg('dept', 'My department') : ''}${seg('all', 'Everyone')}</span><span class="sb-h">${sc === 'mine' ? 'Only ' + E(c[0]) + ' linked to you.' : sc === 'dept' ? 'Only ' + E(c[0]) + ' linked to your department.' : 'All ' + E(c[0]) + ' in the organisation.'}</span>`;
+      if(bar !== root.firstElementChild) root.insertBefore(bar, root.firstElementChild);
+      // rows
+      const trs = [...root.querySelectorAll('table tr')].filter(tr => !tr.closest('#wm-scopebar, .modal, .detail-card, [id$="-detail-slot"]'));
+      const recog = [];
+      trs.forEach(tr => { const src = (tr.getAttribute('onclick') || '') + ' ' + [...tr.querySelectorAll('[onclick]')].map(b => b.getAttribute('onclick')).join(' ');
+        const ids = src.match(UUID) || []; const rec = ids.map(i => INDEX.get(i)).find(Boolean); if(rec) recog.push({ tr, rec }); });
+      const mineRows = recog.filter(x => isMine(x.rec)), openMine = mineRows.filter(x => isOpen(x.rec));
+      if(sc !== 'all' && recog.length){
+        const keep = recog.filter(x => sc === 'mine' ? isMine(x.rec) : inDept(x.rec, S));
+        recog.forEach(x => { if(!keep.includes(x)){ x.tr.style.display = 'none'; x.tr.setAttribute('data-wmhide', '1'); } });
+        if(!keep.length){
+          const tbl = recog[0].tr.closest('table'), host = tbl.closest('.panel') || tbl; host.style.display = 'none'; host.setAttribute('data-wmhide', '1');
+          host.insertAdjacentHTML('beforebegin', `<div class="wm-scope-clear">${wmAllClear('no ' + c[0] + ' are linked to ' + (sc === 'mine' ? 'you' : 'your department') + ' right now.', 'Choose "Everyone" above to see all ' + c[0] + ' in the organisation.')}</div>`);
+        }
+      } else if(sc !== 'all' && !recog.length){
+        const es = root.querySelector('.empty-state'); if(es) es.insertAdjacentHTML('beforebegin', `<div class="wm-scope-clear">${wmAllClear('no ' + c[0] + ' are linked to ' + (sc === 'mine' ? 'you' : 'your department') + ' right now.')}</div>`), es.style.display = 'none', es.setAttribute('data-wmhide', '1');
+      }
+      // personal banner (independent of the scope)
+      let b = document.getElementById('wm-scope-banner'); if(b) b.remove();
+      if(c[2] && sc === 'all' && (recog.length || root.querySelector('.empty-state'))){
+        const n = wmFirstName();
+        const html = !openMine.length ? wmAllClear('nothing is open on your name in ' + c[0] + '.', 'Pick "My items" above to see only yours.')
+          : `<div class="wm-allclear" style="background:#FFF3E0;border-color:#FFCC80;color:#8A5D14;"><div class="wm-ac-tick" style="background:#EF6C00;">${openMine.length}</div><div><b style="color:#B45309;">${E(n ? n + ', ' : '')}${openMine.length} open item${openMine.length === 1 ? ' is' : 's are'} on your name in ${E(c[0])}.</b><span style="color:#8A5D14;">Pick "My items" above to see only yours.</span></div></div>`;
+        bar.insertAdjacentHTML('afterend', '<div id="wm-scope-banner">' + html + '</div>');
+      }
+    }catch(e){ try{ console.warn('scope', e); }catch(_){} }
+    busy = false; watch();
+  }
+  function watch(){
+    const root = document.getElementById('content-root'); if(!root) return;
+    if(!obs) obs = new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(() => run(), 250); });
+    obs.observe(root, { childList:true, subtree:true });
+  }
+  { const _s = showModule; showModule = window.showModule = function(mod){ const r = _s.apply(this, arguments); setTimeout(() => { try{ run(); }catch(e){} }, 400); return r; }; }
+  watch();
+  // NC keeps its own selector: label it and make it stand out
+  { const t = setInterval(() => { const s = document.getElementById('nc-scope'); if(s && !s.previousElementSibling?.classList?.contains('wm-scope-lab')) s.insertAdjacentHTML('beforebegin', '<span class="wm-scope-lab">Show</span>'); }, 800); }
 })();
 </script>
 </body>
