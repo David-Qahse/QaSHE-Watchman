@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R74 2026-11-28"><meta charset="UTF-8">
+<meta name="wm-release" content="R75 2026-11-28"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -11114,17 +11114,7 @@ function renderCustomersTable(){
     wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21v-2a5 5 0 015-5h4a5 5 0 015 5v2"/></svg><p>No customers match this filter.</p></div>`;
     return;
   }
-  wrap.innerHTML = `<table>
-    <tr><th>Ref</th><th>Name</th><th>Contact</th><th>Owner</th><th>Satisfaction</th><th>Status</th></tr>
-    ${rows.map(c=>{ const summary = customerSurveySummary(c.id); return `<tr class="clickable" onclick="openCustomerDetail('${c.id}')">
-      <td class="mono-cell">${c.ref_code}</td>
-      <td class="strong">${c.name}</td>
-      <td>${c.contact_email || c.contact_name || '—'}</td>
-      <td>${memberName(c.account_owner_id)}</td>
-      <td style="color:${summary.color}; font-size:12.5px;">${summary.text}</td>
-      <td>${pill(c.status)}</td>
-    </tr>`;}).join('')}
-  </table>`;
+  wrap.innerHTML = window.wmCustomersRegisterHtml ? window.wmCustomersRegisterHtml(rows) : '';
 }
 window.renderCustomersTable = renderCustomersTable;
 
@@ -18711,7 +18701,7 @@ function renderAwClientsTable(){
     return;
   }
   wrap.innerHTML = `<table>
-    <tr><th>Client</th><th>Region</th><th>Assets Monitored</th><th>Data Status</th><th></th></tr>
+    <tr><th>Client</th><th>Region</th><th>Assets Monitored</th><th>Data Status</th><th>Satisfaction</th><th></th></tr>
     ${rows.map(c=>{
       const count = customerAwAssets(c.id).length;
       const status = awClientDataStatusInfo(c.id);
@@ -18720,6 +18710,7 @@ function renderAwClientsTable(){
         <td>${c.region || '—'}</td>
         <td>${count}</td>
         <td><span class="date-badge ${status.state}"><span class="dd"></span>${status.text}</span></td>
+        <td>${window.wmCustSatChip ? window.wmCustSatChip(c.id) : ''}</td>
         <td style="text-align:right;">
           <button class="btn-small" onclick="event.stopPropagation(); awEditClientRegion('${c.id}')">Edit region</button>
           <button class="btn-small" onclick="event.stopPropagation(); awStopMonitoringClient('${c.id}')">Remove</button>
@@ -20589,7 +20580,7 @@ function computeMRAgendaStats(key){
     return `<div class="mr-stat-row">
       ${mrStatCard(avgPct!==null ? avgPct.toFixed(1)+'%' : '—', 'Average satisfaction', 'target >95%', avgPct!==null ? (avgPct>=95?'var(--green)':avgPct>=80?'var(--amber)':'var(--red)') : null)}
       ${mrStatCard(surveys.length ? Math.round(completed.length/surveys.length*100)+'%' : '—', 'Response rate', completed.length+' of '+surveys.length+' sent', null)}
-    </div>`;
+    </div>${window.wmCustSatTable ? window.wmCustSatTable() : ''}`;
   }
   if(key === 'objectives'){
     const objs = STATE.objectives;
@@ -47826,8 +47817,8 @@ var WT = (function(){
 
   /* ---------- shell ---------- */
   let tab = 'plants', view = null;     // view: null | {type:'plant',id} | {type:'form'}
-  async function wtInit(){ try{ await loadWt(); }catch(e){} view = null; if(tab === 'plants' || tab === 'customers') tab = D().sitesMissing ? 'plants' : 'customers'; wtRender(); }
-  window.wtTab = t => { tab = t; view = null; wtRender(); };
+  async function wtInit(){ try{ await loadWt(); }catch(e){} try{ if(!(STATE.customerSurveys || []).length) await loadCustomerSurveys(); }catch(e){} view = null; if(tab === 'plants' || tab === 'customers') tab = D().sitesMissing ? 'plants' : 'customers'; wtRender(); }
+  window.wtTab = t => { tab = t; view = null; try{ FQ.q = ''; FQ.h = ''; FQ.t = ''; }catch(e){} wtRender(); };
   const pill = r => { const x = WT.RES[r]; return x ? `<span class="sev-badge" style="background:${x[1]};color:#fff;">${x[0]}</span>` : '<span style="color:var(--text-faint)">—</span>'; };
   function wtRender(){
     const root = document.getElementById('wt-root'); if(!root) return;
@@ -47846,13 +47837,6 @@ var WT = (function(){
   /* ---------- plants ---------- */
   const typeLbl = p => p.plant_type === 'cooling' ? 'Cooling system' : 'Boiler system';
   const dueCell = p => { if(!p.next_service_date) return '—'; const od = p.next_service_date < tdy(); return od ? `<b style="color:#B3261E">${fmtDate(p.next_service_date)} (overdue)</b>` : fmtDate(p.next_service_date); };
-  function plantsHtml(){
-    const pl = arr(D().plants).filter(p => p.status !== 'decommissioned').sort((a, b) => String(a.customer_name || '').localeCompare(String(b.customer_name || '')) || String(a.name).localeCompare(String(b.name)));
-    return `<div class="detail-card" style="padding:16px"><div class="panel-head"><h3 style="font-size:15px">Plants</h3>${canW() ? '<button class="btn-small primary" onclick="wtPlantEdit()">Add plant</button>' : ''}</div>
-      <p style="font-size:12px;color:var(--text-faint);margin:0 0 8px;">Each plant is a boiler house or cooling system at a customer site. Print its QR label and fix it to the plant: scanning opens the plant's page, where anyone can report a fault and Allmech staff can start a service report.</p>
-      <table><tr><th></th><th>Ref</th><th>Plant</th><th>Customer</th><th>Site</th><th>Type</th><th>Units</th><th>Last service</th><th>Next due</th><th>Result</th><th>Email ops</th></tr>
-      ${pl.map(p => `<tr class="clickable" onclick="wtPlant('${p.id}')"><td>${p.photo_data ? `<img src="${p.photo_data}" style="width:46px;height:36px;object-fit:cover;border-radius:4px;">` : ''}</td><td class="mono-cell">${E(p.ref_code || '')}</td><td class="strong">${E(p.name)}</td><td>${E(p.customer_name || '—')}${p.customer_name && !p.customer_id ? ' <span style="font-size:10px;color:#B26A16;font-weight:700" title="Not linked to the Customers module">not in Customers</span>' : ''}</td><td style="font-size:12px">${E((siteBy(p.site_id) || {}).name || '—')}</td><td style="font-size:12px">${typeLbl(p)}</td><td>${arr(p.units).length}</td><td>${p.last_service_date ? fmtDate(p.last_service_date) : '—'}</td><td>${dueCell(p)}</td><td>${pill(p.last_result)}</td><td style="font-size:12px">${p.notify_ops ? 'On' : 'Off'}</td></tr>`).join('') || '<tr><td colspan="11" style="color:var(--text-faint)">No plants yet. Add the first plant.</td></tr>'}</table></div>`;
-  }
   /* ---------- R58: Customer > Site > Plant ---------- */
   const siteBy = id => arr(D().sites).find(s => s.id === id);
   const custKey = x => (x && x.customer_id) || ('~' + String((x && x.customer_name) || '').trim().toLowerCase());
@@ -47873,35 +47857,102 @@ var WT = (function(){
     Object.keys(orphan).forEach(k => rows.push(orphan[k]));
     return rows.sort((a, b) => String(custNameOf(a)).localeCompare(String(custNameOf(b))) || String((a.site || {}).name || '').localeCompare(String((b.site || {}).name || '')));
   }
+  /* ---------- R75: registers in the Customer Management / Assets style ---------- */
+  (function(){ if(document.getElementById('wt-r75-css')) return; const s = document.createElement('style'); s.id = 'wt-r75-css'; s.textContent = `
+   .wt-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 0 14px}
+   .wt-tile{background:#fff;border:1px solid var(--border,#e3e3e3);border-radius:10px;padding:12px 14px}
+   .wt-tile .n{font-size:24px;font-weight:700;line-height:1.1}.wt-tile .l{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint,#777);margin-top:3px}
+   .wt-tile.red .n{color:#B3261E}.wt-tile.amber .n{color:#B26A16}.wt-tile.green .n{color:#1e7e34}
+   .wt-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px}.wt-bar input,.wt-bar select{padding:8px 10px;border:1px solid var(--border,#ddd);border-radius:8px;font-size:13px;background:#fff}
+   .wt-bar input{min-width:240px;flex:1}.wt-av{width:36px;height:36px;border-radius:50%;background:#1F3F73;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex:none}
+   .wt-name{display:flex;gap:11px;align-items:center}.wt-sub{font-size:11.5px;color:var(--text-faint,#777);font-weight:400}.wt-chip{display:inline-block;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600;white-space:nowrap}
+   #wt-root .panel-head{margin-bottom:10px}.wt-photo{width:54px;height:40px;object-fit:cover;border-radius:6px;border:1px solid var(--border,#ddd)}.wt-go{color:var(--text-faint,#999);font-size:18px}
+   .wt-dt{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px 18px;margin-top:12px}.wt-dt .l{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint,#777)}.wt-dt .v{font-size:13.5px;margin-top:2px}`;
+   document.head.appendChild(s); })();
+  const FQ = { q:'', h:'', t:'' };
+  const initials = n => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+  const tile = (n, l, tone) => `<div class="wt-tile ${tone || ''}"><div class="n">${n}</div><div class="l">${l}</div></div>`;
+  function satOf(cid){
+    if(!cid) return null; const all = arr(STATE.customerSurveys).filter(s => s.customer_id === cid), done = all.filter(s => s.status === 'completed' || s.overall_rating != null);
+    if(!all.length) return { none:true, text:'Not surveyed', n:0 }; if(!done.length) return { none:true, text:'Awaiting response', n:0, sent:all.length };
+    const avg = done.reduce((a, s) => a + Number(s.overall_rating || 0), 0) / done.length; return { avg, n:done.length, sent:all.length, text:avg.toFixed(1) + ' / 5' };
+  }
+  const satChip = cid => { const s = satOf(cid); if(!cid) return '<span class="wt-sub">not in Customers</span>'; if(!s || s.none) return `<span class="wt-sub">${s ? s.text : '—'}</span>`;
+    const bg = s.avg >= 4 ? '#E3F4E8' : s.avg >= 3 ? '#FFF1D6' : '#FBE3E1', fg = s.avg >= 4 ? '#1e7e34' : s.avg >= 3 ? '#8a5a00' : '#B3261E'; return `<span class="wt-chip" style="background:${bg};color:${fg}">&#9733; ${s.text}</span> <span class="wt-sub">${s.n} reply${s.n === 1 ? '' : ' replies'}</span>`; };
+  const openDefs = plantIds => arr(D().defects).filter(d => plantIds.includes(d.plant_id) && !['completed', 'declined'].includes(d.status)).length;
+  const nextDue = pls => { const d = pls.filter(p => p.status === 'active' && p.next_service_date).map(p => p.next_service_date).sort()[0]; return d || null; };
+  const matchQ = (txt, q) => !q || String(txt).toLowerCase().includes(q.toLowerCase());
+  function custAgg(){
+    const by = {}; custRows().forEach(r => { const a = by[r.key] || (by[r.key] = { key:r.key, customer_id:r.customer_id, name:custNameOf(r), sites:[], plants:[] }); if(r.site) a.sites.push(r.site); a.plants = a.plants.concat(r.plants); });
+    return Object.values(by).sort((a, b) => a.name.localeCompare(b.name));
+  }
+  function custListRows(){
+    return custAgg().map(a => ({ a, h:healthOf(a.plants), c:a.customer_id ? custRec(a.customer_id) : null })).filter(({ a, h, c }) => matchQ(a.name + ' ' + ((c && c.account_number) || '') + ' ' + a.sites.map(s => s.name + ' ' + (s.address || '')).join(' '), FQ.q)
+      && (!FQ.h || (FQ.h === 'overdue' ? h.od : FQ.h === 'none' ? !h.worst : h.worst === FQ.h)));
+  }
+  function custRowsHtml(){
+    const rows = custListRows();
+    return `<table><tr><th>Customer</th><th>Sites</th><th>Plants</th><th>Inspection health</th><th>Next service due</th><th>Open defects</th><th>Customer satisfaction</th><th></th></tr>
+     ${rows.map(({ a, h, c }) => { const nd = nextDue(a.plants), od = nd && nd < tdy(), ids = a.plants.map(p => p.id), nd2 = openDefs(ids);
+      return `<tr class="clickable" onclick="wtCust('${a.key}','')"><td><div class="wt-name"><span class="wt-av">${E(initials(a.name))}</span><div><div class="strong">${E(a.name)}</div><div class="wt-sub">${E((c && c.ref_code) || '')}${c && c.account_number ? ' &middot; Account ' + E(c.account_number) : ''}${!a.customer_id ? ' <b style="color:#B26A16">not in Customers</b>' : ''}</div></div></div></td>
+       <td>${a.sites.length ? E(a.sites[0].name) + (a.sites.length > 1 ? ` <span class="wt-sub">+${a.sites.length - 1} more</span>` : '') + (a.sites[0].address ? `<div class="wt-sub">${E(a.sites[0].address)}</div>` : '') : '<span class="wt-sub">Site not set</span>'}</td>
+       <td><b>${h.n}</b></td><td>${healthCell(h)}</td><td>${nd ? (od ? `<b style="color:#B3261E">${fmtDate(nd)}</b> <span class="wt-sub">overdue</span>` : fmtDate(nd)) : '—'}</td>
+       <td>${nd2 ? `<span class="wt-chip" style="background:#FFF1D6;color:#8a5a00">${nd2}</span>` : '<span class="wt-sub">none</span>'}</td><td>${satChip(a.customer_id)}</td><td class="wt-go">&rsaquo;</td></tr>`; }).join('') || '<tr><td colspan="8" style="color:var(--text-faint);padding:18px">No customers match. Press Add customer or site.</td></tr>'}</table>`;
+  }
+  window.wtFlt = function(k, v){ FQ[k] = v; const el = document.getElementById('wt-list'); if(el) el.innerHTML = tab === 'plants' ? plantRowsHtml() : custRowsHtml(); };
+  const bar = (ph, withType) => `<div class="wt-bar"><input placeholder="${ph}" value="${E(FQ.q)}" oninput="wtFlt('q',this.value)">
+     <select onchange="wtFlt('h',this.value)"><option value="">All inspection results</option>${[['critical', 'Critical'], ['attention', 'Attention required'], ['compliant', 'Compliant'], ['overdue', 'Overdue for service'], ['none', 'Not yet inspected']].map(([v, l]) => `<option value="${v}" ${FQ.h === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+     ${withType ? `<select onchange="wtFlt('t',this.value)"><option value="">Boilers and cooling</option><option value="boiler" ${FQ.t === 'boiler' ? 'selected' : ''}>Boiler systems</option><option value="cooling" ${FQ.t === 'cooling' ? 'selected' : ''}>Cooling systems</option></select>` : ''}`;
   function customersHtml(){
     if(D().sitesMissing) return '<div class="detail-card" style="padding:20px"><h3>Database update needed</h3><p>Run <b>qashe-watchman-schema-r58-wt-sites.sql</b> in the Supabase SQL editor, then reload. Your plants are moved into customers and sites automatically.</p></div>';
-    const rows = custRows();
-    return `<div class="detail-card" style="padding:16px"><div class="panel-head"><h3 style="font-size:15px">Customers</h3>${canW() ? '<button class="btn-small primary" onclick="wtSiteEdit()">Add customer or site</button>' : ''}</div>
-      <p style="font-size:12px;color:var(--text-faint);margin:0 0 8px;">Customers come from the Customers module (a customer added here is added there too). A customer can have several sites, and a site several plants. Open a customer to see its plants.</p>
-      <table><tr><th>Account no.</th><th>Customer</th><th>Location</th><th>Plants</th><th>Inspection health</th></tr>
-      ${rows.map(r => { const c = r.customer_id ? custRec(r.customer_id) : null, h = healthOf(r.plants); return `<tr class="clickable" onclick="wtCust('${r.key}','${r.site ? r.site.id : ''}')"><td class="mono-cell">${E((c && c.account_number) || '—')}</td><td class="strong">${E(custNameOf(r))}${!r.customer_id ? ' <span style="font-size:10px;color:#B26A16;font-weight:700">not in Customers</span>' : ''}</td><td>${E(r.site ? r.site.name : 'Site not set')}${r.site && r.site.address ? `<div style="font-size:11.5px;color:var(--text-faint)">${E(r.site.address)}</div>` : ''}</td><td>${h.n}</td><td>${healthCell(h)}</td></tr>`; }).join('') || '<tr><td colspan="5" style="color:var(--text-faint)">No customers yet. Press Add customer or site.</td></tr>'}</table></div>`;
+    const ag = custAgg(), pls = ag.reduce((a, x) => a.concat(x.plants), []), ids = pls.map(p => p.id), od = pls.filter(p => p.status === 'active' && p.next_service_date && p.next_service_date < tdy()).length;
+    const crit = ag.filter(x => healthOf(x.plants).worst === 'critical').length, sc = ag.map(x => satOf(x.customer_id)).filter(s => s && !s.none), avg = sc.length ? sc.reduce((a, s) => a + s.avg, 0) / sc.length : null;
+    return `<div class="wt-tiles">${tile(ag.length, 'Customers')}${tile(arr(D().sites).filter(s => s.status !== 'inactive').length, 'Sites')}${tile(pls.length, 'Plants')}${tile(od, 'Services overdue', od ? 'red' : 'green')}${tile(crit, 'Customers critical', crit ? 'red' : 'green')}${tile(openDefs(ids), 'Open defects', openDefs(ids) ? 'amber' : '')}${tile(avg == null ? '—' : avg.toFixed(1) + ' / 5', 'Average satisfaction', avg == null ? '' : avg >= 4 ? 'green' : avg >= 3 ? 'amber' : 'red')}</div>
+     <div class="wt-bar" style="justify-content:space-between"><span class="wt-sub" style="max-width:640px">Customers are managed in the Customers module (a customer added here is added there too, with its satisfaction surveys). Open a customer to see its sites and plants.</span>${canW() ? '<button class="btn-small primary" onclick="wtSiteEdit()">Add customer or site</button>' : ''}</div>
+     ${bar('Search customer, account number or site')}</div>
+     <div class="panel" style="padding:0;overflow:hidden"><div id="wt-list">${custRowsHtml()}</div></div>`;
   }
   window.wtCust = function(key, siteId){ view = { type:'customer', key, site:siteId || null }; tab = 'customers'; wtRender(); window.scrollTo(0, 0); };
+  window.wtOpenCm = function(id){ try{ showModule('customers'); }catch(e){} setTimeout(() => { try{ openCustomerDetail(id); }catch(e){} }, 700); };
+  const plantRow = (p, withCust) => `<tr class="clickable" onclick="wtPlant('${p.id}')"><td>${p.photo_data ? `<img class="wt-photo" src="${p.photo_data}">` : '<span class="wt-av" style="border-radius:8px;width:54px;height:40px;background:#dbe3f3;color:#1F3F73">' + (p.plant_type === 'cooling' ? 'CS' : 'BS') + '</span>'}</td>
+     <td><div class="strong">${E(p.name)}</div><div class="wt-sub">${E(p.ref_code || '')} &middot; ${typeLbl(p)} &middot; ${arr(p.units).length} unit${arr(p.units).length === 1 ? '' : 's'}</div></td>
+     ${withCust ? `<td>${E(p.customer_name || '—')}${p.customer_name && !p.customer_id ? ' <span class="wt-sub" style="color:#B26A16;font-weight:700">not in Customers</span>' : ''}</td>` : ''}
+     <td style="font-size:12.5px">${E((siteBy(p.site_id) || {}).name || '—')}</td><td>${p.last_service_date ? fmtDate(p.last_service_date) : '—'}</td><td>${dueCell(p)}</td><td>${p.last_result ? pill(p.last_result) : '<span class="wt-sub">Not yet inspected</span>'}</td><td>${openDefs([p.id]) ? `<span class="wt-chip" style="background:#FFF1D6;color:#8a5a00">${openDefs([p.id])} open</span>` : '<span class="wt-sub">none</span>'}</td><td class="wt-go">&rsaquo;</td></tr>`;
+  const plantHead = withCust => `<tr><th></th><th>Plant</th>${withCust ? '<th>Customer</th>' : ''}<th>Site</th><th>Last service</th><th>Next due</th><th>Result</th><th>Defects</th><th></th></tr>`;
+  function plantRowsHtml(){
+    const pl = arr(D().plants).filter(p => p.status !== 'decommissioned').filter(p => matchQ(p.name + ' ' + p.ref_code + ' ' + (p.customer_name || '') + ' ' + ((siteBy(p.site_id) || {}).name || ''), FQ.q) && (!FQ.t || p.plant_type === FQ.t || (FQ.t === 'boiler' && p.plant_type !== 'cooling'))
+      && (!FQ.h || (FQ.h === 'overdue' ? (p.next_service_date && p.next_service_date < tdy()) : FQ.h === 'none' ? !p.last_result : p.last_result === FQ.h))).sort((a, b) => String(a.customer_name || '').localeCompare(String(b.customer_name || '')) || String(a.name).localeCompare(String(b.name)));
+    return `<table>${plantHead(true)}${pl.map(p => plantRow(p, true)).join('') || '<tr><td colspan="9" style="color:var(--text-faint);padding:18px">No plants match.</td></tr>'}</table>`;
+  }
+  function plantsHtml(){
+    const pl = arr(D().plants).filter(p => p.status !== 'decommissioned'), od = pl.filter(p => p.status === 'active' && p.next_service_date && p.next_service_date < tdy()).length;
+    return `<div class="wt-tiles">${tile(pl.length, 'Plants')}${tile(pl.filter(p => p.plant_type !== 'cooling').length, 'Boiler systems')}${tile(pl.filter(p => p.plant_type === 'cooling').length, 'Cooling systems')}${tile(pl.filter(p => p.last_result === 'critical').length, 'Critical', pl.some(p => p.last_result === 'critical') ? 'red' : 'green')}${tile(od, 'Services overdue', od ? 'red' : 'green')}</div>
+     <div class="wt-bar" style="justify-content:space-between"><span class="wt-sub" style="max-width:640px">Each plant is a boiler house or cooling system at a customer site. Print its QR label and fix it to the plant: scanning opens the plant's page, where anyone can report a fault and Allmech staff can start a service report.</span>${canW() ? '<button class="btn-small primary" onclick="wtPlantEdit()">Add plant</button>' : ''}</div>
+     ${bar('Search plant, reference, customer or site', true)}</div><div class="panel" style="padding:0;overflow:hidden"><div id="wt-list">${plantRowsHtml()}</div></div>`;
+  }
   function customerHtml(v){
     const rows = custRows().filter(r => r.key === v.key), first = rows[0];
     if(!first) return '<p>Customer not found. <button class="btn-small" onclick="wtTab(\'customers\')">Back to customers</button></p>';
-    const c = first.customer_id ? custRec(first.customer_id) : null, sites = rows.filter(r => r.site).map(r => r.site);
-    const plants = rows.reduce((a, r) => a.concat(r.plants), []).filter(p => !v.site || p.site_id === v.site).sort((a, b) => String(a.name).localeCompare(String(b.name)));
-    const hAll = healthOf(rows.reduce((a, r) => a.concat(r.plants), []));
+    const c = first.customer_id ? custRec(first.customer_id) : null, sites = rows.filter(r => r.site).map(r => r.site), allPl = rows.reduce((a, r) => a.concat(r.plants), []);
+    const plants = allPl.filter(p => !v.site || p.site_id === v.site).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    const hAll = healthOf(allPl), ids = allPl.map(p => p.id), nd = nextDue(allPl), sat = satOf(first.customer_id), nm = custNameOf(first);
     const chip = (id, l) => `<button class="btn-small ${v.site === id || (!v.site && !id) ? 'primary' : ''}" onclick="wtCust('${v.key}','${id}')">${E(l)}</button>`;
-    return `<div style="margin-bottom:10px;font-size:13px;"><a href="#" onclick="wtTab('customers');return false;" style="color:var(--red);font-weight:600">Customers</a> &rsaquo; <b>${E(custNameOf(first))}</b></div>
-      <div class="detail-card" style="padding:16px;margin-bottom:14px;"><div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start;">
-        <div style="flex:1;min-width:240px;"><div style="font-size:11px;color:var(--text-faint)">${E((c && c.ref_code) || '')}${c && c.account_number ? ' &middot; Account ' + E(c.account_number) : ''}</div><h2 style="margin:2px 0 6px;font-size:20px;">${E(custNameOf(first))}</h2>
-          <div style="font-size:13px;line-height:1.7;">${c ? `<b>Contact:</b> ${E(c.contact_name || '—')} ${c.contact_email ? '&lt;' + E(c.contact_email) + '&gt;' : ''} ${E(c.contact_phone || '')}<br>` : ''}<b>Sites:</b> ${sites.length} &nbsp; <b>Plants:</b> ${hAll.n} &nbsp; ${healthCell(hAll)}</div>
-          ${!first.customer_id && canW() ? `<div style="margin-top:8px;background:#FFF4E5;border:1px solid #F0C98A;border-radius:8px;padding:8px 10px;font-size:12.5px;">Not in the Customers module. <a href="#" onclick="wtLinkCustomer('${v.key}');return false;" style="color:var(--red);font-weight:700">Add it</a></div>` : ''}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">${canW() ? `<button class="btn-small" onclick="wtSiteEdit(null,'${v.key}')">Add site</button><button class="btn-small primary" onclick="wtPlantEdit(null,{customer:'${v.key}',site:'${v.site || ''}'})">Add plant</button><button class="btn-small" onclick="wtNewReport()">New service report</button>` : ''}</div></div></div>
+    const dt = (l, x) => `<div><div class="l">${l}</div><div class="v">${x || '—'}</div></div>`;
+    const surv = first.customer_id ? arr(STATE.customerSurveys).filter(s => s.customer_id === first.customer_id).sort((a, b) => String(b.sent_at || b.created_at).localeCompare(String(a.sent_at || a.created_at))).slice(0, 4) : [];
+    return `<div style="margin-bottom:10px;font-size:13px;"><a href="#" onclick="wtTab('customers');return false;" style="color:var(--red);font-weight:600">Customers</a> &rsaquo; <b>${E(nm)}</b></div>
+      <div class="detail-card" style="padding:18px;margin-bottom:14px;"><div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;">
+        <div class="wt-name"><span class="wt-av" style="width:54px;height:54px;font-size:19px">${E(initials(nm))}</span><div><div class="wt-sub">${E((c && c.ref_code) || '')}${c && c.account_number ? ' &middot; Account ' + E(c.account_number) : ''}</div><h2 style="margin:2px 0 0;font-size:22px;">${E(nm)}</h2><div style="margin-top:5px">${c ? pill(c.status) : ''} ${healthCell(hAll)}</div></div></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">${c ? `<button class="btn-small" onclick="wtOpenCm('${c.id}')">Open in Customer Management</button>` : ''}${canW() ? `<button class="btn-small" onclick="wtSiteEdit(null,'${v.key}')">Add site</button><button class="btn-small primary" onclick="wtPlantEdit(null,{customer:'${v.key}',site:'${v.site || ''}'})">Add plant</button><button class="btn-small" onclick="wtNewReport()">New service report</button>` : ''}</div></div>
+        <div class="wt-dt">${dt('Contact', c && E(c.contact_name))}${dt('Position', c && E(c.contact_position))}${dt('Email', c && c.contact_email && E(c.contact_email))}${dt('Phone', c && E(c.contact_phone))}${dt('Account owner', c && E(memberName(c.account_owner_id)))}${dt('Customer satisfaction', first.customer_id ? satChip(first.customer_id) : '')}</div>
+        ${!first.customer_id && canW() ? `<div style="margin-top:12px;background:#FFF4E5;border:1px solid #F0C98A;border-radius:8px;padding:8px 10px;font-size:12.5px;">Not in the Customers module, so it has no satisfaction survey or account owner. <a href="#" onclick="wtLinkCustomer('${v.key}');return false;" style="color:var(--red);font-weight:700">Add it</a></div>` : ''}</div>
+      <div class="wt-tiles">${tile(sites.length, 'Sites')}${tile(hAll.n, 'Plants')}${tile(allPl.filter(p => p.status === 'active' && p.next_service_date && p.next_service_date < tdy()).length, 'Services overdue', hAll.od ? 'red' : 'green')}${tile(nd ? fmtDate(nd) : '—', 'Next service due')}${tile(openDefs(ids), 'Open defects', openDefs(ids) ? 'amber' : '')}${tile(sat && !sat.none ? sat.avg.toFixed(1) + ' / 5' : '—', 'Satisfaction', sat && !sat.none ? (sat.avg >= 4 ? 'green' : sat.avg >= 3 ? 'amber' : 'red') : '')}</div>
       <div class="detail-card" style="padding:16px;margin-bottom:14px;"><div class="panel-head"><h3 style="font-size:15px">Sites</h3></div>
         <table><tr><th>Site</th><th>Physical address</th><th>Site contact</th><th>Operations manager</th><th>Plants</th><th>Health</th><th></th></tr>
-        ${sites.map(s => { const r = rows.find(x => x.site && x.site.id === s.id), h = healthOf(r.plants); return `<tr class="clickable" onclick="wtCust('${v.key}','${s.id}')"><td class="strong">${E(s.name)}</td><td style="font-size:12.5px">${E(s.address || '—')}</td><td style="font-size:12.5px">${E(s.contact_name || '—')}${s.contact_phone ? '<br>' + E(s.contact_phone) : ''}${s.contact_email ? '<br>' + E(s.contact_email) : ''}</td><td style="font-size:12.5px">${E(s.ops_manager_name || '—')}${s.ops_manager_email ? '<br>' + E(s.ops_manager_email) : ''}<br><span style="color:var(--text-faint)">Email on completion: ${s.notify_ops ? 'On' : 'Off'}</span></td><td>${h.n}</td><td>${healthCell(h)}</td><td>${canW() ? `<button class="btn-small" onclick="event.stopPropagation();wtSiteEdit('${s.id}')">Edit</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="7" style="color:var(--text-faint)">No site recorded yet. Add a site.</td></tr>'}</table></div>
-      <div class="detail-card" style="padding:16px"><div class="panel-head"><h3 style="font-size:15px">Plants</h3></div>
-        ${sites.length > 1 ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">${chip('', 'All sites')}${sites.map(s => chip(s.id, s.name)).join('')}</div>` : ''}
-        <table><tr><th></th><th>Ref</th><th>Plant</th><th>Site</th><th>Type</th><th>Units</th><th>Last service</th><th>Next due</th><th>Result</th></tr>
-        ${plants.map(p => `<tr class="clickable" onclick="wtPlant('${p.id}')"><td>${p.photo_data ? `<img src="${p.photo_data}" style="width:46px;height:36px;object-fit:cover;border-radius:4px;">` : ''}</td><td class="mono-cell">${E(p.ref_code || '')}</td><td class="strong">${E(p.name)}</td><td style="font-size:12px">${E((siteBy(p.site_id) || {}).name || '—')}</td><td style="font-size:12px">${typeLbl(p)}</td><td>${arr(p.units).length}</td><td>${p.last_service_date ? fmtDate(p.last_service_date) : '—'}</td><td>${dueCell(p)}</td><td>${pill(p.last_result)}</td></tr>`).join('') || '<tr><td colspan="9" style="color:var(--text-faint)">No plants here yet. Press Add plant.</td></tr>'}</table></div>`;
+        ${sites.map(s => { const r = rows.find(x => x.site && x.site.id === s.id), h = healthOf(r.plants); return `<tr class="clickable" onclick="wtCust('${v.key}','${s.id}')"><td class="strong">${E(s.name)}</td><td style="font-size:12.5px">${E(s.address || '—')}</td><td style="font-size:12.5px">${E(s.contact_name || '—')}${s.contact_phone ? '<br>' + E(s.contact_phone) : ''}${s.contact_email ? '<br>' + E(s.contact_email) : ''}</td><td style="font-size:12.5px">${E(s.ops_manager_name || '—')}${s.ops_manager_email ? '<br>' + E(s.ops_manager_email) : ''}<br><span class="wt-sub">Email on completion: ${s.notify_ops ? 'On' : 'Off'}</span></td><td>${h.n}</td><td>${healthCell(h)}</td><td>${canW() ? `<button class="btn-small" onclick="event.stopPropagation();wtSiteEdit('${s.id}')">Edit</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="7" style="color:var(--text-faint)">No site recorded yet. Add a site.</td></tr>'}</table></div>
+      <div class="detail-card" style="padding:0;overflow:hidden;margin-bottom:14px;"><div class="panel-head" style="padding:14px 16px 4px"><h3 style="font-size:15px">Plants at ${E(nm)}</h3></div>
+        ${sites.length > 1 ? `<div style="display:flex;gap:6px;flex-wrap:wrap;padding:6px 16px 10px;">${chip('', 'All sites')}${sites.map(s => chip(s.id, s.name)).join('')}</div>` : ''}
+        <table>${plantHead(false)}${plants.map(p => plantRow(p, false)).join('') || '<tr><td colspan="8" style="color:var(--text-faint);padding:16px">No plants here yet. Press Add plant.</td></tr>'}</table></div>
+      ${first.customer_id ? `<div class="detail-card" style="padding:16px"><div class="panel-head"><h3 style="font-size:15px">Satisfaction surveys</h3></div>${surv.length ? `<table><tr><th>Sent</th><th>Status</th><th>Rating</th></tr>${surv.map(s => `<tr><td>${fmtDate((s.sent_at || s.created_at || '').slice(0, 10))}</td><td>${pill(s.status)}</td><td>${s.overall_rating ? Number(s.overall_rating).toFixed(1) + ' / 5' : '—'}</td></tr>`).join('')}</table>` : '<p class="wt-sub">No surveys sent yet.</p>'}<p class="wt-sub" style="margin-top:8px">Surveys are sent from Customer Management. The same ratings feed the Compliance Dashboard and the Management Review.</p></div>` : ''}`;
   }
   window.wtLinkCustomer = async function(key){
     if(!custOk()){ toast('The Customers module is not available to you.', 'error'); return; }
@@ -48093,7 +48144,7 @@ var WT = (function(){
       ${vs.map(v => { const p = plantBy(v.plant_id) || {}; return `<tr><td>${fmtDate(v.visit_date)}</td><td class="mono-cell">${E(v.ref_code || '')}</td><td class="strong">${E(p.name || '')}<div style="font-size:11px;color:var(--text-faint)">${E(p.customer_name || '')}</div></td><td>${E(v.technician_name || '—')}</td><td>${v.status === 'completed' ? pill(v.overall) : '—'}</td><td>${v.status === 'completed' ? v.out_of_limit : '—'}</td><td>${v.status !== 'completed' ? '<b style="color:#B26A16">Draft</b>' : (v.signoff_method === 'email' && !v.client_signed_at ? '<b style="color:#B26A16">Awaiting client sign-off</b>' : 'Completed' + (v.signoff_method === 'email' && v.client_signed_at ? '<div style="font-size:10.5px;color:#2E7D4F">Client signed by email</div>' : ''))}</td>
         <td style="white-space:nowrap">${v.status === 'draft' && canW() ? `<button class="btn-small" onclick="wtEditReport('${v.id}')">Continue</button>` : `<button class="btn-small" onclick="wtPrint('${v.id}')">Print</button> <button class="btn-small" onclick="wtCopy('${reportUrl(v)}')">Link</button> ${canW() ? `<button class="btn-small" onclick="wtEditReport('${v.id}')">Edit</button>` : ''}${canW() && v.signoff_method === 'email' && !v.client_signed_at ? ` <button class="btn-small" onclick="wtSignoffEmail('${v.id}')">Resend sign-off email</button>` : ''}`}</td></tr>`; }).join('') || '<tr><td colspan="8" style="color:var(--text-faint)">No service reports yet.</td></tr>'}</table>`;
   }
-  const reportsHtml = () => `<div class="detail-card" style="padding:16px"><h3 style="font-size:15px;margin:0 0 8px;">Service reports</h3>${visitsTable(arr(D().visits))}</div>`;
+  const reportsHtml = () => `<div class="panel" style="padding:0;overflow:hidden"><div class="panel-head" style="padding:14px 16px 4px"><h3 style="font-size:15px;margin:0">Service reports</h3></div>${visitsTable(arr(D().visits))}</div>`;
 
   /* ---------- the report form ---------- */
   let FORM = null;
@@ -48653,7 +48704,7 @@ ${STATE.org.name}${s.tel ? '\nTel: ' + s.tel : ''}`;
     suppliers(){ const a = arr(STATE.suppliers);
       return [sc(a.length, 'Total'), sc(cnt(a, s => s.status === 'approved'), 'Approved', 'green'), sc(cnt(a, s => ['pending_qualification','conditional'].includes(s.status)), 'Pending or conditional', 'amber'), sc(cnt(a, s => ['suspended','removed'].includes(s.status)), 'Suspended or removed', 'red'), sc(cnt(a, s => s.risk_classification === 'high'), 'High risk', 'red'), sc(cnt(a, s => s.status !== 'removed' && od(s.next_review_date)), 'Reviews overdue', 'red')]; },
     customers(){ const a = arr(STATE.customers), sv = arr(STATE.customerSurveys).filter(s => s.status === 'completed' || s.overall_rating != null), avg = sv.length ? Math.round(sv.reduce((s, x) => s + Number(x.overall_rating || 0), 0) / sv.length / 5 * 100) : null;
-      return [sc(a.length, 'Total'), sc(cnt(a, c => c.status === 'active'), 'Active', 'green'), sc(cnt(a, c => c.status === 'inactive'), 'Inactive'), sc(sv.length, 'Surveys completed'), sc(avg == null ? '—' : avg + '%', 'Average satisfaction', avg == null ? null : avg >= 95 ? 'green' : avg >= 80 ? 'amber' : 'red')]; },
+      return [sc(a.length, 'Total'), sc(cnt(a, c => c.status === 'active'), 'Active', 'green'), sc(cnt(a, c => c.status === 'inactive'), 'Inactive'), sc(sv.length, 'Surveys completed'), sc(avg == null ? '—' : avg + '%', 'Average satisfaction', avg == null ? null : avg >= 95 ? 'green' : avg >= 80 ? 'amber' : 'red'), sc(window.wmCustSatRows ? window.wmCustSatRows().filter(r => r.avg != null && r.avg < 4).length : 0, 'Customers below 80%', window.wmCustSatRows && window.wmCustSatRows().some(r => r.avg != null && r.avg < 4) ? 'red' : 'green'), sc(window.wmCustSatRows ? window.wmCustSatRows().filter(r => r.avg == null && r.active).length : 0, 'Active, not yet surveyed', 'amber')]; },
     objectives(){ const a = arr(STATE.objectives);
       return [sc(a.length, 'Total'), sc(cnt(a, o => o.status === 'achieved'), 'Achieved', 'green'), sc(cnt(a, o => ['draft','active'].includes(o.status)), 'On track', 'amber'), sc(cnt(a, o => ['not_achieved','discontinued'].includes(o.status)), 'Not achieved or discontinued', 'red')]; },
     legal(){ const a = arr(STATE.legalRegister), n = cnt(a, l => od(l.next_review_due_date));
@@ -56966,6 +57017,7 @@ W.asset_watchman.ask = 'Can you show a client how the condition of their equipme
     ['R72','2026-11-27','Interactive training video player','Internal training videos now play in a player with chapters, speed control and watched-percentage tracking; completion unlocks after the video has been watched and the percentage is recorded with the comment.',['training'],LIVE],
     ['R73','2026-11-27','Release a document with a recorded justification','The platform developer, or an administrator the developer has authorised, can release any new document (including job descriptions and KPI and appraisal documents) without the standard review and approval. They are recorded as the reviewer and the approver, the reason is kept permanently, and a bypass register shows every such release to an auditor.',['documents','personnel'],LIVE],
     ['R74','2026-11-28','Open straight from the email','Links in document, task and reminder emails now open the item itself. Reviewers and approvers get a Document Review page with every section, a comment or recommended change box under each, and Submit (the other parties are emailed your recommendations). Tasks open on a page where you set the status, add a progress note and comment. Reminder digests link to each item.',['documents','tasks'],LIVE],
+    ['R75','2026-11-28','Customer, assets and water treatment joined up; print quality','Water Treatment registers restyled like Customer Management; a customer opens its own page with details and every plant at its sites. Customer satisfaction shows per customer on every line, on the Customers page, the compliance dashboard and the management review. Prints now have proper page margins (no browser date or web address), thin light-grey Plain tables, wide registers on landscape, and the Risk and Opportunity register and record show inherent and residual ratings in colour.',['all'],LIVE],
   ];
   const has = m => { try{ return m === 'all' || (typeof orgHasModule === 'function' ? orgHasModule(m) !== false : true); }catch(e){ return true; } };
   function relevant(){ const inc = wmInception(); return WM_PLATFORM_CHANGES.filter(c => c[1] >= inc && c[4].some(has)); }
@@ -58506,6 +58558,135 @@ W.asset_watchman.ask = 'Can you show a client how the condition of their equipme
     });
     return true;
   };
+})();
+
+
+/* =====================================================================
+   R75: one customer record, shown the same way everywhere.
+   Satisfaction per customer, on every customer line (Customer Management,
+   Water Treatment, Asset Watchman), on the Compliance Dashboard and in the
+   Management Review.
+   ===================================================================== */
+(function(){
+  const esc = x => String(x == null ? '' : x).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const arr = x => Array.isArray(x) ? x : [];
+  function sat(cid){
+    const all = arr(STATE.customerSurveys).filter(s => s.customer_id === cid), done = all.filter(s => s.status === 'completed' || s.overall_rating != null);
+    const last = all.map(s => String(s.completed_at || s.sent_at || s.created_at || '').slice(0, 10)).sort().pop() || null;
+    return { sent:all.length, n:done.length, avg:done.length ? done.reduce((a, s) => a + Number(s.overall_rating || 0), 0) / done.length : null, last };
+  }
+  const tone = a => a == null ? ['#f1f1f1', '#666'] : a >= 4.5 ? ['#E3F4E8', '#1e7e34'] : a >= 4 ? ['#EAF5E3', '#3a7d1e'] : a >= 3 ? ['#FFF1D6', '#8a5a00'] : ['#FBE3E1', '#B3261E'];
+  window.wmCustSatChip = function(cid){
+    const s = sat(cid); if(s.avg == null) return `<span style="font-size:12px;color:var(--text-faint)">${s.sent ? s.sent + ' sent, awaiting reply' : 'Not surveyed'}</span>`;
+    const t = tone(s.avg); return `<span style="display:inline-block;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600;background:${t[0]};color:${t[1]}">&#9733; ${s.avg.toFixed(1)} / 5</span> <span style="font-size:11.5px;color:var(--text-faint)">${Math.round(s.avg / 5 * 100)}% &middot; ${s.n} repl${s.n === 1 ? 'y' : 'ies'}</span>`;
+  };
+  window.wmCustSatRows = function(){
+    return arr(STATE.customers).map(c => { const s = sat(c.id); return { c, avg:s.avg, n:s.n, sent:s.sent, last:s.last, active:c.status !== 'inactive' }; });
+  };
+  window.wmCustSatTable = function(){
+    const rows = window.wmCustSatRows().filter(r => r.active).sort((a, b) => (a.avg == null ? 99 : a.avg) - (b.avg == null ? 99 : b.avg));
+    if(!rows.length) return '';
+    let wt = {}; try{ arr((STATE._wt || {}).plants).forEach(p => { if(p.customer_id && p.last_result){ const R = { critical:3, attention:2, compliant:1 }; if((R[p.last_result] || 0) > (R[wt[p.customer_id]] || 0)) wt[p.customer_id] = p.last_result; } }); }catch(e){}
+    const hasWt = Object.keys(wt).length;
+    return `<div style="margin-top:12px;border:1px solid var(--border,#e3e3e3);border-radius:10px;overflow:hidden;background:#fff"><table style="width:100%"><tr><th>Customer</th><th>Satisfaction</th><th>Replies</th><th>Last survey</th>${hasWt ? '<th>Plant inspection result</th>' : ''}<th>Action</th></tr>
+     ${rows.map(r => `<tr><td class="strong">${esc(r.c.name)}</td><td>${window.wmCustSatChip(r.c.id)}</td><td>${r.n} of ${r.sent}</td><td>${r.last ? fmtDate(r.last) : '—'}</td>${hasWt ? `<td>${wt[r.c.id] ? pill(wt[r.c.id]) : '—'}</td>` : ''}<td style="font-size:12px">${r.avg == null ? '<b style="color:#B26A16">Survey this customer</b>' : r.avg < 4 ? '<b style="color:#B3261E">Below 80%: agree an improvement action</b>' : 'On target'}</td></tr>`).join('')}</table></div>`;
+  };
+  window.wmCustomersRegisterHtml = function(rows){
+    const ini = n => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+    let wtP = []; try{ wtP = arr((STATE._wt || {}).plants).filter(p => p.status !== 'decommissioned'); }catch(e){}
+    const awN = c => { try{ return c.aw_monitored ? customerAwAssets(c.id).length : 0; }catch(e){ return 0; } };
+    const tag = (t, bg, fg) => `<span style="display:inline-block;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:600;background:${bg};color:${fg};margin-right:4px">${t}</span>`;
+    return `<table><tr><th>Customer</th><th>Contact</th><th>Account owner</th><th>Customer satisfaction</th><th>Used in</th><th>Status</th><th></th></tr>
+    ${rows.map(c => { const wn = wtP.filter(p => p.customer_id === c.id).length, an = awN(c); return `<tr class="clickable" onclick="openCustomerDetail('${c.id}')">
+      <td><div style="display:flex;gap:11px;align-items:center"><span style="width:36px;height:36px;border-radius:50%;background:#1F3F73;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex:none">${esc(ini(c.name))}</span><div><div class="strong">${esc(c.name)}</div><div style="font-size:11.5px;color:var(--text-faint)">${esc(c.ref_code)}${c.account_number ? ' &middot; Account ' + esc(c.account_number) : ''}</div></div></div></td>
+      <td>${esc(c.contact_name || '—')}<div style="font-size:11.5px;color:var(--text-faint)">${esc(c.contact_email || '')}</div></td><td>${esc(memberName(c.account_owner_id))}</td><td>${window.wmCustSatChip(c.id)}</td>
+      <td>${wn ? tag('Water Treatment: ' + wn + ' plant' + (wn === 1 ? '' : 's'), '#E4EEFB', '#1F3F73') : ''}${an ? tag('Asset Watchman: ' + an + ' asset' + (an === 1 ? '' : 's'), '#F1E8FB', '#5a2a8a') : ''}${!wn && !an ? '<span style="color:var(--text-faint);font-size:12px">—</span>' : ''}</td>
+      <td>${pill(c.status)}</td><td style="color:var(--text-faint);font-size:18px">&rsaquo;</td></tr>`; }).join('')}</table>`;
+  };
+  // Water Treatment data is needed for the "Used in" column: load it quietly when Customer Management opens.
+  { const _o = window.renderCustomersTable; window.renderCustomersTable = function(){ const r = _o.apply(this, arguments);
+      try{ if(STATE.org && STATE.org._wtOn && !(STATE._wt && STATE._wt.loaded) && typeof loadWt === 'function' && !STATE._wtLoading){ STATE._wtLoading = true; loadWt().then(() => { STATE._wtLoading = false; _o.apply(window, []); }).catch(() => { STATE._wtLoading = false; }); } }catch(e){} return r; }; renderCustomersTable = window.renderCustomersTable; }
+})();
+
+
+/* =====================================================================
+   R75: print quality.
+   Plain style: hairline light-grey rules, no boxed grid, quiet headings.
+   Every print: A4 with its own margins (so the browser's date, title and
+   web address no longer print on the page), wide tables kept inside the
+   page, wide registers on a landscape page, long words wrapped.
+   Risk and Opportunity prints show inherent and residual ratings in colour.
+   ===================================================================== */
+(function(){
+  const css = document.createElement('style'); css.id = 'r75-print-css'; css.textContent = `
+  @page{ size:A4; margin:0; }
+  .r75-band{display:inline-block;min-width:24px;text-align:center;padding:1px 7px;border-radius:3px;font-weight:700;font-size:inherit;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .r75-crit{background:#B3261E;color:#fff}.r75-maj{background:#F2A100;color:#1b1b1b}.r75-min{background:#2E8B57;color:#fff}
+  .r75-legend{margin:8px 0 0;font-size:9px;color:#777}.r75-legend .r75-band{min-width:0;padding:0 6px;margin-right:3px;font-size:9px}
+  @media print{
+    html:not(:has(#oc-page-style)) #print-container{padding:13mm 14mm 20mm !important;box-sizing:border-box;max-width:100%}
+    html:not(:has(#oc-page-style)) .print-footer-fixed{left:14mm !important;right:14mm !important;bottom:7mm !important}
+    #print-container .print-body, #print-container .print-body *{max-width:100%}
+    #print-container .print-body img{height:auto}
+    #print-container .print-table{table-layout:auto;width:100% !important}
+    #print-container .print-table td{overflow-wrap:anywhere;word-break:normal;vertical-align:top}
+    #print-container .print-table th{overflow-wrap:normal;word-break:normal;white-space:nowrap;vertical-align:bottom}
+    #print-container .print-table tfoot td{border:none !important;height:17mm;padding:0 !important}
+    #print-container .print-table.r75-wide{font-size:8.5px}
+    #print-container .print-table.r75-wide td,#print-container .print-table.r75-wide th{padding:4px 5px !important}
+    .print-body{padding-bottom:12mm}
+  }
+  /* ---- Plain style (not magazine): hairlines, light grey ---- */
+  #print-container:not(.pm-mag) .print-header, #wm-view-ov .vpage:not(.pm-mag) .print-header{border-bottom:.75px solid #c9c9c9 !important;padding-bottom:11px}
+  #print-container:not(.pm-mag) .print-brand, #wm-view-ov .vpage:not(.pm-mag) .print-brand{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase}
+  #print-container:not(.pm-mag) .print-doc-title, #wm-view-ov .vpage:not(.pm-mag) .print-doc-title{font-weight:600;font-size:20px;letter-spacing:-.005em}
+  #print-container:not(.pm-mag) .print-meta-grid, #wm-view-ov .vpage:not(.pm-mag) .print-meta-grid{border-bottom:.5px solid #dedede !important;font-size:11.5px;gap:5px 28px}
+  #print-container:not(.pm-mag) .print-meta-grid b, #wm-view-ov .vpage:not(.pm-mag) .print-meta-grid b{font-weight:500;color:#7a7a7a}
+  #print-container:not(.pm-mag) .print-section-title, #wm-view-ov .vpage:not(.pm-mag) .print-section-title{border-bottom:.5px solid #dedede !important;font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#4a4a4a;padding-bottom:5px}
+  #print-container:not(.pm-mag) .print-table, #wm-view-ov .vpage:not(.pm-mag) .print-table{border:none !important;border-collapse:collapse}
+  #print-container:not(.pm-mag) .print-table th, #wm-view-ov .vpage:not(.pm-mag) .print-table th{background:#fff !important;color:#6b6b6b !important;font-weight:600;font-size:8.5px !important;letter-spacing:.08em;border:none !important;border-bottom:.75px solid #bdbdbd !important;padding:6px 6px !important}
+  #print-container:not(.pm-mag) .print-table td, #wm-view-ov .vpage:not(.pm-mag) .print-table td{border:none !important;border-bottom:.5px solid #e3e3e3 !important;padding:5px 6px !important}
+  #print-container:not(.pm-mag) .print-table tr:last-child td, #wm-view-ov .vpage:not(.pm-mag) .print-table tr:last-child td{border-bottom:.5px solid #cfcfcf !important}
+  #print-container:not(.pm-mag) table:not(.print-table) th, #print-container:not(.pm-mag) table:not(.print-table) td{border-color:#dcdcdc !important;border-width:.5px !important}
+  #print-container:not(.pm-mag) [style*="1px solid"], #wm-view-ov .vpage:not(.pm-mag) [style*="1px solid"]{border-color:#dcdcdc !important}
+  #print-container:not(.pm-mag) [style*="border-radius"], #wm-view-ov .vpage:not(.pm-mag) [style*="border-radius"]{border-radius:2px !important}
+  #print-container:not(.pm-mag) .print-footer-fixed, #wm-view-ov .vpage:not(.pm-mag) .print-footer-fixed{border-top:.5px solid #d9d9d9 !important}
+  #print-container:not(.pm-mag) .print-closing-note, #wm-view-ov .vpage:not(.pm-mag) .print-closing-note{border-top:.5px solid #e3e3e3 !important}
+  `;
+  document.head.appendChild(css);
+
+  const band = v => { const n = Number(v); if(v === '' || v == null || isNaN(n)) return v == null || v === '' ? '—' : String(v); const c = n >= 15 ? 'crit' : n >= 8 ? 'maj' : 'min'; return `<span class="r75-band r75-${c}">${n}</span>`; };
+  const legend = '<div class="r75-legend">Rating: <span class="r75-band r75-crit">15 to 25</span> Critical &nbsp; <span class="r75-band r75-maj">8 to 14</span> Major &nbsp; <span class="r75-band r75-min">1 to 7</span> Minor</div>';
+  const strip = s => String(s == null ? '' : s).replace(/<[^>]*>/g, '').trim();
+  function landscapeOnce(){
+    let s = document.getElementById('r75-page'); if(s) s.remove(); s = document.createElement('style'); s.id = 'r75-page'; s.textContent = '@page{size:A4 landscape;margin:0}'; document.head.appendChild(s);
+    const done = () => { const x = document.getElementById('r75-page'); if(x) x.remove(); window.removeEventListener('afterprint', done); }; window.addEventListener('afterprint', done);
+  }
+  { const _pr = window.printRegister;
+    if(typeof _pr === 'function'){
+      const w = async function(label, headers, rows, key){
+        const isRisk = key === 'risks' || /risk/i.test(String(label));
+        let cols = []; if(isRisk) cols = (headers || []).map((h, i) => /(inherent|residual|raw)\s*(score|rating)?|^score$/i.test(strip(h)) ? i : -1).filter(i => i >= 0);
+        if(cols.length) rows = rows.map(r => r.map((v, i) => cols.includes(i) ? band(v) : v));
+        const wide = (headers || []).length > 8; if(wide) landscapeOnce();
+        const r = await _pr.call(this, label, headers, rows, key);
+        try{ const c = document.getElementById('print-container'); const t = c && c.querySelector('.print-table');
+          if(t){ if((headers || []).length > 11) t.classList.add('r75-wide'); if(!t.tFoot) t.insertAdjacentHTML('beforeend','<tfoot><tr><td colspan="'+(headers||[]).length+'"></td></tr></tfoot>'); if(cols.length) t.insertAdjacentHTML('afterend', legend); } }catch(e){}
+        return r;
+      };
+      try{ printRegister = w; }catch(e){} window.printRegister = w;
+    } }
+  { const _rec = window.printRecord;
+    if(typeof _rec === 'function'){
+      const w = function(title, ref, meta, body, a, key){
+        try{ if(/^(Risk|Opportunity) Record$/.test(String(title))){
+          meta = (meta || []).map(m => { if(!m || !/^(Inherent|Residual) score$/i.test(m[0])) return m; const s = String(m[1] == null ? '' : m[1]); const mm = s.match(/^(\d+)(.*)$/);
+            return mm ? [m[0], band(mm[1]) + (mm[2] ? ' <span style="color:#777;font-size:.92em">' + mm[2].trim() + '</span>' : '')] : m; });
+          body = String(body || '') + legend; } }catch(e){}
+        return _rec.call(this, title, ref, meta, body, a, key);
+      };
+      try{ printRecord = w; }catch(e){} window.printRecord = w;
+    } }
 })();
 
 </script>
