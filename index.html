@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R71 2026-11-27"><meta charset="UTF-8">
+<meta name="wm-release" content="R74 2026-11-28"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -10209,7 +10209,7 @@ window.approveDocumentRevision = async function(id, opts){
   const d = documentById(id);
   if(!d) return;
   let sodOverride = false;
-  if(d.created_by === STATE.user.id){
+  if(d.created_by === STATE.user.id && !(opts && opts.bypass)){
     if(STATE.myRole !== 'admin'){ toast('The person who wrote this document cannot approve it. Ask another approver.', 'error'); return; }
     if(!(opts && opts.sodAsked) && !confirm('You wrote this document. Approving it yourself breaks separation of duties and will be recorded. Continue?')) return;
     sodOverride = true;
@@ -10234,7 +10234,7 @@ window.approveDocumentRevision = async function(id, opts){
       organisation_id: STATE.org.id, document_id: id, revision_id: revRow ? revRow.id : null, revision_code: String(d.current_revision),
       doc_number: d.doc_number, title: d.title,
       sections: (secs||[]).map(x => ({ title:x.section_title, content:x.content })),
-      contributors: { author: d.created_by, owner: d.owner_id, reviewers: (revs||[]).map(r=>r.reviewer_id), approver: STATE.user.id, approvers: (STATE._docApprovers && STATE._docApprovers[id] ? STATE._docApprovers[id].map(a=>a.approver_id) : [STATE.user.id]), approved_on: todayISO(), override: sodOverride },
+      contributors: { author: d.created_by, owner: d.owner_id, reviewers: (revs||[]).map(r=>r.reviewer_id), approver: STATE.user.id, approvers: (STATE._docApprovers && STATE._docApprovers[id] ? STATE._docApprovers[id].map(a=>a.approver_id) : [STATE.user.id]), approved_on: todayISO(), override: sodOverride, bypass: !!(opts && opts.bypass) },
       created_by: STATE.user.id,
     });
     if(snapErr) console.warn('Approved copy not stored (has the document-workflow-v2 SQL been run?):', snapErr.message);
@@ -28818,7 +28818,7 @@ window.sendRemindersNow = async function(){
     list.forEach(x => { const d = x[m.dateField]; if(!d || d > horizon || m.isResolved(x)) return;
       const r = commsRecipientOf(m.label, x); const key = r.u ? 'u:'+r.u : (r.p ? 'p:'+r.p : null); if(!key) return;
       const g = groups[key] || (groups[key] = { userId:r.u||null, personnelId: r.u ? null : r.p, lines:[] });
-      g.lines.push(`${d < today ? 'OVERDUE since' : 'Due'} ${fmtDate(d)}: ${m.label}: ${roTrunc(m.titleField ? (x[m.titleField]||'Untitled') : (x.ref_code||''), 90)}`); }); });
+      g.lines.push(`${d < today ? 'OVERDUE since' : 'Due'} ${fmtDate(d)}: ${m.label}: ${roTrunc(m.titleField ? (x[m.titleField]||'Untitled') : (x.ref_code||''), 90)}` + (x.id && typeof wmOpenUrl === 'function' ? `\n      Open: ${wmOpenUrl(m.key, x.id)}` : '')); }); });
   await loadNotificationLog();
   const cutoff = Date.now() - 3*86400000;
   const recentlyKeys = new Set((STATE.notificationLog||[]).filter(l=>l.kind==='reminder' && new Date(l.created_at).getTime()>cutoff).map(l=> l.recipient_user_id ? 'u:'+l.recipient_user_id : 'p:'+l.recipient_personnel_id));
@@ -56963,6 +56963,9 @@ W.asset_watchman.ask = 'Can you show a client how the condition of their equipme
     ['R69','2026-11-27','My / My department / Everyone bar and All clear notice','One highly visible My / My department / Everyone bar and a green All clear (or open-items) notice across incidents, information security incidents, audits, inspections, checklists, risks, objectives, training, appraisals, assets, permits, RAGA and others.',['all'],LIVE],
     ['R70','2026-11-27','Internal and External Training, training sessions and attendance certificates','Training is split into Internal and External. Internal training carries material (file, link or Module Training Presentation), is assigned to many people, opens on its own page with start time, finish time and a comment confirming understanding, and issues an attendance certificate. External training holds the provider proof and a company certificate. The Show bar sits first and overview tiles and navigation sit behind an arrow. Button names corrected.',['training'],LIVE]
     ['R71','2026-11-27','Sales Management for Mechanical Rotating Solutions','New bespoke module: weekly call plans, A/B/C customer coverage, pipeline, budgets against results by product line, a weighted scorecard dashboard, Friday reports and an accountability log. Off by default; needs the R71 SQL.',['sales'],LIVE],
+    ['R72','2026-11-27','Interactive training video player','Internal training videos now play in a player with chapters, speed control and watched-percentage tracking; completion unlocks after the video has been watched and the percentage is recorded with the comment.',['training'],LIVE],
+    ['R73','2026-11-27','Release a document with a recorded justification','The platform developer, or an administrator the developer has authorised, can release any new document (including job descriptions and KPI and appraisal documents) without the standard review and approval. They are recorded as the reviewer and the approver, the reason is kept permanently, and a bypass register shows every such release to an auditor.',['documents','personnel'],LIVE],
+    ['R74','2026-11-28','Open straight from the email','Links in document, task and reminder emails now open the item itself. Reviewers and approvers get a Document Review page with every section, a comment or recommended change box under each, and Submit (the other parties are emailed your recommendations). Tasks open on a page where you set the status, add a progress note and comment. Reminder digests link to each item.',['documents','tasks'],LIVE],
   ];
   const has = m => { try{ return m === 'all' || (typeof orgHasModule === 'function' ? orgHasModule(m) !== false : true); }catch(e){ return true; } };
   function relevant(){ const inc = wmInception(); return WM_PLATFORM_CHANGES.filter(c => c[1] >= inc && c[4].some(has)); }
@@ -57330,7 +57333,8 @@ W.asset_watchman.ask = 'Can you show a client how the condition of their equipme
   async function materialHtml(t, c){
     if(deliveryOf(t) !== 'internal') return '';
     if(!c) return '<p style="color:#777;font-size:13px;">No material is attached to this training. It is delivered by the trainer.</p>';
-    let h = c.description ? `<p style="font-size:13px;line-height:1.55;margin:0 0 12px;white-space:pre-wrap;">${E(c.description)}</p>` : '';
+    const pc = (typeof wmParseChapters === 'function') ? wmParseChapters(c.description) : { chapters:[], text:c.description || '' };
+    let h = pc.text ? `<p style="font-size:13px;line-height:1.55;margin:0 0 12px;white-space:pre-wrap;">${E(pc.text)}</p>` : '';
     if(c.material_kind === 'lesson' && c.lesson_id) h += `<button class="btn-primary" onclick="WMTutorial&&WMTutorial.open({lesson:'${E(c.lesson_id)}',narrate:true})">&#9654; Play the Module Training Presentation</button>`;
     else if(c.material_kind === 'link' && c.material_url) h += `<a class="btn-primary" style="display:inline-block;text-decoration:none;" href="${E(c.material_url)}" target="_blank" rel="noopener">Open the training material</a><p style="font-size:12px;color:#777;margin-top:8px;word-break:break-all;">${E(c.material_url)}</p>`;
     else if(c.material_kind === 'file'){
@@ -57341,7 +57345,7 @@ W.asset_watchman.ask = 'Can you show a client how the condition of their equipme
         const ext = (f.file_name.split('.').pop() || '').toLowerCase();
         h += `<div style="margin:0 0 14px;"><div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;"><b style="font-size:13px;flex:1;">${E(f.file_name)}</b>${url ? `<a class="btn-small" href="${E(url)}" target="_blank" rel="noopener">Open in a new tab</a>` : ''}</div>`;
         if(url && ext === 'pdf') h += `<iframe src="${E(url)}" style="width:100%;height:520px;border:1px solid #DDD;border-radius:8px;"></iframe>`;
-        else if(url && ['mp4','mov','webm'].includes(ext)) h += `<video src="${E(url)}" controls style="width:100%;max-height:520px;border-radius:8px;background:#000;"></video>`;
+        else if(url && ['mp4','mov','webm'].includes(ext)) h += (typeof wmPlayerHtml === 'function' ? wmPlayerHtml(url, f.file_name, pc.chapters) : `<video src="${E(url)}" controls style="width:100%;max-height:520px;border-radius:8px;background:#000;"></video>`);
         else if(url && ['mp3','m4a','wav'].includes(ext)) h += `<audio src="${E(url)}" controls style="width:100%;"></audio>`;
         else if(url && ['png','jpg','jpeg','gif','webp'].includes(ext)) h += `<img src="${E(url)}" style="max-width:100%;border-radius:8px;">`;
         else h += `<p style="font-size:12px;color:#777;">This file type opens in its own application. Use "Open in a new tab" to download or view it.</p>`;
@@ -57395,7 +57399,7 @@ W.asset_watchman.ask = 'Can you show a client how the condition of their equipme
         <div class="tp-card"><h3>${done ? 'Record of completion' : ext ? 'Close out' : 'Your session'}</h3>${side}</div></div>`;
     if(prog && !done){ const el = () => document.getElementById('tp-timer'); const tick = () => { const e = el(); if(!e){ clearInterval(tickT); return; } const s = Math.max(0, Math.floor((Date.now() - new Date(t.started_at)) / 1000)); e.textContent = [Math.floor(s / 3600), Math.floor(s % 3600 / 60), s % 60].map(x => String(x).padStart(2, '0')).join(':'); }; tick(); tickT = setInterval(tick, 1000); }
   };
-  window.wmTrCheck = function(){ const c = (document.getElementById('tp-comment') || {}).value || '', ok = (document.getElementById('tp-ok') || {}).checked, b = document.getElementById('tp-done'); if(b) b.disabled = !(c.trim().length >= 10 && ok); };
+  window.wmTrCheck = function(){ const c = (document.getElementById('tp-comment') || {}).value || '', ok = (document.getElementById('tp-ok') || {}).checked, b = document.getElementById('tp-done'); if(b) b.disabled = !(c.trim().length >= 10 && ok && (!window.__wmPlay || !window.__wmPlay.active || window.__wmPlay.ok)); };
   async function patch(id, row, okMsg){
     const r = await STATE.supabase.from('training_records').update(row).eq('id', id);
     if(r.error){ toast('Could not save: ' + r.error.message + (/started_at|ended_at|course_id|completion/.test(r.error.message) ? SQLMSG : ''), 'error'); return false; }
@@ -57404,8 +57408,9 @@ W.asset_watchman.ask = 'Can you show a client how the condition of their equipme
   }
   window.wmTrStart = async function(id){ if(await patch(id, { started_at:new Date().toISOString(), status:'planned' }, 'Started. The time is being recorded.')) wmTrOpen(id); };
   window.wmTrComplete = async function(id){
-    const cm = document.getElementById('tp-comment').value.trim(), now = new Date().toISOString();
+    let cm = document.getElementById('tp-comment').value.trim(); const now = new Date().toISOString();
     if(cm.length < 10 || !document.getElementById('tp-ok').checked) return;
+    if(window.__wmPlay && window.__wmPlay.active && !window.__wmPlay.ok) return; cm += (typeof wmPlRecord === 'function' ? wmPlRecord() : '');
     if(await patch(id, { ended_at:now, completion_comment:cm, understanding_confirmed:true, completed_by:STATE.user.id, recorded_on_behalf:false, status:'completed', completed_date:now.slice(0, 10) }, 'Training completed and closed out.')){ await wmTrOpen(id); wmTrCertificate(id); }
   };
   window.wmTrBehalf = async function(id){
@@ -57701,11 +57706,11 @@ W.asset_watchman.ask = 'Can you show a client how the condition of their equipme
     const rep = oneRep(), c = tg(rep), today = T(); const plan = await ensurePlan(rep, S.week); if(!plan) return;
     const days = [0, 1, 2, 3, 4].map(i => addDays(S.week, i)), have = new Set(S.calls.filter(x => x.rep_id === rep && x.day >= days[0] && x.day <= days[4]).map(x => x.account_id).filter(Boolean));
     const ref = S.week > today ? S.week : today;
-    const due = S.accounts.filter(a => a.rep_id === rep && ['active','dormant','prospect'].includes(a.status) && !have.has(a.id)).map(a => { const lv = lastVisit(a.id), ds = lv ? Math.round((new Date(ref) - new Date(lv)) / 864e5) : 9999, f = c.freq[a.tier] || c.freq.C; return { a, score:ds / f }; }).filter(x => x.score >= 0.7).sort((x, y) => y.score - x.score || String(x.a.tier).localeCompare(String(y.a.tier)));
+    const due = S.accounts.filter(a => a.rep_id === rep && ['active','dormant','prospect'].includes(a.status) && !have.has(a.id)).map(a => { const lv = lastVisit(a.id), ds = lv ? Math.round((new Date(ref) - new Date(lv)) / 864e5) : 9999, f = c.freq[a.tier] || c.freq.C; return { a, score:ds / f }; }).filter(x => x.score >= 0.15).sort((x, y) => (y.score >= 0.7) - (x.score >= 0.7) || 'ABCP'.indexOf(x.a.tier) - 'ABCP'.indexOf(y.a.tier) || y.score - x.score);
     const cap = Math.ceil(c.visitsWeek / 5); let made = 0;
     const slotUse = {}; S.calls.filter(x => x.rep_id === rep && x.day >= days[0] && x.day <= days[4]).forEach(x => { slotUse[x.day] = (slotUse[x.day] || 0) + 1; });
     for(const x of due){ if(made >= c.visitsWeek) break; const d = days.find(d => (slotUse[d] || 0) < Math.min(cap, SLOTS.length)); if(!d) break; const s = SLOTS[slotUse[d] || 0];
-      await save('calls', { rep_id:rep, plan_id:plan.id, account_id:x.a.id, customer_name:x.a.customer_name, day:d, time_from:s[0], time_to:s[1], kind:x.a.tier === 'P' || x.a.status === 'prospect' ? 'prospect' : 'visit', purpose:x.a.tier + ' account, ' + (lastVisit(x.a.id) ? 'last visit ' + fmtDate(lastVisit(x.a.id)) : 'not yet visited'), planned:true, status:'planned' }); slotUse[d] = (slotUse[d] || 0) + 1; made++; }
+      await save('calls', { rep_id:rep, plan_id:plan.id, account_id:x.a.id, customer_name:x.a.customer_name, day:d, time_from:s[0], time_to:s[1], kind:x.a.tier === 'P' || x.a.status === 'prospect' ? 'prospect' : 'visit', purpose:(x.a.tier === 'P' ? 'Prospect' : x.a.tier + ' account') + ', ' + (lastVisit(x.a.id) ? 'last visit ' + fmtDate(lastVisit(x.a.id)) : 'not yet visited'), planned:true, status:'planned' }); slotUse[d] = (slotUse[d] || 0) + 1; made++; }
     toast(made ? made + ' calls suggested from the accounts that are due. Adjust them as needed.' : 'Every account is up to date for this week.', 'success'); shell();
   };
 
@@ -57943,6 +57948,564 @@ W.asset_watchman.ask = 'Can you show a client how the condition of their equipme
     feat:['A weekly call plan with planned against actual visits','Customers ranked A, B and C with a visit frequency for each','A pipeline from lead to won or lost','Budgets and results by product line','A weighted scorecard and a Friday report','An accountability log that records expected, measured, gap and action'],
     iso:['ISO 9001 cl 8.2, 9.1.2','ISO 9001 cl 5.1.2 customer focus'], link:['customers','objectives','personnel'],
     steps:['Plan the week','Run the calls and log the outcome','Keep the pipeline current','Enter results at month end','Report on Friday'], d:{ a:'flow', st:[['Plan','week'],['Call','visit'],['Pipeline','quote'],['Results','month end'],['Report','Friday']] } }); }catch(e){}
+})();
+
+
+/* ===== Release 72: interactive training video player (chapters, speed, watch tracking) ===== */
+(function(){
+  const E = s => escapeHtml(s == null ? '' : String(s));
+  const toSec = t => { const p = String(t).split(':').map(Number); return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1]; };
+  const fmt = s => { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+  /* chapters are typed into the training description, one per line, as  m:ss Title  */
+  window.wmParseChapters = function(desc){
+    const ch = [], rest = [];
+    String(desc || '').split(/\r?\n/).forEach(l => { const m = l.match(/^\s*(\d{1,2}:\d{2}(?::\d{2})?)\s+(.{2,120})$/); if(m) ch.push({ t:toSec(m[1]), title:m[2].trim() }); else rest.push(l); });
+    return { chapters:ch.sort((a, b) => a.t - b.t), text:rest.join('\n').trim() };
+  };
+  const PL = window.__wmPlay = { ok:true, need:0.9, pct:0, active:false };
+  window.wmPlayerHtml = function(url, name, chapters){
+    PL.ok = false; PL.active = true; PL.pct = 0; PL.set = new Set(); PL.dur = 0; PL.last = null;
+    const chs = chapters || [];
+    return `<div id="wm-pl" style="margin:0 0 14px;"><div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;">
+      <div style="flex:3 1 460px;min-width:0;"><video id="wm-pl-v" src="${E(url)}" controls controlsList="nodownload" preload="metadata" style="width:100%;border-radius:10px;background:#000;max-height:560px;"></video>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap;"><span style="font-size:12px;color:#666;">Speed</span>${[0.75, 1, 1.25, 1.5].map(x => `<button class="btn-small wm-pl-sp" data-s="${x}" onclick="wmPlSpeed(${x})" style="${x === 1 ? 'background:#2E5AA8;color:#fff;' : ''}">${x}x</button>`).join('')}
+          <span style="flex:1"></span><span style="font-size:12px;color:#666;">Watched</span><div style="width:140px;height:9px;background:#E3E8F0;border-radius:5px;position:relative;"><i id="wm-pl-bar" style="position:absolute;left:0;top:0;bottom:0;width:0;background:#1B8E3E;border-radius:5px;"></i></div><b id="wm-pl-pct" style="font-size:12.5px;min-width:34px;">0%</b></div>
+        <p id="wm-pl-msg" style="font-size:12px;color:#8A6A00;margin:6px 0 0;">Watch at least ${Math.round(PL.need * 100)}% of the video to unlock Complete training. Skipping ahead does not count as watching.</p></div>
+      ${chs.length ? `<div style="flex:1 1 220px;min-width:200px;border:1px solid #DDD;border-radius:10px;padding:6px;max-height:560px;overflow:auto;"><div style="font-size:11px;color:#7A8499;text-transform:uppercase;letter-spacing:.05em;padding:4px 8px;">In this video</div>${chs.map((c, i) => `<div class="wm-pl-ch" data-i="${i}" data-t="${c.t}" onclick="wmPlSeek(${c.t})" style="display:flex;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:12.5px;align-items:flex-start;"><span style="color:#2E5AA8;font-weight:700;min-width:34px;">${fmt(c.t)}</span><span>${E(c.title)}</span></div>`).join('')}</div>` : ''}
+    </div></div>`;
+  };
+  window.wmPlSeek = t => { const v = document.getElementById('wm-pl-v'); if(v){ v.currentTime = t; v.play().catch(() => {}); } };
+  window.wmPlSpeed = x => { const v = document.getElementById('wm-pl-v'); if(v) v.playbackRate = x; document.querySelectorAll('.wm-pl-sp').forEach(b => { const on = +b.dataset.s === x; b.style.background = on ? '#2E5AA8' : ''; b.style.color = on ? '#fff' : ''; }); };
+  function paint(){
+    const v = document.getElementById('wm-pl-v'); if(!v) return; const d = v.duration; if(!d || !isFinite(d)) return;
+    const t = v.currentTime;
+    if(PL.last != null && t - PL.last > 0 && t - PL.last < 2.5 * Math.max(1, v.playbackRate)) PL.set.add(Math.floor(t));
+    PL.last = t; PL.dur = d; PL.pct = Math.min(1, PL.set.size / Math.max(1, Math.floor(d)));
+    const bar = document.getElementById('wm-pl-bar'), pc = document.getElementById('wm-pl-pct'); if(bar) bar.style.width = Math.round(PL.pct * 100) + '%'; if(pc) pc.textContent = Math.round(PL.pct * 100) + '%';
+    const ok = PL.pct >= PL.need; if(ok !== PL.ok){ PL.ok = ok; const m = document.getElementById('wm-pl-msg'); if(m){ m.style.color = ok ? '#1B8E3E' : '#8A6A00'; m.textContent = ok ? 'You have watched the video. You can now complete the training.' : m.textContent; } try{ wmTrCheck(); }catch(e){} }
+    let cur = -1; document.querySelectorAll('.wm-pl-ch').forEach(e => { if(+e.dataset.t <= t + 0.3) cur = +e.dataset.i; });
+    document.querySelectorAll('.wm-pl-ch').forEach(e => { const on = +e.dataset.i === cur; e.style.background = on ? '#EAF1FB' : ''; e.style.fontWeight = on ? '700' : ''; });
+  }
+  setInterval(() => { if(document.getElementById('wm-pl-v')) paint(); else PL.active = false; }, 500);
+  /* Used when the person completes the training: records how much of the video was watched */
+  window.wmPlRecord = () => PL.active && document.getElementById('wm-pl-v') ? ' [Video watched: ' + Math.round(PL.pct * 100) + '%]' : '';
+})();
+
+/* ============================================================================
+   R73: release a document without the standard review and approval, with a recorded justification
+   Platform developer (superuser) or an Admin who the developer has authorised.
+   The person is recorded as the reviewer and the approver in place of the normal workflow, the reason is kept
+   permanently, and the whole thing can be shown to an auditor in the bypass register.
+   ============================================================================ */
+(function(){
+  'use strict';
+  const arr = x => Array.isArray(x) ? x : [];
+  const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const sb = () => STATE.supabase;
+  const KEY = 'doc_bypass';
+  const isStaff = () => !!(STATE.profile && STATE.profile.is_platform_staff);
+  const canBypass = () => isStaff() || (STATE.myRole === 'admin' && arr(STATE.myModuleAccess).includes(KEY));
+  const roleKey = () => isStaff() ? 'platform_staff' : 'authorised_admin';
+  const roleText = k => k === 'platform_staff' ? 'Platform developer (superuser)' : 'Authorised administrator';
+  const CATS = [
+    ['onboarding', 'Client onboarding: documents being established for the first time'],
+    ['no_reviewers', 'No independent reviewer or approver is available yet'],
+    ['legacy', 'An existing, already-approved document being formalised in Watchman'],
+    ['urgent', 'Urgent operational or legal need'],
+    ['other', 'Other (explained in the justification)'],
+  ];
+  const catText = k => (CATS.find(c => c[0] === k) || [0, k || ''])[1];
+  const dt = x => { try{ return new Date(x).toLocaleString('en-ZA', { dateStyle:'medium', timeStyle:'short' }); }catch(e){ return x || ''; } };
+  STATE._wfBypasses = [];
+
+  async function loadBypasses(){
+    try{
+      const r = await sb().from('document_workflow_bypasses').select('*').eq('organisation_id', STATE.org.id).order('created_at', { ascending:false });
+      STATE._wfBypasses = r.error ? [] : arr(r.data);
+    }catch(e){ STATE._wfBypasses = []; }
+  }
+  try{
+    const _ld = loadDocuments;
+    loadDocuments = window.loadDocuments = async function(){ const r = await _ld.apply(this, arguments); await loadBypasses(); return r; };
+  }catch(e){ console.warn('r73 load', e); }
+
+  /* ---------------- the card on the document ---------------- */
+  const forDoc = id => arr(STATE._wfBypasses).filter(b => b.document_id === id);
+  function recordHtml(b){
+    const orgR = arr(b.original_reviewers).map(x => x.name).join(', ') || 'none assigned';
+    const orgA = arr(b.original_approvers).map(x => x.name).join(', ') || 'none assigned';
+    return `<div style="padding:8px 0;border-top:1px solid #f0c9c3;font-size:12.5px;line-height:1.5;">
+      <b>${E(b.bypassed_by_name || '')}</b> (${E(roleText(b.bypass_role))}) released revision ${E(b.revision_code || '')} on ${E(dt(b.created_at))}, recorded as the reviewer and the approver.<br>
+      <b>Reason category:</b> ${E(catText(b.category))}<br><b>Justification:</b> ${E(b.reason)}<br>
+      <span style="color:var(--text-faint);">Standard reviewers not used: ${E(orgR)}. Standard approvers not used: ${E(orgA)}.</span></div>`;
+  }
+  try{
+    const _r = renderDocumentWorkflowCard;
+    renderDocumentWorkflowCard = window.renderDocumentWorkflowCard = function(d){
+      let out = _r.apply(this, arguments);
+      try{
+        let extra = '';
+        const bp = forDoc(d.id);
+        if(bp.length){
+          extra += `<div style="margin-top:14px;padding:12px 14px;border:1.5px solid #c0392b;border-radius:10px;background:#fff7f5;">
+            <b style="color:#c0392b;font-size:13px;">Released under a recorded bypass of the standard review and approval</b>
+            ${bp.map(recordHtml).join('')}
+            <div style="margin-top:6px;"><button class="btn-small" onclick="wfBypassRegister()">View the bypass register</button></div></div>`;
+        }
+        const st = d.workflow_status || 'draft';
+        if(canBypass() && st !== 'approved' && !['withdrawn', 'superseded'].includes(d.status)){
+          extra += `<div style="margin-top:14px;padding:12px 14px;border:1.5px dashed #c0392b;border-radius:10px;background:#fffaf9;">
+            <b style="font-size:13px;">Release without the standard review and approval</b> <span style="font-size:11.5px;color:var(--text-faint);">(${E(roleText(roleKey()))})</span>
+            <p style="font-size:12px;color:var(--text-dim);margin:6px 0 10px;">Use this when a document has to be released without the normal reviewers and approvers, for example while a client is being onboarded. You are recorded as the reviewer and the approver, your justification is kept permanently, and it appears in the bypass register for any auditor.</p>
+            <button class="btn-small" style="border-color:#c0392b;color:#c0392b;" onclick="wfBypassOpen('${d.id}')">Release with a recorded justification…</button>
+            <button class="btn-small" onclick="wfBypassRegister()">View the bypass register</button></div>`;
+        }
+        if(extra) out = out.replace(/<\/div>\s*$/, extra + '</div>');
+      }catch(e){ console.warn('r73 card', e); }
+      return out;
+    };
+  }catch(e){ console.warn('r73 card', e); }
+
+  /* ---------------- the dialog ---------------- */
+  function close(){ const o = document.getElementById('wf-bp-ov'); if(o) o.remove(); }
+  window.wfBypassOpen = function(id){
+    if(!canBypass()){ toast('Only the platform developer, or an administrator the developer has authorised, may do this.', 'error'); return; }
+    const d = documentById(id); if(!d) return;
+    close();
+    const ov = document.createElement('div'); ov.id = 'wf-bp-ov';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px;';
+    ov.innerHTML = `<div style="background:#fff;border-radius:14px;max-width:640px;width:100%;max-height:92vh;overflow:auto;padding:22px 24px;box-shadow:0 10px 40px rgba(0,0,0,.35);">
+      <h3 style="margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;">Release without the standard review and approval</h3>
+      <div style="font-size:12.5px;color:var(--text-dim);margin-bottom:12px;">${E(d.doc_number || '')}: ${E(d.title || '')} (revision ${E(String(d.current_revision || ''))})</div>
+      <div style="background:var(--grey-tint);border-radius:8px;padding:10px 12px;font-size:12.5px;margin-bottom:12px;">
+        <b>What will be recorded</b><br>Reviewer: ${E(memberName(STATE.user.id))} (${E(roleText(roleKey()))})<br>Approver: ${E(memberName(STATE.user.id))} (${E(roleText(roleKey()))})<br>Date and time: now. The people previously chosen as reviewers or approvers are listed in the record as not used.</div>
+      <div class="field"><label>Reason category *</label><select id="wf-bp-cat"><option value="">Choose…</option>${CATS.map(c => `<option value="${c[0]}">${E(c[1])}</option>`).join('')}</select></div>
+      <div class="field" style="margin-top:10px;"><label>Justification *</label><textarea id="wf-bp-reason" style="width:100%;min-height:110px;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;" placeholder="Why is this document being released without the standard review and approval? Write it so that an auditor can follow it (at least 25 characters)."></textarea></div>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;font-weight:400;margin-top:10px;"><input type="checkbox" id="wf-bp-ok" style="width:auto;margin-top:3px;"> I confirm this is a deliberate release outside the normal workflow, that I am accountable for it, and that the justification will be kept permanently on the document and in the bypass register.</label>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;"><button class="btn-small" onclick="wfBypassClose()">Cancel</button><button class="btn-small primary" id="wf-bp-go" onclick="wfBypassConfirm('${id}')">Release and record</button></div></div>`;
+    document.body.appendChild(ov);
+  };
+  window.wfBypassClose = close;
+
+  window.wfBypassConfirm = async function(id){
+    if(!canBypass()) return;
+    const d = documentById(id); if(!d) return;
+    const cat = (document.getElementById('wf-bp-cat') || {}).value;
+    const reason = ((document.getElementById('wf-bp-reason') || {}).value || '').trim();
+    const ok = document.getElementById('wf-bp-ok');
+    if(!cat){ toast('Choose the reason category.', 'error'); return; }
+    if(reason.length < 25){ toast('Write the justification in full (at least 25 characters).', 'error'); return; }
+    if(!ok || !ok.checked){ toast('Tick the confirmation.', 'error'); return; }
+    const go = document.getElementById('wf-bp-go'); if(go){ go.disabled = true; go.textContent = 'Releasing…'; }
+    const me = STATE.user.id, org = STATE.org.id;
+    try{
+      const secs = await sb().from('document_content_sections').select('id').eq('document_id', id).limit(1);
+      if(!arr(secs.data).length && !d.storage_path && !confirm('This document has no written content yet. Release it anyway?')){ if(go){ go.disabled = false; go.textContent = 'Release and record'; } return; }
+      const rv = await sb().from('document_reviewers').select('reviewer_id').eq('document_id', id);
+      const ap = await sb().from('document_approvers').select('approver_id, approved_at').eq('document_id', id);
+      const appList = ap.error ? (d.workflow_approver_id ? [{ approver_id:d.workflow_approver_id }] : []) : arr(ap.data);
+      /* the record comes first: if it cannot be written, nothing is released */
+      const rec = await sb().from('document_workflow_bypasses').insert({
+        organisation_id: org, document_id: id, doc_number: d.doc_number, doc_title: d.title, revision_code: String(d.current_revision || ''),
+        bypassed_by: me, bypassed_by_name: memberName(me), bypass_role: roleKey(), category: cat, reason,
+        status_before: d.workflow_status || 'draft',
+        original_reviewers: arr(rv.data).map(r => ({ id:r.reviewer_id, name:memberName(r.reviewer_id) })),
+        original_approvers: appList.map(a => ({ id:a.approver_id, name:memberName(a.approver_id), approved:!!a.approved_at })),
+      }).select().maybeSingle();
+      if(rec.error){ toast('The justification could not be recorded, so nothing was released: ' + rec.error.message + ' (has the R73 SQL been run, and are you authorised?)', 'error'); if(go){ go.disabled = false; go.textContent = 'Release and record'; } return; }
+      const now = new Date().toISOString();
+      await sb().from('document_reviewers').delete().eq('document_id', id);
+      const r1 = await sb().from('document_reviewers').insert({ organisation_id:org, document_id:id, reviewer_id:me, color:'#111111', satisfied_at:now, finalized_at:now });
+      if(r1.error){ toast('Could not record you as the reviewer: ' + r1.error.message, 'error'); if(go){ go.disabled = false; go.textContent = 'Release and record'; } return; }
+      await sb().from('document_approvers').delete().eq('document_id', id);
+      await sb().from('document_approvers').insert({ organisation_id:org, document_id:id, approver_id:me, color:'#111111', approved_at:now });
+      await sb().from('documents').update({ workflow_status:'submitted_for_approval', workflow_approver_id:me }).eq('id', id);
+      await window.approveDocumentRevision(id, { sodAsked:true, bypass:true });
+      await loadDocuments();
+      const d2 = documentById(id), done = !!(d2 && d2.approval_status === 'approved');
+      if(done){
+        const was = arr(rec.data && rec.data.original_reviewers).map(x => x.name).join(', ') || 'none assigned';
+        const wasA = arr(rec.data && rec.data.original_approvers).map(x => x.name).join(', ') || 'none assigned';
+        await sb().from('document_workflow_comments').insert({
+          organisation_id: org, document_id: id, stage:'approval', author_id: me, author_role:'creator', color:'#c0392b',
+          comment_text: `[Recorded bypass] Released without the standard review and approval. ${memberName(me)} (${roleText(roleKey())}) acted as the reviewer and the approver in place of the normal workflow. Reason category: ${catText(cat)}. Justification: ${reason}. Standard reviewers not used: ${was}. Standard approvers not used: ${wasA}.`,
+        });
+        await notifyDocumentUsers([d.created_by, d.owner_id], `Released under a recorded bypass: ${d.doc_number}`, `"${d.title}" (${d.doc_number}) was released by ${memberName(me)} (${roleText(roleKey())}) without the standard review and approval. Reason: ${catText(cat)}. ${reason}`);
+      }
+      if(rec.data && rec.data.id) await sb().from('document_workflow_bypasses').update({ outcome: done ? 'released' : 'failed', completed_at: new Date().toISOString() }).eq('id', rec.data.id);
+      await loadBypasses();
+      close();
+      try{ renderDocumentsTable(); }catch(e){}
+      try{ await openDocumentDetail(id); }catch(e){}
+      toast(done ? 'Released. You are recorded as the reviewer and the approver, with your justification.' : 'The release did not complete. The attempt is on record: check the document and try again.', done ? 'success' : 'error');
+    }catch(e){
+      console.error('r73', e); toast('Could not release: ' + (e.message || e), 'error');
+      if(go){ go.disabled = false; go.textContent = 'Release and record'; }
+    }
+  };
+
+  /* ---------------- the register ---------------- */
+  function registerRows(){
+    return arr(STATE._wfBypasses).map(b => `<tr>
+      <td>${E(dt(b.created_at))}</td><td><b>${E(b.doc_number || '')}</b><br>${E(b.doc_title || '')}<br>Rev ${E(b.revision_code || '')}</td>
+      <td>${E(b.bypassed_by_name || '')}<br><span style="color:#666;">${E(roleText(b.bypass_role))}</span></td>
+      <td>${E(catText(b.category))}</td><td style="white-space:pre-wrap;">${E(b.reason)}</td>
+      <td>${arr(b.original_reviewers).map(x => E(x.name)).join(', ') || 'none'}<br>${arr(b.original_approvers).map(x => E(x.name)).join(', ') || 'none'}</td>
+      <td>${E(b.outcome || 'released')}</td></tr>`).join('');
+  }
+  const regTable = () => `<table style="border-collapse:collapse;width:100%;font-size:12px;"><tr style="background:#eef2f6;">${['Date', 'Document', 'Released by', 'Category', 'Justification', 'Standard reviewers / approvers not used', 'Outcome'].map(h => `<th style="border:1px solid #999;padding:5px;text-align:left;">${h}</th>`).join('')}</tr>${registerRows().replace(/<td/g, '<td style="border:1px solid #999;padding:5px;vertical-align:top;"')}</table>`;
+  window.wfBypassRegister = async function(){
+    await loadBypasses();
+    close();
+    const ov = document.createElement('div'); ov.id = 'wf-bp-ov';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px;';
+    ov.innerHTML = `<div style="background:#fff;border-radius:14px;max-width:1100px;width:100%;max-height:92vh;overflow:auto;padding:22px 24px;">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:6px;"><h3 style="margin:0;font-family:Arial,Helvetica,sans-serif;">Document release bypass register</h3>
+      <div style="display:flex;gap:8px;"><button class="btn-small" onclick="wfBypassPrint()">Print</button><button class="btn-small" onclick="wfBypassClose()">Close</button></div></div>
+      <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px;">Every document released without the standard review and approval, who released it, why, and which reviewers and approvers were not used. Records cannot be edited or deleted.</p>
+      ${arr(STATE._wfBypasses).length ? regTable() : '<p style="font-size:13px;color:var(--text-faint);">No document has been released under a bypass.</p>'}</div>`;
+    document.body.appendChild(ov);
+  };
+  window.wfBypassPrint = function(){
+    const w = window.open('', '_blank'); if(!w){ toast('Allow pop-ups to print.', 'error'); return; }
+    w.document.write(`<html><head><title>Document release bypass register</title></head><body style="font-family:Arial,Helvetica,sans-serif;padding:20px;"><h2>${E(STATE.org.name || '')}: document release bypass register</h2><p style="font-size:12px;">Printed ${E(dt(new Date().toISOString()))} by ${E(memberName(STATE.user.id))}</p>${regTable()}</body></html>`);
+    w.document.close(); setTimeout(() => { try{ w.print(); }catch(e){} }, 400);
+  };
+
+  /* ---------------- who is authorised: a tick for the platform developer in Administration ---------------- */
+  try{
+    const _re = window.toggleAdminMemberEdit;
+    if(typeof _re === 'function'){
+      window.toggleAdminMemberEdit = function(userId){
+        const r = _re.apply(this, arguments);
+        try{
+          if(!isStaff()) return r;
+          const m = arr(STATE.members).find(x => x.user_id === userId);
+          const ap = document.getElementById('admin-edit-approver-' + userId);
+          if(m && ap && !document.getElementById('admin-edit-docbypass-' + userId)){
+            ap.closest('.field').insertAdjacentHTML('afterend', `<div class="field" style="display:flex;align-items:center;gap:8px;margin-top:6px;"><input type="checkbox" id="admin-edit-docbypass-${userId}" style="width:auto;" ${arr(m.module_access).includes(KEY) ? 'checked' : ''}><label for="admin-edit-docbypass-${userId}" style="text-transform:none;font-family:Arial,Helvetica,sans-serif;font-size:12.5px;color:var(--text-dim);">May release documents without the standard review and approval, with a justification that is recorded (Admins only; only the platform developer can grant this).</label></div>`);
+          }
+        }catch(e){}
+        return r;
+      };
+    }
+  }catch(e){}
+  try{
+    const _sv = window.saveAdminMemberAccess;
+    window.saveAdminMemberAccess = async function(userId){
+      const cb = document.getElementById('admin-edit-docbypass-' + userId);
+      const m = arr(STATE.members).find(x => x.user_id === userId);
+      if(cb && m && isStaff()){
+        const had = arr(m.module_access).includes(KEY);
+        if(cb.checked && !had) m.module_access = [...arr(m.module_access), KEY];
+        if(!cb.checked && had) m.module_access = arr(m.module_access).filter(k => k !== KEY);
+      }
+      return _sv.apply(this, arguments);
+    };
+  }catch(e){}
+  window.wfCanBypass = canBypass;
+})();
+
+
+/* =====================================================================
+   R74: open straight from the email.
+   Every document, task and reminder email now carries a link that opens
+   the item itself (after sign-in): a Document Review page with the
+   sections, a recommendation box per section and Submit; a Task page.
+   ===================================================================== */
+(function(){
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const sb = () => STATE.supabase;
+  const KIND = { document:'documents', documents:'documents', task:'tasks', tasks:'tasks', nonconformances:'nonconformances', nc:'nonconformances',
+    suppliers:'suppliers', objectives:'objectives', legal:'legal', training:'training', risks:'risks', assets:'assets' };
+  const OPENER = { nonconformances:'openNCDetail', suppliers:'openSupplierDetail', objectives:'openObjectiveDetail', legal:'openLegalDetail',
+    training:'openTrainingDetail', risks:'openRiskDetail', assets:'openAssetDetail' };
+  const MODKEY = { documents:'documents', tasks:'tasks', nonconformances:'nonconformances', suppliers:'suppliers', objectives:'objectives',
+    legal:'legal', training:'training', risks:'risks', assets:'assets' };
+
+  window.wmOpenUrl = function(kind, id){
+    if(!kind || !id) return `${location.origin}${location.pathname}`;
+    return `${location.origin}${location.pathname}?open=${encodeURIComponent(kind)}:${encodeURIComponent(id)}`;
+  };
+
+  /* ---------- capture the link before anything else, keep it across sign-in ---------- */
+  try{
+    const q = new URLSearchParams(location.search), o = q.get('open');
+    if(o){
+      localStorage.setItem('wm_open', JSON.stringify({ v:o, t:Date.now() }));
+      q.delete('open'); const qs = q.toString();
+      history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
+    }
+  }catch(e){}
+
+  function takePending(){
+    try{
+      const raw = localStorage.getItem('wm_open'); if(!raw) return null;
+      localStorage.removeItem('wm_open');
+      const j = JSON.parse(raw); if(!j || Date.now() - j.t > 6 * 3600 * 1000) return null;
+      const i = String(j.v).indexOf(':'); if(i < 1) return null;
+      return { kind:decodeURIComponent(j.v.slice(0, i)), id:decodeURIComponent(j.v.slice(i + 1)) };
+    }catch(e){ return null; }
+  }
+
+  window.wmRouteOpen = async function(kind, id){
+    const k = KIND[kind]; if(!k || !id) return false;
+    try{
+      if(k === 'documents'){
+        if(!documentById(id)) await loadDocuments();
+        if(!documentById(id)){ toast('That document is no longer available, or you do not have access to it.', 'error'); return false; }
+        try{ showModule('documents'); }catch(e){}
+        return window.openDocumentReviewPage(id);
+      }
+      if(k === 'tasks'){
+        if(!(STATE.tasks || []).find(t => t.id === id)) await loadTasks();
+        if(!(STATE.tasks || []).find(t => t.id === id)){ toast('That task is no longer available, or you do not have access to it.', 'error'); return false; }
+        try{ showModule('tasks'); }catch(e){}
+        return window.openTaskPage(id);
+      }
+      try{ showModule(MODKEY[k] || k); }catch(e){}
+      const fn = OPENER[k];
+      if(fn && typeof window[fn] === 'function') setTimeout(() => { try{ window[fn](id); }catch(e){} }, 700);
+      return true;
+    }catch(e){ console.warn('R74 route', e); return false; }
+  };
+
+  { const _as = afterSignIn;
+    afterSignIn = window.afterSignIn = async function(user){
+      const r = await _as.apply(this, arguments);
+      const p = takePending();
+      if(p) setTimeout(() => window.wmRouteOpen(p.kind, p.id), 400);
+      return r;
+    }; }
+
+  /* ---------- email links ---------- */
+  function docFromText(t){
+    const docs = STATE.documents || [];
+    return docs.find(d => d.doc_number && String(t).includes(d.doc_number));
+  }
+  { const _n = notifyDocumentUsers;
+    notifyDocumentUsers = window.notifyDocumentUsers = async function(ids, subject, message, opts){
+      let msg = message;
+      try{
+        const d = docFromText((subject || '') + '\n' + (message || ''));
+        if(d && !/\?open=/.test(msg)){
+          const line = `Open the document to read it, comment and respond: ${wmOpenUrl('document', d.id)}`;
+          const re = /Open QaSHE Watchman: [^\n]*\(Document Management\)\./;
+          msg = re.test(msg) ? msg.replace(re, line) : msg + '\n\n' + line;
+        }
+      }catch(e){}
+      return _n.call(this, ids, subject, msg, opts);
+    }; }
+
+  { const _st = window.submitTask;
+    window.submitTask = async function(){
+      const title = (document.getElementById('tf-title') || {}).value, assignee = (document.getElementById('tf-assignee') || {}).value;
+      const due = (document.getElementById('tf-due') || {}).value;
+      const before = (STATE.tasks || []).length;
+      const r = await _st.apply(this, arguments);
+      try{
+        if(title && assignee && assignee !== STATE.user.id && (STATE.tasks || []).length > before){
+          const t = (STATE.tasks || []).filter(x => x.title === title.trim() && x.assignee_id === assignee).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+          if(t) await sendNotificationEmail(assignee, `New task for you: ${t.title}`,
+            `${memberName(STATE.user.id)} has assigned you a task in QaSHE Watchman.\n\nTask: ${t.title}\nDue: ${fmtDate(t.due_date || due)}\nPriority: ${t.priority}\n\nOpen the task to read it, update the status and leave a progress note: ${wmOpenUrl('task', t.id)}`);
+        }
+      }catch(e){ console.warn('R74 task email', e); }
+      return r;
+    }; }
+
+  /* ---------- shared page shell ---------- */
+  function shell(html){
+    let el = document.getElementById('wm-open-page');
+    if(!el){ el = document.createElement('div'); el.id = 'wm-open-page';
+      el.style.cssText = 'position:fixed;inset:0;z-index:9000;background:var(--bg,#f6f6f4);overflow:auto;-webkit-overflow-scrolling:touch;';
+      document.body.appendChild(el); }
+    el.innerHTML = `<div style="max-width:880px;margin:0 auto;padding:14px 14px 90px;font-family:Arial,Helvetica,sans-serif;">${html}</div>`;
+    el.scrollTop = 0; return el;
+  }
+  window.wmClosePage = function(){ const el = document.getElementById('wm-open-page'); if(el) el.remove(); };
+  const card = (inner, extra) => `<div style="background:#fff;border:1px solid var(--border,#ddd);border-radius:10px;padding:14px 16px;margin-bottom:12px;${extra || ''}">${inner}</div>`;
+  const btn = (id, label, kind) => `<button id="${id}" style="padding:10px 16px;border-radius:8px;border:1px solid ${kind === 'p' ? '#111' : kind === 'g' ? '#1e7e34' : kind === 'r' ? '#b03a2e' : 'var(--border,#ccc)'};background:${kind === 'p' ? '#111' : kind === 'g' ? '#1e7e34' : kind === 'r' ? '#b03a2e' : '#fff'};color:${kind ? '#fff' : '#111'};font-size:13.5px;cursor:pointer;margin:4px 6px 4px 0;">${esc(label)}</button>`;
+
+  /* ================= DOCUMENT REVIEW PAGE ================= */
+  const TYPES = [['comment', 'Comment'], ['recommend', 'Recommended change'], ['question', 'Question'], ['agree', 'Agreed, no change']];
+  const TLABEL = { comment:'', recommend:'[Recommended change] ', question:'[Question] ', agree:'[Agreed] ' };
+
+  window.openDocumentReviewPage = async function(id){
+    const d = documentById(id); if(!d) return false;
+    shell(`<p style="padding:30px;color:#666;">Opening ${esc(d.doc_number || '')}…</p>`);
+    const q = t => sb().from(t).select('*').eq('document_id', id);
+    const [secs, imgs, tabs, revs, apps, cmts] = await Promise.all([
+      q('document_content_sections').order('sort_order', { ascending:true }),
+      q('document_section_images').order('sort_order', { ascending:true }),
+      q('document_section_tables').order('sort_order', { ascending:true }),
+      q('document_reviewers'), q('document_approvers'),
+      q('document_workflow_comments').order('created_at', { ascending:true })]);
+    const sections = secs.data || [], reviewers = revs.data || [], approvers = apps.data || [], comments = cmts.data || [];
+    STATE._docApprovers = STATE._docApprovers || {}; STATE._docApprovers[id] = approvers;
+    const me = STATE.user.id, myRev = reviewers.find(r => r.reviewer_id === me), myApp = approvers.find(a => a.approver_id === me);
+    const st = d.workflow_status || 'draft';
+    const canReview = !!myRev && ['submitted_for_review', 'approver_requested_changes'].includes(st);
+    const canApprove = !!myApp && ['submitted_for_approval', 'reviewers_finalized'].includes(st);
+    const role = myRev ? 'Reviewer' : myApp ? 'Approver' : (d.created_by === me ? 'Author' : d.owner_id === me ? 'Owner' : 'Reader');
+    const stLabel = (typeof DOC_WORKFLOW_LABELS !== 'undefined' && DOC_WORKFLOW_LABELS[st]) || st.replace(/_/g, ' ');
+    const typeSel = sid => `<select data-type="${esc(sid)}" style="padding:7px;border:1px solid var(--border,#ccc);border-radius:6px;font-size:12.5px;">${TYPES.map(t => `<option value="${t[0]}">${t[1]}</option>`).join('')}</select>`;
+    const secHtml = sections.map((s, i) => {
+      const mine = comments.filter(c => (c.comment_text || '').startsWith(`[Section: ${s.section_title}]`));
+      return card(`
+        <div style="font-weight:700;font-size:14.5px;margin-bottom:6px;">${i + 1}. ${esc(s.section_title)}</div>
+        <div style="font-size:13.5px;line-height:1.55;white-space:pre-wrap;color:#222;">${esc(s.content || '')}</div>
+        ${(imgs.data || []).filter(x => x.section_id === s.id).map(x => `<img data-storage-path="${esc(x.storage_path)}" class="doc-section-img" style="width:120px;height:120px;object-fit:cover;border-radius:6px;border:1px solid #ddd;margin:8px 8px 0 0;">`).join('')}
+        ${(tabs.data || []).filter(x => x.section_id === s.id).map(t => `<div style="overflow:auto;margin-top:10px;">${t.caption ? `<div style="font-size:12px;color:#666;">${esc(t.caption)}</div>` : ''}<table style="border-collapse:collapse;font-size:12.5px;">${(t.table_data || []).map(r => `<tr>${r.map(c => `<td style="border:1px solid #ccc;padding:5px 8px;">${esc(c)}</td>`).join('')}</tr>`).join('')}</table></div>`).join('')}
+        ${mine.length ? `<div style="margin-top:10px;border-top:1px dashed #ccc;padding-top:8px;">${mine.map(c => `<div style="font-size:12.5px;margin-bottom:5px;border-left:3px solid ${esc(c.color || '#888')};padding-left:8px;"><b>${esc(memberName(c.author_id))}</b> <span style="color:#888;">(${esc(c.author_role)})</span>: ${esc(c.comment_text.replace(/^\[Section:[^\]]*\]\s*/, ''))}</div>`).join('')}</div>` : ''}
+        <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start;">
+          ${typeSel(s.id)}
+          <textarea data-sec="${esc(s.id)}" data-title="${esc(s.section_title)}" placeholder="Your comment or recommendation on this section…" style="flex:1;min-width:220px;min-height:54px;padding:8px;border:1px solid var(--border,#ccc);border-radius:6px;font-size:13px;"></textarea>
+        </div>`);
+    }).join('') || card('<p style="color:#666;font-size:13px;">This document has no content sections recorded. Use the general comments below.</p>');
+    const general = comments.filter(c => !(c.comment_text || '').startsWith('[Section:'));
+    const people = (arr, f, g) => arr.length ? arr.map(x => `${esc(memberName(x[f]))}${x[g] ? ' ✓' : ''}`).join(', ') : 'none';
+    const html = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div style="font-size:12px;color:#666;">QaSHE Watchman · ${esc(STATE.org ? STATE.org.name : '')}</div>
+        <button id="wmp-close" style="padding:7px 12px;border:1px solid #ccc;border-radius:8px;background:#fff;cursor:pointer;font-size:12.5px;">Close and go to Watchman</button>
+      </div>
+      ${card(`<div style="font-size:12px;color:#666;">${esc(d.doc_number || '')} · Revision ${esc(d.current_revision || '')}</div>
+        <div style="font-size:19px;font-weight:700;margin:3px 0 8px;">${esc(d.title)}</div>
+        <div style="display:inline-block;background:#eef2f6;border-radius:6px;padding:4px 9px;font-size:12px;"><b>${esc(stLabel)}</b></div>
+        <div style="display:inline-block;background:#fff4d6;border-radius:6px;padding:4px 9px;font-size:12px;margin-left:6px;">You are: <b>${role}</b></div>
+        <div style="font-size:12.5px;color:#444;margin-top:10px;line-height:1.7;">Author: ${esc(memberName(d.created_by))} · Owner: ${esc(memberName(d.owner_id))}<br>Reviewers: ${people(reviewers, 'reviewer_id', 'satisfied_at')}<br>Approvers: ${people(approvers, 'approver_id', 'approved_at')}</div>
+        <p style="font-size:12.5px;color:#555;margin-top:10px;">${canReview ? 'Read each section. Add a comment or a recommended change under any section, then submit. Release it for approval only when you are satisfied.' : canApprove ? 'Read each section, then approve it, or request changes with your reasons.' : 'You can read the document and leave comments for the review team.'}</p>`)}
+      ${secHtml}
+      ${card(`<div style="font-weight:700;font-size:14px;margin-bottom:6px;">General comments</div>
+        ${general.map(c => `<div style="font-size:12.5px;margin-bottom:5px;border-left:3px solid ${esc(c.color || '#888')};padding-left:8px;"><b>${esc(memberName(c.author_id))}</b> <span style="color:#888;">(${esc(c.author_role)})</span>: ${esc(c.comment_text)}</div>`).join('')}
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">${typeSel('')}<textarea data-sec="" data-title="" placeholder="Overall comments or recommendations…" style="flex:1;min-width:220px;min-height:54px;padding:8px;border:1px solid var(--border,#ccc);border-radius:6px;font-size:13px;"></textarea></div>`)}
+      <div style="position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #ccc;padding:8px 14px;z-index:9001;text-align:center;">
+        ${btn('wmp-submit', 'Submit comments', 'p')}
+        ${canReview ? btn('wmp-release', 'Submit and release for approval', 'g') : ''}
+        ${canApprove ? btn('wmp-changes', 'Request changes', 'r') + btn('wmp-approve', 'Approve', 'g') : ''}
+        <span id="wmp-msg" style="font-size:12px;color:#666;display:block;"></span>
+      </div>`;
+    const el = shell(html);
+    try{ if(typeof hydrateSectionImages === 'function') hydrateSectionImages(); }catch(e){}
+    const $ = s => el.querySelector(s), msg = t => { const m = $('#wmp-msg'); if(m) m.textContent = t; };
+
+    function collect(){
+      const out = [];
+      el.querySelectorAll('textarea[data-sec]').forEach(ta => {
+        const text = ta.value.trim(); if(!text) return;
+        const sel = ta.parentElement.querySelector('select'), type = sel ? sel.value : 'comment';
+        out.push({ section:ta.dataset.title, type, text });
+      });
+      return out;
+    }
+    async function postAll(items){
+      if(!items.length) return true;
+      let color = '#333', roleKey = 'creator';
+      if(myRev){ roleKey = 'reviewer'; color = myRev.color || '#333'; } else if(myApp){ roleKey = 'approver'; color = myApp.color || '#111'; }
+      const stage = ['submitted_for_approval', 'approver_requested_changes', 'reviewers_finalized', 'reviewers_satisfied'].includes(st) ? 'approval' : 'review';
+      const rows = items.map(x => ({ organisation_id:STATE.org.id, document_id:id, stage, author_id:me, author_role:roleKey, color,
+        comment_text:(x.section ? `[Section: ${x.section}] ` : '') + TLABEL[x.type] + x.text }));
+      const r = await sb().from('document_workflow_comments').insert(rows);
+      if(r.error){ msg('Could not save: ' + r.error.message); return false; }
+      const lines = items.map(x => `• ${x.section ? x.section : 'General'}${x.type !== 'comment' ? ' (' + TYPES.find(t => t[0] === x.type)[1] + ')' : ''}: ${x.text}`).join('\n');
+      await notifyDocumentUsers([d.created_by, d.owner_id, ...approvers.map(a => a.approver_id), ...reviewers.map(r => r.reviewer_id)],
+        `${roleKey === 'reviewer' ? 'Review comments' : roleKey === 'approver' ? 'Approver comments' : 'Comments'} on ${d.doc_number}`,
+        `${memberName(me)} (${role.toLowerCase()}) has submitted ${items.length} comment${items.length === 1 ? '' : 's'} on "${d.title}" (${d.doc_number}):\n\n${lines}\n\nOpen the document to read it and respond: ${wmOpenUrl('document', id)}`);
+      return true;
+    }
+    async function reload(){ await loadDocuments(); return window.openDocumentReviewPage(id); }
+    async function guarded(b, fn){
+      if(!b) return; b.addEventListener('click', async () => {
+        const all = el.querySelectorAll('#wmp-submit,#wmp-release,#wmp-changes,#wmp-approve'); all.forEach(x => x.disabled = true);
+        try{ await fn(); } catch(e){ msg('Something went wrong: ' + (e.message || e)); all.forEach(x => x.disabled = false); }
+      });
+    }
+    $('#wmp-close').addEventListener('click', wmClosePage);
+    guarded($('#wmp-submit'), async () => {
+      const items = collect(); if(!items.length){ msg('Type a comment first.'); el.querySelectorAll('button[id^=wmp-]').forEach(x => x.disabled = false); return; }
+      msg('Saving and notifying…'); if(await postAll(items)){ toast('Comments submitted and the other parties have been emailed.', 'success'); await reload(); } 
+    });
+    guarded($('#wmp-release'), async () => {
+      msg('Saving…'); if(!(await postAll(collect()))) return;
+      if(st === 'approver_requested_changes') await window.reviewerFinalize(id); else await window.markReviewerSatisfied(id);
+      await reload();
+    });
+    guarded($('#wmp-changes'), async () => {
+      const items = collect(); if(!items.length){ msg('Add at least one comment explaining the changes you need.'); el.querySelectorAll('button[id^=wmp-]').forEach(x => x.disabled = false); return; }
+      msg('Saving…'); if(!(await postAll(items))) return;
+      await window.approverRequestChanges(id); await reload();
+    });
+    guarded($('#wmp-approve'), async () => {
+      const items = collect(); if(items.length && !(await postAll(items))) return;
+      await window.approverSignOff(id); await reload();
+    });
+    return true;
+  };
+
+  /* ================= TASK PAGE ================= */
+  window.openTaskPage = async function(id){
+    const t = (STATE.tasks || []).find(x => x.id === id); if(!t) return false;
+    shell(`<p style="padding:30px;color:#666;">Opening task…</p>`);
+    const cr = await sb().from('task_comments').select('*').eq('task_id', id).order('created_at', { ascending:true });
+    const cs = cr.data || [], ref = (typeof taskLinkedRef === 'function') ? taskLinkedRef(t) : '';
+    const LK = { nonconformance:['nonconformances', 'openNCDetail'], supplier:['suppliers', 'openSupplierDetail'], objective:['objectives', 'openObjectiveDetail'],
+      risk:['risks', 'openRiskDetail'], asset:['assets', 'openAssetDetail'], training:['training', 'openTrainingDetail'], document:['documents', null] };
+    const lk = LK[t.linked_type];
+    const stOpts = [['todo', 'To do'], ['in_progress', 'In progress'], ['blocked', 'Blocked'], ['done', 'Done']];
+    const overdue = t.due_date && t.status !== 'done' && t.due_date < todayISO();
+    const el = shell(`
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div style="font-size:12px;color:#666;">QaSHE Watchman · ${esc(STATE.org ? STATE.org.name : '')}</div>
+        <button id="wmt-close" style="padding:7px 12px;border:1px solid #ccc;border-radius:8px;background:#fff;cursor:pointer;font-size:12.5px;">Close and go to Watchman</button>
+      </div>
+      ${card(`<div style="font-size:12px;color:#666;">${ref ? 'Linked to ' + esc(ref) : 'Task'} · assigned to ${esc(memberName(t.assignee_id))} by ${esc(memberName(t.created_by))}</div>
+        <div style="font-size:19px;font-weight:700;margin:3px 0 8px;">${esc(t.title)}</div>
+        <div style="font-size:13px;line-height:1.7;">Due: <b style="color:${overdue ? '#b03a2e' : '#111'};">${esc(fmtDate(t.due_date))}${overdue ? ' (overdue)' : ''}</b> · Priority: <b style="text-transform:capitalize;">${esc(t.priority)}</b> · Status: <b>${esc((stOpts.find(s => s[0] === t.status) || [0, t.status])[1])}</b></div>
+        <p style="font-size:13.5px;line-height:1.55;white-space:pre-wrap;margin-top:10px;">${esc(t.description || 'No description recorded.')}</p>
+        ${lk && t.linked_id ? `<button id="wmt-linked" style="padding:8px 12px;border:1px solid #111;border-radius:8px;background:#fff;cursor:pointer;font-size:12.5px;">Open the linked record (${esc(ref || t.linked_type)})</button>` : ''}`)}
+      ${card(`<div style="font-weight:700;font-size:14px;margin-bottom:8px;">Update this task</div>
+        <div id="wmt-status" style="margin-bottom:8px;">${stOpts.map(s => `<button data-st="${s[0]}" style="padding:9px 14px;margin:0 6px 6px 0;border-radius:8px;border:1px solid ${t.status === s[0] ? '#111' : '#ccc'};background:${t.status === s[0] ? '#111' : '#fff'};color:${t.status === s[0] ? '#fff' : '#111'};font-size:13px;cursor:pointer;">${s[1]}</button>`).join('')}</div>
+        <textarea id="wmt-note" placeholder="Progress note, what was done, or why it is blocked…" style="width:100%;min-height:80px;padding:8px;border:1px solid var(--border,#ccc);border-radius:6px;font-size:13px;box-sizing:border-box;"></textarea>
+        <div style="margin-top:8px;">${btn('wmt-save', 'Save update and notify', 'p')}<span id="wmt-msg" style="font-size:12px;color:#666;"></span></div>`)}
+      ${card(`<div style="font-weight:700;font-size:14px;margin-bottom:6px;">Comments and progress</div>
+        ${cs.length ? cs.map(c => `<div style="font-size:12.5px;margin-bottom:6px;border-left:3px solid #ccc;padding-left:8px;"><b>${esc(memberName(c.user_id))}</b> <span style="color:#888;">${esc(new Date(c.created_at).toLocaleString('en-GB'))}</span><br>${esc(c.comment)}</div>`).join('') : '<p style="font-size:12.5px;color:#888;">No comments yet.</p>'}`)}`);
+    let chosen = t.status;
+    el.querySelectorAll('#wmt-status button').forEach(b => b.addEventListener('click', () => {
+      chosen = b.dataset.st;
+      el.querySelectorAll('#wmt-status button').forEach(x => { const on = x === b; x.style.background = on ? '#111' : '#fff'; x.style.color = on ? '#fff' : '#111'; x.style.borderColor = on ? '#111' : '#ccc'; });
+    }));
+    el.querySelector('#wmt-close').addEventListener('click', wmClosePage);
+    const lb = el.querySelector('#wmt-linked');
+    if(lb) lb.addEventListener('click', () => {
+      wmClosePage(); try{ showModule(lk[0]); }catch(e){}
+      if(lk[1] && typeof window[lk[1]] === 'function') setTimeout(() => window[lk[1]](t.linked_id), 700);
+    });
+    el.querySelector('#wmt-save').addEventListener('click', async () => {
+      const note = el.querySelector('#wmt-note').value.trim(), m = el.querySelector('#wmt-msg');
+      if(chosen === t.status && !note){ m.textContent = ' Choose a new status or type a note.'; return; }
+      if(chosen === 'blocked' && !note){ m.textContent = ' Say why it is blocked.'; return; }
+      m.textContent = ' Saving…';
+      if(chosen !== t.status){
+        const patch = { status:chosen }; if(chosen === 'done') patch.completed_at = new Date().toISOString();
+        const u = await sb().from('tasks').update(patch).eq('id', id);
+        if(u.error){ m.textContent = ' Could not save: ' + u.error.message; return; }
+      }
+      const txt = (chosen !== t.status ? `[Status: ${(stOpts.find(s => s[0] === chosen) || [0, chosen])[1]}] ` : '') + note;
+      if(txt.trim()){
+        const c = await sb().from('task_comments').insert({ task_id:id, organisation_id:STATE.org.id, user_id:STATE.user.id, comment:txt });
+        if(c.error){ m.textContent = ' Status saved, but the note failed: ' + c.error.message; return; }
+      }
+      try{
+        const to = [t.created_by, t.assignee_id].filter(x => x && x !== STATE.user.id);
+        for(const u of [...new Set(to)]) await sendNotificationEmail(u, `Task update: ${t.title}`,
+          `${memberName(STATE.user.id)} updated the task "${t.title}".\n\n${txt}\n\nOpen the task: ${wmOpenUrl('task', id)}`);
+      }catch(e){}
+      await loadTasks(); try{ renderTaskTable(); updateNavBadges(); }catch(e){}
+      toast('Task updated and the other party has been emailed.', 'success');
+      window.openTaskPage(id);
+    });
+    return true;
+  };
 })();
 
 </script>
