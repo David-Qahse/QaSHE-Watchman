@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="wm-release" content="R75 2026-11-28"><meta charset="UTF-8">
+<meta name="wm-release" content="R76 2026-11-28"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QaSHE Watchman</title>
 <link rel="manifest" href="manifest.json">
@@ -52580,7 +52580,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
 
   /* ---------------- the email ---------------- */
   function mailBody(a, person){
-    return `Hello ${wmFirstOf(person.full_name.split(' ')[0])},\n\nYour performance appraisal for ${day(a.period_start)} to ${day(a.period_end)} (${a.ref_code}) has been started.\n\nPlease open your private link, read your job description and KPI and Appraisal document, rate yourself against each KPI and submit. You do not need to sign in. The link is personal to you, so please keep it to yourself:\n\n${linkOf(a)}\n\nYour line manager will then complete their assessment, preferably together with you, and finalise the result.\n\nThank you,\n${STATE.org.name}`;
+    return `Hello ${wmFirstOf(person.full_name.split(' ')[0])},\n\nYour performance appraisal for ${day(a.period_start)} to ${day(a.period_end)} (${a.ref_code}) has been started.\n\nYour appraisal is built from your approved KPI and Appraisal document${(()=>{ const d = arr(STATE.documents).find(x => x.id === a.kpi_document_id); return d ? ' (' + d.doc_number + ', Rev ' + (a.kpi_document_revision || d.current_revision) + ')' : ''; })()}. Please open your private link, read your job description and the KPI and Appraisal document, then complete the questionnaire: rate yourself against each KPI and submit. You do not need to sign in. The link is personal to you, so please keep it to yourself:\n\n${linkOf(a)}\n\nYour line manager will then complete their assessment, preferably together with you, and finalise the result.\n\nThank you,\n${STATE.org.name}`;
   }
   async function emailPerson(a){
     const person = personById(a.personnel_id);
@@ -52699,7 +52699,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
   const RATE = { 0:'#7a1f1f', 1:'#D7242B', 2:'#F07C1A', 3:'#E0B122', 4:'#7CB342', 5:'#2E9E5B' };
   let APK = [];
   window.__apAns = {};
-  const secHtml = (t, secs) => secs.length ? `<details style="margin-top:10px;"><summary style="cursor:pointer;font-weight:800;font-size:14px;">${E(t)}</summary>${secs.map(s => `<div style="margin-top:10px;"><b>${E(s.title || '')}</b><div style="white-space:pre-wrap;font-size:13.5px;color:#444;">${E(plain(s.body))}</div></div>`).join('')}</details>` : '';
+  const secHtml = (t, secs, op) => secs.length ? `<details ${op ? 'open ' : ''}style="margin-top:10px;"><summary style="cursor:pointer;font-weight:800;font-size:14px;">${E(t)}</summary>${secs.map(s => `<div style="margin-top:10px;"><b>${E(s.title || '')}</b><div style="white-space:pre-wrap;font-size:13.5px;color:#444;">${E(plain(s.body))}</div></div>`).join('')}</details>` : '';
   window.apPick = function(id, v){ window.__apAns[id] = window.__apAns[id] || {}; window.__apAns[id].rating = v; const b = document.getElementById('apk-' + id); if(b) b.querySelectorAll('.rate button').forEach(x => x.classList.toggle('on', Number(x.dataset.v) === v)); apProg(); };
   window.apNote = function(id, t){ window.__apAns[id] = window.__apAns[id] || {}; window.__apAns[id].notes = t; };
   window.apProg = function(){ const got = APK.filter(k => window.__apAns[k.id] && window.__apAns[k.id].rating != null).length; const f = document.getElementById('ap-fill'), l = document.getElementById('ap-prog'); if(f) f.style.width = Math.round(got / (APK.length || 1) * 100) + '%'; if(l) l.textContent = `${got} of ${APK.length} KPIs rated`; };
@@ -52711,7 +52711,7 @@ Likelihood and impact are whole numbers from 1 to 5.`;
     APK = arr(info.kpis); window.__apAns = {};
     ov.innerHTML = PUB_CSS + `<div class="pb"><div class="w">${pubHero(info, 'Performance appraisal', info.person, `${info.position ? info.position + ' · ' : ''}${day(info.period_start)} to ${day(info.period_end)}`)}
       <div class="card"><p style="margin:0;font-size:14.5px;line-height:1.55;">Please read your job description and your KPIs, then rate how you performed against each KPI during the period. Rate honestly: a fair rating is more useful than a comfortable one. Add a short note on what supports your rating. Your line manager will complete their assessment afterwards, preferably together with you.</p>
-      ${secHtml('Your job description', arr(info.jd))}${secHtml('Your KPI and Appraisal document', arr(info.kpi_doc))}
+      ${secHtml('Your job description', arr(info.jd))}${secHtml('Your approved KPI and Appraisal document (the questionnaire below is built from it)', arr(info.kpi_doc), true)}
       <details style="margin-top:10px;"><summary style="cursor:pointer;font-weight:800;font-size:14px;">What the ratings mean</summary><div style="font-size:13.5px;margin-top:8px;">${KPI_RATING_LEGEND.map(r => `<div><b>${r.value}</b> ${E(r.label)}</div>`).join('')}</div></details></div>
       <div class="bar"><div class="track"><div class="fill" id="ap-fill" style="width:0"></div></div><div id="ap-prog" style="font-size:12px;color:#666;margin-top:4px;"></div></div>
       ${APK.map((k, i) => `<div class="card" id="apk-${E(k.id)}"><h3>KPI ${i + 1} · weight ${E(k.weight || 0)}%</h3><div style="font-weight:800;font-size:16px;">${E(k.title)}</div>
@@ -57018,6 +57018,7 @@ W.asset_watchman.ask = 'Can you show a client how the condition of their equipme
     ['R73','2026-11-27','Release a document with a recorded justification','The platform developer, or an administrator the developer has authorised, can release any new document (including job descriptions and KPI and appraisal documents) without the standard review and approval. They are recorded as the reviewer and the approver, the reason is kept permanently, and a bypass register shows every such release to an auditor.',['documents','personnel'],LIVE],
     ['R74','2026-11-28','Open straight from the email','Links in document, task and reminder emails now open the item itself. Reviewers and approvers get a Document Review page with every section, a comment or recommended change box under each, and Submit (the other parties are emailed your recommendations). Tasks open on a page where you set the status, add a progress note and comment. Reminder digests link to each item.',['documents','tasks'],LIVE],
     ['R75','2026-11-28','Customer, assets and water treatment joined up; print quality','Water Treatment registers restyled like Customer Management; a customer opens its own page with details and every plant at its sites. Customer satisfaction shows per customer on every line, on the Customers page, the compliance dashboard and the management review. Prints now have proper page margins (no browser date or web address), thin light-grey Plain tables, wide registers on landscape, and the Risk and Opportunity register and record show inherent and residual ratings in colour.',['all'],LIVE],
+    ['R76','2026-11-28','Approved print from the person\'s profile; appraisal built from the approved KPI document','The person\'s profile has an Open approved print button beside the published job description and KPI and Appraisal document. An appraisal shows the approved KPI and job description it was built from (with print), the emailed link names the approved KPI document and revision, and the questionnaire page opens with that document displayed.',['personnel','all'],LIVE],
   ];
   const has = m => { try{ return m === 'all' || (typeof orgHasModule === 'function' ? orgHasModule(m) !== false : true); }catch(e){ return true; } };
   function relevant(){ const inc = wmInception(); return WM_PLATFORM_CHANGES.filter(c => c[1] >= inc && c[4].some(has)); }
@@ -58687,6 +58688,54 @@ W.asset_watchman.ask = 'Can you show a client how the condition of their equipme
       };
       try{ printRecord = w; }catch(e){} window.printRecord = w;
     } }
+})();
+
+
+
+/* =====================================================================
+   R76: approved job description and KPI print from the person's profile;
+   appraisal opens the approved KPI document it was built from.
+   ===================================================================== */
+(function(){
+  'use strict';
+  const arr = x => Array.isArray(x) ? x : [];
+  const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const pub = d => !!(d && window.r37IsPublished && window.r37IsPublished(d));
+  const printBtn = (d, label) => `<button class="btn-small" style="margin-left:6px;" title="Open the approved, controlled copy (revision ${E(d.current_revision)}) ready to print" onclick="event.preventDefault();event.stopPropagation();r76Print('${d.id}')">${label || 'Open approved print'}</button>`;
+  window.r76Print = async function(id){
+    try{
+      if(!arr(STATE.documents).some(d => d.id === id)){ toast('That document is not loaded. Open Document Management once and try again.', 'error'); return; }
+      await window.downloadDocumentPdf(id);
+    }catch(e){ console.warn('r76 print', e); toast('Could not open the approved print: ' + (e.message || e), 'error'); }
+  };
+  { const _c = window.r37DocCell;
+    if(typeof _c === 'function'){
+      window.r37DocCell = function(p, kind, canDev){
+        let h = _c.apply(this, arguments);
+        try{ const d = window.r37DocOf(p.id, kind);
+          if(pub(d)) h += printBtn(d);
+          else if(d) h += ' <span style="font-size:11px;color:var(--text-faint);">Print is available once approved</span>'; }catch(e){}
+        return h;
+      };
+    } }
+  /* the appraisal page: the approved documents it was built from */
+  try{
+    const _o = window.openAppraisalDetail;
+    window.openAppraisalDetail = openAppraisalDetail = async function(id){
+      const r = await _o.apply(this, arguments);
+      try{
+        const a = appraisalById(id), slot = document.getElementById('appraisal-detail-slot');
+        if(a && slot && !document.getElementById('r76-source')){
+          const docs = arr(STATE.documents), kd = docs.find(d => d.id === a.kpi_document_id), jd = docs.find(d => d.id === a.jd_document_id);
+          const row = (l, d, rev) => d ? `<div style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12.5px;"><b style="min-width:190px;">${l}</b><span>${E(d.doc_number)} · Rev ${E(rev || d.current_revision)}</span>${printBtn(d)}</div>` : '';
+          const html = row('KPI and Appraisal document', kd, a.kpi_document_revision) + row('Job description', jd, a.jd_document_revision);
+          const first = slot.querySelector('.panel-head') || slot.querySelector('.detail-head');
+          if(html && first) first.insertAdjacentHTML('beforebegin', `<div id="r76-source" style="background:#F6F8FB;border:1px solid #DDE4EE;border-radius:10px;padding:10px 14px;margin-bottom:12px;"><div style="font-size:12px;color:var(--text-faint);margin-bottom:4px;">This appraisal is built from the approved documents (the KPIs below are copied from the KPI and Appraisal document as approved, and ${E((personById(a.personnel_id) || {}).full_name || 'the person')} completes them as the questionnaire):</div>${html}</div>`);
+        }
+      }catch(e){ console.warn('r76 appraisal', e); }
+      return r;
+    };
+  }catch(e){ console.warn(e); }
 })();
 
 </script>
